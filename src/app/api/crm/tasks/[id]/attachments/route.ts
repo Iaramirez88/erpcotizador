@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
 import fs from 'fs/promises'
-import { AccessLevel, ModuleKey } from '@prisma/client'
+import { ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
-import { assertCrmSedeAccess, normalizeString } from '@/lib/crm'
+import { normalizeString } from '@/lib/crm'
 import { canUserAccessWorkspace, getAccessibleTaskWorkspace } from '@/lib/crm-task-workspaces'
-import { requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
+import { assertTaskCapabilitySedeAccess, requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
 
 export const runtime = 'nodejs'
 
@@ -101,7 +101,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
 
     if (task.sedeId) {
-      const denied = await assertCrmSedeAccess({ sedeId: task.sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+      const denied = await assertTaskCapabilitySedeAccess({
+        sedeId: task.sedeId,
+        action: 'UPDATE',
+        kind: task.workspaceId ? 'workspace' : 'commercial',
+      })
       if (denied) return denied
     }
 

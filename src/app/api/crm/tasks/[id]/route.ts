@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel, ModuleKey } from '@prisma/client'
+import { ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import {
-  assertCrmSedeAccess,
   normalizeString,
   parseOptionalDate,
   parseTaskPriority,
@@ -21,7 +20,7 @@ import {
   normalizeUserIdList,
 } from '@/lib/crm-task-workspaces'
 import { notifyTaskUsers } from '@/lib/crm-task-notifications'
-import { requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
+import { assertTaskCapabilitySedeAccess, requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
 
 export const runtime = 'nodejs'
 
@@ -60,7 +59,11 @@ export async function GET(_: Request, context: RouteContext) {
     }
 
     if (current.sedeId) {
-      const denied = await assertCrmSedeAccess({ sedeId: current.sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.READ })
+      const denied = await assertTaskCapabilitySedeAccess({
+        sedeId: current.sedeId,
+        action: 'READ',
+        kind: current.workspaceId ? 'workspace' : 'commercial',
+      })
       if (denied) return denied
     }
 
@@ -98,7 +101,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     if (current.sedeId) {
-      const denied = await assertCrmSedeAccess({ sedeId: current.sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+      const denied = await assertTaskCapabilitySedeAccess({
+        sedeId: current.sedeId,
+        action: 'UPDATE',
+        kind: current.workspaceId ? 'workspace' : 'commercial',
+      })
       if (denied) return denied
     }
 
@@ -193,7 +200,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeId') && explicitSedeId) {
-      const denied = await assertCrmSedeAccess({ sedeId: explicitSedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+      const denied = await assertTaskCapabilitySedeAccess({
+        sedeId: explicitSedeId,
+        action: 'UPDATE',
+        kind: resolvedWorkspaceId ? 'workspace' : 'commercial',
+      })
       if (denied) return denied
     }
 
@@ -462,7 +473,11 @@ export async function DELETE(_: Request, context: RouteContext) {
     }
 
     if (current.sedeId) {
-      const denied = await assertCrmSedeAccess({ sedeId: current.sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+      const denied = await assertTaskCapabilitySedeAccess({
+        sedeId: current.sedeId,
+        action: 'UPDATE',
+        kind: current.workspaceId ? 'workspace' : 'commercial',
+      })
       if (denied) return denied
     }
 

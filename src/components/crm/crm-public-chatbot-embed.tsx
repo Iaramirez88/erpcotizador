@@ -780,6 +780,11 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }, [latestAssistantPrompt, placeholderOption, selectableStage])
   const shouldShowSelectableOptions = latestMessage?.role === 'assistant'
   const hasSelectableOptions = shouldShowSelectableOptions && (selectableResponseOptions.length > 0 || selectableQuickActions.length > 0)
+  const mergedSelectableAssistantMessage = hasSelectableOptions && latestMessage?.role === 'assistant' ? latestMessage : null
+  const mergedSelectablePromptHtml = placeholderOption
+    ? selectableStagePromptHtml
+    : normalizeRichTextHtml(mergedSelectableAssistantMessage?.bodyHtml || plainTextToRichTextHtml(mergedSelectableAssistantMessage?.body || ''))
+  const mergedSelectableHasVisibleBody = Boolean(richTextToPlainText(mergedSelectablePromptHtml).trim())
   const shouldBlockConversation = preChatRequired && !preChatCompleted
   const departmentOptionsAvailable = props.preChatFormShowDepartmentField && props.preChatFormDepartmentOptions.length > 0
   const effectiveInactivityRule = useMemo(() => {
@@ -1006,7 +1011,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
 
       const json = await response.json().catch(() => ({})) as ConversationSyncResponse
       const serverMessages = Array.isArray(json.data?.messages)
-        ? json.data?.messages.filter((item) => item.body || item.attachments?.length || item.meta?.responseOptionIds?.length || item.meta?.quickActionIds?.length)
+        ? json.data?.messages.filter((item) => item.body || item.meta?.responseOptionIds?.length || item.meta?.quickActionIds?.length)
         : []
 
       const welcomeMessage = buildWelcomeMessage(props.prompt, initialStage, props.quickActions)
@@ -1458,6 +1463,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
             const hasVisibleBody = Boolean(richTextToPlainText(normalizedBodyHtml).trim())
             const assistantOnlyCarriesOptions = message.role === 'assistant' && !hasVisibleBody && Boolean(message.meta?.responseOptionIds?.length || message.meta?.quickActionIds?.length)
             if (assistantOnlyCarriesOptions) return null
+            if (mergedSelectableAssistantMessage && message.id === mergedSelectableAssistantMessage.id) return null
             const attachments = normalizeAttachmentList(message.attachments)
             const deliveryState = getUserMessageDeliveryState(messages, index)
 
@@ -1501,12 +1507,32 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
             </div>
           })}
           {!shouldBlockConversation && hasSelectableOptions ? (
-            <div className="space-y-2">
-                {placeholderOption && richTextToPlainText(selectableStagePromptHtml).trim() ? (
-                  <div className="mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
-                    <div className="[&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_p]:my-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_u]:underline leading-6" dangerouslySetInnerHTML={{ __html: selectableStagePromptHtml }} />
+            <div className="mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+                {mergedSelectableHasVisibleBody ? (
+                  <div className="[&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_p]:my-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_u]:underline leading-6" dangerouslySetInnerHTML={{ __html: mergedSelectablePromptHtml }} />
+                ) : null}
+                {mergedSelectableAssistantMessage?.attachments?.length ? (
+                  <div className="mt-3 space-y-2">
+                    {normalizeAttachmentList(mergedSelectableAssistantMessage.attachments).filter((item) => item?.type === 'image' && item?.url).map((item, index) => (
+                      <ChatImagePreview key={`${mergedSelectableAssistantMessage.id}-attachment-${index}`} src={item.url || ''} alt={item.alt || 'Imagen del producto'} title={item.alt || 'Imagen del chat'}>
+                        <img src={item.url || ''} alt={item.alt || 'Imagen del producto'} className="w-full rounded-2xl border border-slate-200 object-cover" />
+                      </ChatImagePreview>
+                    ))}
+                    {normalizeAttachmentList(mergedSelectableAssistantMessage.attachments).filter((item) => item?.type === 'document' && item?.url).map((item, index) => (
+                      <a
+                        key={`${mergedSelectableAssistantMessage.id}-document-${index}`}
+                        href={item.url || '#'}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-900 transition hover:border-slate-300 hover:bg-slate-100"
+                      >
+                        <span>{item.alt || 'Abrir documento'}</span>
+                        <span className="text-xs uppercase tracking-[0.14em] text-slate-500">PDF</span>
+                      </a>
+                    ))}
                   </div>
                 ) : null}
+                <div className="mt-3 space-y-2">
                 {selectableResponseOptions.map((option, index) => {
                   const visual = getResponseOptionVisual()
                   return (
@@ -1544,6 +1570,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
                     </button>
                   )
                 })}
+                </div>
             </div>
           ) : null}
         </div>

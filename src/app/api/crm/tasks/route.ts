@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel, ModuleKey } from '@prisma/client'
+import { ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { appendAiWorkspaceHistory } from '@/lib/ai-workspace-history'
 import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 import {
-  assertCrmSedeAccess,
   normalizeString,
   parseOptionalDate,
   parseTaskPriority,
@@ -24,7 +23,7 @@ import {
 } from '@/lib/crm-task-workspaces'
 import { dispatchCrmTaskCalendarBridges } from '@/lib/crm-calendar-bridges'
 import { notifyTaskUsers } from '@/lib/crm-task-notifications'
-import { requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
+import { assertTaskCapabilitySedeAccess, requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
 
 export const runtime = 'nodejs'
 
@@ -96,7 +95,11 @@ export async function GET(request: Request) {
     const includeArchived = searchParams.get('includeArchived') === 'true'
 
     if (sedeId) {
-      const denied = await assertCrmSedeAccess({ sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.READ })
+      const denied = await assertTaskCapabilitySedeAccess({
+        sedeId,
+        action: 'READ',
+        kind: workspaceId ? 'workspace' : (leadId || opportunityId || clienteId ? 'commercial' : 'workspace'),
+      })
       if (denied) return denied
     }
 
@@ -288,7 +291,11 @@ export async function POST(request: Request) {
 
     const finalSedeId = explicitSedeId || workspace?.sedeId || lead?.sedeId || opportunity?.sedeId || cliente?.sedeId || ''
     if (finalSedeId) {
-      const denied = await assertCrmSedeAccess({ sedeId: finalSedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+      const denied = await assertTaskCapabilitySedeAccess({
+        sedeId: finalSedeId,
+        action: 'UPDATE',
+        kind: workspaceId ? 'workspace' : 'commercial',
+      })
       if (denied) return denied
     }
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, BellOff, Check, CheckCheck, ChevronDown, Clock3, Copy, FileAudio, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, SendHorizontal, Trash2, Users, X } from 'lucide-react'
+import { AlertTriangle, BellOff, Check, CheckCheck, ChevronDown, Clock3, Copy, FileAudio, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ChatImagePreview } from '@/components/ui/chat-image-preview'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -88,14 +88,26 @@ type ConversationListItem = {
   contactPhone?: string | null
   contactEmail?: string | null
   assignedTo?: { id: string; name?: string | null; email?: string | null } | null
-  lead?: { id: string; nombre: string } | null
-  cliente?: { id: string; nombre: string; documento: string } | null
+  lead?: { id: string; nombre: string; status?: string | null; email?: string | null; telefono?: string | null; celular?: string | null } | null
+  cliente?: { id: string; nombre: string; documento: string; email?: string | null; telefono?: string | null; celular?: string | null } | null
   channelConnection: { id: string; name: string; provider: ChannelProvider; status: string; bridgeKind?: BridgeKind | null }
   messages?: ConversationMessage[]
 }
 
 type ConversationDetail = ConversationListItem & {
+  opportunity?: { id: string; title: string; stage?: string | null; expectedValue?: number | null; probabilityPct?: number | null; expectedCloseAt?: string | null } | null
   messages: ConversationMessage[]
+}
+
+type ConvertLeadFormState = {
+  tipoDocumento: string
+  documento: string
+  nombre: string
+  email: string
+  telefono: string
+  celular: string
+  ciudad: string
+  direccion: string
 }
 
 type InboxAlert = {
@@ -208,6 +220,11 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResp
   return (await response.json().catch(() => ({}))) as JsonResponse<T>
 }
 
+function buildCrmOpportunityTitle(conversation: ConversationDetail) {
+  const contactLabel = conversation.contactDisplayName || conversation.lead?.nombre || conversation.cliente?.nombre || conversation.contactPhone || conversation.contactEmail || 'Contacto CRM'
+  return `Oportunidad · ${contactLabel}`
+}
+
 function renderAttachments(attachments: ChatAttachment[] | undefined, onImageLoad?: () => void) {
   if (!attachments?.length) return null
   return (
@@ -274,6 +291,8 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   const [teamLoading, setTeamLoading] = useState(false)
   const [sendingCrm, setSendingCrm] = useState(false)
   const [sendingTeam, setSendingTeam] = useState(false)
+  const [creatingCrmOpportunity, setCreatingCrmOpportunity] = useState(false)
+  const [convertingCrmLead, setConvertingCrmLead] = useState(false)
   const [startingThread, setStartingThread] = useState(false)
   const [uploadingCrmAttachment, setUploadingCrmAttachment] = useState(false)
   const [uploadingTeamAttachment, setUploadingTeamAttachment] = useState(false)
@@ -293,9 +312,21 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   const [selectedThread, setSelectedThread] = useState<InternalThreadDetail | null>(null)
   const [crmMessageDraft, setCrmMessageDraft] = useState('')
   const [teamMessageDraft, setTeamMessageDraft] = useState('')
+  const [showCrmEmojiPicker, setShowCrmEmojiPicker] = useState(false)
   const [pendingCrmAttachments, setPendingCrmAttachments] = useState<ChatAttachment[]>([])
   const [crmAttachmentUpload, setCrmAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [crmLibraryPickerOpen, setCrmLibraryPickerOpen] = useState(false)
+  const [crmConvertDialogOpen, setCrmConvertDialogOpen] = useState(false)
+  const [crmConvertForm, setCrmConvertForm] = useState<ConvertLeadFormState>({
+    tipoDocumento: 'NIT',
+    documento: '',
+    nombre: '',
+    email: '',
+    telefono: '',
+    celular: '',
+    ciudad: '',
+    direccion: '',
+  })
   const [pendingTeamAttachments, setPendingTeamAttachments] = useState<ChatAttachment[]>([])
   const [teamAttachmentUpload, setTeamAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [teamLibraryPickerOpen, setTeamLibraryPickerOpen] = useState(false)
@@ -555,6 +586,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
 
   useEffect(() => {
     setPendingCrmAttachments([])
+    setShowCrmEmojiPicker(false)
     if (!selectedConversationId) {
       setCrmMessageDraft('')
     }
@@ -565,7 +597,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     if (!textarea) return
     textarea.style.height = '0px'
     const nextHeight = Math.min(textarea.scrollHeight, 140)
-    textarea.style.height = `${Math.max(nextHeight, 52)}px`
+    textarea.style.height = `${Math.max(nextHeight, 44)}px`
   }, [teamMessageDraft, selectedThreadId])
 
   useEffect(() => {
@@ -873,6 +905,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
       }
       setCrmMessageDraft('')
       setPendingCrmAttachments([])
+      setShowCrmEmojiPicker(false)
       await Promise.all([loadBase(), loadConversationDetail(selectedConversationId)])
       jumpCrmToBottom()
       return true
@@ -886,6 +919,85 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     if (!sent) {
       return
     }
+  }
+
+  function openCrmConvertDialog() {
+    if (!selectedConversation?.lead) {
+      alert('Esta conversación no tiene lead para convertir a cliente.')
+      return
+    }
+
+    setCrmConvertForm({
+      tipoDocumento: 'NIT',
+      documento: '',
+      nombre: selectedConversation.lead.nombre || selectedConversation.contactDisplayName || '',
+      email: selectedConversation.lead.email || selectedConversation.contactEmail || '',
+      telefono: selectedConversation.lead.telefono || '',
+      celular: selectedConversation.lead.celular || selectedConversation.contactPhone || '',
+      ciudad: '',
+      direccion: '',
+    })
+    setCrmConvertDialogOpen(true)
+  }
+
+  async function handleConvertSelectedConversationLead() {
+    if (!selectedConversation?.lead) return
+
+    setConvertingCrmLead(true)
+    try {
+      const json = await requestJson(`/api/crm/leads/${selectedConversation.lead.id}/convert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(crmConvertForm),
+      })
+
+      if (!json.success) {
+        alert(json.error || 'No se pudo guardar como cliente.')
+        return
+      }
+
+      setCrmConvertDialogOpen(false)
+      await Promise.all([loadBase(), loadConversationDetail(selectedConversation.id)])
+    } finally {
+      setConvertingCrmLead(false)
+    }
+  }
+
+  async function handleCreateCrmOpportunity() {
+    if (!selectedConversation) return
+    if (selectedConversation.opportunity) {
+      alert('La conversación ya tiene una oportunidad vinculada.')
+      return
+    }
+    if (!selectedConversation.lead && !selectedConversation.cliente) {
+      alert('Necesitas un lead o cliente asociado para crear una oportunidad.')
+      return
+    }
+
+    setCreatingCrmOpportunity(true)
+    try {
+      const json = await requestJson(`/api/crm/conversations/${selectedConversation.id}/create-opportunity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: buildCrmOpportunityTitle(selectedConversation),
+          stage: 'NEW',
+        }),
+      })
+
+      if (!json.success) {
+        alert(json.error || 'No se pudo crear la oportunidad.')
+        return
+      }
+
+      await Promise.all([loadBase(), loadConversationDetail(selectedConversation.id)])
+    } finally {
+      setCreatingCrmOpportunity(false)
+    }
+  }
+
+  function openCrmPipelineBoard() {
+    window.location.assign('/dashboard/crm/oportunidades')
   }
 
   function handleCrmMessageKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -1241,6 +1353,66 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
         allowFolders={false}
         title="Adjuntar desde Administrador de archivos"
       />
+      <Dialog open={crmConvertDialogOpen} onOpenChange={setCrmConvertDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Guardar como cliente</DialogTitle>
+            <DialogDescription>Convierte el lead actual de esta conversación en cliente ERP para seguir el proceso comercial.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Tipo de documento</Label>
+                <select
+                  value={crmConvertForm.tipoDocumento}
+                  onChange={(event) => setCrmConvertForm((current) => ({ ...current, tipoDocumento: event.target.value }))}
+                  className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                >
+                  <option value="NIT">NIT</option>
+                  <option value="CC">CC</option>
+                  <option value="CE">CE</option>
+                </select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Documento</Label>
+                <Input value={crmConvertForm.documento} onChange={(event) => setCrmConvertForm((current) => ({ ...current, documento: event.target.value }))} />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Nombre</Label>
+              <Input value={crmConvertForm.nombre} onChange={(event) => setCrmConvertForm((current) => ({ ...current, nombre: event.target.value }))} />
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Email</Label>
+                <Input value={crmConvertForm.email} onChange={(event) => setCrmConvertForm((current) => ({ ...current, email: event.target.value }))} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Teléfono</Label>
+                <Input value={crmConvertForm.telefono} onChange={(event) => setCrmConvertForm((current) => ({ ...current, telefono: event.target.value }))} />
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Celular</Label>
+                <Input value={crmConvertForm.celular} onChange={(event) => setCrmConvertForm((current) => ({ ...current, celular: event.target.value }))} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Ciudad</Label>
+                <Input value={crmConvertForm.ciudad} onChange={(event) => setCrmConvertForm((current) => ({ ...current, ciudad: event.target.value }))} />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Dirección</Label>
+              <Input value={crmConvertForm.direccion} onChange={(event) => setCrmConvertForm((current) => ({ ...current, direccion: event.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCrmConvertDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={() => void handleConvertSelectedConversationLead()} disabled={convertingCrmLead}>{convertingCrmLead ? 'Guardando...' : 'Guardar como cliente'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="relative flex flex-col items-end">
         <div
           className={cn(
@@ -1405,6 +1577,18 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-60 rounded-2xl p-2">
                               <DropdownMenuLabel>Conversación CRM</DropdownMenuLabel>
+                              {selectedConversation.lead && !selectedConversation.cliente ? (
+                                <DropdownMenuItem onSelect={openCrmConvertDialog}>
+                                  Guardar como cliente
+                                </DropdownMenuItem>
+                              ) : null}
+                              <DropdownMenuItem onSelect={() => void handleCreateCrmOpportunity()} disabled={creatingCrmOpportunity || Boolean(selectedConversation.opportunity) || (!selectedConversation.lead && !selectedConversation.cliente)}>
+                                {creatingCrmOpportunity ? 'Creando oportunidad...' : 'Crear oportunidad'}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={openCrmPipelineBoard}>
+                                Abrir pipeline
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
                               <DropdownMenuItem onSelect={toggleMuteSelectedConversation}>
                                 <BellOff className="mr-2 h-4 w-4" />
                                 {selectedConversationId && mutedCrmConversationIds.includes(selectedConversationId) ? 'Activar notificaciones' : 'Silenciar notificaciones'}
@@ -1465,6 +1649,29 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                           if (file) void handleUploadCrmAttachment(file)
                         }}
                       />
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => setShowCrmEmojiPicker((current) => !current)} disabled={!selectedConversationId}>
+                          <Smile className="h-4 w-4" />
+                        </Button>
+                        <Button type="button" variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => openCrmAttachmentPicker('image')} disabled={!selectedConversationId || uploadingCrmAttachment}>
+                          <ImageIcon className="h-4 w-4" />
+                        </Button>
+                        <Button type="button" variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => openCrmAttachmentPicker('document')} disabled={!selectedConversationId || uploadingCrmAttachment}>
+                          <Paperclip className="h-4 w-4" />
+                        </Button>
+                        <Button type="button" variant="outline" className="h-9 rounded-xl px-3 text-[11px]" onClick={() => setCrmLibraryPickerOpen(true)} disabled={!selectedConversationId || uploadingCrmAttachment}>
+                          Biblioteca
+                        </Button>
+                      </div>
+                      {showCrmEmojiPicker ? (
+                        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3">
+                          {EMOJI_CHOICES.map((emoji) => (
+                            <button key={emoji} type="button" onClick={() => setCrmMessageDraft((current) => `${current}${emoji}`)} className="rounded-xl border border-slate-200 px-2.5 py-2 text-lg hover:bg-slate-50">
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
                       {crmAttachmentUpload ? (
                         <div className="rounded-2xl border border-slate-200 bg-white p-3">
                           <div className="flex items-center justify-between gap-3 text-sm text-slate-700">
@@ -1488,61 +1695,20 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                           ))}
                         </div>
                       ) : null}
-                      <div className="flex items-end gap-2 rounded-[22px] border border-slate-200 bg-slate-50/80 p-2">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button type="button" variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-2xl" disabled={!selectedConversationId || uploadingCrmAttachment} aria-label="Agregar emoji o adjunto para el cliente">
-                              <Plus className="h-4.5 w-4.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" side="top" className="w-64 rounded-2xl p-2">
-                            <DropdownMenuLabel>Agregar al mensaje</DropdownMenuLabel>
-                            <div className="grid grid-cols-6 gap-1.5 px-1 py-1">
-                              {EMOJI_CHOICES.map((emoji) => (
-                                <button
-                                  key={emoji}
-                                  type="button"
-                                  onClick={() => setCrmMessageDraft((current) => `${current}${emoji}`)}
-                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-base hover:bg-slate-50"
-                                >
-                                  {emoji}
-                                </button>
-                              ))}
-                            </div>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onSelect={(event) => {
-                              event.preventDefault()
-                              openCrmAttachmentPicker('image')
-                            }}>
-                              <ImageIcon className="mr-2 h-4 w-4" />
-                              Imagen
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={(event) => {
-                              event.preventDefault()
-                              openCrmAttachmentPicker('document')
-                            }}>
-                              <Paperclip className="mr-2 h-4 w-4" />
-                              Documento
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => setCrmLibraryPickerOpen(true)}>
-                              <Paperclip className="mr-2 h-4 w-4" />
-                              Biblioteca
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
                         <Textarea
                           value={crmMessageDraft}
                           onChange={(event) => setCrmMessageDraft(event.target.value)}
                           onKeyDown={handleCrmMessageKeyDown}
                           rows={2}
-                          placeholder="Escribe una respuesta al cliente..."
-                          className="min-h-[52px] flex-1 resize-none rounded-2xl bg-white text-sm leading-5 shadow-none"
+                          placeholder="Escribe una respuesta, agrega emojis o adjunta imagen/documento..."
+                          className="min-h-[52px] resize-none rounded-2xl bg-white text-sm leading-5 sm:min-h-[64px]"
                         />
-                        <Button size="sm" className="h-11 shrink-0 rounded-2xl px-4 text-[10px]" onClick={() => void handleSendCrmMessage()} disabled={sendingCrm || uploadingCrmAttachment || !selectedConversationId || (!crmMessageDraft.trim() && pendingCrmAttachments.length === 0)}>
+                        <Button size="sm" className="h-10 rounded-xl px-4 text-[10px]" onClick={() => void handleSendCrmMessage()} disabled={sendingCrm || uploadingCrmAttachment || !selectedConversationId || (!crmMessageDraft.trim() && pendingCrmAttachments.length === 0)}>
                           {sendingCrm ? 'Enviando...' : 'Enviar'}
                         </Button>
                       </div>
-                      <p className="text-xs text-slate-500">{uploadingCrmAttachment ? `Subiendo adjunto... ${crmAttachmentUpload?.progress ?? 0}%` : 'Puedes enviar texto, emoticones, imágenes y documentos al cliente.'}</p>
+                      {uploadingCrmAttachment ? <p className="text-xs text-slate-500">Subiendo adjunto... {crmAttachmentUpload?.progress ?? 0}%</p> : null}
                     </div>
                   </div>
                 </div>
@@ -1893,7 +2059,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <Textarea ref={teamTextareaRef} value={teamMessageDraft} onChange={(event) => setTeamMessageDraft(event.target.value)} onKeyDown={handleTeamMessageKeyDown} rows={1} placeholder={selectedThread?.type === 'GROUP' ? 'Mensaje para el grupo...' : 'Mensaje para tu compañero...'} disabled={!selectedThreadId} className="min-h-[52px] max-h-[140px] flex-1 overflow-hidden rounded-2xl bg-white px-3 py-3 text-[13px] leading-4 sm:text-sm sm:leading-5" />
+                        <Textarea ref={teamTextareaRef} value={teamMessageDraft} onChange={(event) => setTeamMessageDraft(event.target.value)} onKeyDown={handleTeamMessageKeyDown} rows={1} placeholder={selectedThread?.type === 'GROUP' ? 'Escribe un mensaje para el grupo...' : 'Escribe un mensaje para tu compañero...'} disabled={!selectedThreadId} className="min-h-[44px] max-h-[140px] flex-1 overflow-hidden rounded-2xl bg-white px-3 py-2.5 text-sm leading-5" />
                         <Button size="icon" className="h-11 w-11 shrink-0 rounded-2xl" onClick={() => void handleSendTeamMessage()} disabled={sendingTeam || !selectedThreadId || uploadingTeamAttachment} aria-label={sendingTeam ? 'Enviando mensaje' : 'Enviar mensaje'}>
                           <SendHorizontal className="h-4.5 w-4.5" />
                         </Button>
