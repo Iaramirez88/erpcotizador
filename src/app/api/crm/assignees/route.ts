@@ -1,16 +1,8 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 
 export const runtime = 'nodejs'
-
-const ACCESS_LEVEL_ORDER: Record<AccessLevel, number> = {
-  NONE: 0,
-  READ: 1,
-  WRITE: 2,
-  ADMIN: 3,
-}
 
 export async function GET() {
   try {
@@ -33,7 +25,6 @@ export async function GET() {
           role: true,
           sedeDefaultId: true,
           lastLoginAt: true,
-          globalAccess: { select: { level: true } },
           sedeMemberships: {
             select: { sedeId: true, role: true },
           },
@@ -54,9 +45,6 @@ export async function GET() {
         },
       }),
     ])
-
-    const eligibleRows = rows.filter((row) => ACCESS_LEVEL_ORDER[row.globalAccess?.level ?? 'NONE'] >= ACCESS_LEVEL_ORDER.READ)
-
     const conversationBuckets = new Map<string, { activeCount: number; immediateCount: number; waitingCustomerCount: number; unreadCount: number }>()
     for (const row of activeConversations) {
       if (!row.assignedToUserId) continue
@@ -76,7 +64,7 @@ export async function GET() {
       conversationBuckets.set(row.assignedToUserId, bucket)
     }
 
-    const data = eligibleRows.map((row) => {
+    const data = rows.map((row) => {
       const bucket = conversationBuckets.get(row.id)
       return {
         id: row.id,

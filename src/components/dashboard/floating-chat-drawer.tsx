@@ -312,7 +312,6 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   const [selectedThread, setSelectedThread] = useState<InternalThreadDetail | null>(null)
   const [crmMessageDraft, setCrmMessageDraft] = useState('')
   const [teamMessageDraft, setTeamMessageDraft] = useState('')
-  const [showCrmEmojiPicker, setShowCrmEmojiPicker] = useState(false)
   const [pendingCrmAttachments, setPendingCrmAttachments] = useState<ChatAttachment[]>([])
   const [crmAttachmentUpload, setCrmAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [crmLibraryPickerOpen, setCrmLibraryPickerOpen] = useState(false)
@@ -586,7 +585,6 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
 
   useEffect(() => {
     setPendingCrmAttachments([])
-    setShowCrmEmojiPicker(false)
     if (!selectedConversationId) {
       setCrmMessageDraft('')
     }
@@ -905,7 +903,6 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
       }
       setCrmMessageDraft('')
       setPendingCrmAttachments([])
-      setShowCrmEmojiPicker(false)
       await Promise.all([loadBase(), loadConversationDetail(selectedConversationId)])
       jumpCrmToBottom()
       return true
@@ -982,6 +979,9 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
         body: JSON.stringify({
           title: buildCrmOpportunityTitle(selectedConversation),
           stage: 'NEW',
+          expectedValue: null,
+          probabilityPct: null,
+          expectedCloseAt: null,
         }),
       })
 
@@ -1354,7 +1354,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
         title="Adjuntar desde Administrador de archivos"
       />
       <Dialog open={crmConvertDialogOpen} onOpenChange={setCrmConvertDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="z-[120] max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Guardar como cliente</DialogTitle>
             <DialogDescription>Convierte el lead actual de esta conversación en cliente ERP para seguir el proceso comercial.</DialogDescription>
@@ -1650,28 +1650,50 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                         }}
                       />
                       <div className="flex items-center gap-2">
-                        <Button type="button" variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => setShowCrmEmojiPicker((current) => !current)} disabled={!selectedConversationId}>
-                          <Smile className="h-4 w-4" />
-                        </Button>
-                        <Button type="button" variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => openCrmAttachmentPicker('image')} disabled={!selectedConversationId || uploadingCrmAttachment}>
-                          <ImageIcon className="h-4 w-4" />
-                        </Button>
-                        <Button type="button" variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => openCrmAttachmentPicker('document')} disabled={!selectedConversationId || uploadingCrmAttachment}>
-                          <Paperclip className="h-4 w-4" />
-                        </Button>
-                        <Button type="button" variant="outline" className="h-9 rounded-xl px-3 text-[11px]" onClick={() => setCrmLibraryPickerOpen(true)} disabled={!selectedConversationId || uploadingCrmAttachment}>
-                          Biblioteca
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button type="button" variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-2xl" disabled={!selectedConversationId || uploadingCrmAttachment} aria-label="Agregar emoji o adjunto">
+                              <Plus className="h-4.5 w-4.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" side="top" className="w-56 rounded-2xl p-2">
+                            <DropdownMenuLabel>Agregar</DropdownMenuLabel>
+                            <div className="grid grid-cols-6 gap-1.5 px-1 py-1">
+                              {EMOJI_CHOICES.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  onClick={() => setCrmMessageDraft((current) => `${current}${emoji}`)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-base hover:bg-slate-50"
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onSelect={(event) => {
+                              event.preventDefault()
+                              openCrmAttachmentPicker('image')
+                            }}>
+                              <ImageIcon className="mr-2 h-4 w-4" />
+                              Imagen
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(event) => {
+                              event.preventDefault()
+                              openCrmAttachmentPicker('document')
+                            }}>
+                              <Paperclip className="mr-2 h-4 w-4" />
+                              Documento
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => {
+                              setCrmLibraryPickerOpen(true)
+                            }}>
+                              <Paperclip className="mr-2 h-4 w-4" />
+                              Cargar desde Administrador de archivos
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
-                      {showCrmEmojiPicker ? (
-                        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3">
-                          {EMOJI_CHOICES.map((emoji) => (
-                            <button key={emoji} type="button" onClick={() => setCrmMessageDraft((current) => `${current}${emoji}`)} className="rounded-xl border border-slate-200 px-2.5 py-2 text-lg hover:bg-slate-50">
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
                       {crmAttachmentUpload ? (
                         <div className="rounded-2xl border border-slate-200 bg-white p-3">
                           <div className="flex items-center justify-between gap-3 text-sm text-slate-700">
