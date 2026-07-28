@@ -904,25 +904,59 @@ function getDetailedIntegrationGuide(args: {
   }
 
   if (key === 'whatsapp-cloud' || key === 'facebook-page' || key === 'instagram-dm') {
-    const platform = key === 'whatsapp-cloud' ? 'WhatsApp Cloud' : key === 'facebook-page' ? 'Facebook / Messenger' : 'Instagram DM'
-    const accent = key === 'whatsapp-cloud' ? 'emerald' : key === 'instagram-dm' ? 'fuchsia' : 'blue'
-    const activeLabel = key === 'whatsapp-cloud' ? tx('número activo', 'active number') : key === 'facebook-page' ? tx('página activa', 'active page') : tx('cuenta activa', 'active account')
+    const isWhatsApp = key === 'whatsapp-cloud'
+    const isFacebook = key === 'facebook-page'
+    const platform = isWhatsApp ? 'WhatsApp Cloud' : isFacebook ? 'Facebook / Messenger' : 'Instagram DM'
+    const accent = isWhatsApp ? 'emerald' : key === 'instagram-dm' ? 'fuchsia' : 'blue'
+    const activeLabel = isWhatsApp ? tx('número activo', 'active number') : isFacebook ? tx('página activa', 'active page') : tx('cuenta activa', 'active account')
     return buildBridgeGuide(
       tx(`Integración detallada de ${platform}`, `Detailed ${platform} integration`),
-      tx(`Conecta ${platform} al CRM mediante OAuth de Meta y verifica el webhook nativo del canal.`, `Connect ${platform} to the CRM through Meta OAuth and verify the channel's native webhook.`),
+      isWhatsApp
+        ? tx('Conecta WhatsApp Cloud al CRM mediante OAuth de Meta, aplica el número correcto y valida el webhook nativo del canal.', 'Connect WhatsApp Cloud to the CRM through Meta OAuth, apply the correct number, and validate the channel native webhook.')
+        : isFacebook
+          ? tx('Conecta la página de Facebook al CRM mediante OAuth de Meta, deja activa la página correcta y valida el flujo de Messenger por webhook.', 'Connect the Facebook page to the CRM through Meta OAuth, keep the correct page active, and validate Messenger webhook flow.')
+          : tx('Conecta Instagram DM al CRM mediante OAuth de Meta, deja activa la cuenta profesional correcta y valida el flujo de DMs por webhook.', 'Connect Instagram DM to the CRM through Meta OAuth, keep the correct professional account active, and validate the DM webhook flow.'),
       accent,
       tx('Administrador técnico y responsable del activo en Meta.', 'Technical administrator and owner of the asset in Meta.'),
-      [tx('Acceso al Business Manager o activo correspondiente.', 'Access to Business Manager or the corresponding asset.'), tx('Abrir la conexión oficial desde el canal.', 'Open the official connection from the channel.'), tx('Definir exactamente qué activo quedará operativo.', 'Define exactly which asset will remain operational.')],
+      isWhatsApp
+        ? [tx('Acceso al Business Manager y al número de WhatsApp correspondiente.', 'Access to Business Manager and the corresponding WhatsApp number.'), tx('Abrir la conexión oficial desde el canal.', 'Open the official connection from the channel.'), tx('Definir exactamente qué número quedará operativo en el CRM.', 'Define exactly which number will remain operational in the CRM.')]
+        : isFacebook
+          ? [tx('Acceso a la página de Facebook correcta dentro de Meta.', 'Access to the correct Facebook page inside Meta.'), tx('Abrir la conexión oficial desde este canal.', 'Open the official connection from this channel.'), tx('Definir exactamente qué página quedará operativa en el inbox.', 'Define exactly which page will remain operational in the inbox.')]
+          : [tx('Acceso a la cuenta profesional de Instagram y a su página Meta asociada.', 'Access to the Instagram professional account and its linked Meta page.'), tx('Abrir la conexión oficial desde este canal.', 'Open the official connection from this channel.'), tx('Definir exactamente qué cuenta quedará operativa para DMs.', 'Define exactly which account will remain operational for DMs.')],
       [
         { title: tx('1. Inicia OAuth desde el canal', '1. Start OAuth from the channel'), detail: tx('Conecta Meta usando la cuenta que sí administra el activo correcto.', 'Connect Meta using the account that actually manages the correct asset.'), bullets: [tx('Hazlo desde este canal específico.', 'Do it from this specific channel.'), tx('Si el activo no aparece, revisa permisos del usuario en Meta.', 'If the asset does not appear, review the user permissions in Meta.'), tx('Evita mover la operación sin reconectar el canal.', 'Avoid moving the operation without reconnecting the channel.')] },
-        { title: tx('2. Aplica el activo correcto', '2. Apply the correct asset'), detail: tx(`Selecciona y guarda el ${activeLabel} que operará en el CRM.`, `Select and save the ${activeLabel} that will operate in the CRM.`), bullets: [tx('Valida que el campo activo quede lleno.', 'Validate that the active field is filled.'), tx('No cierres el proceso hasta ver el activo aplicado.', 'Do not close the process until you see the asset applied.'), tx('Revisa el checklist de onboarding del panel.', 'Review the onboarding checklist in the panel.')] },
-        { title: tx('3. Verifica el webhook', '3. Verify the webhook'), detail: tx('Meta debe apuntar al endpoint del canal y validar el token correctamente.', 'Meta must point to the channel endpoint and validate the token correctly.'), bullets: [`${tx('Webhook del canal', 'Channel webhook')}: ${args.endpoint}`, `${tx('Token de verificación', 'Verification token')}: ${tokenLabel}`, tx('Luego ejecuta una prueba real desde el canal social.', 'Then run a real test from the social channel.')] },
-        { title: tx('4. Valida la operación en inbox', '4. Validate inbox operation'), detail: tx('Envía un mensaje o DM y confirma que aparece en el inbox del CRM.', 'Send a message or DM and confirm it appears in the CRM inbox.'), bullets: [tx('Revisa último webhook y errores recientes.', 'Review the latest webhook and recent errors.'), tx('Confirma que el activo aplicado es el mismo de la prueba.', 'Confirm that the applied asset is the same one used in the test.'), tx('Pasa a ACTIVE solo cuando cierre la validación real.', 'Move to ACTIVE only when the real validation is closed.')] },
+        { title: tx('2. Aplica el activo correcto', '2. Apply the correct asset'), detail: tx(`Selecciona y guarda el ${activeLabel} que operará en el CRM.`, `Select and save the ${activeLabel} that will operate in the CRM.`), bullets: isWhatsApp
+          ? [tx('Valida que el número visible y el ID técnico sí correspondan.', 'Validate that the display number and the technical id do correspond.'), tx('No cierres el proceso hasta ver el número aplicado.', 'Do not close the process until you see the number applied.'), tx('Revisa el checklist de onboarding del panel.', 'Review the onboarding checklist in the panel.')]
+          : isFacebook
+            ? [tx('Valida que la página seleccionada sea la misma que responde a clientes.', 'Validate that the selected page is the same one that responds to customers.'), tx('No cierres el proceso hasta ver la página aplicada.', 'Do not close the process until you see the page applied.'), tx('Revisa el checklist de onboarding del panel.', 'Review the onboarding checklist in the panel.')]
+            : [tx('Valida que la cuenta seleccionada sea la que recibirá los DMs reales.', 'Validate that the selected account is the one that will receive real DMs.'), tx('No cierres el proceso hasta ver la cuenta aplicada.', 'Do not close the process until you see the account applied.'), tx('Confirma también la página Meta vinculada detrás de Instagram.', 'Also confirm the Meta page linked behind Instagram.')] },
+        { title: tx('3. Verifica el webhook', '3. Verify the webhook'), detail: tx('Meta debe apuntar al endpoint del canal y validar el token correctamente.', 'Meta must point to the channel endpoint and validate the token correctly.'), bullets: [`${tx('Webhook del canal', 'Channel webhook')}: ${args.endpoint}`, `${tx('Token de verificación', 'Verification token')}: ${tokenLabel}`, isWhatsApp ? tx('Luego ejecuta una prueba real con el número de WhatsApp.', 'Then run a real test using the WhatsApp number.') : isFacebook ? tx('Luego ejecuta una prueba real desde Messenger o la página.', 'Then run a real test from Messenger or the page.') : tx('Luego ejecuta una prueba real enviando un DM a Instagram.', 'Then run a real test by sending an Instagram DM.')] },
+        { title: tx('4. Valida cómo responde el CRM', '4. Validate how the CRM responds'), detail: isWhatsApp ? tx('Confirma que el inbound, la respuesta del agente y los estados del mensaje se reflejen en el inbox.', 'Confirm that inbound, the agent reply, and message statuses are reflected in the inbox.') : isFacebook ? tx('Confirma que Messenger abra o actualice la conversación y que el CRM pueda responder desde la página activa.', 'Confirm that Messenger opens or updates the conversation and that the CRM can reply from the active page.') : tx('Confirma que el DM abra o actualice la conversación y que el CRM pueda responder desde la cuenta activa de Instagram.', 'Confirm that the DM opens or updates the conversation and that the CRM can reply from the active Instagram account.'), bullets: isWhatsApp
+          ? [tx('Revisa último webhook y errores recientes.', 'Review the latest webhook and recent errors.'), tx('Confirma que el número aplicado es el mismo de la prueba.', 'Confirm that the applied number is the same one used in the test.'), tx('Pasa a ACTIVE solo cuando cierre la validación real.', 'Move to ACTIVE only when the real validation is closed.')]
+          : isFacebook
+            ? [tx('Valida inbound, reply desde CRM y eventos delivered/read.', 'Validate inbound, CRM reply, and delivered/read events.'), tx('Confirma que la página aplicada es la misma de la prueba.', 'Confirm that the applied page is the same one used in the test.'), tx('Pasa a ACTIVE solo cuando cierre la validación real.', 'Move to ACTIVE only when the real validation is closed.')]
+            : [tx('Valida DM inbound, reply desde CRM y eventos delivered/read.', 'Validate inbound DMs, CRM reply, and delivered/read events.'), tx('Confirma que la cuenta aplicada es la misma de la prueba.', 'Confirm that the applied account is the same one used in the test.'), tx('Pasa a ACTIVE solo cuando cierre la validación real.', 'Move to ACTIVE only when the real validation is closed.')] },
       ],
-      [tx('El activo quedó aplicado.', 'The asset was applied.'), tx('Meta verifica el webhook.', 'Meta verifies the webhook.'), tx('La prueba entra al inbox correcto.', 'The test reaches the correct inbox.')],
-      [tx('Si el activo no aparece, revisa permisos o reconecta Meta.', 'If the asset does not appear, review permissions or reconnect Meta.'), tx('Si falla la verificación, recopia endpoint y token.', 'If verification fails, recopy the endpoint and token.'), tx('Si la conversación cae en otro canal, revisa el activo realmente aplicado.', 'If the conversation lands in another channel, review the asset actually applied.')],
-      [{ label: 'Webhook', value: args.endpoint }, { label: tx('Token de verificación', 'Verification token'), value: tokenLabel }],
-      [{ label: 'OAuth Meta', caption: tx('Autorizas cuenta y activos', 'Authorize account and assets') }, { label: tx('Activo', 'Asset'), caption: tx(`Eliges ${activeLabel}`, `Choose the ${activeLabel}`) }, { label: 'Webhook', caption: tx('Meta verifica y envía eventos', 'Meta verifies and sends events') }, { label: 'Inbox CRM', caption: tx('Conversaciones listas para operar', 'Conversations ready to operate') }],
+      isWhatsApp
+        ? [tx('El número quedó aplicado.', 'The number was applied.'), tx('Meta verifica el webhook.', 'Meta verifies the webhook.'), tx('La prueba entra al inbox correcto y los checks avanzan.', 'The test reaches the correct inbox and the checks advance.')]
+        : isFacebook
+          ? [tx('La página quedó aplicada.', 'The page was applied.'), tx('Meta verifica el webhook.', 'Meta verifies the webhook.'), tx('Messenger entra al inbox correcto y los checks avanzan.', 'Messenger reaches the correct inbox and the checks advance.')]
+          : [tx('La cuenta quedó aplicada.', 'The account was applied.'), tx('Meta verifica el webhook.', 'Meta verifies the webhook.'), tx('El DM entra al inbox correcto y los checks avanzan.', 'The DM reaches the correct inbox and the checks advance.')],
+      isWhatsApp
+        ? [tx('Si el número no aparece, revisa permisos o reconecta Meta.', 'If the number does not appear, review permissions or reconnect Meta.'), tx('Si falla la verificación, recopia endpoint y token.', 'If verification fails, recopy endpoint and token.'), tx('Si el hilo cae en otro canal, revisa el número realmente aplicado.', 'If the thread lands in another channel, review the number actually applied.')]
+        : isFacebook
+          ? [tx('Si la página no aparece, revisa permisos o reconecta Meta.', 'If the page does not appear, review permissions or reconnect Meta.'), tx('Si falla la verificación, recopia endpoint y token.', 'If verification fails, recopy endpoint and token.'), tx('Si la conversación cae en otro canal, revisa la página realmente aplicada.', 'If the conversation lands in another channel, review the page actually applied.')]
+          : [tx('Si la cuenta no aparece, revisa permisos o reconecta Meta.', 'If the account does not appear, review permissions or reconnect Meta.'), tx('Si falla la verificación, recopia endpoint y token.', 'If verification fails, recopy endpoint and token.'), tx('Si el DM cae en otro canal, revisa la cuenta realmente aplicada y su página vinculada.', 'If the DM lands in another channel, review the applied account and its linked page.')],
+      isWhatsApp
+        ? [{ label: 'Webhook', value: args.endpoint }, { label: tx('Token de verificación', 'Verification token'), value: tokenLabel }, { label: tx('Activo principal', 'Main asset'), value: tx('Número de WhatsApp', 'WhatsApp number') }]
+        : isFacebook
+          ? [{ label: 'Webhook', value: args.endpoint }, { label: tx('Token de verificación', 'Verification token'), value: tokenLabel }, { label: tx('Activo principal', 'Main asset'), value: tx('Página de Facebook', 'Facebook page') }]
+          : [{ label: 'Webhook', value: args.endpoint }, { label: tx('Token de verificación', 'Verification token'), value: tokenLabel }, { label: tx('Activo principal', 'Main asset'), value: tx('Cuenta profesional de Instagram', 'Instagram professional account') }],
+      isWhatsApp
+        ? [{ label: 'OAuth Meta', caption: tx('Autorizas cuenta y activos', 'Authorize account and assets') }, { label: tx('Número', 'Number'), caption: tx(`Eliges ${activeLabel}`, `Choose the ${activeLabel}`) }, { label: 'Webhook', caption: tx('Meta verifica y envía eventos', 'Meta verifies and sends events') }, { label: 'Inbox CRM', caption: tx('Conversaciones listas para operar', 'Conversations ready to operate') }]
+        : isFacebook
+          ? [{ label: 'OAuth Meta', caption: tx('Autorizas cuenta y activos', 'Authorize account and assets') }, { label: tx('Página', 'Page'), caption: tx(`Eliges ${activeLabel}`, `Choose the ${activeLabel}`) }, { label: 'Webhook', caption: tx('Messenger entrega eventos', 'Messenger sends events') }, { label: 'Inbox CRM', caption: tx('Conversaciones listas para operar', 'Conversations ready to operate') }]
+          : [{ label: 'OAuth Meta', caption: tx('Autorizas cuenta y activos', 'Authorize account and assets') }, { label: tx('Cuenta IG', 'IG account'), caption: tx(`Eliges ${activeLabel}`, `Choose the ${activeLabel}`) }, { label: 'Webhook', caption: tx('Instagram entrega DMs y estados', 'Instagram sends DMs and statuses') }, { label: 'Inbox CRM', caption: tx('Conversaciones listas para operar', 'Conversations ready to operate') }],
     )
   }
 
@@ -1429,6 +1463,127 @@ function getWhatsAppApproxPricingRows(language: 'es' | 'en') {
         { range: 'Plantillas de marketing', approximate: 'USD 0,03 - 0,12 c/u', note: 'Normalmente es la categoría más costosa.' },
         { range: 'Respuestas de servicio dentro de ventana permitida', approximate: 'Costo incremental bajo o cero por plantilla', note: 'Depende de reglas vigentes de Meta, ventana activa y país.' },
       ]
+}
+
+function getMetaSocialOperationalSummary(provider: ChannelConnection['provider'], language: 'es' | 'en') {
+  if (provider === 'FACEBOOK_PAGE' || provider === 'MESSENGER') {
+    return {
+      title: language === 'en' ? 'Facebook / Messenger operating model' : 'Modelo operativo de Facebook / Messenger',
+      summary: language === 'en'
+        ? 'This channel does not use a hybrid phone-number model. What matters is linking the correct Meta page and validating the webhook for Messenger events.'
+        : 'Este canal no usa un modelo híbrido de número. Lo importante es enlazar la página correcta de Meta y validar el webhook para eventos de Messenger.',
+      connectTitle: language === 'en' ? 'What to connect' : 'Qué conectar',
+      connectBullets: language === 'en'
+        ? [
+            'Connect the Meta account that actually manages the Facebook page.',
+            'Apply the active page inside this specific CRM channel.',
+            'Keep the page token and CRM sync current after OAuth.',
+          ]
+        : [
+            'Conecta la cuenta Meta que realmente administra la página de Facebook.',
+            'Aplica la página activa dentro de este canal específico del CRM.',
+            'Mantén vigente el token de página y la sincronización del CRM después del OAuth.',
+          ],
+      verifyTitle: language === 'en' ? 'What to verify' : 'Qué verificar',
+      verifyBullets: language === 'en'
+        ? [
+            'The selected page is the same one the team uses publicly.',
+            'Meta verifies the webhook and the channel has a valid verification token.',
+            'A real inbound test creates the conversation in the correct inbox.',
+          ]
+        : [
+            'Que la página seleccionada sea la misma que usa el equipo públicamente.',
+            'Que Meta verifique el webhook y el canal tenga token de verificación válido.',
+            'Que una prueba inbound real cree la conversación en la bandeja correcta.',
+          ],
+      respondTitle: language === 'en' ? 'How it responds' : 'Cómo responde',
+      respondBullets: language === 'en'
+        ? [
+            'Inbound messages arrive through the Meta webhook and open or update the CRM thread.',
+            'Replies sent from the CRM go out through Meta Messaging Send API to the linked page.',
+            'Delivery and read events feed the same visual status checks used in the inbox.',
+          ]
+        : [
+            'Los mensajes inbound llegan por el webhook de Meta y abren o actualizan el hilo en el CRM.',
+            'Las respuestas enviadas desde el CRM salen por Meta Messaging Send API usando la página vinculada.',
+            'Los eventos de entrega y lectura alimentan los mismos checks visuales del inbox.',
+          ],
+    }
+  }
+
+  if (provider === 'INSTAGRAM_DM') {
+    return {
+      title: language === 'en' ? 'Instagram DM operating model' : 'Modelo operativo de Instagram DM',
+      summary: language === 'en'
+        ? 'Instagram does not reuse the WhatsApp hybrid-number model either. The key is linking the correct Instagram professional account and its backing Meta page.'
+        : 'Instagram tampoco reutiliza el modelo híbrido de número de WhatsApp. La clave es enlazar la cuenta profesional correcta de Instagram y su página Meta de respaldo.',
+      connectTitle: language === 'en' ? 'What to connect' : 'Qué conectar',
+      connectBullets: language === 'en'
+        ? [
+            'Connect the Meta account that manages the Instagram professional account.',
+            'Apply the active Instagram account in this CRM channel.',
+            'Confirm the linked Facebook page behind that Instagram account stays available.',
+          ]
+        : [
+            'Conecta la cuenta Meta que administra la cuenta profesional de Instagram.',
+            'Aplica la cuenta activa de Instagram en este canal del CRM.',
+            'Confirma que la página de Facebook vinculada a esa cuenta siga disponible.',
+          ],
+      verifyTitle: language === 'en' ? 'What to verify' : 'Qué verificar',
+      verifyBullets: language === 'en'
+        ? [
+            'The selected account matches the brand profile that will receive DMs.',
+            'Meta verifies the webhook and sync preserves the Instagram account id.',
+            'A real DM creates the conversation in the CRM without falling into another social channel.',
+          ]
+        : [
+            'Que la cuenta seleccionada coincida con el perfil de marca que recibirá los DMs.',
+            'Que Meta verifique el webhook y la sincronización conserve el id de la cuenta de Instagram.',
+            'Que un DM real cree la conversación en el CRM sin caer en otro canal social.',
+          ],
+      respondTitle: language === 'en' ? 'How it responds' : 'Cómo responde',
+      respondBullets: language === 'en'
+        ? [
+            'Incoming DMs land through the Meta webhook and are normalized to the CRM inbox.',
+            'CRM replies go out with Meta Messaging Send API using the linked Instagram account context.',
+            'Read and delivery signals update the same conversation statuses shown for WhatsApp and Messenger.',
+          ]
+        : [
+            'Los DMs entrantes aterrizan por el webhook de Meta y se normalizan hacia la bandeja del CRM.',
+            'Las respuestas del CRM salen con Meta Messaging Send API usando el contexto de la cuenta de Instagram vinculada.',
+            'Las señales de lectura y entrega actualizan los mismos estados de conversación que se muestran para WhatsApp y Messenger.',
+          ],
+    }
+  }
+
+  return null
+}
+
+function getMetaManualFieldCopy(provider: ChannelConnection['provider'], language: 'es' | 'en') {
+  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') {
+    return {
+      accountLabel: language === 'en' ? 'Business Account ID' : 'Business Account ID',
+      assetLabel: language === 'en' ? 'Phone Number ID' : 'Phone Number ID',
+      accountPlaceholder: language === 'en' ? 'Connected business account' : 'Cuenta business conectada',
+      assetPlaceholder: language === 'en' ? 'WhatsApp number identifier' : 'Identificador del número de WhatsApp',
+    }
+  }
+
+  if (provider === 'INSTAGRAM_DM') {
+    return {
+      accountLabel: language === 'en' ? 'Instagram Account ID' : 'Instagram Account ID',
+      assetLabel: language === 'en' ? 'Linked Facebook Page ID' : 'Linked Facebook Page ID',
+      accountPlaceholder: language === 'en' ? 'Instagram professional account id' : 'Identificador de la cuenta profesional de Instagram',
+      assetPlaceholder: language === 'en' ? 'Linked Facebook page id' : 'Identificador de la página de Facebook vinculada',
+    }
+  }
+
+  return {
+    accountLabel: language === 'en' ? 'Meta Account ID' : 'Meta Account ID',
+    assetLabel: language === 'en' ? 'Facebook Page ID' : 'Facebook Page ID',
+    accountPlaceholder: language === 'en' ? 'Connected Meta account' : 'Cuenta Meta conectada',
+    assetPlaceholder: language === 'en' ? 'Facebook page identifier' : 'Identificador de la página de Facebook',
+  }
 }
 
 function getWhatsAppApiVersion(settingsJson: Record<string, unknown> | null | undefined) {
@@ -2078,6 +2233,13 @@ function getMetaSelectionGuide(channel: ChannelConnection, metaState: ReturnType
 function getMetaOnboardingChecklist(channel: ChannelConnection, baseUrl: string): ReadinessItem[] {
   const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
   const token = getTokenFromSettings(settings)
+  const isWhatsApp = channel.provider === 'WHATSAPP_CLOUD' || channel.provider === 'WHATSAPP_SANDBOX'
+  const isInstagram = channel.provider === 'INSTAGRAM_DM'
+  const hasActiveAsset = isWhatsApp
+    ? Boolean(channel.externalPhoneNumberId)
+    : isInstagram
+      ? Boolean(channel.externalAccountId)
+      : Boolean(channel.externalPageId)
 
   return [
     {
@@ -2094,6 +2256,26 @@ function getMetaOnboardingChecklist(channel: ChannelConnection, baseUrl: string)
       label: 'Ruta base detectada',
       done: Boolean(baseUrl),
       hint: isPublicAppUrl(baseUrl) ? 'La URL actual parece pública y sirve bien para callback y webhook.' : 'Estás en localhost. Funciona para pruebas internas, pero no para onboarding externo de clientes.',
+    },
+    {
+      label: isWhatsApp ? 'Número activo aplicado' : isInstagram ? 'Cuenta activa de Instagram aplicada' : 'Página activa aplicada',
+      done: hasActiveAsset,
+      hint: isWhatsApp
+        ? 'El canal debe terminar apuntando al número sincronizado correcto antes de salir a operación real.'
+        : isInstagram
+          ? 'El canal debe terminar apuntando a la cuenta profesional correcta antes de responder DMs reales.'
+          : 'El canal debe terminar apuntando a la página correcta antes de responder conversaciones reales.',
+    },
+    {
+      label: 'Webhook con tráfico reciente',
+      done: Boolean(channel.lastWebhookAt),
+      hint: channel.lastWebhookAt
+        ? 'Ya hubo actividad webhook reciente. Aun así, conviene validar una conversación real end to end.'
+        : isWhatsApp
+          ? 'Cuando conectes Meta, dispara una prueba real de WhatsApp para confirmar inbound, reply y checks.'
+          : isInstagram
+            ? 'Cuando conectes Meta, dispara un DM real para confirmar inbound, reply y checks.'
+            : 'Cuando conectes Meta, dispara una prueba real de Messenger para confirmar inbound, reply y checks.',
     },
   ]
 }
@@ -5351,6 +5533,39 @@ export function CrmIntegrationsClient() {
                                 ) : null}
                               </>
                             ) : null}
+                            {(() => {
+                              const socialSummary = getMetaSocialOperationalSummary(selectedChannel.provider, language)
+                              if (!socialSummary) return null
+
+                              return (
+                                <div className="mb-4 space-y-3 rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                                  <div>
+                                    <p className="text-sm font-semibold text-slate-900">{socialSummary.title}</p>
+                                    <p className="mt-1 text-xs leading-5 text-slate-600">{socialSummary.summary}</p>
+                                  </div>
+                                  <div className="grid gap-3 md:grid-cols-3">
+                                    <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-3">
+                                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">{socialSummary.connectTitle}</p>
+                                      <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-slate-700">
+                                        {socialSummary.connectBullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
+                                      </ul>
+                                    </div>
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3">
+                                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">{socialSummary.verifyTitle}</p>
+                                      <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-slate-700">
+                                        {socialSummary.verifyBullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
+                                      </ul>
+                                    </div>
+                                    <div className={selectedChannel.provider === 'INSTAGRAM_DM' ? 'rounded-2xl border border-fuchsia-200 bg-fuchsia-50/80 p-3' : 'rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3'}>
+                                      <p className={selectedChannel.provider === 'INSTAGRAM_DM' ? 'text-xs font-semibold uppercase tracking-[0.16em] text-fuchsia-700' : 'text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700'}>{socialSummary.respondTitle}</p>
+                                      <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-slate-700">
+                                        {socialSummary.respondBullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
+                                      </ul>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })()}
                             {selectedChannel.provider === 'FACEBOOK_PAGE' || selectedChannel.provider === 'MESSENGER' ? (
                               <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Active page:' : 'Página activa:'}</span> {selectedMeta.pages.find((item) => item.pageId === selectedChannel.externalPageId)?.pageName || selectedChannel.externalPageId || (language === 'en' ? 'No linked page' : 'Sin página asociada')}</p>
                             ) : null}
@@ -6877,6 +7092,39 @@ export function CrmIntegrationsClient() {
                             </div>
                           ))}
                         </div>
+                        {(() => {
+                          const socialSummary = getMetaSocialOperationalSummary(createForm.provider, language)
+                          if (!socialSummary) return null
+
+                          return (
+                            <div className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">{socialSummary.title}</p>
+                                <p className="mt-1 text-xs leading-5 text-slate-600">{socialSummary.summary}</p>
+                              </div>
+                              <div className="grid gap-3 md:grid-cols-3">
+                                <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-3">
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">{socialSummary.connectTitle}</p>
+                                  <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-slate-700">
+                                    {socialSummary.connectBullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
+                                  </ul>
+                                </div>
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3">
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">{socialSummary.verifyTitle}</p>
+                                  <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-slate-700">
+                                    {socialSummary.verifyBullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
+                                  </ul>
+                                </div>
+                                <div className={createForm.provider === 'INSTAGRAM_DM' ? 'rounded-2xl border border-fuchsia-200 bg-fuchsia-50/80 p-3' : 'rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3'}>
+                                  <p className={createForm.provider === 'INSTAGRAM_DM' ? 'text-[11px] font-semibold uppercase tracking-[0.16em] text-fuchsia-700' : 'text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700'}>{socialSummary.respondTitle}</p>
+                                  <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-slate-700">
+                                    {socialSummary.respondBullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })()}
                         <div className="mt-4 flex flex-wrap items-center gap-3">
                           <Button type="button" variant="outline" className="rounded-xl border-sky-200 bg-white text-sky-800 hover:bg-sky-100" onClick={() => setWizardMetaAdvancedOpen((current) => !current)}>
                             {wizardMetaAdvancedOpen ? 'Ocultar configuración manual avanzada' : 'Mostrar configuración manual avanzada'}
@@ -6888,11 +7136,11 @@ export function CrmIntegrationsClient() {
                     {(!usesMetaProvider(createForm.provider) || wizardMetaAdvancedOpen) ? (
                       <>
                         <div className="grid gap-2">
-                          <Label>{createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? 'Business Account ID' : 'Account ID'}</Label>
-                          <Input value={createForm.externalAccountId} onChange={(e) => setCreateForm((prev) => ({ ...prev, externalAccountId: e.target.value }))} className="h-11 rounded-xl" placeholder="Cuenta conectada" />
+                          <Label>{getMetaManualFieldCopy(createForm.provider, language).accountLabel}</Label>
+                          <Input value={createForm.externalAccountId} onChange={(e) => setCreateForm((prev) => ({ ...prev, externalAccountId: e.target.value }))} className="h-11 rounded-xl" placeholder={getMetaManualFieldCopy(createForm.provider, language).accountPlaceholder} />
                         </div>
                         <div className="grid gap-2">
-                          <Label>{createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? 'Phone Number ID' : 'Page ID / Inbox ID'}</Label>
+                          <Label>{getMetaManualFieldCopy(createForm.provider, language).assetLabel}</Label>
                           <Input
                             value={createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? createForm.externalPhoneNumberId : createForm.externalPageId}
                             onChange={(e) => setCreateForm((prev) => ({
@@ -6902,7 +7150,7 @@ export function CrmIntegrationsClient() {
                                 : { externalPageId: e.target.value }),
                             }))}
                             className="h-11 rounded-xl"
-                            placeholder="Identificador del canal"
+                            placeholder={getMetaManualFieldCopy(createForm.provider, language).assetPlaceholder}
                           />
                         </div>
                         {createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? (
@@ -7128,8 +7376,29 @@ export function CrmIntegrationsClient() {
                         {usesMetaProvider(createForm.provider) ? (
                           <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-3 sm:col-span-2">
                             <p className="text-[11px] uppercase tracking-[0.14em] text-sky-700">Siguiente paso después de crear</p>
-                            <p className="mt-2 text-sm font-semibold text-sky-900">Conecta Meta y aplica el activo sincronizado</p>
-                            <p className="mt-2 text-xs leading-5 text-sky-800">Después de guardar el canal, usa Conectar con Meta. Cuando vuelvas, selecciona el número, página o cuenta correcta desde el bloque Conexión real con Meta.</p>
+                            <p className="mt-2 text-sm font-semibold text-sky-900">{createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? 'Conecta Meta y aplica el número sincronizado' : createForm.provider === 'INSTAGRAM_DM' ? 'Conecta Meta y aplica la cuenta de Instagram sincronizada' : 'Conecta Meta y aplica la página sincronizada'}</p>
+                            <p className="mt-2 text-xs leading-5 text-sky-800">{createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? 'Después de guardar el canal, usa Conectar con Meta. Cuando vuelvas, selecciona el número correcto desde el bloque Conexión real con Meta.' : createForm.provider === 'INSTAGRAM_DM' ? 'Después de guardar el canal, usa Conectar con Meta. Cuando vuelvas, selecciona la cuenta profesional correcta y confirma una prueba real de DM desde el bloque Conexión real con Meta.' : 'Después de guardar el canal, usa Conectar con Meta. Cuando vuelvas, selecciona la página correcta y confirma una prueba real de Messenger desde el bloque Conexión real con Meta.'}</p>
+                            {(() => {
+                              const socialSummary = getMetaSocialOperationalSummary(createForm.provider, language)
+                              if (!socialSummary) return null
+
+                              return (
+                                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                                  <div className="rounded-2xl border border-blue-200 bg-white/90 px-3 py-2">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-700">{socialSummary.connectTitle}</p>
+                                    <p className="mt-1 text-xs leading-5 text-slate-700">{socialSummary.connectBullets[0]}</p>
+                                  </div>
+                                  <div className="rounded-2xl border border-amber-200 bg-white/90 px-3 py-2">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">{socialSummary.verifyTitle}</p>
+                                    <p className="mt-1 text-xs leading-5 text-slate-700">{socialSummary.verifyBullets[0]}</p>
+                                  </div>
+                                  <div className="rounded-2xl border border-emerald-200 bg-white/90 px-3 py-2">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">{socialSummary.respondTitle}</p>
+                                    <p className="mt-1 text-xs leading-5 text-slate-700">{socialSummary.respondBullets[0]}</p>
+                                  </div>
+                                </div>
+                              )
+                            })()}
                           </div>
                         ) : null}
                         {requiresMetaOAuthBeforeActive(createForm) ? (

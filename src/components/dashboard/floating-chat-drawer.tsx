@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BellOff, Check, CheckCheck, ChevronDown, Copy, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
+import { AlertTriangle, BellOff, Check, CheckCheck, ChevronDown, Clock3, Copy, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -72,6 +72,7 @@ type ConversationMessage = {
   id: string
   direction: MessageDirection
   bodyText?: string | null
+  status?: 'PENDING' | 'QUEUED' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | null
   occurredAt: string
   sentByUser?: { id: string; name?: string | null; email?: string | null } | null
 }
@@ -1281,6 +1282,12 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                               <span>{formatDate(message.occurredAt, 'Sin fecha')}</span>
                             </div>
                             <p className="mt-1 whitespace-pre-wrap break-words leading-5">{renderHighlightedText(message.bodyText || 'Sin texto', search)}</p>
+                            {message.direction === 'OUTBOUND' && getCrmMessageStatusLabel(message.status) ? (
+                              <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-slate-500">
+                                {renderCrmMessageStatusIcon(message.status)}
+                                <span>{getCrmMessageStatusLabel(message.status)}</span>
+                              </div>
+                            ) : null}
                           </div>
                         ))}
                         <div ref={crmMessagesEndRef} aria-hidden="true" className="h-px w-full" />
@@ -1895,6 +1902,34 @@ function renderMessageStatusIcon(status: InternalChatMessage['status']) {
   if (status === 'PENDING') {
     return <Check className="h-3.5 w-3.5 text-slate-400" />
   }
+  return null
+}
+
+function renderCrmMessageStatusIcon(status: ConversationMessage['status']) {
+  if (status === 'READ') {
+    return <CheckCheck className="h-3.5 w-3.5 text-sky-600" />
+  }
+  if (status === 'DELIVERED') {
+    return <Check className="h-3.5 w-3.5 text-sky-600" />
+  }
+  if (status === 'SENT' || status === 'PENDING') {
+    return <Check className="h-3.5 w-3.5 text-slate-400" />
+  }
+  if (status === 'QUEUED') {
+    return <Clock3 className="h-3.5 w-3.5 text-slate-400" />
+  }
+  if (status === 'FAILED') {
+    return <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+  }
+  return null
+}
+
+function getCrmMessageStatusLabel(status: ConversationMessage['status']) {
+  if (status === 'READ') return 'Visto'
+  if (status === 'DELIVERED') return 'Llegó'
+  if (status === 'SENT') return 'Enviado'
+  if (status === 'PENDING' || status === 'QUEUED') return 'Enviando'
+  if (status === 'FAILED') return 'Falló'
   return null
 }
 
