@@ -3,6 +3,7 @@ import { AccessLevel, ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess, normalizeString } from '@/lib/crm'
+import { resolveCrmConversationAvatarUrl } from '@/lib/chat-avatar'
 
 export const runtime = 'nodejs'
 
@@ -66,6 +67,10 @@ export async function GET(_: Request, context: RouteContext) {
 
     const data = {
       ...row,
+      contactAvatarUrl: resolveCrmConversationAvatarUrl({
+        messages: row.messages,
+        captures: row.captures,
+      }),
       channelConnection: {
         id: row.channelConnection.id,
         name: row.channelConnection.name,

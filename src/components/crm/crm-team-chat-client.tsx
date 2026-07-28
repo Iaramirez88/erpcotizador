@@ -5,6 +5,7 @@ import { BellOff, Check, CheckCheck, ChevronDown, Image as ImageIcon, Info, LogO
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ChatImagePreview } from '@/components/ui/chat-image-preview'
+import { IdentityAvatar } from '@/components/ui/identity-avatar'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -21,6 +22,7 @@ type TeamUser = {
   id: string
   name?: string | null
   email?: string | null
+  image?: string | null
   role?: string | null
 }
 
@@ -113,6 +115,18 @@ function threadTitle(thread: ThreadSummary | ThreadDetail | null) {
     return thread.counterpart?.name || thread.counterpart?.email || 'Chat directo'
   }
   return 'Chat directo'
+}
+
+function getDirectThreadAvatar(thread: ThreadSummary | ThreadDetail | null, currentUserId: string | null) {
+  if (!thread || thread.type === 'GROUP') return null
+
+  if ('participants' in thread && Array.isArray(thread.participants)) {
+    const counterpart = thread.participants.find((participant) => participant.userId !== currentUserId)?.user
+      ?? thread.participants[0]?.user
+    return counterpart?.image ?? null
+  }
+
+  return 'counterpart' in thread ? thread.counterpart?.image ?? null : null
 }
 
 function renderAttachments(attachments: ChatAttachment[] | undefined, onImageLoad?: () => void) {
@@ -700,9 +714,12 @@ export function CrmTeamChatClient() {
               <div className="max-h-[236px] space-y-2.5 overflow-y-auto pr-1">
               {visibleUsers.map((user) => (
                 <div key={user.id} className={cn('flex min-h-[70px] items-center justify-between gap-2 rounded-2xl border p-2.5 transition-colors', activeDirectUserId === user.id ? 'border-sky-300 bg-sky-50/80 shadow-sm' : 'border-slate-200 bg-slate-50/70')}>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium leading-5 text-slate-950">{user.name || user.email || user.id}</p>
-                    <p className="truncate text-xs leading-4 text-slate-500">{user.email || 'Sin correo visible'}{user.role ? ` · ${user.role}` : ''}</p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <IdentityAvatar label={user.name || user.email || user.id} imageUrl={user.image} size="md" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium leading-5 text-slate-950">{user.name || user.email || user.id}</p>
+                      <p className="truncate text-xs leading-4 text-slate-500">{user.email || 'Sin correo visible'}{user.role ? ` · ${user.role}` : ''}</p>
+                    </div>
                   </div>
                   <Button size="sm" variant={activeDirectUserId === user.id ? 'default' : 'outline'} className="h-8 rounded-xl px-3 text-[11px]" onClick={() => void handleStartConversation(user.id)} disabled={creatingThread}>
                     {creatingThread ? 'Abriendo...' : activeDirectUserId === user.id ? 'Activo' : 'Abrir chat'}
@@ -767,9 +784,12 @@ export function CrmTeamChatClient() {
                     className={isActive ? 'w-full rounded-3xl border border-sky-300 bg-sky-50/80 p-4 text-left shadow-sm' : 'w-full rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-4 text-left shadow-sm transition-shadow hover:shadow-md'}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <p className="font-semibold text-slate-950">{thread.counterpart?.name || thread.counterpart?.email || 'Chat interno'}</p>
-                        <p className="line-clamp-2 text-sm text-slate-600">{renderHighlightedText(thread.lastMessage?.bodyText || (thread.lastMessage?.attachments?.length ? 'Adjunto compartido.' : 'Sin mensajes todavía.'), companionSearch)}</p>
+                      <div className="flex min-w-0 items-start gap-3">
+                        <IdentityAvatar label={thread.counterpart?.name || thread.counterpart?.email || 'Chat interno'} imageUrl={thread.counterpart?.image} size="md" />
+                        <div className="min-w-0 space-y-1">
+                          <p className="font-semibold text-slate-950">{thread.counterpart?.name || thread.counterpart?.email || 'Chat interno'}</p>
+                          <p className="line-clamp-2 text-sm text-slate-600">{renderHighlightedText(thread.lastMessage?.bodyText || (thread.lastMessage?.attachments?.length ? 'Adjunto compartido.' : 'Sin mensajes todavía.'), companionSearch)}</p>
+                        </div>
                       </div>
                       {thread.unreadCount > 0 ? <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">Nuevo</span> : null}
                     </div>
@@ -813,9 +833,12 @@ export function CrmTeamChatClient() {
               <>
                 <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">{selectedThread.type === 'GROUP' ? 'Grupo interno' : 'Participantes'}</p>
-                      <p className="mt-1 text-base font-semibold text-slate-950">{threadTitle(selectedThread)}</p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <IdentityAvatar label={threadTitle(selectedThread)} imageUrl={getDirectThreadAvatar(selectedThread, currentUserId)} size="lg" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">{selectedThread.type === 'GROUP' ? 'Grupo interno' : 'Participantes'}</p>
+                        <p className="mt-1 text-base font-semibold text-slate-950">{threadTitle(selectedThread)}</p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       {selectedThread.type === 'GROUP' && selectedThread.createdById === currentUserId ? (
@@ -859,8 +882,9 @@ export function CrmTeamChatClient() {
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {selectedThread.participants.map((participant) => (
-                      <span key={participant.id} className="rounded-full bg-white px-3 py-1.5 text-sm text-slate-700 shadow-sm">
-                        {participant.user.name || participant.user.email || participant.user.id}
+                      <span key={participant.id} className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-sm text-slate-700 shadow-sm">
+                        <IdentityAvatar label={participant.user.name || participant.user.email || participant.user.id} imageUrl={participant.user.image} size="sm" />
+                        <span>{participant.user.name || participant.user.email || participant.user.id}</span>
                       </span>
                     ))}
                   </div>

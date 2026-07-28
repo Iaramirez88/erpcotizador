@@ -3,6 +3,7 @@ import { AccessLevel, ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess, normalizeString, parseConversationStatus } from '@/lib/crm'
+import { resolveCrmConversationAvatarUrl } from '@/lib/chat-avatar'
 
 export const runtime = 'nodejs'
 
@@ -78,20 +79,34 @@ export async function GET(request: Request) {
             sentByUser: { select: { id: true, name: true, email: true } },
           },
         },
+        captures: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            normalizedDataJson: true,
+            rawPayloadJson: true,
+          },
+        },
         _count: { select: { messages: true, captures: true } },
       },
     })
 
-    const data = rows.map((row) => ({
-      ...row,
+    const data = rows.map((row) => {
+      const { channelConnection, captures, ...rest } = row
+      return {
+      ...rest,
+      contactAvatarUrl: resolveCrmConversationAvatarUrl({
+        messages: row.messages,
+        captures,
+      }),
       channelConnection: {
-        id: row.channelConnection.id,
-        name: row.channelConnection.name,
-        provider: row.channelConnection.provider,
-        status: row.channelConnection.status,
-        bridgeKind: getBridgeKind(row.channelConnection.settingsJson),
+        id: channelConnection.id,
+        name: channelConnection.name,
+        provider: channelConnection.provider,
+        status: channelConnection.status,
+        bridgeKind: getBridgeKind(channelConnection.settingsJson),
       },
-    }))
+    }})
 
     return NextResponse.json({ success: true, data })
   } catch (error) {

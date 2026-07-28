@@ -5,6 +5,7 @@ import { AlertTriangle, BellOff, Check, CheckCheck, ChevronDown, Clock3, Copy, F
 import { Button } from '@/components/ui/button'
 import { ChatImagePreview } from '@/components/ui/chat-image-preview'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { IdentityAvatar } from '@/components/ui/identity-avatar'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -20,6 +21,7 @@ type TeamUser = {
   id: string
   name?: string | null
   email?: string | null
+  image?: string | null
   role?: string | null
 }
 
@@ -84,6 +86,7 @@ type ConversationListItem = {
   status: ConversationStatus
   unreadCount: number
   lastMessageAt: string
+  contactAvatarUrl?: string | null
   contactDisplayName?: string | null
   contactPhone?: string | null
   contactEmail?: string | null
@@ -213,6 +216,18 @@ function formatThreadName(thread: InternalThreadSummary | InternalThreadDetail |
     return thread.counterpart?.name || thread.counterpart?.email || 'Chat directo'
   }
   return 'Chat directo'
+}
+
+function getSelectedDirectThreadAvatar(thread: InternalThreadSummary | InternalThreadDetail | null, currentUserId: string | null) {
+  if (!thread || thread.type === 'GROUP') return null
+
+  if ('participants' in thread && Array.isArray(thread.participants)) {
+    const counterpart = thread.participants.find((participant) => participant.userId !== currentUserId)?.user
+      ?? thread.participants[0]?.user
+    return counterpart?.image ?? null
+  }
+
+  return 'counterpart' in thread ? thread.counterpart?.image ?? null : null
 }
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
@@ -1539,9 +1554,12 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                       {filteredConversations.map((item) => (
                         <button key={item.id} type="button" onClick={() => setSelectedConversationId(item.id)} className={cn('w-full min-w-0 rounded-[22px] border px-3 py-2.5 text-left shadow-sm transition-shadow hover:shadow-md', selectedConversationId === item.id ? 'border-sky-300 bg-sky-50/80' : 'border-slate-200 bg-white')}>
                           <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-slate-950">{item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto CRM'}</p>
-                              <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-slate-600">{item.messages?.[0]?.bodyText || item.contactEmail || item.contactPhone || 'Sin mensajes aún'}</p>
+                            <div className="flex min-w-0 items-start gap-3">
+                              <IdentityAvatar label={item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || item.contactPhone || item.contactEmail || 'Contacto CRM'} imageUrl={item.contactAvatarUrl} size="sm" />
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-slate-950">{item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto CRM'}</p>
+                                <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-slate-600">{item.messages?.[0]?.bodyText || item.contactEmail || item.contactPhone || 'Sin mensajes aún'}</p>
+                              </div>
                             </div>
                             {item.unreadCount > 0 ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800">{item.unreadCount}</span> : null}
                           </div>
@@ -1562,12 +1580,15 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                     {selectedConversation ? (
                       <div className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-3">
                         <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h4 className="text-sm font-semibold text-slate-950">{selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || 'Contacto CRM'}</h4>
-                              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{formatChannel(selectedConversation.channelConnection.provider)}</span>
+                          <div className="flex min-w-0 items-center gap-3">
+                            <IdentityAvatar label={selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Contacto CRM'} imageUrl={selectedConversation.contactAvatarUrl} size="md" />
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="text-sm font-semibold text-slate-950">{selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || 'Contacto CRM'}</h4>
+                                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{formatChannel(selectedConversation.channelConnection.provider)}</span>
+                              </div>
+                              <p className="mt-1 text-[13px] text-slate-600">{selectedConversation.contactPhone || selectedConversation.contactEmail || 'Sin dato de contacto visible'}</p>
                             </div>
-                            <p className="mt-1 text-[13px] text-slate-600">{selectedConversation.contactPhone || selectedConversation.contactEmail || 'Sin dato de contacto visible'}</p>
                           </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -1801,9 +1822,12 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Abrir chat nuevo</p>
                           {filteredTeamUsers.map((user) => (
                             <div key={user.id} className={cn('flex items-center justify-between gap-2 rounded-2xl border p-2.5 transition-colors', activeDirectUserId === user.id ? 'border-sky-300 bg-sky-50/80 shadow-sm' : 'border-slate-200 bg-slate-50/70')}>
-                              <div>
-                                <p className="text-sm font-medium text-slate-950">{user.name || user.email || user.id}</p>
-                                <p className="text-xs text-slate-500">{user.email || 'Sin correo visible'}</p>
+                              <div className="flex min-w-0 items-center gap-3">
+                                <IdentityAvatar label={user.name || user.email || user.id} imageUrl={user.image} size="sm" />
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-slate-950">{user.name || user.email || user.id}</p>
+                                  <p className="text-xs text-slate-500">{user.email || 'Sin correo visible'}</p>
+                                </div>
                               </div>
                               <Button variant={activeDirectUserId === user.id ? 'default' : 'outline'} size="sm" className="h-8 rounded-xl px-3 text-[10px]" onClick={() => void handleStartTeamChat(user.id)} disabled={startingThread}>
                                 {activeDirectUserId === user.id ? 'Activo' : 'Abrir'}
@@ -1819,9 +1843,12 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                               setTeamMobilePanel('chat')
                             }} className={cn('w-full min-w-0 rounded-[22px] border px-3 py-2.5 text-left shadow-sm transition-shadow hover:shadow-md', selectedThreadId === item.id ? 'border-sky-300 bg-sky-50/80' : 'border-slate-200 bg-white')}>
                               <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <p className="text-sm font-semibold leading-5 text-slate-950">{item.counterpart?.name || item.counterpart?.email || 'Chat interno'}</p>
-                                  <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-slate-600">{renderHighlightedText(item.lastMessage?.bodyText || (item.lastMessage?.attachments?.length ? 'Adjunto enviado' : 'Sin mensajes aún'), search)}</p>
+                                <div className="flex min-w-0 items-start gap-3">
+                                  <IdentityAvatar label={item.counterpart?.name || item.counterpart?.email || 'Chat interno'} imageUrl={item.counterpart?.image} size="sm" />
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold leading-5 text-slate-950">{item.counterpart?.name || item.counterpart?.email || 'Chat interno'}</p>
+                                    <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-slate-600">{renderHighlightedText(item.lastMessage?.bodyText || (item.lastMessage?.attachments?.length ? 'Adjunto enviado' : 'Sin mensajes aún'), search)}</p>
+                                  </div>
                                 </div>
                                 {item.unreadCount > 0 ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800">{item.unreadCount}</span> : null}
                               </div>
@@ -1868,7 +1895,10 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                 <div className={cn('relative min-h-0 min-w-0 overflow-hidden', teamMobilePanel === 'options' ? 'hidden md:grid' : 'grid', 'grid-rows-[auto_minmax(0,1fr)_auto]')}>
                   <div className="border-b border-slate-100 px-4 py-2.5 text-sm text-slate-600">
                     <div className="flex items-center justify-between gap-2">
-                      <span>{selectedThread ? formatThreadName(selectedThread) : 'Conversación interna'}</span>
+                      <div className="flex min-w-0 items-center gap-3">
+                        {selectedThread ? <IdentityAvatar label={formatThreadName(selectedThread)} imageUrl={getSelectedDirectThreadAvatar(selectedThread, currentUserId)} size="sm" /> : null}
+                        <span className="truncate">{selectedThread ? formatThreadName(selectedThread) : 'Conversación interna'}</span>
+                      </div>
                       <div className="flex items-center gap-1.5">
                         {selectedThread ? (
                           <>

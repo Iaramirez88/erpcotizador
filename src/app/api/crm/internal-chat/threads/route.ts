@@ -21,6 +21,7 @@ const threadInclude = Prisma.validator<Prisma.InternalChatThreadInclude>()({
           id: true,
           name: true,
           email: true,
+          image: true,
           role: true,
         },
       },
@@ -35,6 +36,7 @@ const threadInclude = Prisma.validator<Prisma.InternalChatThreadInclude>()({
           id: true,
           name: true,
           email: true,
+            image: true,
         },
       },
     },
@@ -115,6 +117,7 @@ function mapThreadSummary(thread: InternalChatThreadSummary, currentUserId: stri
           id: counterpart.user.id,
           name: counterpart.user.name,
           email: counterpart.user.email,
+          image: counterpart.user.image,
           role: counterpart.user.role,
         }
       : null,
@@ -172,16 +175,16 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
+    const threadType = typeof body?.threadType === 'string' ? body.threadType.trim().toUpperCase() : 'DIRECT'
+
     const access = await requireCapabilityAccess({
       domain: 'OPERACIONES',
       subdomain: 'INTERNAL_CHAT',
-      action: 'CREATE',
+      action: threadType === 'GROUP' ? 'CREATE' : 'READ',
       scope: 'SEDE',
     })
     if (!access.ok) return access.response
-
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
-    const threadType = typeof body?.threadType === 'string' ? body.threadType.trim().toUpperCase() : 'DIRECT'
 
     if (threadType === 'GROUP') {
       const title = typeof body?.title === 'string' ? body.title.trim() : ''
