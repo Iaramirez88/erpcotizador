@@ -1555,7 +1555,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                         <button key={item.id} type="button" onClick={() => setSelectedConversationId(item.id)} className={cn('w-full min-w-0 rounded-[22px] border px-3 py-2.5 text-left shadow-sm transition-shadow hover:shadow-md', selectedConversationId === item.id ? 'border-sky-300 bg-sky-50/80' : 'border-slate-200 bg-white')}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex min-w-0 items-start gap-3">
-                              <IdentityAvatar label={item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || item.contactPhone || item.contactEmail || 'Contacto CRM'} imageUrl={item.contactAvatarUrl} size="sm" />
+                              <IdentityAvatar label={item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || item.contactPhone || item.contactEmail || 'Contacto CRM'} imageUrl={item.contactAvatarUrl} fallbackImageUrl="/crm-contact-avatar-default.svg" size="sm" />
                               <div className="min-w-0">
                                 <p className="text-sm font-semibold text-slate-950">{item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto CRM'}</p>
                                 <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-slate-600">{item.messages?.[0]?.bodyText || item.contactEmail || item.contactPhone || 'Sin mensajes aún'}</p>
@@ -1581,7 +1581,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                       <div className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-3">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-3">
-                            <IdentityAvatar label={selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Contacto CRM'} imageUrl={selectedConversation.contactAvatarUrl} size="md" />
+                            <IdentityAvatar label={selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Contacto CRM'} imageUrl={selectedConversation.contactAvatarUrl} fallbackImageUrl="/crm-contact-avatar-default.svg" size="md" />
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
                                 <h4 className="text-sm font-semibold text-slate-950">{selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || 'Contacto CRM'}</h4>

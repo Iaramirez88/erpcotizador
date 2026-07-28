@@ -186,6 +186,8 @@ export type PublicChatbotSettings = {
   pageBackgroundColor: string
   backgroundColor: string
   fontFamily: string
+  headerBadgeLabel: string
+  statusBadgeLabel: string
   launcherLabel: string
   launcherIcon: string
   launcherPosition: 'right' | 'center' | 'left'
@@ -286,6 +288,8 @@ export function getPublicChatbotSettings(settingsJson: unknown): PublicChatbotSe
     pageBackgroundColor: typeof settings.pageBackgroundColor === 'string' && settings.pageBackgroundColor.trim() ? settings.pageBackgroundColor.trim() : '#eef5ff',
     backgroundColor: typeof settings.backgroundColor === 'string' && settings.backgroundColor.trim() ? settings.backgroundColor.trim() : '#f8fbff',
     fontFamily: typeof settings.fontFamily === 'string' && settings.fontFamily.trim() ? settings.fontFamily.trim() : 'ui-sans-serif, system-ui, sans-serif',
+    headerBadgeLabel: typeof settings.headerBadgeLabel === 'string' && settings.headerBadgeLabel.trim() ? settings.headerBadgeLabel.trim() : 'Chatbot CRM',
+    statusBadgeLabel: typeof settings.statusBadgeLabel === 'string' && settings.statusBadgeLabel.trim() ? settings.statusBadgeLabel.trim() : 'En linea',
     launcherLabel: typeof settings.launcherLabel === 'string' && settings.launcherLabel.trim() ? settings.launcherLabel.trim() : 'Abrir asesor virtual',
     launcherIcon: typeof settings.launcherIcon === 'string' && settings.launcherIcon.trim() ? settings.launcherIcon.trim() : 'Bot',
     launcherPosition: settings.launcherPosition === 'left' ? 'left' : settings.launcherPosition === 'center' ? 'center' : 'right',

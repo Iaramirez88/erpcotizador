@@ -75,6 +75,8 @@ type PublicChatbotEmbedProps = {
   backgroundColor: string
   fontFamily: string
   customCss: string
+  headerBadgeLabel: string
+  statusBadgeLabel: string
   embedMode: 'iframe' | 'widget'
   floatingLauncherEnabled: boolean
   launcherLabel: string
@@ -1378,12 +1380,12 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
         <div className="sgd-chatbot-header border-b border-slate-100 px-5 py-4 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${props.accentColor})` }}>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">Chatbot CRM</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">{props.headerBadgeLabel}</p>
               <h1 className="mt-1 text-xl font-semibold">{props.title}</h1>
             </div>
             <div className="flex items-center gap-2">
               <div className="rounded-full bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-white/90">
-                {connectionState === 'online' ? 'En linea' : connectionState === 'error' ? 'Reconectando' : 'Conectando'}
+                {connectionState === 'online' ? props.statusBadgeLabel : connectionState === 'error' ? 'Reconectando' : 'Conectando'}
               </div>
               {floatingLauncherActive ? (
                 <button type="button" onClick={closePanel} className="rounded-full bg-white/14 px-3 py-1 text-sm font-semibold text-white transition hover:bg-white/20">

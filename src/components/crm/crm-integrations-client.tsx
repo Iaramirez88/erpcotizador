@@ -18,7 +18,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { LucideIcon } from 'lucide-react'
-import { Activity, BarChart3, Bot, Download, Eye, Facebook, Globe, Goal, Instagram, Mail, MessageCircle, Sparkles, Target, TrendingUp, Upload } from 'lucide-react'
+import { Activity, BarChart3, Bot, Copy, Download, Eye, Facebook, Globe, Goal, Instagram, Mail, MessageCircle, Sparkles, Target, TrendingUp, Upload } from 'lucide-react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { ErpPageHero, ErpSectionHeading } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
@@ -319,7 +319,16 @@ type IntegrationSnippets = {
   googleSheetsExport: string
 }
 
-type WizardStep = 'template' | 'config' | 'review'
+type ImplementationAssetCard = {
+  id: string
+  title: string
+  description: string
+  value: string
+  copyLabel: string
+  disabled?: boolean
+}
+
+type WizardStep = 'template' | 'config' | 'review' | 'implementation'
 type ChatbotPreviewMode = 'floating' | 'compact' | 'expanded'
 type ChatbotPreviewViewport = 'desktop' | 'mobile'
 type CrmWorkspaceView = 'operations' | 'metrics'
@@ -2073,6 +2082,88 @@ function getEndpoint(baseUrl: string, channel: ChannelConnection | null) {
   return `${baseUrl}/api/crm/channels/${channel.id}/webhook`
 }
 
+function buildIntegrationSnippets(args: {
+  baseUrl: string
+  channelId: string
+  provider: CrmChannelProvider
+  bridgeKind: string
+  settingsJson: Record<string, unknown> | null | undefined
+  token: string
+}): IntegrationSnippets {
+  return {
+    webForm: args.bridgeKind === 'BOOKING'
+      ? buildBookingSnippet({
+          baseUrl: args.baseUrl,
+          channelId: args.channelId,
+          token: args.token,
+          selector: getFormSelector(args.settingsJson),
+        })
+      : buildWebFormSnippet({
+          baseUrl: args.baseUrl,
+          channelId: args.channelId,
+          token: args.token,
+          selector: getFormSelector(args.settingsJson),
+        }),
+    webFormIframe: args.bridgeKind === 'BOOKING'
+      ? buildBookingIframeSnippet({
+          baseUrl: args.baseUrl,
+          channelId: args.channelId,
+          height: getIframeHeight(args.settingsJson),
+        })
+      : buildWebFormIframeSnippet({
+          baseUrl: args.baseUrl,
+          channelId: args.channelId,
+          height: getIframeHeight(args.settingsJson),
+        }),
+    webFormEmbedUrl: args.bridgeKind === 'BOOKING' ? buildBookingEmbedUrl(args.baseUrl, args.channelId) : buildWebFormEmbedUrl(args.baseUrl, args.channelId),
+    chatbot: buildChatbotSnippet({
+      baseUrl: args.baseUrl,
+      channelId: args.channelId,
+      token: args.token,
+      title: getChatbotTitle(args.settingsJson),
+      prompt: getChatbotPrompt(args.settingsJson),
+      accentColor: getAccentColor(args.settingsJson),
+      backgroundColor: getBackgroundColor(args.settingsJson),
+      launcherLabel: getLauncherLabel(args.settingsJson),
+      launcherIcon: getLauncherIcon(args.settingsJson),
+      launcherPosition: getLauncherPosition(args.settingsJson),
+      launcherPlacement: getLauncherPlacement(args.settingsJson),
+      launcherSize: getLauncherSize(args.settingsJson),
+      launcherOffsetX: getLauncherOffsetX(args.settingsJson),
+      launcherOffsetY: getLauncherOffsetY(args.settingsJson),
+      launcherZIndex: getLauncherZIndex(args.settingsJson),
+      panelZIndex: getPanelZIndex(args.settingsJson),
+      backdropZIndex: getBackdropZIndex(args.settingsJson),
+      customCss: getChatbotCustomCss(args.settingsJson),
+    }),
+    chatbotIframe: buildChatbotIframeSnippet({
+      baseUrl: args.baseUrl,
+      channelId: args.channelId,
+      height: getIframeHeight(args.settingsJson),
+      floatingLauncherEnabled: getFloatingLauncherEnabled(args.settingsJson),
+      launcherStartsCollapsed: getLauncherStartsCollapsed(args.settingsJson),
+      launcherPosition: getLauncherPosition(args.settingsJson),
+      launcherPlacement: getLauncherPlacement(args.settingsJson),
+      launcherOffsetX: getLauncherOffsetX(args.settingsJson),
+      launcherOffsetY: getLauncherOffsetY(args.settingsJson),
+      panelZIndex: getPanelZIndex(args.settingsJson),
+      chatShellRadius: getChatShellRadius(args.settingsJson),
+      backgroundColor: getBackgroundColor(args.settingsJson),
+    }),
+    chatbotEmbedUrl: buildChatbotEmbedUrl(args.baseUrl, args.channelId),
+    gmail: buildGmailAppsScriptSnippet({
+      baseUrl: args.baseUrl,
+      channelId: args.channelId,
+      token: args.token,
+    }),
+    outlook: buildOutlookPayloadExample(args.baseUrl, args.channelId, args.token),
+    webhook: buildWebhookPayloadExample(args.provider, args.bridgeKind as CrmBridgeKind | null),
+    googleSheetsPreview: `${args.baseUrl}/api/crm/channels/${args.channelId}/google-sheets/preview`,
+    googleSheetsImport: `${args.baseUrl}/api/crm/channels/${args.channelId}/google-sheets/import`,
+    googleSheetsExport: `${args.baseUrl}/api/crm/channels/${args.channelId}/google-sheets/export`,
+  }
+}
+
 function channelTone(provider: CrmChannelProvider, bridgeKind: string) {
   if (provider === 'WEB_CHATBOT') return 'border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,.92),rgba(255,255,255,.98))]'
   if (provider === 'WEB_FORM' && bridgeKind === 'BOOKING') return 'border-sky-200 bg-[linear-gradient(180deg,rgba(224,242,254,.95),rgba(255,255,255,.98))]'
@@ -2794,6 +2885,270 @@ export function CrmIntegrationsClient() {
   const createIsBridge = createForm.provider === 'WEB_FORM' && !createIsPublicWebForm
   const createUsesWebhook = createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' || createForm.provider === 'FACEBOOK_PAGE' || createForm.provider === 'MESSENGER' || createForm.provider === 'INSTAGRAM_DM'
   const derivedChatbotCustomCss = useMemo(() => buildFriendlyChatbotCustomCss({ chatShellRadius: createForm.chatShellRadius, messageBubbleRadius: createForm.messageBubbleRadius, panelShadowPreset: createForm.panelShadowPreset }), [createForm.chatShellRadius, createForm.messageBubbleRadius, createForm.panelShadowPreset])
+  const createSettingsJson = useMemo(() => {
+    const settingsJsonBase = {
+      testingToken: createForm.testingToken,
+      bridgeKind: createForm.bridgeKind,
+      googleSheetsSpreadsheetId: createForm.googleSheetsSpreadsheetId,
+      googleSheetsSheetName: createForm.googleSheetsSheetName,
+      googleSheetsPublishedCsvUrl: createForm.googleSheetsPublishedCsvUrl,
+      googleSheetsRowLimit: createForm.googleSheetsRowLimit,
+      googleSheetsImportMode: createForm.googleSheetsImportMode,
+      googleSheetsOpportunityStage: createForm.googleSheetsOpportunityStage,
+      bookingNotifyByEmail: createForm.bookingNotifyByEmail,
+      bookingNotifyByWhatsApp: createForm.bookingNotifyByWhatsApp,
+      outgoingWebhookUrl: createForm.outgoingWebhookUrl,
+      externalAccountId: createForm.externalAccountId,
+      externalPageId: createForm.externalPageId,
+      externalPhoneNumberId: createForm.externalPhoneNumberId,
+      whatsappConnectionMode: createForm.whatsappConnectionMode,
+      whatsappDisplayPhoneNumber: createForm.whatsappDisplayPhoneNumber,
+      whatsappAccessToken: createForm.whatsappAccessToken,
+      whatsappApiVersion: createForm.whatsappApiVersion,
+      outboundLimitPerChannelDay: createForm.outboundLimitPerChannelDay.replace(/[^0-9]/g, ''),
+      outboundLimitPerChannelMonth: createForm.outboundLimitPerChannelMonth.replace(/[^0-9]/g, ''),
+      outboundLimitPerEmpresaDay: createForm.outboundLimitPerEmpresaDay.replace(/[^0-9]/g, ''),
+      outboundLimitPerEmpresaMonth: createForm.outboundLimitPerEmpresaMonth.replace(/[^0-9]/g, ''),
+      formSelector: createForm.formSelector,
+      chatbotTitle: createForm.chatbotTitle,
+      chatbotPrompt: createForm.chatbotPrompt,
+      assistantName: createForm.assistantName,
+      chatResetConversationAfterHours: undefined,
+      chatResetConversationAfterValue: createForm.chatResetConversationAfterValue,
+      chatResetConversationAfterUnit: createForm.chatResetConversationAfterUnit,
+      chatResetConversationAfterAction: createForm.chatResetConversationAfterAction,
+      preChatFormEnabled: createForm.preChatFormEnabled,
+      preChatFormTemplate: createForm.preChatFormTemplate,
+      preChatFormTitle: createForm.preChatFormTitle,
+      preChatFormDescription: createForm.preChatFormDescription,
+      preChatFormSubmitLabel: createForm.preChatFormSubmitLabel,
+      preChatFormShowNameField: createForm.preChatFormShowNameField,
+      preChatFormShowEmailField: createForm.preChatFormShowEmailField,
+      preChatFormShowPhoneField: createForm.preChatFormShowPhoneField,
+      preChatFormRequireName: createForm.preChatFormRequireName,
+      preChatFormRequireEmail: createForm.preChatFormRequireEmail,
+      preChatFormRequirePhone: createForm.preChatFormRequirePhone,
+      preChatFormRequireContactMethod: createForm.preChatFormRequireContactMethod,
+      preChatFormShowDepartmentField: createForm.preChatFormShowDepartmentField,
+      preChatFormDepartmentLabel: createForm.preChatFormDepartmentLabel,
+      preChatFormDepartmentPlaceholder: createForm.preChatFormDepartmentPlaceholder,
+      preChatFormDepartmentOptions: createForm.preChatFormDepartmentOptions,
+      preChatFormInactivityRule: {
+        enabled: createForm.preChatFormInactivityEnabled,
+        timeoutValue: Math.max(1, Number(createForm.preChatFormInactivityValue) || 1),
+        timeoutUnit: createForm.preChatFormInactivityUnit,
+        action: createForm.preChatFormInactivityAction,
+      },
+      publicEmbedEnabled: createForm.publicEmbedEnabled,
+      iframeHeight: createForm.iframeHeight,
+      allowedDomains: createForm.allowedDomains,
+      accentColor: createForm.accentColor,
+      pageBackgroundColor: createForm.pageBackgroundColor,
+      backgroundColor: createForm.backgroundColor,
+      fontFamily: createForm.fontFamily,
+      floatingLauncherEnabled: createForm.floatingLauncherEnabled,
+      launcherLabel: createForm.launcherLabel,
+      launcherIcon: createForm.launcherIcon,
+      launcherPosition: createForm.launcherPosition,
+      launcherPlacement: createForm.launcherPlacement,
+      launcherSize: createForm.launcherSize,
+      launcherStartsCollapsed: createForm.launcherStartsCollapsed,
+      launcherOffsetX: normalizePixelValue(createForm.launcherOffsetX, '60'),
+      launcherOffsetY: normalizePixelValue(createForm.launcherOffsetY, '60'),
+      launcherZIndex: normalizeZIndexValue(createForm.launcherZIndex, '2147483647'),
+      panelZIndex: normalizeZIndexValue(createForm.panelZIndex, '2147483646'),
+      backdropZIndex: normalizeZIndexValue(createForm.backdropZIndex, '2147483645'),
+      headerBadgeLabel: createForm.headerBadgeLabel,
+      statusBadgeLabel: createForm.statusBadgeLabel,
+      chatShellRadius: normalizePixelValue(createForm.chatShellRadius, '30'),
+      messageBubbleRadius: normalizePixelValue(createForm.messageBubbleRadius, '22'),
+      panelShadowPreset: createForm.panelShadowPreset,
+      chatbotCustomCss: derivedChatbotCustomCss,
+      formTitle: createForm.formTitle,
+      formDescription: createForm.formDescription,
+      submitCtaLabel: createForm.submitCtaLabel,
+      formSuccessMessage: createForm.formSuccessMessage,
+      formCardRadius: normalizePixelValue(createForm.formCardRadius, '28'),
+      formInputRadius: normalizePixelValue(createForm.formInputRadius, '16'),
+      formFieldSpacing: normalizePixelValue(createForm.formFieldSpacing, '14'),
+      formPadding: normalizePixelValue(createForm.formPadding, '24'),
+      formFontSize: normalizePixelValue(createForm.formFontSize, '14'),
+      formLabelColor: createForm.formLabelColor,
+      formInputTextColor: createForm.formInputTextColor,
+      formInputBackgroundColor: createForm.formInputBackgroundColor,
+      formInputBorderColor: createForm.formInputBorderColor,
+      formCtaColor: createForm.formCtaColor,
+      formCtaTextColor: createForm.formCtaTextColor,
+      showNameField: createForm.showNameField,
+      showEmailField: createForm.showEmailField,
+      showPhoneField: createForm.showPhoneField,
+      showCompanyField: createForm.showCompanyField,
+      showCityField: createForm.showCityField,
+      showProductField: createForm.showProductField,
+      showMessageField: createForm.showMessageField,
+      nameLabel: createForm.nameLabel,
+      namePlaceholder: createForm.namePlaceholder,
+      emailLabel: createForm.emailLabel,
+      emailPlaceholder: createForm.emailPlaceholder,
+      phoneLabel: createForm.phoneLabel,
+      phonePlaceholder: createForm.phonePlaceholder,
+      companyLabel: createForm.companyLabel,
+      companyPlaceholder: createForm.companyPlaceholder,
+      cityLabel: createForm.cityLabel,
+      cityPlaceholder: createForm.cityPlaceholder,
+      productLabel: createForm.productLabel,
+      productPlaceholder: createForm.productPlaceholder,
+      messageLabel: createForm.messageLabel,
+      messagePlaceholder: createForm.messagePlaceholder,
+      webFormCustomFields: createForm.webFormCustomFields,
+      webFormVariables: createForm.webFormVariables,
+      termsEnabled: createForm.termsEnabled,
+      termsRequired: createForm.termsRequired,
+      termsLabel: createForm.termsLabel,
+      termsLinkText: createForm.termsLinkText,
+      termsLinkUrl: createForm.termsLinkUrl,
+      allowHumanHandoff: true,
+    }
+
+    return createForm.provider === 'WEB_CHATBOT'
+      ? mergeChatbotDefaultFlowSettings({
+          settingsJson: settingsJsonBase,
+          quickActions: createForm.quickActions,
+          flowStages: createForm.flowStages,
+        })
+      : settingsJsonBase
+  }, [createForm, derivedChatbotCustomCss])
+  const wizardImplementationBaseUrl = baseUrl || 'https://tu-dominio.com'
+  const wizardImplementationChannelId = editingChannelId || selectedChannel?.id || '<canal-generado>'
+  const wizardImplementationChannel = useMemo<ChannelConnection>(() => ({
+    id: wizardImplementationChannelId,
+    name: createForm.name || createPreset.name,
+    provider: createForm.provider,
+    status: createForm.status,
+    verifyTokenPreview: createForm.testingToken || null,
+    settingsJson: createSettingsJson,
+    updatedAt: '',
+    createdAt: '',
+  }), [createForm.name, createForm.provider, createForm.status, createForm.testingToken, createPreset.name, createSettingsJson, wizardImplementationChannelId])
+  const wizardImplementationSnippets = useMemo(() => buildIntegrationSnippets({
+    baseUrl: wizardImplementationBaseUrl,
+    channelId: wizardImplementationChannelId,
+    provider: createForm.provider,
+    bridgeKind: createForm.bridgeKind,
+    settingsJson: createSettingsJson,
+    token: createForm.testingToken || '<TOKEN>',
+  }), [createForm.bridgeKind, createForm.provider, createForm.testingToken, createSettingsJson, wizardImplementationBaseUrl, wizardImplementationChannelId])
+  const wizardImplementationGuide = useMemo(() => getDetailedIntegrationGuide({
+    channel: wizardImplementationChannel,
+    bridgeKind: createForm.bridgeKind,
+    endpoint: getEndpoint(wizardImplementationBaseUrl, wizardImplementationChannel),
+    token: createForm.testingToken,
+    language,
+    snippets: wizardImplementationSnippets,
+  }), [createForm.bridgeKind, createForm.testingToken, language, wizardImplementationChannel, wizardImplementationBaseUrl, wizardImplementationSnippets])
+  const wizardImplementationCards = useMemo<ImplementationAssetCard[]>(() => {
+    const cards: ImplementationAssetCard[] = []
+
+    if (createForm.provider === 'WEB_CHATBOT') {
+      cards.push(
+        {
+          id: 'wizard-chatbot-url',
+          title: 'URL pública',
+          description: 'Úsala para demo directa o como ruta base del embebido.',
+          value: wizardImplementationSnippets.chatbotEmbedUrl,
+          copyLabel: 'Copiar URL',
+        },
+        {
+          id: 'wizard-chatbot-iframe',
+          title: 'Iframe fijo',
+          description: 'Este bloque publica el panel del chat abierto. Para respetar launcher flotante, usa el widget.',
+          value: wizardImplementationSnippets.chatbotIframe,
+          copyLabel: 'Copiar iframe',
+        },
+        {
+          id: 'wizard-chatbot-widget',
+          title: 'Widget flotante',
+          description: createForm.floatingLauncherEnabled
+            ? 'Este snippet sí refleja la configuración actual del launcher flotante.'
+            : 'El launcher flotante está desactivado en la configuración actual.',
+          value: createForm.floatingLauncherEnabled ? wizardImplementationSnippets.chatbot : 'Launcher flotante desactivado en la configuración actual.',
+          copyLabel: 'Copiar widget',
+          disabled: !createForm.floatingLauncherEnabled,
+        },
+      )
+      return cards
+    }
+
+    if (createIsPublicWebForm) {
+      cards.push(
+        {
+          id: 'wizard-webform-url',
+          title: createForm.bridgeKind === 'BOOKING' ? 'URL pública de agenda' : 'URL pública del formulario',
+          description: 'Enlace directo para demo o integración rápida.',
+          value: wizardImplementationSnippets.webFormEmbedUrl,
+          copyLabel: 'Copiar URL',
+        },
+        {
+          id: 'wizard-webform-iframe',
+          title: createForm.bridgeKind === 'BOOKING' ? 'Iframe de agenda' : 'Iframe del formulario',
+          description: 'Snippet listo para pegar en el sitio del cliente.',
+          value: wizardImplementationSnippets.webFormIframe,
+          copyLabel: 'Copiar iframe',
+        },
+        {
+          id: 'wizard-webform-script',
+          title: createForm.bridgeKind === 'BOOKING' ? 'Script sobre formulario existente' : 'Script bridge sobre formulario existente',
+          description: 'Úsalo si el cliente ya tiene un formulario propio y no usará el iframe completo.',
+          value: wizardImplementationSnippets.webForm,
+          copyLabel: 'Copiar script',
+        },
+      )
+      return cards
+    }
+
+    if (createForm.provider === 'WEB_FORM' && createForm.bridgeKind === 'GMAIL') {
+      cards.push({ id: 'wizard-gmail-script', title: 'Apps Script', description: 'Base para enrutar correos comerciales hacia el CRM.', value: wizardImplementationSnippets.gmail, copyLabel: 'Copiar script' })
+      return cards
+    }
+
+    if (createForm.provider === 'WEB_FORM' && createForm.bridgeKind === 'OUTLOOK') {
+      cards.push({ id: 'wizard-outlook-payload', title: 'Payload de Power Automate', description: 'Referencia para la acción HTTP o flujo equivalente.', value: wizardImplementationSnippets.outlook, copyLabel: 'Copiar payload' })
+      return cards
+    }
+
+    if (createForm.provider === 'WEB_FORM' && createForm.bridgeKind === 'GOOGLE_SHEETS') {
+      cards.push(
+        { id: 'wizard-sheets-preview', title: 'Endpoint preview', description: 'Valida headers y primeras filas antes de importar.', value: wizardImplementationSnippets.googleSheetsPreview, copyLabel: 'Copiar endpoint' },
+        { id: 'wizard-sheets-import', title: 'Endpoint import', description: 'Dispara la importación cuando el preview ya esté aprobado.', value: wizardImplementationSnippets.googleSheetsImport, copyLabel: 'Copiar endpoint' },
+        { id: 'wizard-sheets-export', title: 'Endpoint export', description: 'Entrega la salida CSV operativa del canal.', value: wizardImplementationSnippets.googleSheetsExport, copyLabel: 'Copiar endpoint' },
+      )
+      return cards
+    }
+
+    cards.push(
+      {
+        id: 'wizard-endpoint',
+        title: 'Endpoint del canal',
+        description: 'Destino principal para la aplicación o middleware elegido.',
+        value: getEndpoint(wizardImplementationBaseUrl, wizardImplementationChannel),
+        copyLabel: 'Copiar endpoint',
+      },
+      {
+        id: 'wizard-token',
+        title: 'Token de referencia',
+        description: 'Útil para pruebas, payloads de demo y verificación.',
+        value: createForm.testingToken || '<TOKEN>',
+        copyLabel: 'Copiar token',
+        disabled: !Boolean(createForm.testingToken.trim()),
+      },
+    )
+
+    if (createForm.provider === 'WEB_FORM') {
+      cards.push({ id: 'wizard-webhook-payload', title: 'Payload de referencia', description: 'Contrato base para puentes HTTP y automatizaciones.', value: wizardImplementationSnippets.webhook, copyLabel: 'Copiar payload' })
+    }
+
+    return cards
+  }, [createForm, createIsPublicWebForm, wizardImplementationBaseUrl, wizardImplementationChannel, wizardImplementationSnippets])
 
   const stats = useMemo(() => {
     return {
@@ -3052,74 +3407,15 @@ export function CrmIntegrationsClient() {
   const snippets = useMemo<IntegrationSnippets | null>(() => {
     if (!selectedChannel || !baseUrl) return null
 
-    const token = selectedToken || '<TOKEN>'
-    return {
-      webForm: selectedBridgeKind === 'BOOKING'
-        ? buildBookingSnippet({
-            baseUrl,
-            channelId: selectedChannel.id,
-            token,
-            selector: getFormSelector(selectedSettings),
-          })
-        : buildWebFormSnippet({
-            baseUrl,
-            channelId: selectedChannel.id,
-            token,
-            selector: getFormSelector(selectedSettings),
-          }),
-      webFormIframe: selectedBridgeKind === 'BOOKING'
-        ? buildBookingIframeSnippet({
-            baseUrl,
-            channelId: selectedChannel.id,
-            height: getIframeHeight(selectedSettings),
-          })
-        : buildWebFormIframeSnippet({
-            baseUrl,
-            channelId: selectedChannel.id,
-            height: getIframeHeight(selectedSettings),
-          }),
-      webFormEmbedUrl: selectedBridgeKind === 'BOOKING' ? buildBookingEmbedUrl(baseUrl, selectedChannel.id) : buildWebFormEmbedUrl(baseUrl, selectedChannel.id),
-      chatbot: buildChatbotSnippet({
-        baseUrl,
-        channelId: selectedChannel.id,
-        token,
-        title: getChatbotTitle(selectedSettings),
-        prompt: getChatbotPrompt(selectedSettings),
-        accentColor: getAccentColor(selectedSettings),
-        backgroundColor: getBackgroundColor(selectedSettings),
-        launcherLabel: getLauncherLabel(selectedSettings),
-        launcherIcon: getLauncherIcon(selectedSettings),
-        launcherPosition: getLauncherPosition(selectedSettings),
-        launcherPlacement: getLauncherPlacement(selectedSettings),
-        launcherSize: getLauncherSize(selectedSettings),
-        launcherOffsetX: getLauncherOffsetX(selectedSettings),
-        launcherOffsetY: getLauncherOffsetY(selectedSettings),
-        launcherZIndex: getLauncherZIndex(selectedSettings),
-        panelZIndex: getPanelZIndex(selectedSettings),
-        backdropZIndex: getBackdropZIndex(selectedSettings),
-        customCss: getChatbotCustomCss(selectedSettings),
-      }),
-      chatbotIframe: buildChatbotIframeSnippet({
-        baseUrl,
-        channelId: selectedChannel.id,
-        height: getIframeHeight(selectedSettings),
-        floatingLauncherEnabled: getFloatingLauncherEnabled(selectedSettings),
-        chatShellRadius: getChatShellRadius(selectedSettings),
-        backgroundColor: getBackgroundColor(selectedSettings),
-      }),
-      chatbotEmbedUrl: buildChatbotEmbedUrl(baseUrl, selectedChannel.id),
-      gmail: buildGmailAppsScriptSnippet({
-        baseUrl,
-        channelId: selectedChannel.id,
-        token,
-      }),
-      outlook: buildOutlookPayloadExample(baseUrl, selectedChannel.id, token),
-      webhook: buildWebhookPayloadExample(selectedChannel.provider, selectedBridgeKind as CrmBridgeKind | null),
-      googleSheetsPreview: `${baseUrl}/api/crm/channels/${selectedChannel.id}/google-sheets/preview`,
-      googleSheetsImport: `${baseUrl}/api/crm/channels/${selectedChannel.id}/google-sheets/import`,
-      googleSheetsExport: `${baseUrl}/api/crm/channels/${selectedChannel.id}/google-sheets/export`,
-    }
-  }, [baseUrl, selectedChannel, selectedSettings, selectedToken])
+    return buildIntegrationSnippets({
+      baseUrl,
+      channelId: selectedChannel.id,
+      provider: selectedChannel.provider,
+      bridgeKind: selectedBridgeKind,
+      settingsJson: selectedSettings,
+      token: selectedToken || '<TOKEN>',
+    })
+  }, [baseUrl, selectedBridgeKind, selectedChannel, selectedSettings, selectedToken])
 
   const selectedIntegrationGuide = useMemo(() => {
     if (!selectedChannel) return null
@@ -6864,6 +7160,7 @@ export function CrmIntegrationsClient() {
                   { id: 'template', label: '1. Plantilla' },
                   { id: 'config', label: '2. Configuración' },
                   { id: 'review', label: '3. Revisión' },
+                  { id: 'implementation', label: '4. Implementación' },
                 ].map((step) => (
                   <button
                     key={step.id}
@@ -7473,6 +7770,100 @@ export function CrmIntegrationsClient() {
                       </div>
                     </div>
                   </div>
+                ) : wizardStep === 'implementation' ? (
+                  <div className="space-y-4">
+                    <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Implementación paso a paso</p>
+                      <h3 className="mt-2 text-xl font-semibold text-slate-950">{wizardImplementationGuide.title}</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">{wizardImplementationGuide.summary}</p>
+                      {createForm.provider === 'WEB_CHATBOT' ? (
+                        <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-900">
+                          <p className="font-semibold">Criterio de publicación para chatbot web</p>
+                          <p className="mt-2 leading-6">El iframe fijo publica el panel abierto del chat. La configuración del launcher flotante se refleja en el widget, por eso aquí se entregan ambos códigos de forma separada y actualizada.</p>
+                        </div>
+                      ) : null}
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Implementador</p>
+                          <p className="mt-2 text-sm font-medium text-slate-900">{wizardImplementationGuide.audience}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tiempo estimado</p>
+                          <p className="mt-2 text-sm font-medium text-slate-900">{wizardImplementationGuide.estimatedTime}</p>
+                        </div>
+                      </div>
+                      {wizardImplementationGuide.prerequisites.length ? (
+                        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                          <p className="text-sm font-semibold text-slate-900">Prerrequisitos</p>
+                          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-600">
+                            {wizardImplementationGuide.prerequisites.map((item) => <li key={item}>{item}</li>)}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+                      <div className="space-y-4">
+                        {wizardImplementationGuide.steps.map((step, index) => (
+                          <div key={`${step.title}-${index}`} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+                            <p className="text-sm font-semibold text-slate-900">{step.title}</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">{step.detail}</p>
+                            {step.bullets.length ? (
+                              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-600">
+                                {step.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
+                              </ul>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+                          <p className="text-sm font-semibold text-slate-900">Referencias rápidas</p>
+                          <div className="mt-3 space-y-3">
+                            {wizardImplementationGuide.assets.map((asset) => (
+                              <div key={`${asset.label}-${asset.value}`} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{asset.label}</p>
+                                <p className="mt-2 break-all text-sm font-medium text-slate-900">{asset.value}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+                          <p className="text-sm font-semibold text-slate-900">Código y activos para copiar</p>
+                          <div className="mt-3 space-y-4">
+                            {wizardImplementationCards.map((asset) => (
+                              <div key={asset.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="text-sm font-semibold text-slate-900">{asset.title}</p>
+                                    <p className="mt-1 text-xs leading-5 text-slate-500">{asset.description}</p>
+                                  </div>
+                                  <Button type="button" variant="outline" className="rounded-xl" onClick={() => void copyText(asset.id, asset.value)} disabled={asset.disabled}>
+                                    <Copy className="mr-2 h-4 w-4" />
+                                    {copiedKey === asset.id ? 'Copiado' : asset.copyLabel}
+                                  </Button>
+                                </div>
+                                <Textarea value={asset.value} readOnly rows={Math.min(18, Math.max(3, asset.value.split('\n').length + 1))} className="mt-3 font-mono text-xs" />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/60 p-4 shadow-sm">
+                          <p className="text-sm font-semibold text-emerald-900">Validación final</p>
+                          <div className="mt-3 space-y-2">
+                            {wizardImplementationGuide.validations.map((item) => (
+                              <div key={item} className="rounded-2xl border border-emerald-200 bg-white/90 px-3 py-2 text-sm text-emerald-900">
+                                {item}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   <div className="rounded-[26px] border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">
                     Elige una plantilla a la izquierda para continuar con la configuración.
@@ -7481,10 +7872,11 @@ export function CrmIntegrationsClient() {
               </div>
 
               <DialogFooter className="mt-5 border-t border-slate-100 pt-5">
-                <Button variant="outline" className="rounded-xl" onClick={() => setWizardStep(wizardStep === 'review' ? 'config' : 'template')} disabled={saving}>Atrás</Button>
-                {wizardStep !== 'review' ? <Button variant="outline" className="rounded-xl" onClick={() => setWizardStep('review')} disabled={saving}>Revisar canal</Button> : null}
+                <Button variant="outline" className="rounded-xl" onClick={() => setWizardStep(wizardStep === 'implementation' ? 'review' : wizardStep === 'review' ? 'config' : 'template')} disabled={saving}>Atrás</Button>
+                {wizardStep === 'config' ? <Button variant="outline" className="rounded-xl" onClick={() => setWizardStep('review')} disabled={saving}>Revisar canal</Button> : null}
+                {wizardStep === 'review' ? <Button variant="outline" className="rounded-xl" onClick={() => setWizardStep('implementation')} disabled={saving}>Ver implementación</Button> : null}
                 <Button variant="outline" className="rounded-xl" onClick={() => setCreateOpen(false)} disabled={saving}>Cancelar</Button>
-                <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => void saveChannel()} disabled={saving || wizardStep !== 'review'}>
+                <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => void saveChannel()} disabled={saving || wizardStep !== 'implementation'}>
                   {saving ? (editingChannelId ? 'Guardando...' : 'Creando...') : (editingChannelId ? 'Guardar cambios' : 'Crear canal')}
                 </Button>
               </DialogFooter>

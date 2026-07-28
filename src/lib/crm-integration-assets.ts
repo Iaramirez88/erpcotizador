@@ -61,6 +61,12 @@ type ChatbotIframeArgs = {
   channelId: string
   height?: string
   floatingLauncherEnabled?: boolean
+  launcherStartsCollapsed?: boolean
+  launcherPosition?: 'right' | 'center' | 'left'
+  launcherPlacement?: 'fixed' | 'absolute'
+  launcherOffsetX?: string
+  launcherOffsetY?: string
+  panelZIndex?: string
   chatShellRadius?: string
   backgroundColor?: string
 }
@@ -394,19 +400,30 @@ export function buildChatbotEmbedUrl(baseUrl: string, channelId: string, mode: C
 
 export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   const height = (args.height || '720').replace(/[^0-9]/g, '') || '720'
-  const collapsedHeight = height
-  const src = buildChatbotEmbedUrl(args.baseUrl, args.channelId, 'iframe')
+  const widgetMode = args.floatingLauncherEnabled === true
+  const collapsedHeight = widgetMode && args.launcherStartsCollapsed !== false ? '164' : height
+  const src = buildChatbotEmbedUrl(args.baseUrl, args.channelId, widgetMode ? 'widget' : 'iframe')
   const iframeId = `sgd-chatbot-iframe-${args.channelId}`
   const shellRadius = `${(args.chatShellRadius || '30').replace(/[^0-9]/g, '') || '30'}px`
-  const iframeBackground = args.backgroundColor || '#ffffff'
-  const embedStyle = 'width:100%;max-width:420px;display:block;'
+  const iframeBackground = widgetMode ? 'transparent' : (args.backgroundColor || '#ffffff')
+  const launcherPosition = args.launcherPosition === 'left' ? 'left' : args.launcherPosition === 'center' ? 'center' : 'right'
+  const launcherPlacement = args.launcherPlacement === 'absolute' ? 'absolute' : 'fixed'
+  const hostAnchorStyle = launcherPosition === 'left'
+    ? 'left:0;'
+    : launcherPosition === 'center'
+      ? 'left:50%;transform:translateX(-50%);'
+      : 'right:0;'
+  const panelZIndex = Number.parseInt((args.panelZIndex || '2147483646').replace(/[^0-9-]/g, '') || '2147483646', 10)
+  const embedStyle = widgetMode
+    ? `width:min(420px,calc(100vw - 16px));display:block;position:${launcherPlacement};bottom:0;${hostAnchorStyle}z-index:${panelZIndex};pointer-events:auto;`
+    : 'width:100%;max-width:420px;display:block;'
 
   return `<iframe
   id="${iframeId}"
   src="${src}"
   title="Chatbot CRM SGDigital"
   loading="lazy"
-  style="${embedStyle}height:${collapsedHeight}px;border:0;border-radius:${shellRadius};box-shadow:0 24px 60px rgba(15,23,42,.16);background:${iframeBackground};overflow:hidden;transition:height .28s ease, box-shadow .28s ease;"
+  style="${embedStyle}height:${collapsedHeight}px;border:0;border-radius:${widgetMode ? '0' : shellRadius};box-shadow:${widgetMode ? 'none' : '0 24px 60px rgba(15,23,42,.16)'};background:${iframeBackground};overflow:hidden;transition:height .28s ease, box-shadow .28s ease;"
   referrerpolicy="strict-origin-when-cross-origin"
 ></iframe>
 <script>
@@ -418,12 +435,13 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   const defaultHeight = ${height};
   const collapsedHeight = ${collapsedHeight};
   const maxHeight = Math.max(defaultHeight, 1600);
+  const widgetMode = ${widgetMode ? 'true' : 'false'};
 
   function applyHeight(nextHeight) {
     const safeHeight = Math.max(collapsedHeight, Math.min(Number(nextHeight) || defaultHeight, maxHeight));
     iframe.style.height = safeHeight + 'px';
     iframe.style.background = '${iframeBackground}';
-    iframe.style.boxShadow = '0 24px 60px rgba(15,23,42,.16)';
+    iframe.style.boxShadow = widgetMode ? 'none' : '0 24px 60px rgba(15,23,42,.16)';
   }
 
   function handleMessage(event) {

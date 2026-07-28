@@ -5,6 +5,7 @@ type Props = {
   label?: string | null
   imageUrl?: string | null
   size?: 'sm' | 'md' | 'lg'
+  fallbackImageUrl?: string | null
   className?: string
 }
 
@@ -14,13 +15,14 @@ const SIZE_CLASSES: Record<NonNullable<Props['size']>, string> = {
   lg: 'h-14 w-14 text-sm',
 }
 
-export function IdentityAvatar({ label, imageUrl, size = 'md', className }: Props) {
+export function IdentityAvatar({ label, imageUrl, size = 'md', fallbackImageUrl, className }: Props) {
   const initials = getAvatarInitials(label)
+  const resolvedImageUrl = imageUrl || fallbackImageUrl || null
 
   return (
     <div className={cn('relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 font-semibold text-slate-700', SIZE_CLASSES[size], className)}>
-      {imageUrl ? (
-        <img src={imageUrl} alt={label || 'Avatar'} className="h-full w-full object-cover" />
+      {resolvedImageUrl ? (
+        <img src={resolvedImageUrl} alt={label || 'Avatar'} className="h-full w-full object-cover" />
       ) : (
         <span>{initials}</span>
       )}
