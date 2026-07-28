@@ -334,6 +334,35 @@ function buildWelcomeMessage(prompt: string, stage: ChatbotFlowStage | null, qui
   }
 }
 
+function normalizeComparableMessageText(value: string | null | undefined) {
+  return richTextToPlainText(normalizeRichTextHtml(value || '')).trim().replace(/\s+/g, ' ')
+}
+
+function isDuplicateWelcomeMessage(message: PublicChatbotMessage | undefined, welcomeMessage: PublicChatbotMessage) {
+  if (!message || message.role !== 'assistant') return false
+
+  const messageStageId = message.meta?.stageId || null
+  const welcomeStageId = welcomeMessage.meta?.stageId || null
+  if (messageStageId !== welcomeStageId) return false
+
+  return normalizeComparableMessageText(message.bodyHtml || message.body) === normalizeComparableMessageText(welcomeMessage.bodyHtml || welcomeMessage.body)
+}
+
+function mergeServerMessagesWithWelcome(serverMessages: PublicChatbotMessage[], welcomeMessage: PublicChatbotMessage) {
+  if (!serverMessages.length) return [welcomeMessage]
+
+  let skippedWelcome = false
+  const filteredServerMessages = serverMessages.filter((message) => {
+    if (!skippedWelcome && isDuplicateWelcomeMessage(message, welcomeMessage)) {
+      skippedWelcome = true
+      return false
+    }
+    return true
+  })
+
+  return [welcomeMessage, ...filteredServerMessages]
+}
+
 function getResponseOptionVisual() {
   return {
     className: 'border-violet-200 bg-violet-50 text-violet-900 hover:border-violet-300 hover:bg-violet-100',
@@ -980,7 +1009,10 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
         ? json.data?.messages.filter((item) => item.body || item.meta?.responseOptionIds?.length || item.meta?.quickActionIds?.length)
         : []
 
-      const mergedMessages = serverMessages.length > 0 ? [buildWelcomeMessage(props.prompt, initialStage, props.quickActions), ...serverMessages] : defaultMessages
+      const welcomeMessage = buildWelcomeMessage(props.prompt, initialStage, props.quickActions)
+      const mergedMessages = serverMessages.length > 0
+        ? mergeServerMessagesWithWelcome(serverMessages, welcomeMessage)
+        : defaultMessages
       const latestServerMessageId = serverMessages[serverMessages.length - 1]?.id || ''
       setMessages(mergedMessages)
       if (latestServerMessageId && latestServerMessageId !== lastServerMessageIdRef.current) {

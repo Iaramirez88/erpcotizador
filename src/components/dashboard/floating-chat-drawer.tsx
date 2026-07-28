@@ -249,6 +249,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   const hasStoredTabPreferenceRef = useRef(false)
   const hasHydratedTabPersistenceRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const crmFileInputRef = useRef<HTMLInputElement | null>(null)
   const teamTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const crmMessagesRef = useRef<HTMLDivElement | null>(null)
   const teamMessagesRef = useRef<HTMLDivElement | null>(null)
@@ -274,6 +275,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   const [sendingCrm, setSendingCrm] = useState(false)
   const [sendingTeam, setSendingTeam] = useState(false)
   const [startingThread, setStartingThread] = useState(false)
+  const [uploadingCrmAttachment, setUploadingCrmAttachment] = useState(false)
   const [uploadingTeamAttachment, setUploadingTeamAttachment] = useState(false)
   const [creatingGroup, setCreatingGroup] = useState(false)
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null)
@@ -291,6 +293,10 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   const [selectedThread, setSelectedThread] = useState<InternalThreadDetail | null>(null)
   const [crmMessageDraft, setCrmMessageDraft] = useState('')
   const [teamMessageDraft, setTeamMessageDraft] = useState('')
+  const [showCrmEmojiPicker, setShowCrmEmojiPicker] = useState(false)
+  const [pendingCrmAttachments, setPendingCrmAttachments] = useState<ChatAttachment[]>([])
+  const [crmAttachmentUpload, setCrmAttachmentUpload] = useState<UploadProgressState | null>(null)
+  const [crmLibraryPickerOpen, setCrmLibraryPickerOpen] = useState(false)
   const [pendingTeamAttachments, setPendingTeamAttachments] = useState<ChatAttachment[]>([])
   const [teamAttachmentUpload, setTeamAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [teamLibraryPickerOpen, setTeamLibraryPickerOpen] = useState(false)
@@ -547,6 +553,14 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     if (activeTab !== 'team') return
     setTeamMobilePanel(selectedThreadId ? 'chat' : 'options')
   }, [activeTab, selectedThreadId])
+
+  useEffect(() => {
+    setPendingCrmAttachments([])
+    setShowCrmEmojiPicker(false)
+    if (!selectedConversationId) {
+      setCrmMessageDraft('')
+    }
+  }, [selectedConversationId])
 
   useEffect(() => {
     const textarea = teamTextareaRef.current
@@ -810,27 +824,141 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     }
   }
 
-  async function handleSendCrmMessage() {
-    if (!selectedConversationId || !crmMessageDraft.trim()) {
-      alert('Escribe un mensaje antes de enviarlo.')
-      return
+  async function sendCrmMessage(options?: {
+    bodyText?: string
+    attachments?: ChatAttachment[]
+    suppressEmptyAlert?: boolean
+  }) {
+    if (!selectedConversationId) {
+      if (!options?.suppressEmptyAlert) {
+        alert('Selecciona una conversación CRM antes de responder.')
+      }
+      return false
     }
+
+    const bodyText = typeof options?.bodyText === 'string' ? options.bodyText : crmMessageDraft
+    const attachments = options?.attachments ?? pendingCrmAttachments
+    if (!bodyText.trim() && attachments.length === 0) {
+      if (!options?.suppressEmptyAlert) {
+        alert('Escribe un mensaje o agrega un adjunto antes de enviarlo.')
+      }
+      return false
+    }
+
+    const attachment = attachments[0]
+    const messageType = attachment?.type === 'image'
+      ? 'IMAGE'
+      : attachment?.type === 'audio'
+        ? 'AUDIO'
+        : attachment?.type === 'document'
+          ? 'DOCUMENT'
+          : 'TEXT'
+
     setSendingCrm(true)
     try {
       const json = await requestJson(`/api/crm/conversations/${selectedConversationId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bodyText: crmMessageDraft }),
+        body: JSON.stringify({
+          bodyText,
+          messageType,
+          attachments: attachment ? [{
+            type: attachment.type.toUpperCase(),
+            url: attachment.url,
+            filename: attachment.name,
+          }] : [],
+        }),
       })
       if (!json.success) {
         alert(json.error || 'No se pudo enviar el mensaje.')
-        return
+        return false
       }
       setCrmMessageDraft('')
+      setPendingCrmAttachments([])
+      setShowCrmEmojiPicker(false)
       await Promise.all([loadBase(), loadConversationDetail(selectedConversationId)])
       jumpCrmToBottom()
+      return true
     } finally {
       setSendingCrm(false)
+    }
+  }
+
+  async function handleSendCrmMessage() {
+    const sent = await sendCrmMessage()
+    if (!sent) {
+      return
+    }
+  }
+
+  function handleCrmMessageKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.shiftKey) return
+    event.preventDefault()
+    if (sendingCrm || !selectedConversationId || uploadingCrmAttachment) return
+    void handleSendCrmMessage()
+  }
+
+  function openCrmAttachmentPicker(kind: 'image' | 'document') {
+    if (!crmFileInputRef.current || !selectedConversationId || uploadingCrmAttachment) return
+    crmFileInputRef.current.accept = kind === 'image'
+      ? 'image/png,image/jpeg,image/webp,image/gif'
+      : 'application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv'
+    crmFileInputRef.current.value = ''
+    crmFileInputRef.current.click()
+  }
+
+  async function handleUploadCrmAttachment(file: File) {
+    if (!selectedConversationId) {
+      alert('Selecciona primero una conversación CRM para adjuntar archivos.')
+      return
+    }
+    setUploadingCrmAttachment(true)
+    setCrmAttachmentUpload({ name: file.name, progress: 0 })
+    try {
+      const json = await uploadFileWithProgress<ChatAttachment>({
+        url: `/api/crm/conversations/${selectedConversationId}/attachments`,
+        file,
+        onProgress: (progress) => {
+          setCrmAttachmentUpload({ name: file.name, progress })
+        },
+      })
+      if (!json.success || !json.data) {
+        alert(json.error || 'No se pudo subir el adjunto.')
+        return
+      }
+      const uploadedAttachment = json.data as ChatAttachment
+      const sent = await sendCrmMessage({
+        bodyText: crmMessageDraft,
+        attachments: [uploadedAttachment],
+        suppressEmptyAlert: true,
+      })
+      if (!sent) {
+        setPendingCrmAttachments((current) => [...current, uploadedAttachment])
+      }
+    } finally {
+      setUploadingCrmAttachment(false)
+      setCrmAttachmentUpload(null)
+      if (crmFileInputRef.current) crmFileInputRef.current.value = ''
+    }
+  }
+
+  async function handleCrmLibraryAttachment(item: CrmFileItem) {
+    if (!selectedConversationId) {
+      alert('Selecciona primero una conversación CRM para adjuntar archivos.')
+      return
+    }
+
+    const attachment = mapLibraryItemToAttachment(item)
+    const sent = await sendCrmMessage({
+      bodyText: crmMessageDraft,
+      attachments: [attachment],
+      suppressEmptyAlert: true,
+    })
+
+    if (!sent) {
+      setPendingCrmAttachments((current) =>
+        current.some((existing) => existing.url === attachment.url) ? current : [...current, attachment]
+      )
     }
   }
 
@@ -1109,6 +1237,13 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
 
   return (
     <div className="pointer-events-none fixed bottom-0 right-0 z-[70] flex flex-col items-end sm:right-6">
+      <CrmFileLibraryPicker
+        open={crmLibraryPickerOpen}
+        onOpenChange={setCrmLibraryPickerOpen}
+        onPick={handleCrmLibraryAttachment}
+        allowFolders={false}
+        title="Adjuntar desde Administrador de archivos"
+      />
       <div className="relative flex flex-col items-end">
         <div
           className={cn(
@@ -1323,18 +1458,76 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                   <div className="shrink-0 border-t border-slate-100 p-3">
                     <div className="grid gap-2 rounded-[22px] border border-slate-200 bg-slate-50/80 p-3">
                       <Label className="hidden text-xs font-semibold uppercase tracking-[0.14em] text-slate-600 sm:block">Responder al cliente</Label>
+                      <input
+                        ref={crmFileInputRef}
+                        type="file"
+                        className="hidden"
+                        accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]
+                          if (file) void handleUploadCrmAttachment(file)
+                        }}
+                      />
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => setShowCrmEmojiPicker((current) => !current)} disabled={!selectedConversationId}>
+                          <Smile className="h-4 w-4" />
+                        </Button>
+                        <Button type="button" variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => openCrmAttachmentPicker('image')} disabled={!selectedConversationId || uploadingCrmAttachment}>
+                          <ImageIcon className="h-4 w-4" />
+                        </Button>
+                        <Button type="button" variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => openCrmAttachmentPicker('document')} disabled={!selectedConversationId || uploadingCrmAttachment}>
+                          <Paperclip className="h-4 w-4" />
+                        </Button>
+                        <Button type="button" variant="outline" className="h-9 rounded-xl px-3 text-[11px]" onClick={() => setCrmLibraryPickerOpen(true)} disabled={!selectedConversationId || uploadingCrmAttachment}>
+                          Biblioteca
+                        </Button>
+                      </div>
+                      {showCrmEmojiPicker ? (
+                        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3">
+                          {EMOJI_CHOICES.map((emoji) => (
+                            <button key={emoji} type="button" onClick={() => setCrmMessageDraft((current) => `${current}${emoji}`)} className="rounded-xl border border-slate-200 px-2.5 py-2 text-lg hover:bg-slate-50">
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      {crmAttachmentUpload ? (
+                        <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                          <div className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                            <span className="truncate">Subiendo {crmAttachmentUpload.name}</span>
+                            <span className="text-xs font-semibold text-sky-700">{crmAttachmentUpload.progress}%</span>
+                          </div>
+                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full rounded-full bg-sky-600 transition-[width] duration-150" style={{ width: `${crmAttachmentUpload.progress}%` }} />
+                          </div>
+                        </div>
+                      ) : null}
+                      {pendingCrmAttachments.length > 0 ? (
+                        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3">
+                          {pendingCrmAttachments.map((attachment) => (
+                            <div key={`${attachment.url}-${attachment.name}`} className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-700">
+                              <span className="max-w-[220px] truncate">{attachment.name}</span>
+                              <button type="button" onClick={() => setPendingCrmAttachments((current) => current.filter((item) => item.url !== attachment.url))} className="text-slate-500 hover:text-slate-800">
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
                         <Textarea
                           value={crmMessageDraft}
                           onChange={(event) => setCrmMessageDraft(event.target.value)}
+                          onKeyDown={handleCrmMessageKeyDown}
                           rows={2}
-                          placeholder="Escribe una respuesta rápida sin salir de la pantalla..."
+                          placeholder="Escribe una respuesta, agrega emojis o adjunta imagen/documento..."
                           className="min-h-[52px] resize-none rounded-2xl bg-white text-sm leading-5 sm:min-h-[64px]"
                         />
-                        <Button size="sm" className="h-10 rounded-xl px-4 text-[10px]" onClick={() => void handleSendCrmMessage()} disabled={sendingCrm || !selectedConversationId}>
+                        <Button size="sm" className="h-10 rounded-xl px-4 text-[10px]" onClick={() => void handleSendCrmMessage()} disabled={sendingCrm || uploadingCrmAttachment || !selectedConversationId || (!crmMessageDraft.trim() && pendingCrmAttachments.length === 0)}>
                           {sendingCrm ? 'Enviando...' : 'Enviar'}
                         </Button>
                       </div>
+                      <p className="text-xs text-slate-500">{uploadingCrmAttachment ? `Subiendo adjunto... ${crmAttachmentUpload?.progress ?? 0}%` : 'Puedes enviar texto, emoticones, imágenes y documentos al cliente.'}</p>
                     </div>
                   </div>
                 </div>
