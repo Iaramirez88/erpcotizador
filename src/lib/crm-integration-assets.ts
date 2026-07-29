@@ -401,6 +401,7 @@ export function buildChatbotEmbedUrl(baseUrl: string, channelId: string, mode: C
 export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   const height = (args.height || '720').replace(/[^0-9]/g, '') || '720'
   const widgetMode = args.floatingLauncherEnabled === true
+  const defaultHeightValue = Number.parseInt(height, 10)
   const collapsedHeight = widgetMode && args.launcherStartsCollapsed !== false ? '164' : height
   const src = buildChatbotEmbedUrl(args.baseUrl, args.channelId, widgetMode ? 'widget' : 'iframe')
   const iframeId = `sgd-chatbot-iframe-${args.channelId}`
@@ -432,13 +433,17 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   if (!iframe) return;
 
   const channelId = '${args.channelId}';
-  const defaultHeight = ${height};
+  const defaultHeight = ${defaultHeightValue};
   const collapsedHeight = ${collapsedHeight};
   const maxHeight = Math.max(defaultHeight, 1600);
   const widgetMode = ${widgetMode ? 'true' : 'false'};
 
-  function applyHeight(nextHeight) {
-    const safeHeight = Math.max(collapsedHeight, Math.min(Number(nextHeight) || defaultHeight, maxHeight));
+  function applyHeight(nextHeight, panelOpen) {
+    const rawHeight = Number(nextHeight) || defaultHeight;
+    const boundedHeight = Math.min(rawHeight, maxHeight);
+    const isCollapsed = widgetMode && panelOpen === false;
+    const minHeight = isCollapsed ? collapsedHeight : defaultHeight;
+    const safeHeight = Math.max(minHeight, boundedHeight);
     iframe.style.height = safeHeight + 'px';
     iframe.style.background = '${iframeBackground}';
     iframe.style.boxShadow = widgetMode ? 'none' : '0 24px 60px rgba(15,23,42,.16)';
@@ -449,13 +454,13 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
     const data = event.data || {};
     if (data.type !== 'sgd-chatbot-embed-resize') return;
     if (data.channelId !== channelId) return;
-    applyHeight(data.height);
+    applyHeight(data.height, data.panelOpen);
   }
 
   window.addEventListener('message', handleMessage);
   iframe.addEventListener('load', function () {
     window.setTimeout(function () {
-      applyHeight(collapsedHeight);
+      applyHeight(collapsedHeight, ${widgetMode && args.launcherStartsCollapsed !== false ? 'false' : 'true'});
     }, 180);
   });
 })();

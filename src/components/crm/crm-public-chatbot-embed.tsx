@@ -1322,6 +1322,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
         type: 'sgd-chatbot-embed-resize',
         channelId: props.channelId,
         height: nextHeight,
+        panelOpen,
       }, '*')
     }
 
