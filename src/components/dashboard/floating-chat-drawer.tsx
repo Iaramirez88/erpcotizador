@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, BellOff, Check, CheckCheck, ChevronDown, Clock3, Copy, FileAudio, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, BellOff, Check, CheckCheck, ChevronDown, Clock3, Copy, FileAudio, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ChatImagePreview } from '@/components/ui/chat-image-preview'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -300,6 +300,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   const [open, setOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<ChatTab>('updates')
   const [teamView, setTeamView] = useState<'direct' | 'groups'>('direct')
+  const [crmMobilePanel, setCrmMobilePanel] = useState<'list' | 'chat'>('list')
   const [teamMobilePanel, setTeamMobilePanel] = useState<'options' | 'chat'>('options')
   const [loading, setLoading] = useState(true)
   const [crmLoading, setCrmLoading] = useState(false)
@@ -599,6 +600,13 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   }, [activeTab, selectedThreadId])
 
   useEffect(() => {
+    if (activeTab !== 'crm') return
+    if (!selectedConversationId) {
+      setCrmMobilePanel('list')
+    }
+  }, [activeTab, selectedConversationId])
+
+  useEffect(() => {
     setPendingCrmAttachments([])
     if (!selectedConversationId) {
       setCrmMessageDraft('')
@@ -844,6 +852,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     if (alert.kind === 'crm') {
       if (!canAccessCrmChat) return
       setActiveTab('crm')
+      setCrmMobilePanel('chat')
       setSelectedConversationId(alert.id)
       await loadConversationDetail(alert.id)
       return
@@ -1527,8 +1536,8 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
             ) : null}
 
             {activeTab === 'crm' && canAccessCrmChat ? (
-              <div className="grid h-full min-h-0 overflow-hidden grid-rows-[minmax(220px,0.88fr)_minmax(0,1.12fr)] md:grid-cols-[minmax(300px,0.92fr)_minmax(340px,1.08fr)] md:grid-rows-1">
-                <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-b border-slate-100 md:border-b-0 md:border-r">
+              <div className="grid h-full min-h-0 overflow-hidden md:grid-cols-[minmax(300px,0.92fr)_minmax(340px,1.08fr)] md:grid-rows-1">
+                <div className={cn('grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-b border-slate-100 md:border-b-0 md:border-r', crmMobilePanel === 'chat' ? 'hidden md:grid' : 'grid')}>
                   <div className="border-b border-slate-100 px-4 py-2.5">
                     <div className="space-y-2">
                       <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contacto, mensaje o canal..." className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
@@ -1552,7 +1561,10 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                   <div className="min-h-0 overflow-y-auto overflow-x-hidden p-2.5">
                     <div className="space-y-2.5">
                       {filteredConversations.map((item) => (
-                        <button key={item.id} type="button" onClick={() => setSelectedConversationId(item.id)} className={cn('w-full min-w-0 rounded-[22px] border px-3 py-2.5 text-left shadow-sm transition-shadow hover:shadow-md', selectedConversationId === item.id ? 'border-sky-300 bg-sky-50/80' : 'border-slate-200 bg-white')}>
+                        <button key={item.id} type="button" onClick={() => {
+                          setSelectedConversationId(item.id)
+                          setCrmMobilePanel('chat')
+                        }} className={cn('w-full min-w-0 rounded-[22px] border px-3 py-2.5 text-left shadow-sm transition-shadow hover:shadow-md', selectedConversationId === item.id ? 'border-sky-300 bg-sky-50/80' : 'border-slate-200 bg-white')}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex min-w-0 items-start gap-3">
                               <IdentityAvatar label={item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || item.contactPhone || item.contactEmail || 'Contacto CRM'} imageUrl={item.contactAvatarUrl} fallbackImageUrl="/crm-contact-avatar-default.svg" size="sm" />
@@ -1572,15 +1584,25 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                     </div>
                   </div>
                 </div>
-                <div className="relative grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden">
-                  <div className="border-b border-slate-100 px-4 py-2 text-[13px] text-slate-600">Detalle de conversación</div>
+                <div className={cn('relative min-h-0 min-w-0 overflow-hidden', crmMobilePanel === 'list' ? 'hidden md:grid' : 'grid', 'grid-rows-[auto_auto_minmax(0,1fr)_auto]')}>
+                  <div className="border-b border-slate-100 px-4 py-2 text-[13px] text-slate-600">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setCrmMobilePanel('list')} className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 md:hidden" aria-label="Volver a conversaciones CRM">
+                          <ArrowLeft className="h-4 w-4" />
+                          Atrás
+                        </button>
+                        <span>Detalle de conversación</span>
+                      </div>
+                    </div>
+                  </div>
                   <div className="shrink-0 px-4 pt-2.5">
                     {crmLoading ? <span className="sr-only">Cargando conversación...</span> : null}
                     {!crmLoading && !selectedConversation ? <p className="pb-3 text-sm text-slate-500">Selecciona un hilo CRM para responderlo aquí.</p> : null}
                     {selectedConversation ? (
                       <div className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-3">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div className="flex min-w-0 flex-1 items-center gap-3">
                             <IdentityAvatar label={selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Contacto CRM'} imageUrl={selectedConversation.contactAvatarUrl} fallbackImageUrl="/crm-contact-avatar-default.svg" size="md" />
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
@@ -1590,6 +1612,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                               <p className="mt-1 text-[13px] text-slate-600">{selectedConversation.contactPhone || selectedConversation.contactEmail || 'Sin dato de contacto visible'}</p>
                             </div>
                           </div>
+                          <div className="ml-auto shrink-0 self-start">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-xl" aria-label="Opciones del chat CRM">
@@ -1616,6 +1639,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
+                          </div>
                         </div>
                       </div>
                     ) : null}
