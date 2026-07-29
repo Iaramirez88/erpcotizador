@@ -326,6 +326,8 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = '—'
+  const whatsappPlaceholder = '+57 300 123 4567'
+  const phonePlaceholder = '601 234 5678'
   const opportunityOrderStorageKey = 'crm-opportunity-stage-order'
   const isFocusedOpportunities = props?.mode === 'opportunities'
   const canAccessAnyChat = Boolean(props?.canAccessTeamChat || props?.canAccessCrmChat)
@@ -2009,11 +2011,12 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
               </div>
               <div className="grid gap-2">
                 <Label>Teléfono</Label>
-                <Input value={leadForm.telefono} onChange={(e) => setLeadForm((prev) => ({ ...prev, telefono: e.target.value }))} />
+                <Input value={leadForm.telefono} onChange={(e) => setLeadForm((prev) => ({ ...prev, telefono: e.target.value }))} placeholder={phonePlaceholder} />
               </div>
               <div className="grid gap-1.5">
-                <Label>Celular</Label>
-                <Input value={leadForm.celular} onChange={(e) => setLeadForm((prev) => ({ ...prev, celular: e.target.value }))} />
+                <Label>WhatsApp / Celular</Label>
+                <Input value={leadForm.celular} onChange={(e) => setLeadForm((prev) => ({ ...prev, celular: e.target.value }))} placeholder={whatsappPlaceholder} />
+                <p className="text-xs text-muted-foreground">Incluye el indicativo del país. Ejemplo: +57 300 123 4567.</p>
               </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">

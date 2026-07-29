@@ -6,6 +6,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from 'next/navigation'
 import { ChevronDown, ChevronUp, SlidersHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ImportDialog } from "@/components/import/import-dialog"
@@ -87,6 +88,7 @@ function fmtMoney(value: number | null | undefined, locale: string) {
 }
 
 export default function ClientesPage() {
+  const router = useRouter()
   const { t, language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = t('common.na')
@@ -115,6 +117,7 @@ export default function ClientesPage() {
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [openingChatClienteId, setOpeningChatClienteId] = useState<string | null>(null)
   
   const [formData, setFormData] = useState({
     nombre: "",
@@ -286,6 +289,39 @@ export default function ClientesPage() {
   const openNewClienteModal = () => {
     resetForm()
     setIsModalOpen(true)
+  }
+
+  const resolveWhatsAppNumber = (cliente: Cliente) => (cliente.celular || cliente.telefono || '').trim()
+
+  const openWhatsappConversation = async (cliente: Cliente) => {
+    if (!resolveWhatsAppNumber(cliente)) {
+      alert('Este cliente no tiene un número de WhatsApp o teléfono registrado.')
+      return
+    }
+
+    setOpeningChatClienteId(cliente.id)
+    try {
+      const response = await fetch('/api/crm/conversations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ clienteId: cliente.id }),
+      })
+      const data = (await response.json().catch(() => null)) as { success?: boolean; error?: string; data?: { conversationId?: string } } | null
+
+      if (!response.ok || !data?.success || !data.data?.conversationId) {
+        alert(data?.error || 'No se pudo abrir la conversación de WhatsApp para este cliente.')
+        return
+      }
+
+      router.push(`/dashboard/crm/conversations?conversationId=${encodeURIComponent(data.data.conversationId)}`)
+    } catch (error) {
+      console.error('Error abriendo conversación WhatsApp:', error)
+      alert('No se pudo abrir la conversación de WhatsApp para este cliente.')
+    } finally {
+      setOpeningChatClienteId((current) => (current === cliente.id ? null : current))
+    }
   }
 
   const formatLocalDateInput = (date: Date) => {
@@ -588,6 +624,15 @@ export default function ClientesPage() {
                           <p className="mt-1 text-xs text-muted-foreground">{cliente.tipoDocumento} · {cliente.documento}</p>
                         </div>
                         {canManageClientes ? <MobileActionsMenu label={cliente.nombre}>
+                          <DropdownMenuItem
+                            disabled={!resolveWhatsAppNumber(cliente) || openingChatClienteId === cliente.id}
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              void openWhatsappConversation(cliente);
+                            }}
+                          >
+                            {openingChatClienteId === cliente.id ? 'Abriendo chat...' : 'Abrir chat WhatsApp'}
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onSelect={(e) => {
                             e.preventDefault();
@@ -632,6 +677,14 @@ export default function ClientesPage() {
                       </div>
 
                       <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void openWhatsappConversation(cliente)}
+                          disabled={!resolveWhatsAppNumber(cliente) || openingChatClienteId === cliente.id}
+                        >
+                          {openingChatClienteId === cliente.id ? 'Abriendo chat...' : 'Abrir chat WhatsApp'}
+                        </Button>
                         <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-1 font-medium text-blue-700">
                           Cotizaciones: {cliente.cotizacionesRangeCount || 0}
                         </span>
@@ -719,6 +772,14 @@ export default function ClientesPage() {
                         <td className="py-4 text-sm">{fmtDate(cliente.ultimaActividadAt, locale, naText)}</td>
                         <td className="py-4">
                           {canManageClientes ? <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void openWhatsappConversation(cliente)}
+                              disabled={!resolveWhatsAppNumber(cliente) || openingChatClienteId === cliente.id}
+                            >
+                              {openingChatClienteId === cliente.id ? 'Abriendo...' : 'Chat WhatsApp'}
+                            </Button>
                             <Button variant="outline" size="sm" onClick={() => handleEdit(cliente)}>
                               {t('common.edit')}
                             </Button>
@@ -999,15 +1060,16 @@ export default function ClientesPage() {
                 />
               </div>
 
-              {/* Celular */}
+              {/* Celular / WhatsApp */}
               <div className="col-span-2">
-                <Label htmlFor="celular">{t('customers.form.mobile')}</Label>
+                <Label htmlFor="celular">WhatsApp / {t('customers.form.mobile')}</Label>
                 <Input
                   id="celular"
                   value={formData.celular}
                   onChange={(e) => setFormData({ ...formData, celular: e.target.value })}
                   placeholder={t('customers.form.mobilePlaceholder')}
                 />
+                <p className="mt-1 text-xs text-muted-foreground">Este número se usará como destino principal al abrir el chat de WhatsApp desde el CRM.</p>
               </div>
 
               {/* Dirección */}

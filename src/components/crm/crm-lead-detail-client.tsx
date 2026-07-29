@@ -193,6 +193,8 @@ export function CrmLeadDetailClient(props: Props) {
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = '—'
+  const whatsappPlaceholder = '+57 300 123 4567'
+  const phonePlaceholder = '601 234 5678'
 
   const [loading, setLoading] = useState(true)
   const [lead, setLead] = useState<LeadDetail | null>(null)
@@ -705,11 +707,12 @@ export function CrmLeadDetailClient(props: Props) {
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label>Teléfono</Label>
-                <Input value={contactForm.telefono} onChange={(e) => setContactForm((prev) => ({ ...prev, telefono: e.target.value }))} />
+                <Input value={contactForm.telefono} onChange={(e) => setContactForm((prev) => ({ ...prev, telefono: e.target.value }))} placeholder={phonePlaceholder} />
               </div>
               <div className="grid gap-2">
-                <Label>Celular</Label>
-                <Input value={contactForm.celular} onChange={(e) => setContactForm((prev) => ({ ...prev, celular: e.target.value }))} />
+                <Label>WhatsApp / Celular</Label>
+                <Input value={contactForm.celular} onChange={(e) => setContactForm((prev) => ({ ...prev, celular: e.target.value }))} placeholder={whatsappPlaceholder} />
+                <p className="text-xs text-muted-foreground">Incluye el indicativo del país. Ejemplo: +57 300 123 4567.</p>
               </div>
             </div>
             <div className="grid gap-2">
@@ -763,13 +766,14 @@ export function CrmLeadDetailClient(props: Props) {
               </div>
               <div className="grid gap-2">
                 <Label>Teléfono</Label>
-                <Input value={convertForm.telefono} onChange={(e) => setConvertForm((prev) => ({ ...prev, telefono: e.target.value }))} />
+                <Input value={convertForm.telefono} onChange={(e) => setConvertForm((prev) => ({ ...prev, telefono: e.target.value }))} placeholder={phonePlaceholder} />
               </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label>Celular</Label>
-                <Input value={convertForm.celular} onChange={(e) => setConvertForm((prev) => ({ ...prev, celular: e.target.value }))} />
+                <Label>WhatsApp / Celular</Label>
+                <Input value={convertForm.celular} onChange={(e) => setConvertForm((prev) => ({ ...prev, celular: e.target.value }))} placeholder={whatsappPlaceholder} />
+                <p className="text-xs text-muted-foreground">Incluye el indicativo del país. Ejemplo: +57 300 123 4567.</p>
               </div>
               <div className="grid gap-2">
                 <Label>Ciudad</Label>
