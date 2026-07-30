@@ -166,11 +166,145 @@ type BriefRequirement = {
   hint: string
 }
 
+type LitografiaAiKnowledgeOptions = {
+  products: string[]
+  inks: string[]
+  papers: string[]
+  sizes: string[]
+  finishes: string[]
+}
+
+type LitografiaAiKnowledgeResponse = {
+  ok?: boolean
+  store?: {
+    document?: {
+      costos?: {
+        planchas?: Array<{ tintas?: string | null }>
+        impresion?: Array<{ tintas?: string | null }>
+        papeles?: Array<{ nombre?: string | null }>
+        corte_por_pliego?: Array<{ nombre?: string | null; medidas_cm?: string | null }>
+        plastificado?: Array<{ nombre?: string | null }>
+        terminados?: Array<{ nombre?: string | null }>
+      }
+    }
+  }
+}
+
+const SUPPORTED_PRODUCT_OPTIONS = [
+  { label: "Revista", terms: ["revista"] },
+  { label: "Cartilla", terms: ["cartilla"] },
+  { label: "Libro", terms: ["libro"] },
+  { label: "Volante", terms: ["volante", "flyer"] },
+  { label: "Plegable", terms: ["plegable", "diptico", "triptico"] },
+  { label: "Tarjeta", terms: ["tarjeta"] },
+  { label: "Carpeta", terms: ["carpeta", "folder"] },
+  { label: "Afiche", terms: ["afiche", "poster"] },
+  { label: "Etiqueta", terms: ["etiqueta", "sticker"] },
+  { label: "Caja", terms: ["caja", "empaque"] },
+]
+
+const PRODUCT_ALTERNATIVE_RULES = [
+  {
+    matcher: /(boleta|rifa|ticket|boleto)/,
+    suggestions: ["Tarjeta", "Volante", "Etiqueta"],
+    note: "Si no existe exacto en la base, prueba primero como tarjeta, volante o etiqueta numerada para que la consulta cierre mejor.",
+  },
+  {
+    matcher: /(separador|marcapagina|marcador de libro)/,
+    suggestions: ["Tarjeta", "Plegable", "Volante"],
+    note: "Cuando el item es especial, conviene aterrizarlo a una pieza simple compatible y luego ajustar tamaño y acabados.",
+  },
+]
+
 function normalizeBrief(value: string) {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+}
+
+function uniqueStrings(values: Array<string | null | undefined>, limit?: number) {
+  const seen = new Set<string>()
+  const items: string[] = []
+
+  for (const rawValue of values) {
+    const value = String(rawValue || "").trim()
+    if (!value) continue
+    const key = normalizeBrief(value)
+    if (seen.has(key)) continue
+    seen.add(key)
+    items.push(value)
+    if (limit && items.length >= limit) break
+  }
+
+  return items
+}
+
+function findSupportedProductLabel(value: string) {
+  const normalized = normalizeBrief(value)
+  if (!normalized) return null
+
+  for (const option of SUPPORTED_PRODUCT_OPTIONS) {
+    if (option.terms.some((term) => normalized.includes(term))) {
+      return option.label
+    }
+  }
+
+  return null
+}
+
+function extractQuickFieldsFromBrief(value: string) {
+  const quantityMatch = value.match(/(?:^|\s)(\d{1,3}(?:[.,]\d{3})+|\d{2,6})(?=\s+unidades|\s+unds?|\s+ejemplares|\s+piezas|\s+volantes|\s+tarjetas|\s+revistas|\s+libros|\s+carpetas|\s|$)/i)
+
+  return {
+    quantity: quantityMatch?.[1]?.trim() || "",
+    product: findSupportedProductLabel(value) || "",
+  }
+}
+
+function composeAssistantBrief(args: { brief: string; quantity: string; product: string }) {
+  const sections = [
+    args.quantity.trim() ? `Cantidad: ${args.quantity.trim()}` : null,
+    args.product.trim() ? `Producto: ${args.product.trim()}` : null,
+    args.brief.trim(),
+  ].filter((item): item is string => Boolean(item))
+
+  return sections.join("\n")
+}
+
+function pickRelevantOptions(options: string[], query: string, limit: number) {
+  if (!options.length) return []
+
+  const terms = Array.from(new Set(
+    normalizeBrief(query)
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length >= 3),
+  ))
+
+  if (!terms.length) return options.slice(0, limit)
+
+  const ranked = options
+    .map((option, index) => {
+      const haystack = normalizeBrief(option)
+      const score = terms.reduce((total, term) => total + (haystack.includes(term) ? 1 : 0), 0)
+      return { option, index, score }
+    })
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+
+  return ranked.length ? ranked.slice(0, limit).map((item) => item.option) : options.slice(0, limit)
+}
+
+function getProductSuggestionState(value: string) {
+  const supported = findSupportedProductLabel(value)
+  const normalized = normalizeBrief(value)
+  const fallback = PRODUCT_ALTERNATIVE_RULES.find((item) => item.matcher.test(normalized))
+
+  return {
+    supported,
+    alternatives: fallback?.suggestions ?? [],
+    note: fallback?.note ?? null,
+  }
 }
 
 function evaluateBriefRequirements(brief: string): BriefRequirement[] {
@@ -442,9 +576,18 @@ export function LitografiaAiAssistant(props: {
   const conversationViewportRef = useRef<HTMLDivElement | null>(null)
   const responseSectionRef = useRef<HTMLDivElement | null>(null)
   const [brief, setBrief] = useState("")
+  const [quickQuantity, setQuickQuantity] = useState("")
+  const [quickProduct, setQuickProduct] = useState("")
   const [result, setResult] = useState<LitografiaAiResult | null>(null)
   const [connection, setConnection] = useState<LitografiaAiConnection | null>(null)
   const [knowledgeSource, setKnowledgeSource] = useState<LitografiaAiKnowledgeSource | null>(null)
+  const [knowledgeOptions, setKnowledgeOptions] = useState<LitografiaAiKnowledgeOptions>({
+    products: SUPPORTED_PRODUCT_OPTIONS.map((item) => item.label),
+    inks: [],
+    papers: [],
+    sizes: [],
+    finishes: [],
+  })
   const [pricing, setPricing] = useState<LitografiaAiPricing | null>(null)
   const [handoff, setHandoff] = useState<LitografiaAiHandoff | null>(null)
   const [assistantReply, setAssistantReply] = useState<AssistantQuoteReply | null>(null)
@@ -470,10 +613,17 @@ export function LitografiaAiAssistant(props: {
     maximumFractionDigits: 0,
   })
 
+  const seedBriefComposer = (value: string) => {
+    const seeded = extractQuickFieldsFromBrief(value)
+    setBrief(value)
+    setQuickQuantity(seeded.quantity)
+    setQuickProduct(seeded.product)
+  }
+
   useEffect(() => {
     const seededBrief = String(props.initialBrief || "").trim()
     if (!seededBrief) return
-    setBrief(seededBrief)
+    seedBriefComposer(seededBrief)
     setResult(null)
     setConnection(null)
     setKnowledgeSource(null)
@@ -485,6 +635,48 @@ export function LitografiaAiAssistant(props: {
     setError(null)
     setCopied(false)
   }, [props.initialBrief, props.openToken])
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const loadKnowledgeOptions = async () => {
+      try {
+        const response = await fetch("/api/litografia/ia/conocimiento", {
+          cache: "no-store",
+          signal: controller.signal,
+        })
+        const json = (await response.json().catch(() => null)) as LitografiaAiKnowledgeResponse | null
+        if (!response.ok || !json?.ok) return
+
+        const costos = json.store?.document?.costos
+        if (!costos) return
+
+        setKnowledgeOptions({
+          products: SUPPORTED_PRODUCT_OPTIONS.map((item) => item.label),
+          inks: uniqueStrings([
+            ...(costos.planchas ?? []).map((item) => item.tintas ?? null),
+            ...(costos.impresion ?? []).map((item) => item.tintas ?? null),
+          ], 8),
+          papers: uniqueStrings((costos.papeles ?? []).map((item) => item.nombre ?? null), 12),
+          sizes: uniqueStrings((costos.corte_por_pliego ?? []).map((item) => {
+            const name = String(item.nombre || "").trim()
+            const size = String(item.medidas_cm || "").trim()
+            if (name && size) return `${name} (${size})`
+            return size || name || null
+          }), 10),
+          finishes: uniqueStrings([
+            ...(costos.plastificado ?? []).map((item) => item.nombre ?? null),
+            ...(costos.terminados ?? []).map((item) => item.nombre ?? null),
+          ], 14),
+        })
+      } catch {
+        if (controller.signal.aborted) return
+      }
+    }
+
+    void loadKnowledgeOptions()
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     const viewport = conversationViewportRef.current
@@ -533,7 +725,7 @@ export function LitografiaAiAssistant(props: {
     return () => controller.abort()
   }, [historyPage])
 
-  const submitAnalysis = async (args: { userMessage: string; resetConversation?: boolean }) => {
+  const submitAnalysis = async (args: { userMessage: string; resetConversation?: boolean; autoApply?: boolean }) => {
     setShowResponsePanel(true)
     setLoading(true)
     setError(null)
@@ -582,6 +774,10 @@ export function LitografiaAiAssistant(props: {
       })
       setHistoryPage(1)
       setFollowUp("")
+
+      if (args.autoApply && json.handoff && props.onApplyToClassic) {
+        props.onApplyToClassic(json.handoff)
+      }
     } catch (analysisError) {
       if (args.resetConversation) {
         setResult(null)
@@ -599,13 +795,13 @@ export function LitografiaAiAssistant(props: {
   }
 
   const handleAnalyze = async () => {
-    await submitAnalysis({ userMessage: brief.trim(), resetConversation: true })
+    await submitAnalysis({ userMessage: composedBrief.trim(), resetConversation: true })
   }
 
   const handleBriefKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== "Enter" || event.shiftKey) return
     event.preventDefault()
-    if (loading || brief.trim().length < 20) return
+    if (loading || composedBrief.trim().length < 20) return
     void handleAnalyze()
   }
 
@@ -692,6 +888,18 @@ export function LitografiaAiAssistant(props: {
     })
   }
 
+  const handleApplyHistoryEntry = async (entry: QuoteHistoryEntry) => {
+    if (!props.onApplyToClassic || loading) return
+    seedBriefComposer(entry.prompt)
+    await submitAnalysis({ userMessage: entry.prompt.trim(), resetConversation: true, autoApply: true })
+  }
+
+  const composedBrief = composeAssistantBrief({
+    brief,
+    quantity: quickQuantity,
+    product: quickProduct,
+  })
+
   const detectedFields = result
     ? [
         compactField("Trabajo", result.extracted.producto || result.quoteType),
@@ -742,8 +950,26 @@ export function LitografiaAiAssistant(props: {
   const pricingSource = result ? getPricingSourceLabel(pricing) : null
   const knowledgeSourceLabel = result ? getKnowledgeSourceLabel(knowledgeSource) : null
   const knowledgeUpdatedAt = formatDateTime(knowledgeSource?.updatedAt ?? null)
-  const briefRequirements = evaluateBriefRequirements(brief)
+  const briefRequirements = evaluateBriefRequirements(composedBrief)
   const readyRequirements = briefRequirements.filter((item) => item.met).length
+  const productSuggestion = getProductSuggestionState(quickProduct || brief)
+  const productOptions = pickRelevantOptions(
+    productSuggestion.alternatives.length ? productSuggestion.alternatives : knowledgeOptions.products,
+    quickProduct || brief,
+    6,
+  )
+  const sizeOptions = pickRelevantOptions(knowledgeOptions.sizes, composedBrief, 6)
+  const paperOptions = pickRelevantOptions(knowledgeOptions.papers, composedBrief, 6)
+  const inkOptions = pickRelevantOptions(knowledgeOptions.inks, composedBrief, 4)
+  const finishOptions = pickRelevantOptions(knowledgeOptions.finishes, composedBrief, 6)
+  const requirementOptionsByKey: Record<string, string[]> = {
+    product: productOptions,
+    quantity: [],
+    size: sizeOptions,
+    material: paperOptions,
+    inks: inkOptions,
+    finish: finishOptions,
+  }
   const modeTitle = assistantMode === "JSON_BASE" ? "Cotizar base JSON" : "Cotice con IA"
   const modeDescription = assistantMode === "JSON_BASE"
     ? "Describe el trabajo con la misma interfaz, pero esta prueba fuerza reglas internas y base JSON sin pasar por la interpretación IA del flujo actual."
@@ -797,7 +1023,48 @@ export function LitografiaAiAssistant(props: {
                 <p className="text-sm text-slate-500">Cumplidos {readyRequirements} de {briefRequirements.length}. Enter analiza y Shift+Enter agrega salto de línea.</p>
               </div>
               <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
-                {brief.trim().length} caracteres
+                {composedBrief.trim().length} caracteres
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              <div className={`rounded-2xl border px-4 py-4 ${quickQuantity.trim() ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+                <p className="text-sm font-semibold text-slate-900">Indique cantidad</p>
+                <p className="mt-1 text-sm text-slate-600">Ponga acá cuántas piezas, unidades o ejemplares necesita el cliente.</p>
+                <Label htmlFor="litografia-ai-quick-quantity" className="sr-only">Cantidad</Label>
+                <Textarea
+                  id="litografia-ai-quick-quantity"
+                  value={quickQuantity}
+                  onChange={(event) => setQuickQuantity(event.target.value)}
+                  className="mt-3 min-h-[72px] resize-none border-0 bg-white/70 px-0 py-0 text-lg font-semibold shadow-none focus-visible:ring-0"
+                  placeholder="Ejemplo: 300 unidades"
+                />
+              </div>
+              <div className={`rounded-2xl border px-4 py-4 ${quickProduct.trim() ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+                <p className="text-sm font-semibold text-slate-900">Indique producto</p>
+                <p className="mt-1 text-sm text-slate-600">Ponga acá el nombre base del trabajo para orientar mejor la lectura del brief.</p>
+                <Label htmlFor="litografia-ai-quick-product" className="sr-only">Producto</Label>
+                <Textarea
+                  id="litografia-ai-quick-product"
+                  value={quickProduct}
+                  onChange={(event) => setQuickProduct(event.target.value)}
+                  className="mt-3 min-h-[72px] resize-none border-0 bg-white/70 px-0 py-0 text-lg font-semibold shadow-none focus-visible:ring-0"
+                  placeholder="Ejemplo: separador de libro, volante, tarjeta"
+                />
+                {productSuggestion.note ? <p className="mt-3 text-xs text-slate-600">{productSuggestion.note}</p> : null}
+                {productOptions.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {productOptions.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setQuickProduct(option)}
+                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -805,13 +1072,22 @@ export function LitografiaAiAssistant(props: {
                 <div key={item.key} className={`rounded-xl border px-3 py-3 text-sm ${item.met ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
                   <p className="font-medium">{item.label}</p>
                   <p className="mt-1">{item.hint}</p>
+                  {requirementOptionsByKey[item.key]?.length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {requirementOptionsByKey[item.key].map((option) => (
+                        <span key={`${item.key}-${option}`} className="rounded-full border border-white/70 bg-white/80 px-2.5 py-1 text-[11px] font-medium text-slate-700">
+                          {option}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" onClick={handleAnalyze} disabled={loading || brief.trim().length < 20}>
+            <Button type="button" onClick={handleAnalyze} disabled={loading || composedBrief.trim().length < 20}>
               {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
               Analizar requerimiento
             </Button>
@@ -1104,8 +1380,11 @@ export function LitografiaAiAssistant(props: {
                 <p className="mt-3 whitespace-pre-line text-slate-800">{entry.summary || entry.prompt}</p>
                 {entry.responseText ? <p className="mt-2 line-clamp-3 text-slate-600">{entry.responseText}</p> : null}
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => setBrief(entry.prompt)}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => seedBriefComposer(entry.prompt)}>
                     Usar brief
+                  </Button>
+                  <Button type="button" size="sm" onClick={() => void handleApplyHistoryEntry(entry)} disabled={loading || !props.onApplyToClassic}>
+                    Pasar a cotización
                   </Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => setSelectedHistoryEntry(entry)}>
                     Ver consulta
@@ -1204,8 +1483,11 @@ export function LitografiaAiAssistant(props: {
               ) : null}
 
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" onClick={() => setBrief(selectedHistoryEntry.prompt)}>
+                <Button type="button" variant="outline" onClick={() => seedBriefComposer(selectedHistoryEntry.prompt)}>
                   Usar brief
+                </Button>
+                <Button type="button" onClick={() => void handleApplyHistoryEntry(selectedHistoryEntry)} disabled={loading || !props.onApplyToClassic}>
+                  Pasar a cotización
                 </Button>
               </div>
               </div>
