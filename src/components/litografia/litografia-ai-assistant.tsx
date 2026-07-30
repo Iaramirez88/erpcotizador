@@ -6,6 +6,7 @@ import { Sparkles, LoaderCircle, ClipboardCopy, ArrowRight, ExternalLink, Messag
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { LitografiaAiHandoff } from "@/lib/litografia-ai-handoff"
@@ -166,6 +167,24 @@ type BriefRequirement = {
   hint: string
 }
 
+type BriefRequirementKey = BriefRequirement["key"]
+
+type AdvancedSelectionState = {
+  product: string | null
+  size: string | null
+  material: string | null
+  inks: string | null
+  finish: string[]
+}
+
+type AdvancedSearchState = {
+  product: string
+  size: string
+  material: string
+  inks: string
+  finish: string
+}
+
 type LitografiaAiKnowledgeOptions = {
   products: string[]
   inks: string[]
@@ -272,6 +291,17 @@ function composeAssistantBrief(args: { brief: string; quantity: string; product:
   return sections.join("\n")
 }
 
+function composeAdvancedSelectionsBrief(selections: AdvancedSelectionState) {
+  const sections = [
+    selections.size ? `Tamaño o formato: ${selections.size}` : null,
+    selections.material ? `Papel o material: ${selections.material}` : null,
+    selections.inks ? `Tintas: ${selections.inks}` : null,
+    selections.finish.length ? `Acabados: ${selections.finish.join(", ")}` : null,
+  ].filter((item): item is string => Boolean(item))
+
+  return sections.join("\n")
+}
+
 function pickRelevantOptions(options: string[], query: string, limit: number) {
   if (!options.length) return []
 
@@ -293,6 +323,30 @@ function pickRelevantOptions(options: string[], query: string, limit: number) {
     .sort((left, right) => right.score - left.score || left.index - right.index)
 
   return ranked.length ? ranked.slice(0, limit).map((item) => item.option) : options.slice(0, limit)
+}
+
+function filterAndSortOptions(args: {
+  options: string[]
+  query: string
+  selected: string[]
+}) {
+  const terms = normalizeBrief(args.query)
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 2)
+  const selectedKeys = new Set(args.selected.map((item) => normalizeBrief(item)))
+
+  return args.options
+    .filter((option) => {
+      if (!terms.length) return true
+      const haystack = normalizeBrief(option)
+      return terms.every((term) => haystack.includes(term))
+    })
+    .sort((left, right) => {
+      const leftSelected = selectedKeys.has(normalizeBrief(left))
+      const rightSelected = selectedKeys.has(normalizeBrief(right))
+      if (leftSelected !== rightSelected) return leftSelected ? -1 : 1
+      return left.localeCompare(right, "es", { sensitivity: "base" })
+    })
 }
 
 function getProductSuggestionState(value: string) {
@@ -578,6 +632,21 @@ export function LitografiaAiAssistant(props: {
   const [brief, setBrief] = useState("")
   const [quickQuantity, setQuickQuantity] = useState("")
   const [quickProduct, setQuickProduct] = useState("")
+  const [guideMode, setGuideMode] = useState<"natural" | "advanced">("natural")
+  const [advancedSelections, setAdvancedSelections] = useState<AdvancedSelectionState>({
+    product: null,
+    size: null,
+    material: null,
+    inks: null,
+    finish: [],
+  })
+  const [advancedSearch, setAdvancedSearch] = useState<AdvancedSearchState>({
+    product: "",
+    size: "",
+    material: "",
+    inks: "",
+    finish: "",
+  })
   const [result, setResult] = useState<LitografiaAiResult | null>(null)
   const [connection, setConnection] = useState<LitografiaAiConnection | null>(null)
   const [knowledgeSource, setKnowledgeSource] = useState<LitografiaAiKnowledgeSource | null>(null)
@@ -618,6 +687,20 @@ export function LitografiaAiAssistant(props: {
     setBrief(value)
     setQuickQuantity(seeded.quantity)
     setQuickProduct(seeded.product)
+    setAdvancedSelections({
+      product: seeded.product || null,
+      size: null,
+      material: null,
+      inks: null,
+      finish: [],
+    })
+    setAdvancedSearch({
+      product: "",
+      size: "",
+      material: "",
+      inks: "",
+      finish: "",
+    })
   }
 
   useEffect(() => {
@@ -894,11 +977,38 @@ export function LitografiaAiAssistant(props: {
     await submitAnalysis({ userMessage: entry.prompt.trim(), resetConversation: true, autoApply: true })
   }
 
+  const handleSingleAdvancedSelection = (key: "product" | "size" | "material" | "inks", option: string) => {
+    setAdvancedSelections((current) => {
+      const nextValue = current[key] === option ? null : option
+      if (key === "product") {
+        setQuickProduct(nextValue || "")
+      }
+      return {
+        ...current,
+        [key]: nextValue,
+      }
+    })
+  }
+
+  const handleFinishToggle = (option: string) => {
+    setAdvancedSelections((current) => {
+      const exists = current.finish.includes(option)
+      return {
+        ...current,
+        finish: exists
+          ? current.finish.filter((item) => item !== option)
+          : [option, ...current.finish],
+      }
+    })
+  }
+
+  const composedAdvancedBrief = composeAdvancedSelectionsBrief(advancedSelections)
   const composedBrief = composeAssistantBrief({
     brief,
     quantity: quickQuantity,
-    product: quickProduct,
+    product: advancedSelections.product || quickProduct,
   })
+  const finalBrief = [composedBrief, composedAdvancedBrief].filter(Boolean).join("\n")
 
   const detectedFields = result
     ? [
@@ -950,7 +1060,7 @@ export function LitografiaAiAssistant(props: {
   const pricingSource = result ? getPricingSourceLabel(pricing) : null
   const knowledgeSourceLabel = result ? getKnowledgeSourceLabel(knowledgeSource) : null
   const knowledgeUpdatedAt = formatDateTime(knowledgeSource?.updatedAt ?? null)
-  const briefRequirements = evaluateBriefRequirements(composedBrief)
+  const briefRequirements = evaluateBriefRequirements(finalBrief)
   const readyRequirements = briefRequirements.filter((item) => item.met).length
   const productSuggestion = getProductSuggestionState(quickProduct || brief)
   const productOptions = pickRelevantOptions(
@@ -969,6 +1079,41 @@ export function LitografiaAiAssistant(props: {
     material: paperOptions,
     inks: inkOptions,
     finish: finishOptions,
+  }
+  const advancedOptionLists = {
+    product: filterAndSortOptions({
+      options: uniqueStrings([...knowledgeOptions.products, ...productSuggestion.alternatives]),
+      query: advancedSearch.product,
+      selected: advancedSelections.product ? [advancedSelections.product] : [],
+    }),
+    size: filterAndSortOptions({
+      options: knowledgeOptions.sizes,
+      query: advancedSearch.size,
+      selected: advancedSelections.size ? [advancedSelections.size] : [],
+    }),
+    material: filterAndSortOptions({
+      options: knowledgeOptions.papers,
+      query: advancedSearch.material,
+      selected: advancedSelections.material ? [advancedSelections.material] : [],
+    }),
+    inks: filterAndSortOptions({
+      options: knowledgeOptions.inks,
+      query: advancedSearch.inks,
+      selected: advancedSelections.inks ? [advancedSelections.inks] : [],
+    }),
+    finish: filterAndSortOptions({
+      options: knowledgeOptions.finishes,
+      query: advancedSearch.finish,
+      selected: advancedSelections.finish,
+    }),
+  }
+  const selectionSummaryByKey: Record<BriefRequirementKey, string[]> = {
+    product: advancedSelections.product ? [advancedSelections.product] : (quickProduct ? [quickProduct] : []),
+    quantity: quickQuantity ? [quickQuantity] : [],
+    size: advancedSelections.size ? [advancedSelections.size] : [],
+    material: advancedSelections.material ? [advancedSelections.material] : [],
+    inks: advancedSelections.inks ? [advancedSelections.inks] : [],
+    finish: advancedSelections.finish,
   }
   const modeTitle = assistantMode === "JSON_BASE" ? "Cotizar base JSON" : "Cotice con IA"
   const modeDescription = assistantMode === "JSON_BASE"
@@ -1023,8 +1168,27 @@ export function LitografiaAiAssistant(props: {
                 <p className="text-sm text-slate-500">Cumplidos {readyRequirements} de {briefRequirements.length}. Enter analiza y Shift+Enter agrega salto de línea.</p>
               </div>
               <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
-                {composedBrief.trim().length} caracteres
+                {finalBrief.trim().length} caracteres
               </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={guideMode === "natural" ? "default" : "outline"}
+                onClick={() => setGuideMode("natural")}
+              >
+                Consulta natural
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={guideMode === "advanced" ? "default" : "outline"}
+                onClick={() => setGuideMode("advanced")}
+              >
+                Consulta manual avanzada
+              </Button>
+              <p className="self-center text-xs text-slate-500">Puedes escribir libremente y, si quieres afinar, apoyar la consulta con selecciones del JSON actual.</p>
             </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               <div className={`rounded-2xl border px-4 py-4 ${quickQuantity.trim() ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
@@ -1051,7 +1215,7 @@ export function LitografiaAiAssistant(props: {
                   placeholder="Ejemplo: separador de libro, volante, tarjeta"
                 />
                 {productSuggestion.note ? <p className="mt-3 text-xs text-slate-600">{productSuggestion.note}</p> : null}
-                {productOptions.length ? (
+                {guideMode === "natural" && productOptions.length ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {productOptions.map((option) => (
                       <button
@@ -1067,11 +1231,156 @@ export function LitografiaAiAssistant(props: {
                 ) : null}
               </div>
             </div>
+            {guideMode === "advanced" ? (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Opciones actuales del JSON</p>
+                    <p className="text-sm text-slate-500">Marca opciones reales del catálogo. La escritura libre sigue activa y estas selecciones solo refuerzan la consulta.</p>
+                  </div>
+                  <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                    Selección manual opcional
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <div className={`flex h-[22rem] flex-col rounded-xl border px-3 py-3 text-sm ${briefRequirements.find((item) => item.key === "product")?.met ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
+                    <p className="font-medium">Producto</p>
+                    <p className="mt-1 text-current/80">Opciones actuales del JSON para orientar el tipo base del trabajo.</p>
+                    {selectionSummaryByKey.product.length ? <p className="mt-2 text-xs font-semibold">Seleccionado: {selectionSummaryByKey.product.join(", ")}</p> : null}
+                    <Input
+                      value={advancedSearch.product}
+                      onChange={(event) => setAdvancedSearch((current) => ({ ...current, product: event.target.value }))}
+                      placeholder="Buscar producto"
+                      className="mt-3 bg-white"
+                    />
+                    <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                      {advancedOptionLists.product.map((option) => {
+                        const checked = selectionSummaryByKey.product.includes(option)
+                        return (
+                          <label key={`product-${option}`} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 ${checked ? "border-emerald-300 bg-white" : "border-white/70 bg-white/70"}`}>
+                            <input type="checkbox" checked={checked} onChange={() => handleSingleAdvancedSelection("product", option)} className="mt-0.5 h-4 w-4 rounded border-slate-300" />
+                            <span className="text-sm">{option}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className={`flex h-[22rem] flex-col rounded-xl border px-3 py-3 text-sm ${briefRequirements.find((item) => item.key === "quantity")?.met ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
+                    <p className="font-medium">Cantidad</p>
+                    <p className="mt-1 text-current/80">Este dato sigue siendo manual para no encerrar la consulta en cantidades fijas.</p>
+                    {selectionSummaryByKey.quantity.length ? <p className="mt-2 text-xs font-semibold">Seleccionado: {selectionSummaryByKey.quantity.join(", ")}</p> : null}
+                    <Textarea
+                      value={quickQuantity}
+                      onChange={(event) => setQuickQuantity(event.target.value)}
+                      className="mt-3 min-h-[120px] bg-white"
+                      placeholder="Ejemplo: 5.000 unidades"
+                    />
+                    <div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-lg border border-white/70 bg-white/70 px-3 py-3 text-xs text-current/80">
+                      La cantidad seleccionada aquí también cuenta para poner esta caja en verde y complementar la consulta natural.
+                    </div>
+                  </div>
+
+                  <div className={`flex h-[22rem] flex-col rounded-xl border px-3 py-3 text-sm ${briefRequirements.find((item) => item.key === "size")?.met ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
+                    <p className="font-medium">Tamaño o formato</p>
+                    <p className="mt-1 text-current/80">Opciones actuales del JSON para medidas y referencias comerciales.</p>
+                    {selectionSummaryByKey.size.length ? <p className="mt-2 text-xs font-semibold">Seleccionado: {selectionSummaryByKey.size.join(", ")}</p> : null}
+                    <Input
+                      value={advancedSearch.size}
+                      onChange={(event) => setAdvancedSearch((current) => ({ ...current, size: event.target.value }))}
+                      placeholder="Buscar tamaño"
+                      className="mt-3 bg-white"
+                    />
+                    <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                      {advancedOptionLists.size.map((option) => {
+                        const checked = selectionSummaryByKey.size.includes(option)
+                        return (
+                          <label key={`size-${option}`} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 ${checked ? "border-emerald-300 bg-white" : "border-white/70 bg-white/70"}`}>
+                            <input type="checkbox" checked={checked} onChange={() => handleSingleAdvancedSelection("size", option)} className="mt-0.5 h-4 w-4 rounded border-slate-300" />
+                            <span className="text-sm">{option}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className={`flex h-[22rem] flex-col rounded-xl border px-3 py-3 text-sm ${briefRequirements.find((item) => item.key === "material")?.met ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
+                    <p className="font-medium">Papel o material</p>
+                    <p className="mt-1 text-current/80">Opciones actuales del JSON para papel base y gramajes existentes.</p>
+                    {selectionSummaryByKey.material.length ? <p className="mt-2 text-xs font-semibold">Seleccionado: {selectionSummaryByKey.material.join(", ")}</p> : null}
+                    <Input
+                      value={advancedSearch.material}
+                      onChange={(event) => setAdvancedSearch((current) => ({ ...current, material: event.target.value }))}
+                      placeholder="Buscar papel o material"
+                      className="mt-3 bg-white"
+                    />
+                    <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                      {advancedOptionLists.material.map((option) => {
+                        const checked = selectionSummaryByKey.material.includes(option)
+                        return (
+                          <label key={`material-${option}`} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 ${checked ? "border-emerald-300 bg-white" : "border-white/70 bg-white/70"}`}>
+                            <input type="checkbox" checked={checked} onChange={() => handleSingleAdvancedSelection("material", option)} className="mt-0.5 h-4 w-4 rounded border-slate-300" />
+                            <span className="text-sm">{option}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className={`flex h-[22rem] flex-col rounded-xl border px-3 py-3 text-sm ${briefRequirements.find((item) => item.key === "inks")?.met ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
+                    <p className="font-medium">Tintas</p>
+                    <p className="mt-1 text-current/80">Opciones actuales del JSON para configuraciones de impresión.</p>
+                    {selectionSummaryByKey.inks.length ? <p className="mt-2 text-xs font-semibold">Seleccionado: {selectionSummaryByKey.inks.join(", ")}</p> : null}
+                    <Input
+                      value={advancedSearch.inks}
+                      onChange={(event) => setAdvancedSearch((current) => ({ ...current, inks: event.target.value }))}
+                      placeholder="Buscar tintas"
+                      className="mt-3 bg-white"
+                    />
+                    <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                      {advancedOptionLists.inks.map((option) => {
+                        const checked = selectionSummaryByKey.inks.includes(option)
+                        return (
+                          <label key={`inks-${option}`} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 ${checked ? "border-emerald-300 bg-white" : "border-white/70 bg-white/70"}`}>
+                            <input type="checkbox" checked={checked} onChange={() => handleSingleAdvancedSelection("inks", option)} className="mt-0.5 h-4 w-4 rounded border-slate-300" />
+                            <span className="text-sm">{option}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className={`flex h-[22rem] flex-col rounded-xl border px-3 py-3 text-sm ${briefRequirements.find((item) => item.key === "finish")?.met ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
+                    <p className="font-medium">Acabados</p>
+                    <p className="mt-1 text-current/80">Opciones actuales del JSON para plastificados y terminados disponibles.</p>
+                    {selectionSummaryByKey.finish.length ? <p className="mt-2 text-xs font-semibold">Seleccionado: {selectionSummaryByKey.finish.join(", ")}</p> : null}
+                    <Input
+                      value={advancedSearch.finish}
+                      onChange={(event) => setAdvancedSearch((current) => ({ ...current, finish: event.target.value }))}
+                      placeholder="Buscar acabado"
+                      className="mt-3 bg-white"
+                    />
+                    <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                      {advancedOptionLists.finish.map((option) => {
+                        const checked = selectionSummaryByKey.finish.includes(option)
+                        return (
+                          <label key={`finish-${option}`} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 ${checked ? "border-emerald-300 bg-white" : "border-white/70 bg-white/70"}`}>
+                            <input type="checkbox" checked={checked} onChange={() => handleFinishToggle(option)} className="mt-0.5 h-4 w-4 rounded border-slate-300" />
+                            <span className="text-sm">{option}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {briefRequirements.map((item) => (
                 <div key={item.key} className={`rounded-xl border px-3 py-3 text-sm ${item.met ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
                   <p className="font-medium">{item.label}</p>
                   <p className="mt-1">{item.hint}</p>
+                  {selectionSummaryByKey[item.key]?.length ? <p className="mt-2 text-xs font-semibold">Seleccionado: {selectionSummaryByKey[item.key].join(", ")}</p> : null}
                   {requirementOptionsByKey[item.key]?.length ? (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {requirementOptionsByKey[item.key].map((option) => (
@@ -1087,7 +1396,7 @@ export function LitografiaAiAssistant(props: {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" onClick={handleAnalyze} disabled={loading || composedBrief.trim().length < 20}>
+            <Button type="button" onClick={handleAnalyze} disabled={loading || finalBrief.trim().length < 20}>
               {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
               Analizar requerimiento
             </Button>
