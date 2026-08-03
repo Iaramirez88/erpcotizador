@@ -964,7 +964,7 @@ export function LitografiaAiVectorizerPanel() {
           setGenerationModalOpen(open)
         }}
       >
-        <DialogContent hideClose={loading || approvalLoading} className="flex max-h-[92vh] max-w-6xl flex-col overflow-hidden border-slate-800 bg-slate-950 text-white">
+        <DialogContent hideClose={loading || approvalLoading} className="flex max-h-[92vh] max-w-6xl flex-col overflow-y-auto border-slate-800 bg-slate-950 text-white">
           <DialogHeader className="space-y-2 border-b border-slate-800 pb-4 text-left">
             <DialogTitle className="text-xl text-white">{loading ? "Vectorizando imagen" : savedVector ? "Vector listo y guardado" : "Revisión del vector generado"}</DialogTitle>
             <p className="text-sm text-slate-300">
@@ -974,9 +974,9 @@ export function LitografiaAiVectorizerPanel() {
             </p>
           </DialogHeader>
 
-          <div className="min-h-0 flex-1 overflow-hidden py-4">
-            <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-              <div className="min-h-0 overflow-y-auto pr-2">
+          <div className="py-4">
+            <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="pr-2">
                 {loading ? (
                   <div className="flex min-h-[60vh] flex-col items-center justify-center gap-5 rounded-3xl border border-slate-800 bg-black/40 px-6 text-center">
                     <LoaderCircle className="h-14 w-14 animate-spin text-white" />
@@ -1000,8 +1000,8 @@ export function LitografiaAiVectorizerPanel() {
                 )}
               </div>
 
-              <div className="min-h-0 overflow-y-auto pr-1">
-                <div className="flex min-h-full flex-col gap-4 pr-2">
+              <div className="pr-1">
+                <div className="flex flex-col gap-4 pr-2">
                   {advancedOptionsContent}
 
                   <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-4 text-sm text-slate-200">
