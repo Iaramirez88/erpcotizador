@@ -24,6 +24,7 @@ export type EditorialKnowledgeEstimate = {
   paperQuantityLabel?: string | null
   sizeLabel: string | null
   productionCutLabel?: string | null
+  marginPct: number
   productionCost: number | null
   utility: number | null
   subtotalBeforeIva: number | null
@@ -437,6 +438,7 @@ export function estimateEditorialKnowledgeCost(args: {
   extracted: ExtractedData
   document: LitografiaAiKnowledgeDocument
   catalogFinishes?: CatalogFinish[]
+  marginPctOverride?: number
 }): EditorialKnowledgeEstimate {
   const { brief, extracted, document } = args
   const catalogFinishes = args.catalogFinishes ?? []
@@ -447,7 +449,7 @@ export function estimateEditorialKnowledgeCost(args: {
   const normalizedBrief = normalizeText(brief)
   const isEditorial = /cartilla|revista|libro/.test(normalizedBrief)
 
-  const marginPct = Number(document.parametros.margen_utilidad_porcentaje || 40)
+  const marginPct = Number(args.marginPctOverride ?? (document.parametros.margen_utilidad_porcentaje || 40))
   const ivaPct = Number(document.parametros.iva_porcentaje || 19)
 
   if (!isEditorial || quantity <= 0 || widthCm <= 0 || heightCm <= 0 || innerPages <= 0) {
@@ -459,6 +461,7 @@ export function estimateEditorialKnowledgeCost(args: {
       paperName: null,
       paperSheet: null,
       sizeLabel: null,
+      marginPct,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -492,6 +495,7 @@ export function estimateEditorialKnowledgeCost(args: {
       paperName: null,
       paperSheet: null,
       sizeLabel: finalSizeName,
+      marginPct,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -530,6 +534,7 @@ export function estimateEditorialKnowledgeCost(args: {
       paperName: null,
       paperSheet: null,
       sizeLabel: finalSizeName,
+      marginPct,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -553,6 +558,7 @@ export function estimateEditorialKnowledgeCost(args: {
       paperName: buildMaterialSummary(innerPaperSelection.paper.nombre, coverPaperSelection.paper.nombre),
       paperSheet: `${innerPaperSelection.paperSheet} / ${coverPaperSelection.paperSheet}`,
       sizeLabel: `${finalSizeName} cerrado / ${openSize.widthCm} x ${openSize.heightCm} cm abierto`,
+      marginPct,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -644,6 +650,7 @@ export function estimateEditorialKnowledgeCost(args: {
     paperName: buildMaterialSummary(innerPaperSelection.paper.nombre, coverPaperSelection.paper.nombre),
     paperSheet: `${innerPaperSelection.paperSheet} / ${coverPaperSelection.paperSheet}`,
     sizeLabel: `${finalSizeName} cerrado / ${openSize.widthCm} x ${openSize.heightCm} cm abierto`,
+    marginPct,
     productionCost,
     utility,
     subtotalBeforeIva,
@@ -723,13 +730,14 @@ export function estimateKnowledgeOnlyCost(args: {
   brief: string
   extracted: ExtractedData
   document: LitografiaAiKnowledgeDocument
+  marginPctOverride?: number
 }): EditorialKnowledgeEstimate {
   const { brief, extracted, document } = args
   const quantity = Math.max(0, Math.trunc(Number(extracted.cantidad || 0)))
   const widthCm = Number(extracted.anchoCm || 0)
   const heightCm = Number(extracted.altoCm || 0)
   const tintas = extracted.tintas ?? 4
-  const marginPct = Number(document.parametros.margen_utilidad_porcentaje || 40)
+  const marginPct = Number(args.marginPctOverride ?? (document.parametros.margen_utilidad_porcentaje || 40))
   const ivaPct = Number(document.parametros.iva_porcentaje || 19)
 
   if (quantity <= 0 || widthCm <= 0 || heightCm <= 0 || !extracted.material) {
@@ -744,6 +752,7 @@ export function estimateKnowledgeOnlyCost(args: {
       paperQuantityLabel: null,
       sizeLabel: null,
       productionCutLabel: null,
+      marginPct,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -755,7 +764,7 @@ export function estimateKnowledgeOnlyCost(args: {
   }
 
   const isEditorial = /cartilla|revista|libro/.test(normalizeText(brief))
-  if (isEditorial) return estimateEditorialKnowledgeCost({ brief, extracted, document })
+  if (isEditorial) return estimateEditorialKnowledgeCost({ brief, extracted, document, marginPctOverride: marginPct })
 
   const sizeLabel = findFinalSizeName(document, widthCm, heightCm) ?? `${widthCm} x ${heightCm} cm`
   const machineSize = inferMachineSize(widthCm, heightCm, tintas)
@@ -782,6 +791,7 @@ export function estimateKnowledgeOnlyCost(args: {
       paperQuantityLabel: null,
       sizeLabel,
       productionCutLabel: machineSize?.key ?? null,
+      marginPct,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -808,6 +818,7 @@ export function estimateKnowledgeOnlyCost(args: {
       paperQuantityLabel: null,
       sizeLabel,
       productionCutLabel: machineSize.key,
+      marginPct,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -923,6 +934,7 @@ export function estimateKnowledgeOnlyCost(args: {
     paperQuantityLabel: paperPliegos != null ? `${paperPliegos} pliegos` : null,
     sizeLabel,
     productionCutLabel: machineSize.key,
+    marginPct,
     productionCost,
     utility,
     subtotalBeforeIva,

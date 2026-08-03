@@ -1229,6 +1229,7 @@ export default function CotizadorPage() {
 
     const metaStr = `LITOGRAFIA_META:${JSON.stringify({
       version: 3,
+      margenPct: String(Number(quotedItem.marginPct ?? 40) || 40),
       itemSubtotalIncludesIva: true,
       itemIvaPct: quotedItem.ivaPct,
       subtotalSinIva: quotedItem.subtotalBeforeIva,

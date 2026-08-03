@@ -93,6 +93,7 @@ type CostBreakdown = {
   paperName: string | null
   paperSheet: string | null
   sizeLabel: string | null
+  marginPct: number
   productionCost: number | null
   utility: number | null
   subtotalBeforeIva: number | null
@@ -291,6 +292,16 @@ function composeAssistantBrief(args: { brief: string; quantity: string; product:
   return sections.join("\n")
 }
 
+function clampMarginPct(value: number) {
+  if (!Number.isFinite(value)) return 40
+  return Math.min(500, Math.max(40, Math.round(value)))
+}
+
+function parseMarginInput(value: string) {
+  const parsed = Number(String(value || "").replace(',', '.').trim())
+  return clampMarginPct(parsed)
+}
+
 function composeAdvancedSelectionsBrief(selections: AdvancedSelectionState) {
   const sections = [
     selections.size ? `Tamaño o formato: ${selections.size}` : null,
@@ -361,15 +372,28 @@ function getProductSuggestionState(value: string) {
   }
 }
 
-function evaluateBriefRequirements(brief: string): BriefRequirement[] {
+function evaluateBriefRequirements(args: {
+  brief: string
+  quickQuantity: string
+  quickProduct: string
+  advancedSelections: AdvancedSelectionState
+}): BriefRequirement[] {
+  const brief = args.brief
   const normalized = normalizeBrief(brief)
   const hasFolderLetter = /(carpeta).*(carta)|(carta).*(carpeta)|(folder).*(letter)/.test(normalized)
-  const hasProduct = /(volante|flyer|tarjeta|revista|cartilla|libro|carpeta|folder|plegable|diptico|triptico|afiche|poster|etiqueta|sticker|caja|empaque)/.test(normalized)
-  const hasQuantity = /(?:^|\s)(\d{1,3}(?:[.,]\d{3})+|\d{2,6})(?:\s+unidades|\s+unds?|\s+ejemplares|\s+piezas|\s+volantes|\s+tarjetas|\s+revistas|\s+libros|\s+carpetas|\s*$)/.test(normalized)
-  const hasSize = /(\d{1,3}(?:[.,]\d{1,2})?\s*(?:x|por)\s*\d{1,3}(?:[.,]\d{1,2})?\s*cm)|media carta|carta|oficio|a4|cuarto|octavo|doble carta|pliego/.test(normalized)
-  const hasMaterial = /(propalcote|bond|cartulina|opalina|adhesivo|kimberly|periodico)/.test(normalized)
-  const hasTintas = /\b([124])x([014])\b|full color|policromia|cuatricromia|cmyk|\b[124]\s*tintas?\b/.test(normalized)
-  const hasFinish = /(plastificad|laminad|barniz uv|uv parcial|parcial uv|troquelad|grafad|plegad|perforad|esquinas redondeadas)/.test(normalized)
+  const hasProduct = Boolean(args.quickProduct.trim() || args.advancedSelections.product)
+    || /(volante|flyer|tarjeta|revista|cartilla|libro|carpeta|folder|plegable|diptico|triptico|afiche|poster|etiqueta|sticker|caja|empaque)/.test(normalized)
+  const hasQuantity = Boolean(args.quickQuantity.trim())
+    || /cantidad:\s*(\d{1,3}(?:[.,]\d{3})+|\d{1,7})(?:\b|\s)/.test(normalized)
+    || /(?:^|\s)(\d{1,3}(?:[.,]\d{3})+|\d{2,6})(?:\s+unidades|\s+unds?|\s+ejemplares|\s+piezas|\s+volantes|\s+tarjetas|\s+revistas|\s+libros|\s+carpetas|\s*$)/.test(normalized)
+  const hasSize = Boolean(args.advancedSelections.size)
+    || /(\d{1,3}(?:[.,]\d{1,2})?\s*(?:x|por)\s*\d{1,3}(?:[.,]\d{1,2})?\s*cm)|media carta|carta|oficio|a4|cuarto|octavo|doble carta|pliego/.test(normalized)
+  const hasMaterial = Boolean(args.advancedSelections.material)
+    || /(propalcote|bond|cartulina|opalina|adhesivo|kimberly|periodico)/.test(normalized)
+  const hasTintas = Boolean(args.advancedSelections.inks)
+    || /\b([124])x([014])\b|full color|policromia|cuatricromia|cmyk|\b[124]\s*tintas?\b/.test(normalized)
+  const hasFinish = Boolean(args.advancedSelections.finish.length)
+    || /(plastificad|laminad|barniz uv|uv parcial|parcial uv|troquelad|grafad|plegad|perforad|esquinas redondeadas)/.test(normalized)
 
   return [
     {
@@ -630,6 +654,7 @@ export function LitografiaAiAssistant(props: {
   const conversationViewportRef = useRef<HTMLDivElement | null>(null)
   const responseSectionRef = useRef<HTMLDivElement | null>(null)
   const [brief, setBrief] = useState("")
+  const [quickMarginPct, setQuickMarginPct] = useState("40")
   const [quickQuantity, setQuickQuantity] = useState("")
   const [quickProduct, setQuickProduct] = useState("")
   const [guideMode, setGuideMode] = useState<"natural" | "advanced">("natural")
@@ -685,6 +710,7 @@ export function LitografiaAiAssistant(props: {
   const seedBriefComposer = (value: string) => {
     const seeded = extractQuickFieldsFromBrief(value)
     setBrief(value)
+    setQuickMarginPct("40")
     setQuickQuantity(seeded.quantity)
     setQuickProduct(seeded.product)
     setAdvancedSelections({
@@ -821,7 +847,12 @@ export function LitografiaAiAssistant(props: {
       const res = await fetch("/api/litografia/ia/cotizar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief: args.userMessage, conversation: nextConversation, mode: assistantMode }),
+        body: JSON.stringify({
+          brief: args.userMessage,
+          conversation: nextConversation,
+          mode: assistantMode,
+          marginPct: parseMarginInput(quickMarginPct),
+        }),
       })
 
       const json = (await res.json().catch(() => null)) as LitografiaAiAnalyzeResponse | null
@@ -1009,6 +1040,7 @@ export function LitografiaAiAssistant(props: {
     product: advancedSelections.product || quickProduct,
   })
   const finalBrief = [composedBrief, composedAdvancedBrief].filter(Boolean).join("\n")
+  const currentMarginPct = parseMarginInput(quickMarginPct)
 
   const detectedFields = result
     ? [
@@ -1060,7 +1092,12 @@ export function LitografiaAiAssistant(props: {
   const pricingSource = result ? getPricingSourceLabel(pricing) : null
   const knowledgeSourceLabel = result ? getKnowledgeSourceLabel(knowledgeSource) : null
   const knowledgeUpdatedAt = formatDateTime(knowledgeSource?.updatedAt ?? null)
-  const briefRequirements = evaluateBriefRequirements(finalBrief)
+  const briefRequirements = evaluateBriefRequirements({
+    brief: finalBrief,
+    quickQuantity,
+    quickProduct,
+    advancedSelections,
+  })
   const readyRequirements = briefRequirements.filter((item) => item.met).length
   const productSuggestion = getProductSuggestionState(quickProduct || brief)
   const productOptions = pickRelevantOptions(
@@ -1190,7 +1227,30 @@ export function LitografiaAiAssistant(props: {
               </Button>
               <p className="self-center text-xs text-slate-500">Puedes escribir libremente y, si quieres afinar, apoyar la consulta con selecciones del JSON actual.</p>
             </div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <div className="mt-4 space-y-3">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+                <p className="text-sm font-semibold text-slate-900">Ajuste de utilidad</p>
+                <p className="mt-1 text-sm text-slate-600">Empieza en 40% y puedes subirlo para esta cotización IA antes de analizar o pasarla a la cotización final.</p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <div className="w-full max-w-[220px]">
+                    <Label htmlFor="litografia-ai-margin" className="sr-only">Utilidad</Label>
+                    <Input
+                      id="litografia-ai-margin"
+                      type="number"
+                      min="40"
+                      step="1"
+                      value={quickMarginPct}
+                      onChange={(event) => setQuickMarginPct(event.target.value)}
+                      className="bg-white text-base font-semibold"
+                    />
+                  </div>
+                  <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm">
+                    Utilidad aplicada: {currentMarginPct}%
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
               <div className={`rounded-2xl border px-4 py-4 ${quickQuantity.trim() ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
                 <p className="text-sm font-semibold text-slate-900">Indique cantidad</p>
                 <p className="mt-1 text-sm text-slate-600">Ponga acá cuántas piezas, unidades o ejemplares necesita el cliente.</p>
@@ -1230,6 +1290,7 @@ export function LitografiaAiAssistant(props: {
                   </div>
                 ) : null}
               </div>
+            </div>
             </div>
             {guideMode === "advanced" ? (
               <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
@@ -1579,7 +1640,7 @@ export function LitografiaAiAssistant(props: {
                       </div>
                       <div className="mt-3 space-y-1 border-t pt-3">
                         {breakdownProduction ? <div className="flex items-start justify-between gap-4"><span>Costo producción</span><span className="font-medium text-slate-900">{breakdownProduction}</span></div> : null}
-                        {breakdownUtility ? <div className="flex items-start justify-between gap-4"><span>Utilidad 40%</span><span className="font-medium text-slate-900">{breakdownUtility}</span></div> : null}
+                        {breakdownUtility ? <div className="flex items-start justify-between gap-4"><span>Utilidad {pricing?.costBreakdown.marginPct ?? currentMarginPct}%</span><span className="font-medium text-slate-900">{breakdownUtility}</span></div> : null}
                         {breakdownIva ? <div className="flex items-start justify-between gap-4"><span>IVA 19%</span><span className="font-medium text-slate-900">{breakdownIva}</span></div> : null}
                         {breakdownTotal ? <div className="flex items-start justify-between gap-4 text-base"><span className="font-semibold text-slate-900">Total sugerido</span><span className="font-semibold text-slate-900">{breakdownTotal}</span></div> : null}
                         {breakdownUnit ? <div className="flex items-start justify-between gap-4"><span>Unitario con IVA</span><span className="font-medium text-slate-900">{breakdownUnit}</span></div> : null}

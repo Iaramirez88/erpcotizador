@@ -1000,29 +1000,31 @@ export function LitografiaAiVectorizerPanel() {
                 )}
               </div>
 
-              <div className="flex min-h-0 flex-col gap-4 pr-2">
-                {advancedOptionsContent}
+              <div className="min-h-0 overflow-y-auto pr-1">
+                <div className="flex min-h-full flex-col gap-4 pr-2">
+                  {advancedOptionsContent}
 
-                <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-4 text-sm text-slate-200">
-                  <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-300">Origen de la respuesta</p>
-                    <p className="mt-2 text-base font-medium text-white">Vectorizer.AI</p>
-                    <p className="mt-1">Proveedor: {generatedVector?.source.provider || "Vectorizer.AI"}</p>
-                    <p>Formato base de revisión: SVG</p>
-                    <p>Formato elegido para descarga: {getFormatLabel(outputOptions.fileFormat)}</p>
-                  </div>
-
-                  <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/70 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Respuesta concreta</p>
-                    <p className="mt-2 whitespace-pre-line text-slate-100">{generationResponse || "Ajusta las opciones de exportación y ejecuta la vectorización desde este modal."}</p>
-                  </div>
-
-                  {savedVector ? (
-                    <div className="mt-4 rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4 text-sky-50">
-                      <p className="font-medium">Guardado correctamente</p>
-                      <p className="mt-1 text-sm">Ruta: {savedVector.path}</p>
+                  <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-4 text-sm text-slate-200">
+                    <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-300">Origen de la respuesta</p>
+                      <p className="mt-2 text-base font-medium text-white">Vectorizer.AI</p>
+                      <p className="mt-1">Proveedor: {generatedVector?.source.provider || "Vectorizer.AI"}</p>
+                      <p>Formato base de revisión: SVG</p>
+                      <p>Formato elegido para descarga: {getFormatLabel(outputOptions.fileFormat)}</p>
                     </div>
-                  ) : null}
+
+                    <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/70 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Respuesta concreta</p>
+                      <p className="mt-2 whitespace-pre-line text-slate-100">{generationResponse || "Ajusta las opciones de exportación y ejecuta la vectorización desde este modal."}</p>
+                    </div>
+
+                    {savedVector ? (
+                      <div className="mt-4 rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4 text-sky-50">
+                        <p className="font-medium">Guardado correctamente</p>
+                        <p className="mt-1 text-sm">Ruta: {savedVector.path}</p>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>

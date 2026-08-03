@@ -22,6 +22,7 @@ const requestSchema = z.object({
   brief: z.string().trim().min(3, 'Escribe un mensaje más claro para continuar la conversación.'),
   conversation: z.array(conversationMessageSchema).max(24).optional(),
   mode: z.enum(['IA', 'JSON_BASE']).optional(),
+  marginPct: z.coerce.number().min(40).max(500).optional(),
 }).superRefine((value, ctx) => {
   if ((!value.conversation || !value.conversation.length) && value.brief.trim().length < 20) {
     ctx.addIssue({
@@ -116,6 +117,7 @@ type CostBreakdown = {
   paperQuantityLabel: string | null
   sizeLabel: string | null
   productionCutLabel: string | null
+  marginPct: number
   productionCost: number | null
   utility: number | null
   subtotalBeforeIva: number | null
@@ -627,7 +629,7 @@ async function buildAssistantQuoteReply(args: {
       const amount = formatCopCurrency(line.amount)
       return amount ? `${line.label}: ${amount}` : null
     }).filter((line): line is string => Boolean(line))
-    const utilityLine = costBreakdown.utility != null ? `Utilidad ${DEFAULT_MARGIN_PCT}%: ${formatCopCurrency(costBreakdown.utility)}` : null
+    const utilityLine = costBreakdown.utility != null ? `Utilidad ${costBreakdown.marginPct}%: ${formatCopCurrency(costBreakdown.utility)}` : null
     const subtotalLine = costBreakdown.subtotalBeforeIva != null ? `Subtotal: ${formatCopCurrency(costBreakdown.subtotalBeforeIva)}` : null
     const ivaLine = costBreakdown.ivaValue != null ? `IVA ${costBreakdown.ivaPct}%: ${formatCopCurrency(costBreakdown.ivaValue)}` : null
     const totalLine = costBreakdown.totalSuggested != null ? `Total final estimado: ${formatCopCurrency(costBreakdown.totalSuggested)}` : null
@@ -687,7 +689,7 @@ async function buildAssistantQuoteReply(args: {
     return amount ? `${line.label}: ${amount}` : null
   }).filter((line): line is string => Boolean(line))
 
-  const utilityLine = costBreakdown.utility != null ? `Utilidad ${DEFAULT_MARGIN_PCT}%: ${formatCopCurrency(costBreakdown.utility)}` : null
+  const utilityLine = costBreakdown.utility != null ? `Utilidad ${costBreakdown.marginPct}%: ${formatCopCurrency(costBreakdown.utility)}` : null
   const subtotalLine = costBreakdown.subtotalBeforeIva != null ? `Subtotal: ${formatCopCurrency(costBreakdown.subtotalBeforeIva)}` : null
   const ivaLine = costBreakdown.ivaValue != null ? `IVA ${costBreakdown.ivaPct}%: ${formatCopCurrency(costBreakdown.ivaValue)}` : null
   const totalLine = costBreakdown.totalSuggested != null ? `Total final estimado: ${formatCopCurrency(costBreakdown.totalSuggested)}` : null
@@ -889,6 +891,7 @@ function buildLitografiaAiHandoff(args: {
           description: buildQuotedItemDescription({ analysis, costBreakdown }),
           quantity,
           unit: 'unidad',
+          marginPct: costBreakdown.marginPct,
           subtotalWithIva,
           subtotalBeforeIva: costBreakdown.subtotalBeforeIva,
           unitPriceWithIva: Number.isFinite(unitPriceWithIva) && unitPriceWithIva > 0
@@ -923,14 +926,17 @@ function buildCostBreakdown(args: {
   profiles: PrintProfile[]
   transportOptions: TransportOption[]
   knowledgeDocument?: LitografiaAiKnowledgeDocument | null
+  marginPct: number
 }): CostBreakdown {
   const { analysis, catalog, profiles, transportOptions, knowledgeDocument } = args
+  const marginPct = Math.min(500, Math.max(40, Math.round(args.marginPct || DEFAULT_MARGIN_PCT)))
 
   if (knowledgeDocument) {
     const knowledgeEstimate = estimateKnowledgeOnlyCost({
       brief: args.brief,
       extracted: analysis.extracted,
       document: knowledgeDocument,
+      marginPctOverride: marginPct,
     })
 
     return {
@@ -944,6 +950,7 @@ function buildCostBreakdown(args: {
       paperQuantityLabel: knowledgeEstimate.paperQuantityLabel ?? null,
       sizeLabel: knowledgeEstimate.sizeLabel,
       productionCutLabel: knowledgeEstimate.productionCutLabel ?? null,
+      marginPct,
       productionCost: knowledgeEstimate.productionCost,
       utility: knowledgeEstimate.utility,
       subtotalBeforeIva: knowledgeEstimate.subtotalBeforeIva,
@@ -979,6 +986,7 @@ function buildCostBreakdown(args: {
       paperQuantityLabel: null,
       sizeLabel: null,
       productionCutLabel: null,
+      marginPct,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -1001,6 +1009,7 @@ function buildCostBreakdown(args: {
       paperQuantityLabel: null,
       sizeLabel: size?.nombre ?? null,
       productionCutLabel: null,
+      marginPct,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -1064,6 +1073,7 @@ function buildCostBreakdown(args: {
       paperQuantityLabel: null,
       sizeLabel: size?.nombre ?? `${analysis.extracted.anchoCm} x ${analysis.extracted.altoCm} cm`,
       productionCutLabel: null,
+      marginPct,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -1117,6 +1127,7 @@ function buildCostBreakdown(args: {
     paperQuantityLabel: best.result.pliegosNecesarios != null ? `${best.result.pliegosNecesarios} pliegos` : null,
     sizeLabel: size?.nombre ?? `${analysis.extracted.anchoCm} x ${analysis.extracted.altoCm} cm`,
     productionCutLabel: best.profile.nombre,
+    marginPct,
     productionCost,
     utility,
     subtotalBeforeIva,
@@ -1383,6 +1394,7 @@ export async function POST(request: NextRequest) {
 
     const effectiveBrief = buildConversationBrief(parsedBody.data.brief, parsedBody.data.conversation ?? [])
     const quoteMode = parsedBody.data.mode === 'JSON_BASE' ? 'JSON_BASE' : 'IA'
+    const marginPct = Math.min(500, Math.max(40, Math.round(parsedBody.data.marginPct ?? DEFAULT_MARGIN_PCT)))
     const [catalog, pricingContext] = quoteMode === 'JSON_BASE'
       ? await Promise.all([
           Promise.resolve<LitografiaCatalogContext>({ sizes: [], papers: [], finishes: [], products: [], rates: [] }),
@@ -1433,6 +1445,7 @@ export async function POST(request: NextRequest) {
       profiles: pricingContext.profiles,
       transportOptions: pricingContext.transportOptions,
       knowledgeDocument: knowledgeStore.document,
+      marginPct,
     })
     const externalBenchmark = quoteMode === 'JSON_BASE'
       ? buildJsonBaseExternalBenchmark()
@@ -1474,6 +1487,7 @@ export async function POST(request: NextRequest) {
           missingFields: data.missingFields,
           finishHints: handoff.finishHints,
           totalSuggested: costBreakdown.totalSuggested,
+          marginPct,
           conversationTurns: (parsedBody.data.conversation?.length ?? 0) + 1,
           mode: quoteMode,
           knowledgeSource,

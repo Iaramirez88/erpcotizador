@@ -29,6 +29,7 @@ export type LitografiaAiHandoff = {
     description: string
     quantity: number
     unit: string
+    marginPct?: number | null
     subtotalWithIva: number
     subtotalBeforeIva: number | null
     unitPriceWithIva: number | null

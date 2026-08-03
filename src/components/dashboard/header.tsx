@@ -11,6 +11,7 @@ import Image from 'next/image'
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
+import { LogOut } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog, type SidebarTooltipPrefs } from "@/components/dashboard/nav-settings-dialog"
@@ -264,25 +265,29 @@ export default function Header({ user }: HeaderProps) {
                 </Link>
               </DropdownMenuItem>
 
-              <DropdownMenuItem
-                className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100"
-                onSelect={() => {
-                  setUserMenuOpen(false)
-                  setNavSettingsOpen(true)
-                }}
-                disabled={!navPrefs}
-              >
-                <div className="flex w-full items-center justify-between gap-3">
-                  <span className="flex items-center gap-3">
-                    <MenuIcon>
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                      </svg>
-                    </MenuIcon>
-                    <span>Configuración</span>
-                  </span>
-                </div>
-              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100" disabled={!canManageBilling}>
+                  <div className="flex w-full items-center justify-between gap-3">
+                    <span className="flex items-center gap-3">
+                      <MenuIcon>
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                        </svg>
+                      </MenuIcon>
+                      <span>Configuración</span>
+                    </span>
+                    <MenuChevron />
+                  </div>
+                </DropdownMenuSubTriggerItem>
+                <DropdownMenuSubContentPanel className="w-64 rounded-2xl p-2">
+                  <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+                    <Link href="/dashboard/configuracion/plan">Facturación</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+                    <Link href="/dashboard/configuracion/plan?tab=almacenamiento">Consumo actual de espacio</Link>
+                  </DropdownMenuItem>
+                </DropdownMenuSubContentPanel>
+              </DropdownMenuSub>
 
               <DropdownMenuSub>
                 <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
@@ -424,7 +429,10 @@ export default function Header({ user }: HeaderProps) {
                 }}
                 className="text-red-600 focus:text-red-600"
               >
-                {t('header.signOut')}
+                <span className="flex items-center gap-3">
+                  <LogOut className="h-5 w-5" />
+                  <span>{t('header.signOut')}</span>
+                </span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
