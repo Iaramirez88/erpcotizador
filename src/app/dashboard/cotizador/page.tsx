@@ -132,6 +132,17 @@ type ItemExtrasEditorState = {
   referenceImage: ItemCotizacion['referenceImage']
 }
 
+type ItemMarginEditorState = {
+  itemId: string
+  descripcion: string
+  marginInput: string
+  baseCost: number
+  quantity: number
+  includesIva: boolean
+  ivaPct: number
+  meta: LitografiaMeta
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {}
 }
@@ -156,6 +167,56 @@ function getLitografiaItemIncludedIvaPct(raw: unknown): number | null {
   if (!rec || rec.itemSubtotalIncludesIva !== true) return null
   const ivaPct = typeof rec.itemIvaPct === "number" ? rec.itemIvaPct : Number(rec.itemIvaPct)
   return Number.isFinite(ivaPct) && ivaPct > 0 ? ivaPct : null
+}
+
+function parseMarginPctValue(raw: unknown, fallback = 40): number {
+  const value = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim())
+  if (!Number.isFinite(value)) return fallback
+  return Math.min(500, Math.max(40, value))
+}
+
+function parsePositiveNumber(raw: unknown): number | null {
+  const value = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim())
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
+function getLitografiaItemBaseCost(meta: LitografiaMeta): number | null {
+  const productionCost = parsePositiveNumber(meta.costoProduccion)
+  if (productionCost) return productionCost
+
+  const subtotalSinIva = parsePositiveNumber(meta.subtotalSinIva)
+  if (!subtotalSinIva) return null
+
+  const currentMarginPct = parseMarginPctValue(meta.margenPct, 40)
+  const divisor = 1 + currentMarginPct / 100
+  if (divisor <= 0) return null
+
+  const estimatedBaseCost = subtotalSinIva / divisor
+  return estimatedBaseCost > 0 ? estimatedBaseCost : null
+}
+
+function computeLitografiaItemAmounts(args: {
+  baseCost: number
+  marginPct: number
+  quantity: number
+  includesIva: boolean
+  ivaPct: number
+}) {
+  const quantity = Math.max(1, Math.trunc(args.quantity) || 1)
+  const marginPct = parseMarginPctValue(args.marginPct, 40)
+  const subtotalSinIva = args.baseCost * (1 + marginPct / 100)
+  const ivaPct = args.includesIva ? Math.max(0, args.ivaPct) : 0
+  const subtotalConIva = args.includesIva
+    ? subtotalSinIva * (1 + ivaPct / 100)
+    : subtotalSinIva
+
+  return {
+    quantity,
+    marginPct,
+    subtotalSinIva,
+    subtotalConIva,
+    precioUnitario: subtotalConIva / quantity,
+  }
 }
 
 function getReferenceImageScaleLabel(scalePct: QuoteReferenceImageScalePct) {
@@ -421,6 +482,7 @@ export default function CotizadorPage() {
   const [items, setItems] = useState<ItemCotizacion[]>([])
   const [editingManualItemId, setEditingManualItemId] = useState<string | null>(null)
   const [itemExtrasEditor, setItemExtrasEditor] = useState<ItemExtrasEditorState | null>(null)
+  const [itemMarginEditor, setItemMarginEditor] = useState<ItemMarginEditorState | null>(null)
   const [itemExtrasPickerOpen, setItemExtrasPickerOpen] = useState(false)
   const [uploadingReferenceImage, setUploadingReferenceImage] = useState(false)
   const [referenceLibraryPickerOpen, setReferenceLibraryPickerOpen] = useState(false)
@@ -1363,6 +1425,80 @@ export default function CotizadorPage() {
     setItemExtrasEditor(null)
   }
 
+  const openItemMarginEditor = (item: ItemCotizacion) => {
+    const meta = parseLitografiaMeta(item.observaciones)
+    if (!meta) {
+      alert('Solo los ítems de litografía con cálculo guardado permiten ajustar utilidad.')
+      return
+    }
+
+    const baseCost = getLitografiaItemBaseCost(meta)
+    if (!baseCost) {
+      alert('No fue posible reconstruir el costo base de este ítem para ajustar la utilidad.')
+      return
+    }
+
+    const quantity = Math.max(1, Math.trunc(item.cantidad || 1))
+    const includesIva = meta.itemSubtotalIncludesIva === true
+    const ivaPct = includesIva ? Math.max(0, Number(meta.itemIvaPct ?? 0) || 0) : 0
+
+    setItemMarginEditor({
+      itemId: item.id,
+      descripcion: item.descripcion,
+      marginInput: String(parseMarginPctValue(meta.margenPct, 40)),
+      baseCost,
+      quantity,
+      includesIva,
+      ivaPct,
+      meta,
+    })
+  }
+
+  const saveItemMarginEditor = () => {
+    if (!itemMarginEditor) return
+
+    const marginPct = parseMarginPctValue(itemMarginEditor.marginInput, 40)
+    const amounts = computeLitografiaItemAmounts({
+      baseCost: itemMarginEditor.baseCost,
+      marginPct,
+      quantity: itemMarginEditor.quantity,
+      includesIva: itemMarginEditor.includesIva,
+      ivaPct: itemMarginEditor.ivaPct,
+    })
+
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemMarginEditor.itemId) return item
+
+        const nextMeta: LitografiaMeta = {
+          ...itemMarginEditor.meta,
+          margenPct: String(amounts.marginPct),
+          subtotalSinIva: amounts.subtotalSinIva,
+          subtotalConIva: amounts.subtotalConIva,
+          precioVenta: amounts.subtotalSinIva,
+          itemSubtotalIncludesIva: itemMarginEditor.includesIva,
+          itemIvaPct: itemMarginEditor.includesIva ? itemMarginEditor.ivaPct : undefined,
+          cantidad: String(amounts.quantity),
+          cantidadItems: String(amounts.quantity),
+        }
+
+        const plainText = parseQuoteItemObservaciones(item.observaciones).plainText
+        const nextObservaciones = plainText.includes('LITOGRAFIA_META:')
+          ? plainText.replace(/LITOGRAFIA_META:[\s\S]*$/, `LITOGRAFIA_META:${JSON.stringify(nextMeta)}`)
+          : [plainText, `LITOGRAFIA_META:${JSON.stringify(nextMeta)}`].filter(Boolean).join('\n')
+
+        return {
+          ...item,
+          precioUnitario: amounts.precioUnitario,
+          subtotal: amounts.subtotalConIva,
+          observaciones: nextObservaciones,
+        }
+      })
+    )
+
+    setItemMarginEditor(null)
+  }
+
   const updateItemReferenceScale = (scalePct: QuoteReferenceImageScalePct) => {
     setItemExtrasEditor((current) =>
       current && current.referenceImage
@@ -1855,6 +1991,82 @@ export default function CotizadorPage() {
             </Button>
             <Button type="button" onClick={saveItemExtrasEditor}>
               Guardar extras del ítem
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!itemMarginEditor} onOpenChange={(open) => {
+        if (!open) setItemMarginEditor(null)
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ajustar utilidad del ítem</DialogTitle>
+            <DialogDescription>
+              Cambia sólo la utilidad de este ítem. El IVA propio del ítem se conserva y los totales generales se recalculan automáticamente.
+            </DialogDescription>
+          </DialogHeader>
+
+          {itemMarginEditor ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                <p className="font-medium text-slate-900">{itemMarginEditor.descripcion}</p>
+                <p className="mt-1 text-slate-600">Costo base estimado: {formatCurrency(itemMarginEditor.baseCost)}</p>
+                <p className="text-slate-600">IVA del ítem: {itemMarginEditor.includesIva ? `${itemMarginEditor.ivaPct}% incluido` : 'No incluido en el ítem'}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="item-margin-pct">Utilidad (%)</Label>
+                <Input
+                  id="item-margin-pct"
+                  type="number"
+                  min="40"
+                  step="1"
+                  value={itemMarginEditor.marginInput}
+                  onChange={(event) => setItemMarginEditor((current) => current ? { ...current, marginInput: event.target.value } : current)}
+                />
+                <p className="text-xs text-slate-500">El mínimo es 40%, que es la base actual del cotizador de litografía.</p>
+              </div>
+
+              {(() => {
+                const preview = computeLitografiaItemAmounts({
+                  baseCost: itemMarginEditor.baseCost,
+                  marginPct: parseMarginPctValue(itemMarginEditor.marginInput, 40),
+                  quantity: itemMarginEditor.quantity,
+                  includesIva: itemMarginEditor.includesIva,
+                  ivaPct: itemMarginEditor.ivaPct,
+                })
+
+                return (
+                  <div className="grid gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Subtotal sin IVA</p>
+                      <p className="mt-1 font-medium text-slate-900">{formatCurrency(preview.subtotalSinIva)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Subtotal del ítem</p>
+                      <p className="mt-1 font-semibold text-blue-700">{formatCurrency(preview.subtotalConIva)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">IVA del ítem</p>
+                      <p className="mt-1 font-medium text-slate-900">{formatCurrency(preview.subtotalConIva - preview.subtotalSinIva)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Valor unitario</p>
+                      <p className="mt-1 font-medium text-slate-900">{formatCurrency(preview.precioUnitario)}</p>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setItemMarginEditor(null)}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={saveItemMarginEditor}>
+              Guardar utilidad
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2791,6 +3003,16 @@ export default function CotizadorPage() {
                             <Button variant="ghost" size="sm" onClick={() => editarItem(item)} disabled={!canEditItem} title={editDisabledReason || undefined}>
                               {t('common.edit')}
                             </Button>
+                            {parseLitografiaMeta(item.observaciones) ? (
+                              <div className="inline-flex flex-col items-end">
+                                <span className="mb-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 animate-pulse">
+                                  Nuevo
+                                </span>
+                                <Button variant="ghost" size="sm" onClick={() => openItemMarginEditor(item)}>
+                                  Utilidad
+                                </Button>
+                              </div>
+                            ) : null}
                             <Button variant="ghost" size="sm" onClick={() => openItemExtrasEditor(item)}>
                               Campo adicional / imagen
                             </Button>

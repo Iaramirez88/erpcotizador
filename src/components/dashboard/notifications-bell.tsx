@@ -78,9 +78,9 @@ export default function NotificationsBell({ onUnreadCountChange }: Props) {
       <Button
         ref={buttonRef}
         type="button"
-        variant="outline"
+        variant="ghost"
         size="icon"
-        className="relative"
+        className="relative h-9 w-9 rounded-full"
         aria-label="Notificaciones"
         onClick={() => setOpen((v) => !v)}
       >

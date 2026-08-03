@@ -23,7 +23,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubContentPanel,
+  DropdownMenuSubTriggerItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -52,18 +54,26 @@ function normalizeSidebarTooltipPrefs(value: Partial<SidebarTooltipPrefs> | null
   }
 }
 
+function MenuChevron() {
+  return (
+    <svg className="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    </svg>
+  )
+}
+
+function MenuIcon({ children }: { children: React.ReactNode }) {
+  return <span className="inline-flex h-5 w-5 items-center justify-center text-slate-700">{children}</span>
+}
+
 export default function Header({ user }: HeaderProps) {
   const router = useRouter()
   const { t, language, setLanguage } = useI18n()
   const { theme, setTheme } = useTheme()
-  const [unreadCount, setUnreadCount] = useState<number>(0)
-  const [planName, setPlanName] = useState<string>("")
-  const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null)
-  const [trialBadgeVisible, setTrialBadgeVisible] = useState(false)
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
   const [navOrder, setNavOrder] = useState<string[]>([])
   const [sidebarTooltipPrefs, setSidebarTooltipPrefs] = useState<SidebarTooltipPrefs>(DEFAULT_SIDEBAR_TOOLTIP_PREFS)
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [navSettingsOpen, setNavSettingsOpen] = useState(false)
   const [returningToSuperAdmin, setReturningToSuperAdmin] = useState(false)
   const [canManageBilling] = useState(Boolean(user.canManageBilling))
@@ -91,24 +101,6 @@ export default function Header({ user }: HeaderProps) {
     let cancelled = false
 
     async function load() {
-      try {
-        const res = await fetch('/api/plan')
-        const json = (await res.json().catch(() => null)) as {
-          current?: { nombre?: string }
-          effective?: { trial?: { isActive?: boolean; daysLeft?: number | null } | null } | null
-        } | null
-        if (!cancelled && typeof json?.current?.nombre === 'string') {
-          setPlanName(json.current.nombre)
-        }
-        if (!cancelled) {
-          const daysLeft = typeof json?.effective?.trial?.daysLeft === 'number' ? json.effective.trial.daysLeft : null
-          setTrialDaysLeft(daysLeft)
-          setTrialBadgeVisible(Boolean(json?.effective?.trial?.isActive && daysLeft !== null))
-        }
-      } catch {
-        // ignore
-      }
-
       try {
         const res = await fetch('/api/ui-preferences')
         const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { nav?: Record<string, boolean>; navOrder?: string[]; sidebarTooltips?: SidebarTooltipPrefs } } | null
@@ -198,7 +190,7 @@ export default function Header({ user }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border/80 bg-background/88 px-2 py-1.5 text-foreground shadow-[0_10px_24px_-22px_rgba(15,23,42,0.22)] backdrop-blur-xl sm:px-3 lg:px-4">
+    <header className="sticky top-0 z-50 border-b border-border/80 bg-background/88 px-2 py-1.5 text-foreground backdrop-blur-xl sm:px-3 lg:px-4">
       <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-1.5">
         {/* Breadcrumb / Title */}
         <div className="flex min-w-0 items-center gap-1.5">
@@ -220,7 +212,7 @@ export default function Header({ user }: HeaderProps) {
 
         {/* Actions */}
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          <NotificationsBell onUnreadCountChange={setUnreadCount} />
+          <NotificationsBell />
 
           {navPrefs ? (
             <NavSettingsDialog
@@ -235,150 +227,207 @@ export default function Header({ user }: HeaderProps) {
             />
           ) : null}
 
-          {/* Más opciones */}
-          <DropdownMenu open={moreMenuOpen} onOpenChange={setMoreMenuOpen}>
+          {/* User Menu */}
+          <DropdownMenu open={userMenuOpen} onOpenChange={setUserMenuOpen}>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" type="button" className="relative h-8 bg-background/80 px-2 text-xs sm:px-2.5">
-                {t('common.more')}
+              <Button
+                variant="ghost"
+                size="icon"
+                type="button"
+                className="h-9 w-9 rounded-full p-0 hover:bg-accent/60"
+                aria-label={t('header.profile')}
+              >
+                <div className="relative h-8 w-8 overflow-hidden rounded-full bg-muted">
+                  {user.image ? (
+                    <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes="32px" unoptimized />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center bg-muted text-[11px] font-semibold text-foreground">
+                      {initials}
+                    </div>
+                  )}
+                </div>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{t('header.sections.access')}</DropdownMenuLabel>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/perfil">{t('header.profile')}</Link>
+            <DropdownMenuContent align="end" className="w-80 rounded-3xl border-slate-200 p-3 shadow-[0_22px_45px_-28px_rgba(15,23,42,0.35)]">
+
+              <DropdownMenuItem asChild className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100">
+                <Link href="/dashboard/perfil" className="flex w-full items-center justify-between gap-3">
+                  <span className="flex items-center gap-3">
+                    <MenuIcon>
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2m16 0v-2a4 4 0 00-3-3.87M7 7a4 4 0 118 0 4 4 0 01-8 0z" />
+                      </svg>
+                    </MenuIcon>
+                    <span>Mi cuenta</span>
+                  </span>
+                  <MenuChevron />
+                </Link>
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100"
+                onSelect={() => {
+                  setUserMenuOpen(false)
+                  setNavSettingsOpen(true)
+                }}
+                disabled={!navPrefs}
+              >
+                <div className="flex w-full items-center justify-between gap-3">
+                  <span className="flex items-center gap-3">
+                    <MenuIcon>
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                      </svg>
+                    </MenuIcon>
+                    <span>Configuración</span>
+                  </span>
+                </div>
+              </DropdownMenuItem>
+
+              <DropdownMenuSub>
+                <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
+                  <div className="flex w-full items-center justify-between gap-3">
+                    <span className="flex items-center gap-3">
+                      <MenuIcon>
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3c4.97 0 9 4.03 9 9s-4.03 9-9 9-9-4.03-9-9 4.03-9 9-9Zm0 4v5l3 3" />
+                        </svg>
+                      </MenuIcon>
+                      <span>Tema</span>
+                    </span>
+                    <MenuChevron />
+                  </div>
+                </DropdownMenuSubTriggerItem>
+                <DropdownMenuSubContentPanel className="w-56 rounded-2xl p-2">
+                  <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setTheme('light') }}>
+                    Claro{theme === 'light' ? ' ✓' : ''}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setTheme('dark') }}>
+                    Oscuro{theme === 'dark' ? ' ✓' : ''}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setTheme('system') }}>
+                    Sistema{theme === 'system' ? ' ✓' : ''}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContentPanel>
+              </DropdownMenuSub>
+
+              <DropdownMenuSub>
+                <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
+                  <div className="flex w-full items-center justify-between gap-3">
+                    <span className="flex items-center gap-3">
+                      <MenuIcon>
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1 13 4-4m0 0 4 4m-4-4v7M4 12h8m-6 7h2" />
+                        </svg>
+                      </MenuIcon>
+                      <span>{t('common.language')}</span>
+                    </span>
+                    <MenuChevron />
+                  </div>
+                </DropdownMenuSubTriggerItem>
+                <DropdownMenuSubContentPanel className="w-56 rounded-2xl p-2">
+                  <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setLanguage('es') }}>
+                    {t('common.spanish')}{language === 'es' ? ' ✓' : ''}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setLanguage('en') }}>
+                    {t('common.english')}{language === 'en' ? ' ✓' : ''}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContentPanel>
+              </DropdownMenuSub>
+
+              <DropdownMenuSub>
+                <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
+                  <div className="flex w-full items-center justify-between gap-3">
+                    <span className="flex items-center gap-3">
+                      <MenuIcon>
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.305-.88 2.418-2.13 2.83-.97.32-1.87 1.1-1.87 2.17V16m0 4h.01M12 22a10 10 0 100-20 10 10 0 000 20z" />
+                        </svg>
+                      </MenuIcon>
+                      <span>Ayuda y recursos educativos</span>
+                    </span>
+                    <MenuChevron />
+                  </div>
+                </DropdownMenuSubTriggerItem>
+                <DropdownMenuSubContentPanel className="w-72 rounded-2xl p-2">
+                  <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+                    <Link href="/dashboard/ayuda">Centro de ayuda</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+                    <Link href="/dashboard/ayuda">Documentación y videos</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!hasCurrentTour}
+                    className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700"
+                    onSelect={(e) => {
+                      e.preventDefault()
+                      startCurrentTour()
+                    }}
+                  >
+                    {t('header.tour.view')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!hasCurrentTour}
+                    className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700"
+                    onSelect={(e) => {
+                      e.preventDefault()
+                      void resetCurrentTour()
+                      startCurrentTour()
+                    }}
+                  >
+                    {t('header.tour.restart')}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContentPanel>
+              </DropdownMenuSub>
+
               {navPrefs ? (
                 <DropdownMenuItem
+                  className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100"
                   onSelect={() => {
-                    setMoreMenuOpen(false)
+                    setUserMenuOpen(false)
                     setNavSettingsOpen(true)
                   }}
                 >
-                  {t('header.customizeMenu')}
+                  <div className="flex w-full items-center justify-between gap-3">
+                    <span className="flex items-center gap-3">
+                      <MenuIcon>
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                        </svg>
+                      </MenuIcon>
+                      <span>Personalizar menú</span>
+                    </span>
+                  </div>
                 </DropdownMenuItem>
               ) : null}
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Tema</DropdownMenuLabel>
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault()
-                  setTheme('light')
-                }}
-              >
-                Claro{theme === 'light' ? ' ✓' : ''}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault()
-                  setTheme('dark')
-                }}
-              >
-                Oscuro{theme === 'dark' ? ' ✓' : ''}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault()
-                  setTheme('system')
-                }}
-              >
-                Sistema{theme === 'system' ? ' ✓' : ''}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>{t('header.sections.help')}</DropdownMenuLabel>
-              <DropdownMenuItem
-                disabled={!hasCurrentTour}
-                onSelect={(e) => {
-                  e.preventDefault()
-                  startCurrentTour()
-                }}
-              >
-                {t('header.tour.view')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={!hasCurrentTour}
-                onSelect={(e) => {
-                  e.preventDefault()
-                  void resetCurrentTour()
-                  startCurrentTour()
-                }}
-              >
-                {t('header.tour.restart')}
-              </DropdownMenuItem>
+
+              {user.isImpersonating ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    disabled={returningToSuperAdmin}
+                    onSelect={(e) => {
+                      e.preventDefault()
+                      void returnToSuperAdmin()
+                    }}
+                  >
+                    {returningToSuperAdmin ? t('common.processing') : t('header.returnToSuperAdmin')}
+                  </DropdownMenuItem>
+                </>
+              ) : null}
 
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>{t('common.language')}</DropdownMenuLabel>
               <DropdownMenuItem
                 onSelect={(e) => {
                   e.preventDefault()
-                  setLanguage('es')
+                  void signOut({ callbackUrl: "/auth/login" })
                 }}
+                className="text-red-600 focus:text-red-600"
               >
-                {t('common.spanish')}{language === 'es' ? ' ✓' : ''}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault()
-                  setLanguage('en')
-                }}
-              >
-                {t('common.english')}{language === 'en' ? ' ✓' : ''}
+                {t('header.signOut')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {/* User Menu */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            {user.isImpersonating ? (
-              <div className="hidden rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 lg:block">
-                {t('header.impersonatingAs', { user: user.impersonatedByName || user.impersonatedByEmail || 'superadmin' })}
-              </div>
-            ) : null}
-            <Link href="/dashboard/perfil" aria-label={t('header.profile')} className="group flex items-center gap-1.5 rounded-full p-0.5 transition hover:bg-accent/60 sm:gap-2">
-              <div className="relative h-8 w-8 overflow-hidden rounded-full border border-border bg-card shadow-sm ring-0 transition group-hover:ring-2 group-hover:ring-sky-200">
-                {user.image ? (
-                  <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes="32px" unoptimized />
-                ) : (
-                  <div className="grid h-full w-full place-items-center bg-muted text-[11px] font-semibold text-foreground">
-                    {initials}
-                  </div>
-                )}
-              </div>
-              <div className="hidden text-right sm:block">
-                <p className="text-[12px] font-medium leading-4 text-slate-900 group-hover:text-sky-700">{user.name}</p>
-                <p className="text-[10px] capitalize leading-4 text-slate-500">
-                  {user.role?.toLowerCase()}
-                  {planName ? ` · Plan: ${planName}` : ''}
-                </p>
-                {trialBadgeVisible && trialDaysLeft !== null ? (
-                  <p className="text-[10px] leading-3.5 text-red-600">
-                    {trialDaysLeft <= 1 ? 'Tu prueba termina manana' : `Prueba: ${trialDaysLeft} dia(s) restantes`}
-                  </p>
-                ) : null}
-              </div>
-            </Link>
-
-            {user.isImpersonating ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void returnToSuperAdmin()}
-                className="h-8 px-2"
-                disabled={returningToSuperAdmin}
-              >
-                {returningToSuperAdmin ? t('common.processing') : t('header.returnToSuperAdmin')}
-              </Button>
-            ) : null}
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => signOut({ callbackUrl: "/auth/login" })}
-              className="h-8 px-2"
-            >
-              {t('header.signOut')}
-            </Button>
-          </div>
         </div>
       </div>
     </header>

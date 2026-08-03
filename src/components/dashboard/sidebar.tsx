@@ -605,38 +605,6 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
   ]
 }
 
-function buildPreferenceNavigation(t: (key: string) => string): NavItem[] {
-  return [
-  {
-    name: t('header.profile'),
-    href: "/dashboard/perfil",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2m16 0v-2a4 4 0 00-3-3.87M7 7a4 4 0 118 0 4 4 0 01-8 0z" />
-      </svg>
-    ),
-  },
-  {
-    name: t('header.notifications'),
-    href: "/dashboard/notificaciones",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0a3 3 0 01-6 0" />
-      </svg>
-    ),
-  },
-  {
-    name: t('header.sections.help'),
-    href: "/dashboard/ayuda",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.305-.88 2.418-2.13 2.83-.97.32-1.87 1.1-1.87 2.17V16m0 4h.01M12 22a10 10 0 100-20 10 10 0 000 20z" />
-      </svg>
-    ),
-  },
-  ]
-}
-
 type UiPrefsResponse = {
   success: boolean
   data?: {
@@ -660,7 +628,6 @@ export default function Sidebar({ user }: SidebarProps) {
 
   const moduleNavigation = useMemo(() => buildModuleNavigation(t), [t])
   const dashboardNavDefinitions = useMemo(() => buildDashboardNavDefinitions(t), [t])
-  const preferenceNavigation = useMemo(() => buildPreferenceNavigation(t), [t])
   const dashboardSectionOrder = useMemo(() => getDashboardSectionOrder(), [])
 
   const allowedModules = useMemo(() => {
@@ -900,49 +867,6 @@ export default function Sidebar({ user }: SidebarProps) {
     return blocked
   }, [enabledModules])
 
-  const navSettingsItems: NavSettingsItem[] = useMemo(() => {
-    const base = dashboardNavDefinitions
-      .filter((it) => {
-        if (allowedNavHrefSet) return allowedNavHrefSet.has(it.href)
-        return !isOnboardingScopedDashboardHref(it.href)
-      })
-      .filter((it) => {
-        if (allowedNavHrefSet?.has(it.href)) return true
-        if (it.href === '/dashboard/configuracion/servicios-web') {
-          return canAccessWebsiteServices
-        }
-        const moduleKey = moduleForDashboardHref(it.href)
-        if (!moduleKey) return true
-        if (!allowedModules) return true
-        return allowedModules.has(moduleKey)
-      })
-      .filter((it) => (it.href === '/dashboard/configuracion/plan' ? canManageBilling : true))
-      .filter((it) => {
-        const isSuperAdminRoute =
-          it.href === '/dashboard/configuracion/super-admin/modulos-por-plan' ||
-          it.href === '/dashboard/configuracion/super-admin/empresas' ||
-          it.href === '/dashboard/configuracion/super-admin/usuarios'
-        if (!isSuperAdminRoute) return true
-        return user?.role === 'ADMIN'
-      })
-      .map((it) => ({ name: it.name, href: it.href, section: sectionForDashboardHref(it.href) }))
-    return base
-  }, [canAccessWebsiteServices, canManageBilling, user?.role, allowedModules, dashboardNavDefinitions, allowedNavHrefSet])
-
-  async function saveNav(next: Record<string, boolean>, nextOrder: string[], nextTooltipPrefs: SidebarTooltipPrefs) {
-    setNavPrefs(next)
-    setNavOrder(nextOrder)
-    setSidebarTooltipPrefs(nextTooltipPrefs)
-    window.dispatchEvent(new CustomEvent('ui-preferences:nav-updated', {
-      detail: { nav: next, navOrder: nextOrder, sidebarTooltips: nextTooltipPrefs },
-    }))
-    await fetch('/api/ui-preferences', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nav: next, navOrder: nextOrder, sidebarTooltips: nextTooltipPrefs }),
-    }).catch(() => null)
-  }
-
   const sections = useMemo(() => {
     const grouped = new Map<string, NavItem[]>()
 
@@ -983,9 +907,6 @@ export default function Sidebar({ user }: SidebarProps) {
     }
 
     if (best) return best.sectionTitle
-
-    // Si no está en un módulo, pero sí en una preferencia, mantenemos abierto Preferencias.
-    if (preferenceNavigation.some((it) => isNavActive(it.href))) return 'Preferencias'
 
     return null
   }, [sections, pathname])
@@ -1221,145 +1142,6 @@ export default function Sidebar({ user }: SidebarProps) {
               </div>
             )
           })}
-
-          {/* Preferencias */}
-          <div
-            className={cn("space-y-0.5", sidebarCollapsed ? "" : "pt-2")}
-          >
-            {sidebarCollapsed ? (
-              <>
-                {preferenceNavigation.map((item) => {
-                  const isActive = isNavActive(item.href)
-                  return (
-                    <SidebarNavTooltip key={item.name} item={item} upgradePlanLabel={upgradePlanLabel} enabled={areSidebarTooltipsEnabled}>
-                        <Link
-                          href={item.href}
-                          onClick={() => setMobileNavOpen(false)}
-                          className={cn(
-                            "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
-                            isActive ? navActive : cn(navText, navHover)
-                          )}
-                        >
-                          <div className={cn("flex items-center", "justify-center w-full")}>
-                            {item.icon}
-                          </div>
-                        </Link>
-                    </SidebarNavTooltip>
-                  )
-                })}
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpenSectionTitle((cur) => (cur === "Preferencias" ? null : "Preferencias"))
-                  }}
-                  className={cn(
-                    "w-full flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
-                    activeSectionTitle === "Preferencias"
-                      ? sectionHeaderActive
-                      : effectiveOpenSection === "Preferencias"
-                        ? sectionHeaderOpen
-                        : cn(navText, navHover)
-                  )}
-                >
-                  <span className={cn(
-                    "text-[10px] font-semibold uppercase tracking-[0.12em]",
-                    activeSectionTitle === "Preferencias"
-                      ? sectionHeaderTextActive
-                      : effectiveOpenSection === "Preferencias"
-                        ? sectionHeaderTextOpen
-                        : sectionTitleText
-                  )}>{t('sidebar.preferences')}</span>
-                  <svg
-                    className={cn(
-                      "h-3.5 w-3.5 transition-transform",
-                      activeSectionTitle === "Preferencias"
-                        ? sectionHeaderTextActive
-                        : effectiveOpenSection === "Preferencias"
-                          ? sectionHeaderTextOpen
-                          : sectionTitleText,
-                      effectiveOpenSection === "Preferencias" ? "rotate-180" : ""
-                    )}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                <div
-                  className={cn(
-                    "pl-2 overflow-hidden transition-all duration-200 ease-out",
-                    effectiveOpenSection === "Preferencias"
-                      ? "max-h-[900px] opacity-100 translate-y-0"
-                      : "max-h-0 opacity-0 -translate-y-1 pointer-events-none"
-                  )}
-                >
-                  <div className="space-y-0.5 pt-0.5">
-                    {preferenceNavigation.map((item) => {
-                      const isActive = isNavActive(item.href)
-                      return (
-                        <SidebarNavTooltip key={item.name} item={item} upgradePlanLabel={upgradePlanLabel} enabled={areSidebarTooltipsEnabled}>
-                            <Link
-                              href={item.href}
-                              onClick={() => {
-                                setMobileNavOpen(false)
-                                setOpenSectionTitle(activeSectionTitle ?? null)
-                              }}
-                              className={cn(
-                                "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
-                                isActive ? navActive : cn(navText, navHover)
-                              )}
-                            >
-                              <div className="flex items-center space-x-2.5">
-                                {item.icon}
-                                <span className="text-[12px] font-medium leading-4">{item.name}</span>
-                              </div>
-                            </Link>
-                        </SidebarNavTooltip>
-                      )
-                    })}
-                      {navPrefs ? (
-                        <NavSettingsDialog
-                          items={navSettingsItems}
-                          value={navPrefs}
-                          order={navOrder}
-                          tooltipPrefs={sidebarTooltipPrefs}
-                          onSave={saveNav}
-                          trigger={(open) => (
-                            <button
-                              type="button"
-                              onClick={() => open()}
-                              className={cn(
-                                "w-full flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
-                                navText,
-                                navHover
-                              )}
-                            >
-                              <div className="flex items-center space-x-2.5">
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
-                                  />
-                                </svg>
-                                <span className="text-[12px] font-medium leading-4">{t('header.customizeMenu')}</span>
-                              </div>
-                            </button>
-                          )}
-                        />
-                      ) : null}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
 
         </nav>
         </TooltipProvider>
