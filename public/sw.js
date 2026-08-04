@@ -1,6 +1,28 @@
 const CACHE_NAME = 'ordex-shell-v4'
 const APP_SHELL = ['/', '/offline', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-512-maskable.png']
 
+async function applyAppBadge(count) {
+  const normalized = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0
+  const targets = [self.navigator, self.registration].filter(Boolean)
+
+  await Promise.all(
+    targets.map(async (target) => {
+      try {
+        if (normalized > 0 && typeof target.setAppBadge === 'function') {
+          await target.setAppBadge(normalized)
+          return
+        }
+
+        if (normalized === 0 && typeof target.clearAppBadge === 'function') {
+          await target.clearAppBadge()
+        }
+      } catch {
+        // ignore badge failures
+      }
+    })
+  )
+}
+
 function normalizeNavigationUrl(value) {
   if (typeof value !== 'string' || !value.trim()) return '/dashboard/notificaciones'
 
@@ -130,9 +152,12 @@ self.addEventListener('push', (event) => {
     : 'Tienes una nueva notificacion pendiente.'
   const actionUrl = normalizeNavigationUrl(payload.actionUrl)
   const tag = typeof payload.tag === 'string' && payload.tag.trim() ? payload.tag.trim() : 'ordex-notification'
+  const unreadCount = typeof payload.unreadCount === 'number' && Number.isFinite(payload.unreadCount)
+    ? Math.max(0, Math.floor(payload.unreadCount))
+    : 1
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
       const hasVisibleClient = clients.some((client) => {
         try {
           const url = new URL(client.url)
@@ -141,6 +166,8 @@ self.addEventListener('push', (event) => {
           return false
         }
       })
+
+      await applyAppBadge(unreadCount)
 
       if (hasVisibleClient) return undefined
 
@@ -155,6 +182,14 @@ self.addEventListener('push', (event) => {
       })
     })
   )
+})
+
+self.addEventListener('message', (event) => {
+  const data = event.data
+  if (!data || typeof data !== 'object') return
+  if (data.type !== 'SGDIGITAL_SYNC_BADGE') return
+
+  event.waitUntil(applyAppBadge(data.unreadCount))
 })
 
 self.addEventListener('notificationclick', (event) => {

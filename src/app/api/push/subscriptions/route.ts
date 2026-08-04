@@ -5,6 +5,35 @@ import { normalizeBrowserPushSubscription } from '@/lib/push-subscription'
 
 export const runtime = 'nodejs'
 
+export async function GET() {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 401 })
+  }
+
+  const rows = await prisma.webPushSubscription.findMany({
+    where: { userId: session.user.id },
+    orderBy: [{ updatedAt: 'desc' }],
+    take: 3,
+    select: {
+      id: true,
+      endpoint: true,
+      updatedAt: true,
+    },
+  })
+
+  return NextResponse.json({
+    ok: true,
+    subscribed: rows.length > 0,
+    count: rows.length,
+    items: rows.map((row) => ({
+      id: row.id,
+      endpointTail: row.endpoint.slice(-18),
+      updatedAt: row.updatedAt.toISOString(),
+    })),
+  })
+}
+
 export async function POST(request: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) {

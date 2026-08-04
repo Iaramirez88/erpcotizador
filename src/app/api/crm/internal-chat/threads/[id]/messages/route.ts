@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
+import { notifyInternalChatParticipants } from '@/lib/internal-chat-notifications'
 
 export const runtime = 'nodejs'
 
@@ -102,6 +103,18 @@ export async function POST(request: Request, context: RouteContext) {
       await tx.internalChatParticipant.update({
         where: { id: viewerParticipant.id },
         data: { lastReadAt: now },
+      })
+
+      await notifyInternalChatParticipants({
+        client: tx,
+        empresaId: access.empresaId,
+        sedeId: null,
+        actorUserId: access.userId,
+        recipientUserIds: thread.participants.map((participant) => participant.userId),
+        threadId: thread.id,
+        senderLabel: created.sentByUser?.name || created.sentByUser?.email || 'Un compañero',
+        threadTitle: thread.title,
+        messagePreview: bodyText ? bodyText.slice(0, 160) : attachments.length ? 'Adjunto enviado' : null,
       })
 
       return created

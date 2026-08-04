@@ -291,7 +291,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     moduleKey: ModuleKey.REPORTES,
     section: 'Analítica',
     label: 'Reportes',
-    hrefs: ['/dashboard/reportes'],
+    hrefs: ['/dashboard/reportes', '/dashboard/inteligencia'],
     capabilities: [{ domain: 'ANALITICA', subdomain: 'REPORTS' }],
   },
   {

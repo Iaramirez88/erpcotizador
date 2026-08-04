@@ -85,6 +85,15 @@ Si quieres, puedo:
 2) Convertir OCR a **asíncrono con cola** para evitar timeouts y caídas por carga.
 3) Revisar endpoints críticos (DB queries, índices, caché HTTP) para asegurar performance SaaS.
 
+## Operación del Motor de Inteligencia Empresarial
+
+- El stack de producción puede correr recomputación automática de snapshots con el servicio `decision-engine-scheduler` incluido en [docker-compose.prod.yml](docker-compose.prod.yml).
+- Variables recomendadas:
+  - `DECISION_ENGINE_SNAPSHOT_INTERVAL_SECONDS=86400`
+  - `DECISION_ENGINE_SNAPSHOT_LOCALE=es-CO`
+  - `DECISION_ENGINE_SNAPSHOT_ARGS=` para limitar a empresa o sede si lo necesitas.
+- Si Prisma se bloquea por drift histórico antes de crear `decision_engine_snapshots`, aplica el SQL idempotente con `npm run decision-engine:apply-snapshot-schema` en vez de resetear la base.
+
 ## Despliegue "1 droplet" (todo dentro)
 
 Archivos:

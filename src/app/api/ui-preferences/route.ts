@@ -34,6 +34,13 @@ type ReportPrefs = {
     mutedCrmConversationIds?: string[]
     mutedTeamThreadIds?: string[]
   }
+  intelligence?: {
+    recommendations?: {
+      openedCount?: number
+      uniqueActionIds?: string[]
+      lastOpenedAt?: string | null
+    }
+  }
 }
 
 type TutorialPrefs = {
@@ -51,6 +58,34 @@ type StoredReportPrefs = ReportPrefs & {
   dataView?: DataViewPrefs
   theme?: UiTheme
   sidebarTooltips?: SidebarTooltipPrefs
+}
+
+function normalizeIntelligencePrefs(value: unknown): Required<NonNullable<ReportPrefs['intelligence']>> {
+  if (!isPlainObject(value)) {
+    return {
+      recommendations: {
+        openedCount: 0,
+        uniqueActionIds: [],
+        lastOpenedAt: null,
+      },
+    }
+  }
+
+  const recommendations = isPlainObject(value.recommendations) ? value.recommendations : {}
+  const openedCount = typeof recommendations.openedCount === 'number' && Number.isFinite(recommendations.openedCount)
+    ? Math.max(0, Math.floor(recommendations.openedCount))
+    : 0
+  const lastOpenedAt = typeof recommendations.lastOpenedAt === 'string' && recommendations.lastOpenedAt.trim()
+    ? recommendations.lastOpenedAt.trim()
+    : null
+
+  return {
+    recommendations: {
+      openedCount,
+      uniqueActionIds: normalizeStringList(recommendations.uniqueActionIds),
+      lastOpenedAt,
+    },
+  }
 }
 
 function normalizeStringList(value: unknown) {
@@ -107,6 +142,7 @@ function defaultPrefs() {
     sections: { kpis: true, ventas: true, topClientes: true, documentos: true, compras: true },
     charts: { ventasMensuales: true, documentosPorTipo: true, comprasPorProveedor: true },
     chat: { mutedCrmConversationIds: [], mutedTeamThreadIds: [] },
+    intelligence: { recommendations: { openedCount: 0, uniqueActionIds: [], lastOpenedAt: null } },
   }
   const tutorial: TutorialPrefs = { seen: {} }
   const dataView: DataViewPrefs = {}
@@ -182,6 +218,7 @@ export async function GET() {
       report: {
         ...(storedReport ?? defaults.report),
         chat: normalizeChatPrefs(storedReport?.chat),
+        intelligence: normalizeIntelligencePrefs(storedReport?.intelligence),
       },
       tutorial: (pref?.tutorial as unknown) ?? defaults.tutorial,
       dataView: storedReport?.dataView ?? defaults.dataView,
@@ -236,6 +273,7 @@ export async function PUT(req: NextRequest) {
     theme: theme ?? currentReport.theme ?? defaults.theme,
     sidebarTooltips: sidebarTooltips ?? normalizeSidebarTooltipPrefs(currentReport.sidebarTooltips),
     chat: normalizeChatPrefs(report?.chat ?? currentReport.chat),
+    intelligence: normalizeIntelligencePrefs(report?.intelligence ?? currentReport.intelligence),
   }
   const nextNav = {
     visibility: nav ?? currentNav.visibility ?? defaults.nav,
@@ -268,7 +306,13 @@ export async function PUT(req: NextRequest) {
     data: {
       nav: updatedNav.visibility,
       navOrder: updatedNav.order,
-      report: updatedReport ? { ...updatedReport, chat: normalizeChatPrefs(updatedReport.chat) } : updatedReport,
+      report: updatedReport
+        ? {
+            ...updatedReport,
+            chat: normalizeChatPrefs(updatedReport.chat),
+            intelligence: normalizeIntelligencePrefs(updatedReport.intelligence),
+          }
+        : updatedReport,
       tutorial: updated.tutorial,
       dataView: updatedReport?.dataView ?? defaults.dataView,
       language: updated.language as UiLanguage,

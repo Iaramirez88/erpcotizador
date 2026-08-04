@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from 'next/navigation'
 import { dispatchNotificationReceivedEvent } from '@/lib/notification-browser-events';
+import { syncAppBadge } from '@/lib/app-badge'
 import type { RealtimeNotificationPayload } from '@/lib/notification-realtime';
 import { isPermissionSyncActionUrl } from '@/lib/rbac-permission-sync'
 import { ToastAction } from "@/components/ui/toast";
@@ -37,6 +38,9 @@ export function NotificationToastBridge() {
       }
 
       dispatchNotificationReceivedEvent(payload)
+      if (typeof payload.unreadCount === 'number') {
+        void syncAppBadge(payload.unreadCount)
+      }
       toast({
         title: payload.title,
         description: payload.body || 'Nueva notificación del sistema.',

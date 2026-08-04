@@ -30,6 +30,12 @@ async function fetchPushConfig() {
   }
 }
 
+async function fetchSubscriptionStatus() {
+  const response = await fetch('/api/push/subscriptions', { cache: 'no-store' })
+  const json = (await response.json().catch(() => null)) as { subscribed?: boolean } | null
+  return json?.subscribed === true
+}
+
 async function persistSubscription(subscription: PushSubscription) {
   const parsed = normalizeBrowserPushSubscription(subscription.toJSON())
   if (!parsed) throw new Error('No se pudo serializar la suscripción push.')
@@ -83,6 +89,7 @@ export function PushNotificationProvider() {
   const [publicKey, setPublicKey] = useState<string | null>(null)
   const [permission, setPermission] = useState<NotificationPermission>('default')
   const [dismissed, setDismissed] = useState(true)
+  const [subscriptionReady, setSubscriptionReady] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -99,23 +106,29 @@ export function PushNotificationProvider() {
 
       if (config.enabled && config.publicKey && Notification.permission === 'granted') {
         try {
-          await syncExistingSubscription(config.publicKey)
+          const synced = await syncExistingSubscription(config.publicKey)
+          const subscribed = await fetchSubscriptionStatus().catch(() => false)
+          setSubscriptionReady(synced || subscribed)
         } catch {
-          // ignore background sync failures
+          setSubscriptionReady(false)
         }
+      } else if (config.enabled) {
+        const subscribed = await fetchSubscriptionStatus().catch(() => false)
+        setSubscriptionReady(subscribed)
       }
     }).catch(() => {
       setEnabled(false)
       setPublicKey(null)
+      setSubscriptionReady(false)
     })
   }, [])
 
   const shouldShow = useMemo(() => {
     if (!supported || !enabled || !publicKey) return false
-    if (permission === 'granted') return false
-    if (dismissed) return false
+    if (permission === 'granted' && subscriptionReady !== false) return false
+    if (permission !== 'granted' && dismissed) return false
     return isStandaloneMode()
-  }, [dismissed, enabled, permission, publicKey, supported])
+  }, [dismissed, enabled, permission, publicKey, subscriptionReady, supported])
 
   async function handleEnable() {
     if (!publicKey) return
@@ -132,13 +145,17 @@ export function PushNotificationProvider() {
 
       if (nextPermission !== 'granted') {
         setError('El permiso quedó bloqueado. Habilítalo desde los ajustes del navegador o de la app instalada.')
+        setSubscriptionReady(false)
         return
       }
 
       await syncExistingSubscription(publicKey)
+      const subscribed = await fetchSubscriptionStatus().catch(() => false)
+      setSubscriptionReady(subscribed)
       window.localStorage.removeItem(DISMISS_KEY)
       setDismissed(false)
     } catch {
+      setSubscriptionReady(false)
       setError('No fue posible activar las notificaciones en este dispositivo.')
     } finally {
       setBusy(false)
@@ -171,7 +188,9 @@ export function PushNotificationProvider() {
               <div>
                 <p className="text-sm font-semibold">Activa notificaciones reales en tu app instalada</p>
                 <p className="mt-1 text-xs leading-5 text-slate-700">
-                  {permission === 'denied'
+                  {permission === 'granted' && subscriptionReady === false
+                    ? 'El permiso ya fue concedido, pero esta instalación no alcanzó a registrar una suscripción push activa. Usa el botón para repararla.'
+                    : permission === 'denied'
                     ? 'El permiso está bloqueado. Debes habilitarlo en los ajustes del navegador o de la app para recibir avisos con la app cerrada.'
                     : 'Con esto Ordex podrá mostrar avisos del sistema aunque la app esté cerrada o en segundo plano.'}
                 </p>
@@ -191,7 +210,7 @@ export function PushNotificationProvider() {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Button className="h-9 rounded-xl bg-slate-900 px-4 text-white hover:bg-slate-800" onClick={() => void handleEnable()} disabled={busy || permission === 'denied'}>
                 {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BellRing className="mr-2 h-4 w-4" />}
-                {busy ? 'Activando...' : 'Activar notificaciones'}
+                {busy ? 'Activando...' : permission === 'granted' && subscriptionReady === false ? 'Reparar notificaciones' : 'Activar notificaciones'}
               </Button>
               {error ? <p className="text-xs text-rose-700">{error}</p> : null}
             </div>

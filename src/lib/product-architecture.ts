@@ -93,6 +93,7 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/contabilidad/nomina', label: 'Nómina', section: 'Finanzas', layer: 'Finanzas', domain: 'Nómina', moduleKey: 'CONTABILIDAD' },
 
   { href: '/dashboard/reportes', label: 'Reportes', labelKey: 'nav.reports', section: 'Analítica', layer: 'Analítica', domain: 'Reportes y BI', moduleKey: 'REPORTES' },
+  { href: '/dashboard/inteligencia', label: 'Inteligencia', section: 'Analítica', layer: 'Analítica', domain: 'Motor de inteligencia empresarial', moduleKey: 'REPORTES' },
   { href: '/dashboard/crm/auditoria-ia', label: 'Auditoría IA CRM', section: 'Analítica', layer: 'Analítica', domain: 'Auditoría IA comercial', moduleKey: 'CRM' },
   { href: '/dashboard/litografia/auditoria-ia', label: 'Auditoría IA', section: 'Analítica', layer: 'Analítica', domain: 'Auditoría IA operativa', moduleKey: 'COTIZADOR' },
 

@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { subscribeToNotificationReceivedEvent } from '@/lib/notification-browser-events'
+import { syncAppBadge } from '@/lib/app-badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { DEFAULT_NOTIFICATION_ACTION_LABEL } from '@/lib/notifications'
@@ -40,6 +41,7 @@ export default function NotificationsPanel({ onUnreadCountChange }: Props) {
         setItems(Array.isArray(json.items) ? json.items : [])
         const nextUnread = typeof json.unreadCount === 'number' ? json.unreadCount : 0
         setUnreadCount(nextUnread)
+        void syncAppBadge(nextUnread)
         onUnreadCountChange?.(nextUnread)
       }
     } finally {

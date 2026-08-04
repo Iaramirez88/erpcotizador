@@ -105,7 +105,14 @@ docker run --name postgres-sgdigital \
    npx prisma migrate dev --name init
    ```
 
-3. **Verificar con Prisma Studio** (opcional):
+3. **Si Prisma detecta drift histórico y no quieres resetear la base**:
+   ```bash
+   npm run decision-engine:apply-snapshot-schema
+   ```
+
+   Esto crea la tabla `decision_engine_snapshots` y sus índices de forma idempotente usando [scripts/sql/20260804_decision_engine_snapshots.sql](scripts/sql/20260804_decision_engine_snapshots.sql). Es el camino seguro para dejar operativo el Motor de Inteligencia Empresarial mientras resuelves aparte el drift heredado de migraciones antiguas.
+
+4. **Verificar con Prisma Studio** (opcional):
    ```bash
    npx prisma studio
    ```

@@ -793,6 +793,7 @@ model Empresa {
   accountingPeriods        AccountingPeriod[]
   accountingVouchers       AccountingVoucher[]
   accountingJournalEntries AccountingJournalEntry[]
+  decisionEngineSnapshots  DecisionEngineSnapshot[]
   treasuryBankAccounts     TreasuryBankAccount[]
   treasuryBankMovements    TreasuryBankMovement[]
 
@@ -1665,6 +1666,7 @@ model Sede {
   payrollContracts PayrollContract[]
   payrollPeriods   PayrollPeriod[]
   payrollOrgUnits  PayrollOrgUnit[]
+  decisionEngineSnapshots DecisionEngineSnapshot[]
 
   cotizaciones      Cotizacion[]                @relation("SedeCotizaciones")
   ordenes           OrdenTrabajo[]              @relation("SedeOrdenes")
@@ -4729,6 +4731,38 @@ model AccountingVoucherLine {
   @@index([accountId])
   @@index([costCenterId])
   @@map("accounting_voucher_lines")
+}
+
+model DecisionEngineSnapshot {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  sedeId String?
+  sede   Sede? @relation(fields: [sedeId], references: [id], onDelete: SetNull)
+
+  scope String @db.VarChar(16)
+  from  DateTime
+  to    DateTime
+
+  locale        String @default("es-CO") @db.VarChar(16)
+  engineVersion String @default("v1") @db.VarChar(32)
+
+  capturedByUserId String?
+
+  companyHealthScore  Float
+  companyHealthStatus String @db.VarChar(16)
+  executiveSummary    String @db.Text
+
+  snapshot Json
+
+  createdAt DateTime @default(now())
+
+  @@index([empresaId, createdAt])
+  @@index([empresaId, scope, createdAt])
+  @@index([sedeId, createdAt])
+  @@map("decision_engine_snapshots")
 }
 
 // ============================================

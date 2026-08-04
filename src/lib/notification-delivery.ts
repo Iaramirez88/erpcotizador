@@ -12,6 +12,7 @@ type DeliverableNotification = {
   readAt?: string | Date | null
   createdAt?: string | Date | null
   userId?: string | null
+  unreadCount?: number | null
 }
 
 type WebPushSubscriptionRow = {
@@ -23,6 +24,16 @@ type WebPushSubscriptionRow = {
 }
 
 type NotificationDeliveryClient = {
+  notification: {
+    count: (args: {
+      where: {
+        userId: string
+        readAt: null
+        archivedAt: null
+        publishAt: { lte: Date }
+      }
+    }) => Promise<number>
+  }
   webPushSubscription: {
     findMany: (args: {
       where: { userId: { in: string[] } }
@@ -62,7 +73,28 @@ function normalizeRealtimePayload(notification: DeliverableNotification): Realti
     readAt: asIsoString(notification.readAt),
     createdAt: asIsoString(notification.createdAt) ?? new Date().toISOString(),
     userId,
+    unreadCount: typeof notification.unreadCount === 'number' && Number.isFinite(notification.unreadCount) ? Math.max(0, Math.floor(notification.unreadCount)) : null,
   }
+}
+
+async function resolveUnreadCountMap(client: NotificationDeliveryClient, userIds: string[]) {
+  const now = new Date()
+  const pairs = await Promise.all(
+    userIds.map(async (userId) => {
+      const count = await client.notification.count({
+        where: {
+          userId,
+          readAt: null,
+          archivedAt: null,
+          publishAt: { lte: now },
+        },
+      }).catch(() => 0)
+
+      return [userId, count] as const
+    })
+  )
+
+  return new Map(pairs)
 }
 
 function buildNotificationOpenPath(payload: RealtimeNotificationPayload) {
@@ -103,6 +135,7 @@ function buildWebPushMessage(payload: RealtimeNotificationPayload) {
     actionUrl: buildNotificationOpenPath(payload),
     actionLabel: payload.actionLabel,
     tag: payload.id ? `notification-${payload.id}` : `notification-${payload.userId}`,
+    unreadCount: payload.unreadCount ?? 0,
   })
 }
 
@@ -121,13 +154,29 @@ export async function deliverNotifications(client: NotificationDeliveryClient, i
 
   if (!payloads.length) return
 
+  const unreadCountMap = await resolveUnreadCountMap(client, Array.from(new Set(payloads.map((payload) => payload.userId))))
+  const optimisticUnreadByUserId = new Map<string, number>()
   payloads.forEach((payload) => {
+    if (payload.readAt) return
+    optimisticUnreadByUserId.set(payload.userId, (optimisticUnreadByUserId.get(payload.userId) ?? 0) + 1)
+  })
+
+  const payloadsWithCounts = payloads.map((payload) => ({
+    ...payload,
+    unreadCount: Math.max(
+      unreadCountMap.get(payload.userId) ?? 0,
+      optimisticUnreadByUserId.get(payload.userId) ?? 0,
+      payload.unreadCount ?? 0,
+    ),
+  }))
+
+  payloadsWithCounts.forEach((payload) => {
     publishRealtimeNotification(payload)
   })
 
   if (!ensureWebPushConfiguration()) return
 
-  const userIds = Array.from(new Set(payloads.map((payload) => payload.userId)))
+  const userIds = Array.from(new Set(payloadsWithCounts.map((payload) => payload.userId)))
   const subscriptions = await client.webPushSubscription.findMany({
     where: { userId: { in: userIds } },
     select: {
@@ -142,7 +191,7 @@ export async function deliverNotifications(client: NotificationDeliveryClient, i
   if (!subscriptions.length) return
 
   const payloadsByUserId = new Map<string, RealtimeNotificationPayload[]>()
-  payloads.forEach((payload) => {
+  payloadsWithCounts.forEach((payload) => {
     const current = payloadsByUserId.get(payload.userId) ?? []
     current.push(payload)
     payloadsByUserId.set(payload.userId, current)

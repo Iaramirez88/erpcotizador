@@ -10,6 +10,7 @@ export type RealtimeNotificationPayload = {
   readAt: string | null
   createdAt: string
   userId: string
+  unreadCount?: number | null
 }
 
 type NotificationRealtimeState = {

@@ -129,6 +129,7 @@ Incluye:
 - `migrate` (aplica migraciones)
 - `app` (interno en Docker, no publica `3000`)
 - `worker` (cola OCR)
+- `decision-engine-scheduler` (recomputación automática de snapshots ejecutivos)
 - `caddy` (publica `80/443`)
 
 Persistencia (volúmenes docker):
@@ -140,6 +141,28 @@ Persistencia (volúmenes docker):
 Importante:
 - El JSON maestro de Litografía IA y la auditoría/historial IA no viven en Postgres; se guardan en `.runtime-data` dentro de la app.
 - Si esa carpeta no está montada a un volumen persistente, cada recreación del contenedor puede devolver la interfaz a “Base por defecto”, aunque la base de datos siga intacta.
+
+### Scheduler del Decision Engine
+
+El compose de producción ya incluye un servicio dedicado llamado `decision-engine-scheduler` que ejecuta `npm run decision-engine:schedule-snapshots` en bucle con ventana diaria estable de 90 días, para no generar snapshots duplicados dentro del mismo día si reinicias o reprocesas el stack.
+
+Variables útiles en `.env`:
+
+- `DECISION_ENGINE_SNAPSHOT_INTERVAL_SECONDS` ejemplo `86400`
+- `DECISION_ENGINE_SNAPSHOT_LOCALE` ejemplo `es-CO`
+- `DECISION_ENGINE_SNAPSHOT_ARGS` ejemplo `--only-company` o `--empresa=<id>`
+
+Si necesitas lanzar una corrida manual dentro del stack:
+
+- `docker compose -f docker-compose.prod.yml exec -T app npm run decision-engine:schedule-snapshots -- --locale=es-CO`
+
+### Fallback si Prisma se bloquea por drift histórico
+
+Si `npx prisma migrate deploy` falla porque existen migraciones antiguas modificadas o drift heredado, no hagas reset del schema. Aplica primero el SQL idempotente del snapshot:
+
+- `docker compose -f docker-compose.prod.yml exec -T app npm run decision-engine:apply-snapshot-schema`
+
+Ese comando crea `decision_engine_snapshots` e índices mínimos sin tocar el resto del historial.
 
 ## 5) Backups y operación
 

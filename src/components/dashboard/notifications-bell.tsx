@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { subscribeToNotificationReceivedEvent } from '@/lib/notification-browser-events'
+import { syncAppBadge } from '@/lib/app-badge'
 import { Button } from '@/components/ui/button'
 import NotificationsPanel from '@/components/dashboard/notifications-panel'
 
@@ -28,6 +29,7 @@ export default function NotificationsBell({ onUnreadCountChange }: Props) {
       const next = typeof json?.unreadCount === 'number' ? json.unreadCount : 0
 
       setUnreadCount(next)
+      void syncAppBadge(next)
 
       onUnreadCountChange?.(next)
     } catch {

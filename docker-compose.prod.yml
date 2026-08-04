@@ -157,6 +157,32 @@ services:
       - scans_data:/app/public/scans
     restart: unless-stopped
 
+  decision-engine-scheduler:
+    image: ${APP_RUNTIME_IMAGE:-plataforma-gestion-empresarial-runtime:latest}
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        interval="${DECISION_ENGINE_SNAPSHOT_INTERVAL_SECONDS:-86400}";
+        locale="${DECISION_ENGINE_SNAPSHOT_LOCALE:-es-CO}";
+        extra_args="${DECISION_ENGINE_SNAPSHOT_ARGS:-}";
+        echo "Decision Engine scheduler iniciado (intervalo=$$interval s locale=$$locale)";
+        while true; do
+          echo "[$$(date -Iseconds)] Ejecutando snapshots del Decision Engine";
+          npm run decision-engine:schedule-snapshots -- --locale="$$locale" $$extra_args || true;
+          echo "[$$(date -Iseconds)] Siguiente ejecución en $$interval segundos";
+          sleep "$$interval";
+        done
+    restart: unless-stopped
+
 volumes:
   db_data:
   redis_data:

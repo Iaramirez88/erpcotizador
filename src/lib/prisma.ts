@@ -116,6 +116,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasAccountingPeriodDelegate = typeof (prismaClient as any)?.accountingPeriod?.findMany === 'function'
   const hasAccountingVoucherDelegate = typeof (prismaClient as any)?.accountingVoucher?.findMany === 'function'
   const hasAccountingVoucherLineDelegate = typeof (prismaClient as any)?.accountingVoucherLine?.findMany === 'function'
+  const hasDecisionEngineSnapshotDelegate = typeof (prismaClient as any)?.decisionEngineSnapshot?.findMany === 'function'
   const hasDotacionPedidoDelegate = typeof (prismaClient as any)?.dotacionPedido?.findMany === 'function'
   const hasDotacionPedidoItemDelegate = typeof (prismaClient as any)?.dotacionPedidoItem?.findMany === 'function'
   const hasRestauranteTurnoDelegate = typeof (prismaClient as any)?.restauranteTurno?.findMany === 'function'
@@ -192,6 +193,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasAccountingPeriodDelegate ||
     !hasAccountingVoucherDelegate ||
     !hasAccountingVoucherLineDelegate ||
+    !hasDecisionEngineSnapshotDelegate ||
     !hasDotacionPedidoDelegate ||
     !hasDotacionPedidoItemDelegate ||
     !hasRestauranteTurnoDelegate ||

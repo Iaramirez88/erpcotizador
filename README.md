@@ -20,6 +20,12 @@ Notas operativas:
 - En Android la PWA debe ejecutarse sobre HTTPS y el usuario debe conceder el permiso.
 - La app ahora guarda suscripciones push por usuario y cualquier creación de notificación interna dispara entrega en tiempo real y push cuando hay una suscripción activa.
 
+## Arquitectura de inteligencia ejecutiva
+
+- Ver MOTOR-INTELIGENCIA-EMPRESARIAL.md para la arquitectura, checklist y plan de implementación del Motor de Inteligencia Empresarial de ORDEX.
+- El scheduler productivo de snapshots puede correr dentro de Docker Compose con el servicio `decision-engine-scheduler`.
+- Si un entorno ya tiene drift histórico de Prisma y `migrate dev` o `migrate deploy` se bloquea antes de crear `decision_engine_snapshots`, aplica el SQL idempotente con `npm run decision-engine:apply-snapshot-schema`.
+
 ## Getting Started
 
 First, run the development server:
