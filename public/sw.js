@@ -1,5 +1,5 @@
-const CACHE_NAME = 'ordex-shell-v4'
-const APP_SHELL = ['/', '/offline', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-512-maskable.png']
+const CACHE_NAME = 'ordex-shell-v5'
+const APP_SHELL = ['/', '/offline', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-512-maskable.png', '/notification-badge.svg']
 
 async function applyAppBadge(count) {
   const normalized = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0
@@ -174,7 +174,7 @@ self.addEventListener('push', (event) => {
       return self.registration.showNotification(title, {
         body,
         tag,
-        badge: '/icon-192.png',
+        badge: '/notification-badge.svg',
         icon: '/icon-192.png',
         data: {
           actionUrl,

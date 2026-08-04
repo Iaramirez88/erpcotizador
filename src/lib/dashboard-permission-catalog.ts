@@ -291,8 +291,16 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     moduleKey: ModuleKey.REPORTES,
     section: 'Analítica',
     label: 'Reportes',
-    hrefs: ['/dashboard/reportes', '/dashboard/inteligencia'],
+    hrefs: ['/dashboard/reportes'],
     capabilities: [{ domain: 'ANALITICA', subdomain: 'REPORTS' }],
+  },
+  {
+    key: 'ANALITICA.INTELLIGENCE',
+    moduleKey: ModuleKey.REPORTES,
+    section: 'Inicio',
+    label: 'Motor de inteligencia empresarial',
+    hrefs: ['/dashboard/inteligencia'],
+    capabilities: [{ domain: 'ANALITICA', subdomain: 'INTELLIGENCE' }],
   },
   {
     key: 'ANALITICA.AUDITS',

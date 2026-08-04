@@ -19,12 +19,13 @@ export default function Icon() {
           justifyContent: 'center',
           background: 'linear-gradient(135deg, #0f172a 0%, #0b5cab 45%, #69c3ff 100%)',
           color: '#f8fafc',
-          fontSize: 180,
+          fontSize: 260,
           fontWeight: 700,
-          letterSpacing: '-0.08em',
+          letterSpacing: '-0.1em',
+          textShadow: '0 16px 40px rgba(15, 23, 42, 0.28)',
         }}
       >
-        OX
+        O
       </div>
     ),
     size,

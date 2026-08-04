@@ -90,6 +90,7 @@ export const RBAC_V2_CAPABILITY_CATALOG: RbacV2CapabilityDefinition[] = [
   { domain: 'FINANZAS', subdomain: 'INVOICING', actions: ['READ', 'CREATE', 'UPDATE', 'APPROVE', 'EXPORT'], recommendedScopes: ['SEDE', 'EMPRESA'] },
 
   { domain: 'ANALITICA', subdomain: 'REPORTS', actions: ['READ', 'EXPORT'], recommendedScopes: ['SEDE', 'EMPRESA'] },
+  { domain: 'ANALITICA', subdomain: 'INTELLIGENCE', actions: ['READ', 'EXPORT'], recommendedScopes: ['SEDE', 'EMPRESA'] },
   { domain: 'ANALITICA', subdomain: 'AUDITS', actions: ['READ', 'AUDIT', 'EXPORT'], recommendedScopes: ['EMPRESA'] },
 
   { domain: 'IA', subdomain: 'COMMERCIAL_AI', actions: ['READ', 'EXECUTE', 'AUDIT'], recommendedScopes: ['ASSIGNED', 'TEAM', 'SEDE', 'EMPRESA'] },
@@ -117,7 +118,7 @@ export const LEGACY_MODULE_TO_RBAC_V2: LegacyModuleMapping[] = [
   { moduleKey: 'PROVEEDORES', targets: [{ domain: 'RECURSOS', subdomains: ['SUPPLIERS'] }] },
   { moduleKey: 'ESCANEOS', targets: [{ domain: 'OPERACIONES', subdomains: ['DOCUMENT_CAPTURE'] }] },
   { moduleKey: 'CONTABILIDAD', targets: [{ domain: 'FINANZAS', subdomains: ['ACCOUNTING', 'PAYROLL'] }] },
-  { moduleKey: 'REPORTES', targets: [{ domain: 'ANALITICA', subdomains: ['REPORTS', 'AUDITS'] }] },
+  { moduleKey: 'REPORTES', targets: [{ domain: 'ANALITICA', subdomains: ['REPORTS', 'INTELLIGENCE', 'AUDITS'] }] },
   { moduleKey: 'NOTIFICACIONES', targets: [{ domain: 'CORE', subdomains: ['DASHBOARD'] }] },
 ]
 

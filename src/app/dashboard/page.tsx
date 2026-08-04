@@ -125,7 +125,9 @@ export default async function DashboardPage() {
   }
 
   const displayName = session.user.name || session.user.email || 'equipo'
-  const continueHref = '/dashboard/reportes'
+  const canAccessIntelligence = permissionAllowedHrefs.includes('/dashboard/inteligencia')
+  const canAccessReports = permissionAllowedHrefs.includes('/dashboard/reportes')
+  const continueHref = canAccessIntelligence ? '/dashboard/inteligencia' : canAccessReports ? '/dashboard/reportes' : '/dashboard'
   const storagePct = storageUsage?.totalBytes ? Math.min(100, Math.round((storageUsage.usedBytes / storageUsage.totalBytes) * 100)) : 0
   const storageLevel = getStorageLevel(storagePct)
 
@@ -140,18 +142,22 @@ export default async function DashboardPage() {
             : 'El dashboard ahora funciona como pantalla de inicio. Elige qué quieres gestionar primero y entra directo al flujo correcto.')}
         actions={
           <>
-            <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/90">
-              <Link href="/dashboard/inteligencia">
-                <BrainCircuit className="mr-2 h-4 w-4" />
-                Ir a inteligencia
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/90">
-              <Link href="/dashboard/reportes">
-                <BarChart3 className="mr-2 h-4 w-4" />
-                Ir a reportes
-              </Link>
-            </Button>
+            {canAccessIntelligence ? (
+              <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/90">
+                <Link href="/dashboard/inteligencia">
+                  <BrainCircuit className="mr-2 h-4 w-4" />
+                  Ir a inteligencia
+                </Link>
+              </Button>
+            ) : null}
+            {canAccessReports ? (
+              <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/90">
+                <Link href="/dashboard/reportes">
+                  <BarChart3 className="mr-2 h-4 w-4" />
+                  Ir a reportes
+                </Link>
+              </Button>
+            ) : null}
             <ContinueLastViewButton userId={userId} fallbackHref={continueHref} />
           </>
         }
