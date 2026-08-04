@@ -14,11 +14,13 @@ export async function GET() {
   const rows = await prisma.webPushSubscription.findMany({
     where: { userId: session.user.id },
     orderBy: [{ updatedAt: 'desc' }],
-    take: 3,
+    take: 20,
     select: {
       id: true,
       endpoint: true,
+      createdAt: true,
       updatedAt: true,
+      userAgent: true,
     },
   })
 
@@ -29,7 +31,9 @@ export async function GET() {
     items: rows.map((row) => ({
       id: row.id,
       endpointTail: row.endpoint.slice(-18),
+      createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+      userAgent: row.userAgent ?? null,
     })),
   })
 }

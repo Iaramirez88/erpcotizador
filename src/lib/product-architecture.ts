@@ -50,6 +50,7 @@ export const DASHBOARD_SECTION_ORDER: DashboardSectionTitle[] = [
 
 export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard', label: 'Dashboard', labelKey: 'nav.dashboard', section: 'Inicio', layer: 'Inicio', domain: 'Inicio', moduleKey: 'DASHBOARD' },
+  { href: '/dashboard/inteligencia', label: 'Inteligencia', section: 'Inicio', layer: 'Inicio', domain: 'Motor de inteligencia empresarial', moduleKey: 'REPORTES' },
   { href: '/dashboard/perfil', label: 'Mi perfil', labelKey: 'header.profile', section: 'Inicio', layer: 'Inicio', domain: 'Perfil de usuario', moduleKey: null },
   { href: '/dashboard/mapa-producto', label: 'Mapa de producto', section: 'Inicio', layer: 'Inicio', domain: 'Arquitectura de producto', moduleKey: 'DASHBOARD' },
   { href: '/dashboard/plantillas', label: 'Plantillas', labelKey: 'nav.templates', section: 'Inicio', layer: 'Inicio', domain: 'Plantillas', moduleKey: 'DASHBOARD' },
@@ -93,7 +94,6 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/contabilidad/nomina', label: 'Nómina', section: 'Finanzas', layer: 'Finanzas', domain: 'Nómina', moduleKey: 'CONTABILIDAD' },
 
   { href: '/dashboard/reportes', label: 'Reportes', labelKey: 'nav.reports', section: 'Analítica', layer: 'Analítica', domain: 'Reportes y BI', moduleKey: 'REPORTES' },
-  { href: '/dashboard/inteligencia', label: 'Inteligencia', section: 'Analítica', layer: 'Analítica', domain: 'Motor de inteligencia empresarial', moduleKey: 'REPORTES' },
   { href: '/dashboard/crm/auditoria-ia', label: 'Auditoría IA CRM', section: 'Analítica', layer: 'Analítica', domain: 'Auditoría IA comercial', moduleKey: 'CRM' },
   { href: '/dashboard/litografia/auditoria-ia', label: 'Auditoría IA', section: 'Analítica', layer: 'Analítica', domain: 'Auditoría IA operativa', moduleKey: 'COTIZADOR' },
 
@@ -110,6 +110,7 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/configuracion/empresa', label: 'Empresa', labelKey: 'nav.company', section: 'Plataforma', layer: 'Plataforma', domain: 'Empresa', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/sedes', label: 'Sedes', labelKey: 'nav.branches', section: 'Plataforma', layer: 'Plataforma', domain: 'Sedes', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/usuarios', label: 'Usuarios', labelKey: 'nav.users', section: 'Plataforma', layer: 'Plataforma', domain: 'Usuarios', moduleKey: 'CONFIG' },
+  { href: '/dashboard/configuracion/notificaciones', label: 'Notificaciones moviles', section: 'Plataforma', layer: 'Plataforma', domain: 'Preferencias de notificaciones moviles', moduleKey: null },
   { href: '/dashboard/configuracion/servicios-web', label: 'Servicios web', section: 'Plataforma', layer: 'Plataforma', domain: 'Servicios web', moduleKey: null },
   { href: '/dashboard/configuracion/plan', label: 'Plan', labelKey: 'nav.plan', section: 'Plataforma', layer: 'Plataforma', domain: 'Plan y suscripción', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/super-admin/empresas', label: 'Super Admin Empresas', section: 'Plataforma', layer: 'Plataforma', domain: 'Tenant management', moduleKey: 'CONFIG' },

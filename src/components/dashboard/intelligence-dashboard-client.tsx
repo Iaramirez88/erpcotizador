@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState, type MouseEvent } from 'react'
-import { Activity, AlertTriangle, ArrowUpRight, BanknoteArrowDown, BrainCircuit, BriefcaseBusiness, Boxes, Camera, Factory, History, Loader2, Radar, ReceiptText, TrendingUp } from 'lucide-react'
+import { Activity, AlertTriangle, ArrowUpRight, BanknoteArrowDown, BriefcaseBusiness, Boxes, Camera, Factory, History, Loader2, Radar, ReceiptText, TrendingUp } from 'lucide-react'
 import { ErpPageHero, ErpSectionHeading } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -776,15 +776,6 @@ export function IntelligenceDashboardClient() {
         </div>
       </section>
 
-      <section className="rounded-[28px] border border-slate-200 bg-white/90 p-6 shadow-sm">
-        <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-          <BrainCircuit className="h-4 w-4 text-slate-700" />
-          Estado de la fase
-        </div>
-        <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-600">
-          El cockpit ya consume el motor desacoplado, expone snapshots persistidos con comparación por slice, publica pronósticos operativos mínimos y registra adopción básica de recomendaciones por usuario. El frente pendiente fuera de estas fases es llevar el scheduler a infraestructura real y sustituir heurísticas por modelos más robustos donde haga sentido.
-        </p>
-      </section>
     </div>
   )
 }

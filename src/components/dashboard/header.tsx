@@ -11,7 +11,7 @@ import Image from 'next/image'
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
-import { LogOut } from 'lucide-react'
+import { ChevronDown, LogOut } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog, type SidebarTooltipPrefs } from "@/components/dashboard/nav-settings-dialog"
@@ -63,6 +63,10 @@ function MenuChevron() {
   )
 }
 
+function MobileMenuChevron({ open }: { open: boolean }) {
+  return <ChevronDown className={open ? 'h-4 w-4 text-slate-500 transition-transform rotate-180' : 'h-4 w-4 text-slate-500 transition-transform'} />
+}
+
 function MenuIcon({ children }: { children: React.ReactNode }) {
   return <span className="inline-flex h-5 w-5 items-center justify-center text-slate-700">{children}</span>
 }
@@ -77,6 +81,8 @@ export default function Header({ user }: HeaderProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [navSettingsOpen, setNavSettingsOpen] = useState(false)
   const [returningToSuperAdmin, setReturningToSuperAdmin] = useState(false)
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
+  const [expandedMobileSection, setExpandedMobileSection] = useState<string | null>(null)
   const [canManageBilling] = useState(Boolean(user.canManageBilling))
   const [canAccessWebsiteServices] = useState(Boolean(user.canAccessWebsiteServices))
   const [allowedNavHrefs] = useState<string[]>(() => user.allowedNavHrefs ?? [])
@@ -122,6 +128,18 @@ export default function Header({ user }: HeaderProps) {
   }, [])
 
   useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+
+    const mediaQuery = window.matchMedia('(max-width: 767px)')
+    const applyMatch = (matches: boolean) => setIsMobileViewport(matches)
+    applyMatch(mediaQuery.matches)
+
+    const onChange = (event: MediaQueryListEvent) => applyMatch(event.matches)
+    mediaQuery.addEventListener('change', onChange)
+    return () => mediaQuery.removeEventListener('change', onChange)
+  }, [])
+
+  useEffect(() => {
     function handleUiPreferencesUpdated(event: Event) {
       const detail = (event as CustomEvent<{ nav?: Record<string, boolean>; navOrder?: string[]; sidebarTooltips?: SidebarTooltipPrefs }>).detail
       if (!detail) return
@@ -133,6 +151,12 @@ export default function Header({ user }: HeaderProps) {
     window.addEventListener('ui-preferences:nav-updated', handleUiPreferencesUpdated)
     return () => window.removeEventListener('ui-preferences:nav-updated', handleUiPreferencesUpdated)
   }, [])
+
+  useEffect(() => {
+    if (!userMenuOpen) {
+      setExpandedMobileSection(null)
+    }
+  }, [userMenuOpen])
 
   const navItems = useMemo(() => {
     const base = buildDashboardNavDefinitions(t)
@@ -189,6 +213,259 @@ export default function Header({ user }: HeaderProps) {
       setReturningToSuperAdmin(false)
     }
   }
+
+  function toggleMobileSection(key: string) {
+    setExpandedMobileSection((current) => (current === key ? null : key))
+  }
+
+  function renderMobileSubmenu(options: {
+    keyName: string
+    label: string
+    icon: React.ReactNode
+    disabled?: boolean
+    children: React.ReactNode
+  }) {
+    const open = expandedMobileSection === options.keyName
+
+    return (
+      <div className={options.disabled ? 'opacity-50' : ''}>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-3 text-left text-[15px] font-medium text-slate-700 transition hover:bg-slate-100"
+          onClick={() => {
+            if (options.disabled) return
+            toggleMobileSection(options.keyName)
+          }}
+          disabled={options.disabled}
+        >
+          <span className="flex items-center gap-3">
+            <MenuIcon>{options.icon}</MenuIcon>
+            <span>{options.label}</span>
+          </span>
+          <MobileMenuChevron open={open} />
+        </button>
+        {open ? <div className="mt-1 space-y-1 rounded-2xl bg-slate-50 p-2">{options.children}</div> : null}
+      </div>
+    )
+  }
+
+  const configMenu = isMobileViewport
+    ? renderMobileSubmenu({
+        keyName: 'configuracion',
+        label: 'Configuración',
+        disabled: !canManageBilling,
+        icon: (
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+          </svg>
+        ),
+        children: (
+          <>
+            <Link href="/dashboard/configuracion/plan" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
+              Facturación
+            </Link>
+            <Link href="/dashboard/configuracion/plan?tab=almacenamiento" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
+              Consumo actual de espacio
+            </Link>
+          </>
+        ),
+      })
+    : (
+      <DropdownMenuSub>
+        <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100" disabled={!canManageBilling}>
+          <div className="flex w-full items-center justify-between gap-3">
+            <span className="flex items-center gap-3">
+              <MenuIcon>
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+              </MenuIcon>
+              <span>Configuración</span>
+            </span>
+            <MenuChevron />
+          </div>
+        </DropdownMenuSubTriggerItem>
+        <DropdownMenuSubContentPanel className="w-64 rounded-2xl p-2">
+          <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+            <Link href="/dashboard/configuracion/plan">Facturación</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+            <Link href="/dashboard/configuracion/plan?tab=almacenamiento">Consumo actual de espacio</Link>
+          </DropdownMenuItem>
+        </DropdownMenuSubContentPanel>
+      </DropdownMenuSub>
+    )
+
+  const themeMenu = isMobileViewport
+    ? renderMobileSubmenu({
+        keyName: 'tema',
+        label: 'Tema',
+        icon: (
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3c4.97 0 9 4.03 9 9s-4.03 9-9 9-9-4.03-9-9 4.03-9 9-9Zm0 4v5l3 3" />
+          </svg>
+        ),
+        children: (
+          <>
+            <button type="button" className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => { setTheme('light'); setUserMenuOpen(false) }}>
+              Claro{theme === 'light' ? ' ✓' : ''}
+            </button>
+            <button type="button" className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => { setTheme('dark'); setUserMenuOpen(false) }}>
+              Oscuro{theme === 'dark' ? ' ✓' : ''}
+            </button>
+            <button type="button" className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => { setTheme('system'); setUserMenuOpen(false) }}>
+              Sistema{theme === 'system' ? ' ✓' : ''}
+            </button>
+          </>
+        ),
+      })
+    : (
+      <DropdownMenuSub>
+        <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
+          <div className="flex w-full items-center justify-between gap-3">
+            <span className="flex items-center gap-3">
+              <MenuIcon>
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3c4.97 0 9 4.03 9 9s-4.03 9-9 9-9-4.03-9-9 4.03-9 9-9Zm0 4v5l3 3" />
+                </svg>
+              </MenuIcon>
+              <span>Tema</span>
+            </span>
+            <MenuChevron />
+          </div>
+        </DropdownMenuSubTriggerItem>
+        <DropdownMenuSubContentPanel className="w-56 rounded-2xl p-2">
+          <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setTheme('light') }}>
+            Claro{theme === 'light' ? ' ✓' : ''}
+          </DropdownMenuItem>
+          <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setTheme('dark') }}>
+            Oscuro{theme === 'dark' ? ' ✓' : ''}
+          </DropdownMenuItem>
+          <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setTheme('system') }}>
+            Sistema{theme === 'system' ? ' ✓' : ''}
+          </DropdownMenuItem>
+        </DropdownMenuSubContentPanel>
+      </DropdownMenuSub>
+    )
+
+  const languageMenu = isMobileViewport
+    ? renderMobileSubmenu({
+        keyName: 'idioma',
+        label: t('common.language'),
+        icon: (
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1 13 4-4m0 0 4 4m-4-4v7M4 12h8m-6 7h2" />
+          </svg>
+        ),
+        children: (
+          <>
+            <button type="button" className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => { setLanguage('es'); setUserMenuOpen(false) }}>
+              {t('common.spanish')}{language === 'es' ? ' ✓' : ''}
+            </button>
+            <button type="button" className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => { setLanguage('en'); setUserMenuOpen(false) }}>
+              {t('common.english')}{language === 'en' ? ' ✓' : ''}
+            </button>
+          </>
+        ),
+      })
+    : (
+      <DropdownMenuSub>
+        <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
+          <div className="flex w-full items-center justify-between gap-3">
+            <span className="flex items-center gap-3">
+              <MenuIcon>
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1 13 4-4m0 0 4 4m-4-4v7M4 12h8m-6 7h2" />
+                </svg>
+              </MenuIcon>
+              <span>{t('common.language')}</span>
+            </span>
+            <MenuChevron />
+          </div>
+        </DropdownMenuSubTriggerItem>
+        <DropdownMenuSubContentPanel className="w-56 rounded-2xl p-2">
+          <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setLanguage('es') }}>
+            {t('common.spanish')}{language === 'es' ? ' ✓' : ''}
+          </DropdownMenuItem>
+          <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setLanguage('en') }}>
+            {t('common.english')}{language === 'en' ? ' ✓' : ''}
+          </DropdownMenuItem>
+        </DropdownMenuSubContentPanel>
+      </DropdownMenuSub>
+    )
+
+  const helpMenu = isMobileViewport
+    ? renderMobileSubmenu({
+        keyName: 'ayuda',
+        label: 'Ayuda y recursos educativos',
+        icon: (
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.305-.88 2.418-2.13 2.83-.97.32-1.87 1.1-1.87 2.17V16m0 4h.01M12 22a10 10 0 100-20 10 10 0 000 20z" />
+          </svg>
+        ),
+        children: (
+          <>
+            <Link href="/dashboard/ayuda" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
+              Centro de ayuda
+            </Link>
+            <Link href="/dashboard/ayuda" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
+              Documentación y videos
+            </Link>
+            <button type="button" disabled={!hasCurrentTour} className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white disabled:opacity-50" onClick={() => { startCurrentTour(); setUserMenuOpen(false) }}>
+              {t('header.tour.view')}
+            </button>
+            <button type="button" disabled={!hasCurrentTour} className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white disabled:opacity-50" onClick={() => { void resetCurrentTour(); startCurrentTour(); setUserMenuOpen(false) }}>
+              {t('header.tour.restart')}
+            </button>
+          </>
+        ),
+      })
+    : (
+      <DropdownMenuSub>
+        <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
+          <div className="flex w-full items-center justify-between gap-3">
+            <span className="flex items-center gap-3">
+              <MenuIcon>
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.305-.88 2.418-2.13 2.83-.97.32-1.87 1.1-1.87 2.17V16m0 4h.01M12 22a10 10 0 100-20 10 10 0 000 20z" />
+                </svg>
+              </MenuIcon>
+              <span>Ayuda y recursos educativos</span>
+            </span>
+            <MenuChevron />
+          </div>
+        </DropdownMenuSubTriggerItem>
+        <DropdownMenuSubContentPanel className="w-72 rounded-2xl p-2">
+          <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+            <Link href="/dashboard/ayuda">Centro de ayuda</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+            <Link href="/dashboard/ayuda">Documentación y videos</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!hasCurrentTour}
+            className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700"
+            onSelect={(e) => {
+              e.preventDefault()
+              startCurrentTour()
+            }}
+          >
+            {t('header.tour.view')}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!hasCurrentTour}
+            className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700"
+            onSelect={(e) => {
+              e.preventDefault()
+              void resetCurrentTour()
+              startCurrentTour()
+            }}
+          >
+            {t('header.tour.restart')}
+          </DropdownMenuItem>
+        </DropdownMenuSubContentPanel>
+      </DropdownMenuSub>
+    )
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/80 bg-background/88 px-2 py-1.5 text-foreground backdrop-blur-xl sm:px-3 lg:px-4">
@@ -265,125 +542,13 @@ export default function Header({ user }: HeaderProps) {
                 </Link>
               </DropdownMenuItem>
 
-              <DropdownMenuSub>
-                <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100" disabled={!canManageBilling}>
-                  <div className="flex w-full items-center justify-between gap-3">
-                    <span className="flex items-center gap-3">
-                      <MenuIcon>
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                        </svg>
-                      </MenuIcon>
-                      <span>Configuración</span>
-                    </span>
-                    <MenuChevron />
-                  </div>
-                </DropdownMenuSubTriggerItem>
-                <DropdownMenuSubContentPanel className="w-64 rounded-2xl p-2">
-                  <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
-                    <Link href="/dashboard/configuracion/plan">Facturación</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
-                    <Link href="/dashboard/configuracion/plan?tab=almacenamiento">Consumo actual de espacio</Link>
-                  </DropdownMenuItem>
-                </DropdownMenuSubContentPanel>
-              </DropdownMenuSub>
+              {configMenu}
 
-              <DropdownMenuSub>
-                <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
-                  <div className="flex w-full items-center justify-between gap-3">
-                    <span className="flex items-center gap-3">
-                      <MenuIcon>
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3c4.97 0 9 4.03 9 9s-4.03 9-9 9-9-4.03-9-9 4.03-9 9-9Zm0 4v5l3 3" />
-                        </svg>
-                      </MenuIcon>
-                      <span>Tema</span>
-                    </span>
-                    <MenuChevron />
-                  </div>
-                </DropdownMenuSubTriggerItem>
-                <DropdownMenuSubContentPanel className="w-56 rounded-2xl p-2">
-                  <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setTheme('light') }}>
-                    Claro{theme === 'light' ? ' ✓' : ''}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setTheme('dark') }}>
-                    Oscuro{theme === 'dark' ? ' ✓' : ''}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setTheme('system') }}>
-                    Sistema{theme === 'system' ? ' ✓' : ''}
-                  </DropdownMenuItem>
-                </DropdownMenuSubContentPanel>
-              </DropdownMenuSub>
+              {themeMenu}
 
-              <DropdownMenuSub>
-                <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
-                  <div className="flex w-full items-center justify-between gap-3">
-                    <span className="flex items-center gap-3">
-                      <MenuIcon>
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1 13 4-4m0 0 4 4m-4-4v7M4 12h8m-6 7h2" />
-                        </svg>
-                      </MenuIcon>
-                      <span>{t('common.language')}</span>
-                    </span>
-                    <MenuChevron />
-                  </div>
-                </DropdownMenuSubTriggerItem>
-                <DropdownMenuSubContentPanel className="w-56 rounded-2xl p-2">
-                  <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setLanguage('es') }}>
-                    {t('common.spanish')}{language === 'es' ? ' ✓' : ''}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setLanguage('en') }}>
-                    {t('common.english')}{language === 'en' ? ' ✓' : ''}
-                  </DropdownMenuItem>
-                </DropdownMenuSubContentPanel>
-              </DropdownMenuSub>
+              {languageMenu}
 
-              <DropdownMenuSub>
-                <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
-                  <div className="flex w-full items-center justify-between gap-3">
-                    <span className="flex items-center gap-3">
-                      <MenuIcon>
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.305-.88 2.418-2.13 2.83-.97.32-1.87 1.1-1.87 2.17V16m0 4h.01M12 22a10 10 0 100-20 10 10 0 000 20z" />
-                        </svg>
-                      </MenuIcon>
-                      <span>Ayuda y recursos educativos</span>
-                    </span>
-                    <MenuChevron />
-                  </div>
-                </DropdownMenuSubTriggerItem>
-                <DropdownMenuSubContentPanel className="w-72 rounded-2xl p-2">
-                  <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
-                    <Link href="/dashboard/ayuda">Centro de ayuda</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
-                    <Link href="/dashboard/ayuda">Documentación y videos</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!hasCurrentTour}
-                    className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700"
-                    onSelect={(e) => {
-                      e.preventDefault()
-                      startCurrentTour()
-                    }}
-                  >
-                    {t('header.tour.view')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!hasCurrentTour}
-                    className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700"
-                    onSelect={(e) => {
-                      e.preventDefault()
-                      void resetCurrentTour()
-                      startCurrentTour()
-                    }}
-                  >
-                    {t('header.tour.restart')}
-                  </DropdownMenuItem>
-                </DropdownMenuSubContentPanel>
-              </DropdownMenuSub>
+              {helpMenu}
 
               {navPrefs ? (
                 <DropdownMenuItem

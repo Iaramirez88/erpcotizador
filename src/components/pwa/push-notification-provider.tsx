@@ -3,85 +3,18 @@
 import { BellRing, BellOff, Loader2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { normalizeBrowserPushSubscription, urlBase64ToUint8Array, type BrowserPushSubscription } from '@/lib/push-subscription'
-
-const DISMISS_KEY = 'sgd_push_notifications_dismissed'
-
-function isPushSupported() {
-  return typeof window !== 'undefined'
-    && 'Notification' in window
-    && 'serviceWorker' in navigator
-    && 'PushManager' in window
-}
-
-function isStandaloneMode() {
-  if (typeof window === 'undefined') return false
-  const standaloneMedia = window.matchMedia('(display-mode: standalone)').matches
-  const iosStandalone = 'standalone' in window.navigator && Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone)
-  return standaloneMedia || iosStandalone
-}
-
-async function fetchPushConfig() {
-  const response = await fetch('/api/push/public-key', { cache: 'no-store' })
-  const json = (await response.json().catch(() => null)) as { enabled?: boolean; publicKey?: string | null } | null
-  return {
-    enabled: json?.enabled === true,
-    publicKey: typeof json?.publicKey === 'string' && json.publicKey.trim() ? json.publicKey.trim() : null,
-  }
-}
-
-async function fetchSubscriptionStatus() {
-  const response = await fetch('/api/push/subscriptions', { cache: 'no-store' })
-  const json = (await response.json().catch(() => null)) as { subscribed?: boolean } | null
-  return json?.subscribed === true
-}
-
-async function persistSubscription(subscription: PushSubscription) {
-  const parsed = normalizeBrowserPushSubscription(subscription.toJSON())
-  if (!parsed) throw new Error('No se pudo serializar la suscripción push.')
-
-  const response = await fetch('/api/push/subscriptions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(parsed),
-  })
-
-  if (!response.ok) {
-    throw new Error('No se pudo guardar la suscripción push.')
-  }
-}
-
-async function syncExistingSubscription(publicKey: string) {
-  if (!isPushSupported()) return false
-
-  const registration = await navigator.serviceWorker.ready
-  const existingSubscription = await registration.pushManager.getSubscription()
-
-  if (existingSubscription) {
-    await persistSubscription(existingSubscription)
-    return true
-  }
-
-  if (Notification.permission !== 'granted') return false
-
-  const createdSubscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(publicKey),
-  })
-
-  await persistSubscription(createdSubscription)
-  return true
-}
-
-async function deleteExistingSubscription(subscription: BrowserPushSubscription | null) {
-  if (!subscription?.endpoint) return
-
-  await fetch('/api/push/subscriptions', {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ endpoint: subscription.endpoint }),
-  }).catch(() => undefined)
-}
+import {
+  PUSH_NOTIFICATIONS_DISMISS_KEY,
+  PUSH_NOTIFICATIONS_STATE_EVENT,
+  deleteExistingSubscription,
+  fetchPushConfig,
+  fetchSubscriptionStatus,
+  isPushOptedOut,
+  isPushSupported,
+  isStandaloneMode,
+  syncExistingSubscription,
+} from '@/lib/push-notification-client'
+import { normalizeBrowserPushSubscription } from '@/lib/push-subscription'
 
 export function PushNotificationProvider() {
   const [supported, setSupported] = useState(false)
@@ -89,6 +22,7 @@ export function PushNotificationProvider() {
   const [publicKey, setPublicKey] = useState<string | null>(null)
   const [permission, setPermission] = useState<NotificationPermission>('default')
   const [dismissed, setDismissed] = useState(true)
+  const [optedOut, setOptedOut] = useState(false)
   const [subscriptionReady, setSubscriptionReady] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -98,7 +32,8 @@ export function PushNotificationProvider() {
 
     setSupported(true)
     setPermission(Notification.permission)
-    setDismissed(window.localStorage.getItem(DISMISS_KEY) === '1')
+    setDismissed(window.localStorage.getItem(PUSH_NOTIFICATIONS_DISMISS_KEY) === '1')
+    setOptedOut(isPushOptedOut())
 
     void fetchPushConfig().then(async (config) => {
       setEnabled(config.enabled)
@@ -125,10 +60,11 @@ export function PushNotificationProvider() {
 
   const shouldShow = useMemo(() => {
     if (!supported || !enabled || !publicKey) return false
+    if (optedOut) return false
     if (permission === 'granted' && subscriptionReady !== false) return false
     if (permission !== 'granted' && dismissed) return false
     return isStandaloneMode()
-  }, [dismissed, enabled, permission, publicKey, subscriptionReady, supported])
+  }, [dismissed, enabled, optedOut, permission, publicKey, subscriptionReady, supported])
 
   async function handleEnable() {
     if (!publicKey) return
@@ -151,9 +87,11 @@ export function PushNotificationProvider() {
 
       await syncExistingSubscription(publicKey)
       const subscribed = await fetchSubscriptionStatus().catch(() => false)
+      window.localStorage.removeItem(PUSH_NOTIFICATIONS_DISMISS_KEY)
+      window.localStorage.removeItem('sgd_push_notifications_opt_out')
       setSubscriptionReady(subscribed)
-      window.localStorage.removeItem(DISMISS_KEY)
       setDismissed(false)
+      setOptedOut(false)
     } catch {
       setSubscriptionReady(false)
       setError('No fue posible activar las notificaciones en este dispositivo.')
@@ -173,6 +111,19 @@ export function PushNotificationProvider() {
       })
       .catch(() => undefined)
   }, [permission, supported])
+
+  useEffect(() => {
+    function handlePushStateChanged(event: Event) {
+      const detail = (event as CustomEvent<{ optedOut?: boolean; subscribed?: boolean; permission?: NotificationPermission | null }>).detail
+      if (!detail) return
+      if (typeof detail.optedOut === 'boolean') setOptedOut(detail.optedOut)
+      if (typeof detail.subscribed === 'boolean') setSubscriptionReady(detail.subscribed)
+      if (detail.permission) setPermission(detail.permission)
+    }
+
+    window.addEventListener(PUSH_NOTIFICATIONS_STATE_EVENT, handlePushStateChanged)
+    return () => window.removeEventListener(PUSH_NOTIFICATIONS_STATE_EVENT, handlePushStateChanged)
+  }, [])
 
   if (!shouldShow) return null
 
@@ -199,7 +150,7 @@ export function PushNotificationProvider() {
                 type="button"
                 className="rounded-full p-1 text-slate-500 transition hover:bg-white/70 hover:text-slate-900"
                 onClick={() => {
-                  window.localStorage.setItem(DISMISS_KEY, '1')
+                  window.localStorage.setItem(PUSH_NOTIFICATIONS_DISMISS_KEY, '1')
                   setDismissed(true)
                 }}
                 aria-label="Ocultar aviso de notificaciones"

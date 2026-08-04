@@ -45,6 +45,7 @@ const DEFAULT_SIDEBAR_TOOLTIP_PREFS: SidebarTooltipPrefs = { desktop: true, mobi
 
 const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard": "Resumen rapido de ventas, tareas y actividad del negocio.",
+  "/dashboard/inteligencia": "Cockpit ejecutivo con lectura del negocio, riesgos, oportunidades y acciones sugeridas.",
   "/dashboard/mapa-producto": "Vista general del sistema y sus modulos disponibles.",
   "/dashboard/reportes": "Indicadores, resultados y analisis para tomar decisiones.",
   "/dashboard/plantillas": "Formatos reutilizables para cotizaciones, mensajes y documentos.",
@@ -84,6 +85,7 @@ const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard/configuracion/sedes": "Administra sucursales, ubicaciones y operacion por sede.",
   "/dashboard/configuracion/usuarios": "Crea usuarios y administra roles, permisos y acceso al sistema.",
   "/dashboard/configuracion/empresa": "Configura datos, imagen y parametros de la empresa.",
+  "/dashboard/configuracion/notificaciones": "Activa o desactiva notificaciones push y revisa los dispositivos vinculados a tu usuario.",
   "/dashboard/configuracion/servicios-web": "Administra servicios web y modulos conectados.",
   "/dashboard/configuracion/plan": "Consulta tu plan, limites y opciones de actualizacion.",
   "/dashboard/configuracion/super-admin/modulos-por-plan": "Configura modulos y alcances por tipo de plan.",
@@ -172,6 +174,16 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
+    name: 'Inteligencia',
+    href: "/dashboard/inteligencia",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3h6M12 3v3M8 9a4 4 0 118 0c0 1.4-.5 2.3-1.5 3.4-.8.9-1.3 1.7-1.5 2.6h-2c-.2-.9-.7-1.7-1.5-2.6C8.5 11.3 8 10.4 8 9z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.5 18h5M10 21h4" />
+      </svg>
+    ),
+  },
+  {
     name: 'Mapa de producto',
     href: "/dashboard/mapa-producto",
     icon: (
@@ -206,6 +218,15 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14h6m-6 4h6M7 4h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z" />
+      </svg>
+    ),
+  },
+  {
+    name: 'Notificaciones moviles',
+    href: "/dashboard/configuracion/notificaciones",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m6 0a3 3 0 11-6 0m6 0H9" />
       </svg>
     ),
   },
