@@ -8,6 +8,7 @@ import { I18nProvider } from "@/components/providers/i18n-provider";
 import { NotificationToastBridge } from "@/components/providers/notification-toast-bridge";
 import ThemeProvider from "@/components/providers/theme-provider";
 import { PwaInstallCta } from "@/components/pwa/pwa-install-cta";
+import { PushNotificationProvider } from "@/components/pwa/push-notification-provider";
 import { PwaProvider } from "@/components/pwa/pwa-provider";
 import { Toaster } from "@/components/ui/toaster";
 import { getServerLanguage } from "@/lib/i18n/server";
@@ -98,6 +99,7 @@ export default async function RootLayout({
         <ThemeProvider>
           <PwaProvider />
           <PwaInstallCta />
+          <PushNotificationProvider />
           <AuthProvider>
             <I18nProvider initialLanguage={language}>
               {children}

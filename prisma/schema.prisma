@@ -115,6 +115,7 @@ model User {
 
   // Notificaciones
   notifications Notification[]
+  webPushSubscriptions WebPushSubscription[]
 
   litografiaPaperRequestsCreated  LitografiaPaperRequest[] @relation("LitografiaPaperRequestCreatedBy")
   litografiaPaperRequestsApproved LitografiaPaperRequest[] @relation("LitografiaPaperRequestApprovedBy")
@@ -2260,6 +2261,24 @@ model Notification {
   @@index([empresaId])
   @@index([sedeId])
   @@map("notifications")
+}
+
+model WebPushSubscription {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  endpoint       String   @unique
+  p256dh         String
+  auth           String
+  expirationTime DateTime?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+  @@map("web_push_subscriptions")
 }
 
 model WorkspaceAccessRequest {

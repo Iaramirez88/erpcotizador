@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 
 export type RealtimeNotificationPayload = {
-  id: string
+  id: string | null
   type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR' | string
   title: string
   body: string | null

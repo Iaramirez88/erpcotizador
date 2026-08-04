@@ -1,5 +1,3 @@
-import { publishRealtimeNotification } from '@/lib/notification-realtime'
-
 type NotificationWriter = {
   notification: {
     create: (args: {
@@ -56,7 +54,7 @@ export async function notifyTaskUsers(args: TaskUserNotificationArgs) {
 
   const actionUrl = buildTaskNotificationUrl(args.taskId, args.workspaceId)
 
-  const createdNotifications = await Promise.all(
+  await Promise.all(
     uniqueRecipients.map((userId) => args.client.notification.create({
       data: {
         type: args.type ?? 'INFO',
@@ -70,19 +68,4 @@ export async function notifyTaskUsers(args: TaskUserNotificationArgs) {
       },
     })),
   )
-
-  createdNotifications.forEach((notification) => {
-    if (!notification.userId) return
-    publishRealtimeNotification({
-      id: notification.id,
-      type: notification.type,
-      title: notification.title,
-      body: notification.body,
-      actionUrl: notification.actionUrl,
-      actionLabel: notification.actionLabel,
-      readAt: notification.readAt ? notification.readAt.toISOString() : null,
-      createdAt: notification.createdAt.toISOString(),
-      userId: notification.userId,
-    })
-  })
 }

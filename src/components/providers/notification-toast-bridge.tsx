@@ -13,6 +13,11 @@ function mapVariant(type: RealtimeNotificationPayload["type"]) {
   return type === "ERROR" ? "destructive" as const : "default" as const;
 }
 
+function resolveNotificationHref(payload: RealtimeNotificationPayload) {
+  if (payload.id) return `/dashboard/notificaciones/open/${payload.id}`
+  return payload.actionUrl || '/dashboard/notificaciones'
+}
+
 export function NotificationToastBridge() {
   const router = useRouter()
 
@@ -38,7 +43,7 @@ export function NotificationToastBridge() {
         variant: mapVariant(payload.type),
         action: payload.actionUrl ? (
           <ToastAction altText={payload.actionLabel || 'Abrir notificación'} asChild>
-            <Link href={`/dashboard/notificaciones/open/${payload.id}`}>{payload.actionLabel || 'Abrir'}</Link>
+            <Link href={resolveNotificationHref(payload)}>{payload.actionLabel || 'Abrir'}</Link>
           </ToastAction>
         ) : undefined,
       })

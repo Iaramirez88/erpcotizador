@@ -8,6 +8,7 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
+import { deliverNotifications } from '@/lib/notification-delivery'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -118,6 +119,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasDotacionPedidoDelegate = typeof (prismaClient as any)?.dotacionPedido?.findMany === 'function'
   const hasDotacionPedidoItemDelegate = typeof (prismaClient as any)?.dotacionPedidoItem?.findMany === 'function'
   const hasRestauranteTurnoDelegate = typeof (prismaClient as any)?.restauranteTurno?.findMany === 'function'
+  const hasWebPushSubscriptionDelegate = typeof (prismaClient as any)?.webPushSubscription?.findMany === 'function'
 
   if (
     !hasTrialTier ||
@@ -192,17 +194,73 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasAccountingVoucherLineDelegate ||
     !hasDotacionPedidoDelegate ||
     !hasDotacionPedidoItemDelegate ||
-    !hasRestauranteTurnoDelegate
+    !hasRestauranteTurnoDelegate ||
+    !hasWebPushSubscriptionDelegate
   ) {
     prismaClient = undefined
   }
 }
 
-export const prisma =
+const prismaBase =
   prismaClient ??
   (new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
   }) as PrismaClient)
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+const prismaExtended = prismaBase.$extends({
+  query: {
+    notification: {
+      async create({ args, query }) {
+        const created = await query(args)
+        const createdNotification = created as {
+          id: string
+          type: string
+          title: string
+          body: string | null
+          actionUrl: string | null
+          actionLabel: string | null
+          readAt: Date | null
+          createdAt: Date
+          userId: string | null
+        }
+
+        void deliverNotifications(prismaBase, {
+          id: createdNotification.id,
+          type: createdNotification.type,
+          title: createdNotification.title,
+          body: createdNotification.body,
+          actionUrl: createdNotification.actionUrl,
+          actionLabel: createdNotification.actionLabel,
+          readAt: createdNotification.readAt,
+          createdAt: createdNotification.createdAt,
+          userId: createdNotification.userId,
+        })
+
+        return created
+      },
+      async createMany({ args, query }) {
+        const result = await query(args)
+
+        const items = (Array.isArray(args.data) ? args.data : [args.data]) as Array<{
+          id?: string | null
+          type?: string | null
+          title?: string | null
+          body?: string | null
+          actionUrl?: string | null
+          actionLabel?: string | null
+          readAt?: Date | null
+          createdAt?: Date | null
+          userId?: string | null
+        }>
+        void deliverNotifications(prismaBase, items)
+
+        return result
+      },
+    },
+  },
+})
+
+export const prisma = prismaExtended as unknown as PrismaClient
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prismaBase

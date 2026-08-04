@@ -1,5 +1,17 @@
-const CACHE_NAME = 'ordex-shell-v3'
+const CACHE_NAME = 'ordex-shell-v4'
 const APP_SHELL = ['/', '/offline', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-512-maskable.png']
+
+function normalizeNavigationUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) return '/dashboard/notificaciones'
+
+  try {
+    const url = new URL(value, self.location.origin)
+    if (url.origin !== self.location.origin) return '/dashboard/notificaciones'
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    return '/dashboard/notificaciones'
+  }
+}
 
 function buildOfflineResponse() {
   return new Response('Offline', {
@@ -94,6 +106,78 @@ self.addEventListener('fetch', (event) => {
     fetch(event.request).catch(async () => {
       const cached = await caches.match(event.request)
       return cached || buildOfflineResponse()
+    })
+  )
+})
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return
+
+  let payload = null
+  try {
+    payload = event.data.json()
+  } catch {
+    payload = null
+  }
+
+  if (!payload || typeof payload !== 'object') return
+
+  const title = typeof payload.title === 'string' && payload.title.trim()
+    ? payload.title.trim()
+    : 'Nueva notificacion'
+  const body = typeof payload.body === 'string' && payload.body.trim()
+    ? payload.body.trim()
+    : 'Tienes una nueva notificacion pendiente.'
+  const actionUrl = normalizeNavigationUrl(payload.actionUrl)
+  const tag = typeof payload.tag === 'string' && payload.tag.trim() ? payload.tag.trim() : 'ordex-notification'
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const hasVisibleClient = clients.some((client) => {
+        try {
+          const url = new URL(client.url)
+          return url.origin === self.location.origin && client.visibilityState === 'visible'
+        } catch {
+          return false
+        }
+      })
+
+      if (hasVisibleClient) return undefined
+
+      return self.registration.showNotification(title, {
+        body,
+        tag,
+        badge: '/icon-192.png',
+        icon: '/icon-192.png',
+        data: {
+          actionUrl,
+        },
+      })
+    })
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+
+  const actionUrl = normalizeNavigationUrl(event.notification.data?.actionUrl)
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existingClient = clients.find((client) => {
+        try {
+          const url = new URL(client.url)
+          return url.origin === self.location.origin
+        } catch {
+          return false
+        }
+      })
+
+      if (existingClient) {
+        return existingClient.focus().then(() => existingClient.navigate(actionUrl))
+      }
+
+      return self.clients.openWindow(actionUrl)
     })
   )
 })

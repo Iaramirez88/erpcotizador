@@ -4,6 +4,21 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 - Node.js: recomendado `22.22.0` (ver `.nvmrc`). En Windows esto evita fallos de Prisma WASM al correr `prisma generate`.
 - PostgreSQL accesible por `DATABASE_URL`.
+- HTTPS en el dominio donde se instale la PWA si se quieren notificaciones push reales en móvil.
+
+## Notificaciones Push PWA
+
+Para que las notificaciones aparezcan con la app instalada y cerrada en Android o iOS, configura estas variables de entorno:
+
+- `NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY`
+- `WEB_PUSH_PRIVATE_KEY`
+- `WEB_PUSH_SUBJECT` ejemplo: `mailto:soporte@tudominio.com`
+
+Notas operativas:
+
+- En iPhone y iPad las push web sólo funcionan si el usuario instaló la app en pantalla de inicio y aceptó el permiso de notificaciones.
+- En Android la PWA debe ejecutarse sobre HTTPS y el usuario debe conceder el permiso.
+- La app ahora guarda suscripciones push por usuario y cualquier creación de notificación interna dispara entrega en tiempo real y push cuando hay una suscripción activa.
 
 ## Getting Started
 

@@ -1,5 +1,3 @@
-import { publishRealtimeNotification } from '@/lib/notification-realtime'
-
 export const PERMISSION_SYNC_QUERY_PARAM = 'permissionsUpdated=1'
 export const PERMISSION_SYNC_ACTION_URL = `/dashboard?${PERMISSION_SYNC_QUERY_PARAM}`
 
@@ -52,7 +50,7 @@ export async function publishPermissionUpdateNotification(args: {
   type?: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR'
   actionLabel?: string
 }) {
-  const notification = await args.client.notification.create({
+  return args.client.notification.create({
     data: {
       userId: args.userId,
       type: args.type ?? 'INFO',
@@ -64,22 +62,6 @@ export async function publishPermissionUpdateNotification(args: {
       actionLabel: args.actionLabel ?? 'Recargar permisos',
     },
   })
-
-  if (!notification.userId) return notification
-
-  publishRealtimeNotification({
-    id: notification.id,
-    type: notification.type,
-    title: notification.title,
-    body: notification.body,
-    actionUrl: notification.actionUrl,
-    actionLabel: notification.actionLabel,
-    readAt: notification.readAt ? notification.readAt.toISOString() : null,
-    createdAt: notification.createdAt.toISOString(),
-    userId: notification.userId,
-  })
-
-  return notification
 }
 
 export async function detachPermissionProfileAssignment(args: {
