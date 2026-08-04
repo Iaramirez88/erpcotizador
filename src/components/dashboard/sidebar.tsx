@@ -84,6 +84,7 @@ const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard/configuracion/desperdicios": "Controla mermas y desperdicios operativos.",
   "/dashboard/configuracion/sedes": "Administra sucursales, ubicaciones y operacion por sede.",
   "/dashboard/configuracion/usuarios": "Crea usuarios y administra roles, permisos y acceso al sistema.",
+  "/dashboard/configuracion/respaldo": "Genera copias por empresa, controla accesos exclusivos y restaura respaldos seguros.",
   "/dashboard/configuracion/empresa": "Configura datos, imagen y parametros de la empresa.",
   "/dashboard/configuracion/notificaciones": "Activa o desactiva notificaciones push y revisa los dispositivos vinculados a tu usuario.",
   "/dashboard/configuracion/servicios-web": "Administra servicios web y modulos conectados.",

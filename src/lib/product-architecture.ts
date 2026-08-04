@@ -110,6 +110,7 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/configuracion/empresa', label: 'Empresa', labelKey: 'nav.company', section: 'Plataforma', layer: 'Plataforma', domain: 'Empresa', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/sedes', label: 'Sedes', labelKey: 'nav.branches', section: 'Plataforma', layer: 'Plataforma', domain: 'Sedes', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/usuarios', label: 'Usuarios', labelKey: 'nav.users', section: 'Plataforma', layer: 'Plataforma', domain: 'Usuarios', moduleKey: 'CONFIG' },
+  { href: '/dashboard/configuracion/respaldo', label: 'Respaldo', section: 'Plataforma', layer: 'Plataforma', domain: 'Respaldo por empresa', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/notificaciones', label: 'Notificaciones moviles', section: 'Plataforma', layer: 'Plataforma', domain: 'Preferencias de notificaciones moviles', moduleKey: null },
   { href: '/dashboard/configuracion/servicios-web', label: 'Servicios web', section: 'Plataforma', layer: 'Plataforma', domain: 'Servicios web', moduleKey: null },
   { href: '/dashboard/configuracion/plan', label: 'Plan', labelKey: 'nav.plan', section: 'Plataforma', layer: 'Plataforma', domain: 'Plan y suscripción', moduleKey: 'CONFIG' },

@@ -112,6 +112,9 @@ model User {
   permissionProfilesCreated PermissionProfile[] @relation("PermissionProfileCreatedBy")
   permissionProfileAssignments PermissionProfileAssignment[] @relation("PermissionProfileAssignmentUser")
   permissionProfileAssignmentsApplied PermissionProfileAssignment[] @relation("PermissionProfileAssignmentAppliedBy")
+  backupAccessGrants BackupAccessGrant[] @relation("BackupAccessGrantUser")
+  empresaBackupsCreated EmpresaBackup[] @relation("EmpresaBackupCreatedBy")
+  empresaBackupsImported EmpresaBackup[] @relation("EmpresaBackupImportedBy")
 
   // Notificaciones
   notifications Notification[]
@@ -508,6 +511,17 @@ enum NotificationType {
   ERROR
 }
 
+enum EmpresaBackupFormat {
+  SQL
+  XLSX
+}
+
+enum EmpresaBackupTriggerSource {
+  AUTO
+  MANUAL
+  IMPORT
+}
+
 enum WorkspaceAccessRequestStatus {
   PENDING
   APPROVED
@@ -707,6 +721,8 @@ model Empresa {
   capabilityGrants UserCapabilityGrant[]
   permissionProfiles PermissionProfile[]
   permissionProfileAssignments PermissionProfileAssignment[]
+  backupAccessGrants BackupAccessGrant[]
+  backups EmpresaBackup[]
 
   inventoryMovements InventoryMovement[]
 
@@ -2174,6 +2190,66 @@ model WebsiteServiceModuleAccess {
   @@index([empresaId])
   @@index([userId])
   @@map("website_service_module_access")
+}
+
+model BackupAccessGrant {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation("BackupAccessGrantUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  allowImport Boolean @default(false)
+  notes       String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, userId])
+  @@index([empresaId])
+  @@index([userId])
+  @@map("backup_access_grants")
+}
+
+model EmpresaBackup {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  createdByUserId String?
+  createdByUser   User? @relation("EmpresaBackupCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  importedByUserId String?
+  importedByUser   User? @relation("EmpresaBackupImportedBy", fields: [importedByUserId], references: [id], onDelete: SetNull)
+
+  triggerSource EmpresaBackupTriggerSource @default(MANUAL)
+  format        EmpresaBackupFormat
+  fileName      String
+  storagePath   String
+  mimeType      String
+  bytes         Int @default(0)
+  rowsCount     Int @default(0)
+  checksum      String?
+  manifestVersion Int @default(1)
+
+  modulesJson Json @default("[]")
+  filtersJson Json @default("{}")
+
+  periodStart DateTime?
+  periodEnd   DateTime?
+  importedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, createdAt])
+  @@index([empresaId, triggerSource, createdAt])
+  @@index([createdByUserId, createdAt])
+  @@index([importedByUserId, importedAt])
+  @@map("empresa_backups")
 }
 
 model PlanModuleSetting {
