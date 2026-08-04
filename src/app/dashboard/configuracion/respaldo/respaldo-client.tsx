@@ -100,6 +100,40 @@ function currentMonthStart() {
   return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
 }
 
+function normalizeSearchValue(value: string | null | undefined) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function PaginationControls({
+  page,
+  totalPages,
+  onPageChange,
+}: {
+  page: number
+  totalPages: number
+  onPageChange: (page: number) => void
+}) {
+  if (totalPages <= 1) return null
+
+  return (
+    <div className="flex items-center justify-between gap-3 pt-2 text-sm">
+      <span className="text-slate-500">Página {page} de {totalPages}</span>
+      <div className="flex gap-2">
+        <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          Anterior
+        </Button>
+        <Button type="button" variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
+          Siguiente
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }) {
   const [summary, setSummary] = useState<SummaryResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -114,6 +148,9 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
   const [importing, setImporting] = useState(false)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [progress, setProgress] = useState(0)
+  const [backupPage, setBackupPage] = useState(1)
+  const [accessPage, setAccessPage] = useState(1)
+  const [accessSearch, setAccessSearch] = useState('')
   const progressTimerRef = useRef<number | null>(null)
 
   async function loadSummary() {
@@ -155,6 +192,35 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
   const automaticBackups = useMemo(() => backups.filter((item) => item.triggerSource === 'AUTO'), [backups])
   const manualBackups = useMemo(() => backups.filter((item) => item.triggerSource === 'MANUAL'), [backups])
   const importHistory = useMemo(() => backups.filter((item) => item.triggerSource === 'IMPORT'), [backups])
+  const filteredAccessUsers = useMemo(() => {
+    const query = normalizeSearchValue(accessSearch)
+    if (!query) return accessUsers
+    return accessUsers.filter((user) => {
+      const haystack = normalizeSearchValue(`${user.name || ''} ${user.email || ''}`)
+      return haystack.includes(query)
+    })
+  }, [accessSearch, accessUsers])
+
+  const backupsPerPage = 5
+  const accessUsersPerPage = 5
+  const backupTotalPages = Math.max(1, Math.ceil(backups.length / backupsPerPage))
+  const accessTotalPages = Math.max(1, Math.ceil(filteredAccessUsers.length / accessUsersPerPage))
+  const paginatedBackups = useMemo(() => {
+    const start = (backupPage - 1) * backupsPerPage
+    return backups.slice(start, start + backupsPerPage)
+  }, [backupPage, backups])
+  const paginatedAccessUsers = useMemo(() => {
+    const start = (accessPage - 1) * accessUsersPerPage
+    return filteredAccessUsers.slice(start, start + accessUsersPerPage)
+  }, [accessPage, filteredAccessUsers])
+
+  useEffect(() => {
+    setBackupPage(1)
+  }, [backups.length])
+
+  useEffect(() => {
+    setAccessPage(1)
+  }, [accessSearch, filteredAccessUsers.length])
 
   function toggleModule(moduleId: string) {
     setSelectedModules((current) => current.includes(moduleId)
@@ -273,30 +339,7 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
       {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
 
       <Card className="overflow-hidden border-slate-200 shadow-sm">
-        <CardHeader className="bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.16),_transparent_35%),linear-gradient(135deg,_#f8fbff,_#ffffff)]">
-          <CardTitle className="text-xl text-slate-950">Centro de respaldo por empresa</CardTitle>
-          <CardDescription className="max-w-3xl text-slate-600">
-            Cada exportación se limita al espacio actual. Puedes estimar el peso, filtrar un período y descargar en SQL o Excel sin mezclar datos de otra empresa.
-          </CardDescription>
-        </CardHeader>
         <CardContent className="space-y-5 p-5">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
-              <div className="text-sm font-medium text-sky-900">Acceso actual</div>
-              <div className="mt-2 text-xs text-sky-800">
-                {access.isAdmin ? 'Administrador con control total del módulo.' : access.hasGrant ? 'Usuario autorizado para generar respaldos.' : 'Acceso restringido.'}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-              <div className="text-sm font-medium text-emerald-900">Automáticos</div>
-              <div className="mt-2 text-xs text-emerald-800">{automaticBackups.length} respaldo(s) mensual(es) registrado(s).</div>
-            </div>
-            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
-              <div className="text-sm font-medium text-amber-900">Restauración</div>
-              <div className="mt-2 text-xs text-amber-800">{access.canImport ? 'Habilitada para tu usuario.' : 'Solo administradores o usuarios con permiso de restauración.'}</div>
-            </div>
-          </div>
-
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {modules.map((moduleItem) => {
               const Icon = MODULE_ICONS[moduleItem.id] ?? Database
@@ -309,16 +352,21 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
                   className={cn(
                     'rounded-[28px] border px-5 py-6 text-left transition-all',
                     active
-                      ? 'border-sky-400 bg-[linear-gradient(180deg,_rgba(239,246,255,0.95),_rgba(255,255,255,0.96))] shadow-[0_14px_35px_-20px_rgba(37,99,235,0.55)]'
+                      ? 'border-emerald-600 bg-[linear-gradient(180deg,_rgba(220,252,231,0.98),_rgba(236,253,245,0.94))] shadow-[0_18px_35px_-18px_rgba(5,150,105,0.58)]'
                       : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
                   )}
                 >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+                  <div className={cn(
+                    'flex h-12 w-12 items-center justify-center rounded-2xl',
+                    active ? 'bg-emerald-600 text-white' : 'bg-sky-100 text-sky-700'
+                  )}>
                     <Icon className="h-6 w-6" />
                   </div>
                   <div className="mt-4 text-lg font-semibold text-slate-950">{moduleItem.label}</div>
                   <div className="mt-2 text-sm leading-5 text-slate-600">{moduleItem.description}</div>
-                  <div className="mt-4 text-xs font-medium text-slate-500">{active ? 'Incluido en el respaldo' : 'Toca para incluirlo'}</div>
+                  <div className={cn('mt-4 text-xs font-medium', active ? 'text-emerald-700' : 'text-slate-500')}>
+                    {active ? 'Incluido en el respaldo' : 'Toca para incluirlo'}
+                  </div>
                 </button>
               )
             })}
@@ -407,7 +455,7 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
             <CardDescription>Incluye automáticos mensuales, manuales generados por usuarios y restauraciones ejecutadas.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {backups.length ? backups.map((backup) => (
+            {paginatedBackups.length ? paginatedBackups.map((backup) => (
               <div key={backup.id} className="rounded-2xl border border-slate-200 p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-1">
@@ -437,31 +485,11 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
                 </div>
               </div>
             )) : <div className="text-sm text-slate-500">Aún no hay respaldos registrados.</div>}
+            <PaginationControls page={backupPage} totalPages={backupTotalPages} onPageChange={setBackupPage} />
           </CardContent>
         </Card>
 
         <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Resumen de actividad</CardTitle>
-              <CardDescription>Separa el historial automático y el historial operado por usuarios.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-3 xl:grid-cols-1">
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
-                <div className="text-xs uppercase tracking-[0.14em] text-emerald-700">Automáticos</div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-950">{automaticBackups.length}</div>
-              </div>
-              <div className="rounded-2xl border border-sky-200 bg-sky-50/80 p-4">
-                <div className="text-xs uppercase tracking-[0.14em] text-sky-700">Manuales</div>
-                <div className="mt-1 text-2xl font-semibold text-sky-950">{manualBackups.length}</div>
-              </div>
-              <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
-                <div className="text-xs uppercase tracking-[0.14em] text-amber-700">Restauraciones</div>
-                <div className="mt-1 text-2xl font-semibold text-amber-950">{importHistory.length}</div>
-              </div>
-            </CardContent>
-          </Card>
-
           <Card>
             <CardHeader>
               <CardTitle>Restaurar respaldo</CardTitle>
@@ -487,7 +515,16 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
                 <CardDescription>Los administradores pueden dar acceso exclusivo para generar respaldos y, si aplica, restaurarlos.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {accessUsers.map((user) => (
+                <div className="grid gap-2">
+                  <Label htmlFor="backup-access-search">Buscar usuario</Label>
+                  <Input
+                    id="backup-access-search"
+                    placeholder="Nombre o correo"
+                    value={accessSearch}
+                    onChange={(e) => setAccessSearch(e.target.value)}
+                  />
+                </div>
+                {paginatedAccessUsers.length ? paginatedAccessUsers.map((user) => (
                   <div key={user.id} className="rounded-2xl border border-slate-200 p-3">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div>
@@ -516,7 +553,8 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
                       </div>
                     </div>
                   </div>
-                ))}
+                )) : <div className="text-sm text-slate-500">No hay usuarios que coincidan con la búsqueda.</div>}
+                <PaginationControls page={accessPage} totalPages={accessTotalPages} onPageChange={setAccessPage} />
               </CardContent>
             </Card>
           ) : null}

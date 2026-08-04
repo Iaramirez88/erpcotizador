@@ -565,6 +565,17 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
+    name: "Respaldo",
+    href: "/dashboard/configuracion/respaldo",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7a2 2 0 012-2h12a2 2 0 012 2v4" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11h8" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 21l4-4m0 0l-4-4m4 4H8" />
+      </svg>
+    ),
+  },
+  {
     name: t('nav.company'),
     href: "/dashboard/configuracion/empresa",
     icon: (
