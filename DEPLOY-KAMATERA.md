@@ -216,6 +216,7 @@ Notas prácticas:
 
 Para VPS pequeños, usa esta secuencia para reducir picos y hacer el proceso más predecible:
 - `BUILDKIT_PROGRESS=plain docker compose -f docker-compose.prod.yml build app ocr`
+- Evita `--no-cache` en despliegues normales. Con el Dockerfile actual, BuildKit puede reutilizar cache de `npm ci` y de `.next/cache`; usar `--no-cache` elimina justamente esa optimización y vuelve a forzar un `next build` frío.
 - `docker compose -f docker-compose.prod.yml up -d --no-build`
 
 Si el build parece quedarse congelado en `Creating an optimized production build ...` pero luego avanza apenas tocas el teclado, normalmente no es un error del código sino de la vista interactiva de BuildKit. En ese caso:

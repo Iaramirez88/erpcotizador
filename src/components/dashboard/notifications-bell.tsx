@@ -8,9 +8,10 @@ import NotificationsPanel from '@/components/dashboard/notifications-panel'
 
 type Props = {
   onUnreadCountChange?: (count: number) => void
+  placement?: 'header' | 'sidebar-footer'
 }
 
-export default function NotificationsBell({ onUnreadCountChange }: Props) {
+export default function NotificationsBell({ onUnreadCountChange, placement = 'header' }: Props) {
   const [open, setOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
 
@@ -105,7 +106,9 @@ export default function NotificationsBell({ onUnreadCountChange }: Props) {
       {open ? (
         <div
           ref={panelRef}
-          className="fixed right-4 top-[72px] z-50 w-[360px] max-w-[calc(100vw-2rem)] h-[70vh] border bg-background overflow-hidden"
+          className={placement === 'sidebar-footer'
+            ? 'absolute bottom-0 left-full z-50 ml-4 h-[70vh] w-[360px] max-w-[calc(100vw-6rem)] overflow-hidden rounded-[28px] border bg-background shadow-[0_24px_60px_-28px_rgba(15,23,42,0.38)]'
+            : 'fixed right-4 top-[72px] z-50 h-[70vh] w-[360px] max-w-[calc(100vw-2rem)] overflow-hidden border bg-background'}
         >
           <NotificationsPanel onUnreadCountChange={setUnreadCount} />
         </div>

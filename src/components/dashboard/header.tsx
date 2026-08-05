@@ -44,7 +44,7 @@ interface HeaderProps {
     canManageBilling?: boolean
     canAccessWebsiteServices?: boolean
   }
-  variant?: 'sticky' | 'inline'
+  variant?: 'sticky' | 'inline' | 'sidebar-footer'
 }
 
 const DEFAULT_SIDEBAR_TOOLTIP_PREFS: SidebarTooltipPrefs = { desktop: true, mobile: true }
@@ -468,11 +468,13 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
       </DropdownMenuSub>
     )
 
+  const isSidebarFooter = variant === 'sidebar-footer'
+
   const actions = (
     <>
       {/* Actions */}
-      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          <NotificationsBell />
+      <div className={isSidebarFooter ? 'flex shrink-0 flex-col items-center gap-2' : 'flex shrink-0 items-center gap-1.5 sm:gap-2'}>
+          <NotificationsBell placement={isSidebarFooter ? 'sidebar-footer' : 'header'} />
 
           {navPrefs ? (
             <NavSettingsDialog
@@ -508,7 +510,12 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
                 </div>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80 rounded-3xl border-slate-200 p-3 shadow-[0_22px_45px_-28px_rgba(15,23,42,0.35)]">
+            <DropdownMenuContent
+              align={isSidebarFooter ? 'start' : 'end'}
+              side={isSidebarFooter ? 'right' : 'bottom'}
+              sideOffset={isSidebarFooter ? 16 : 8}
+              className="w-80 rounded-3xl border-slate-200 p-3 shadow-[0_22px_45px_-28px_rgba(15,23,42,0.35)]"
+            >
 
               <DropdownMenuItem asChild className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100">
                 <Link href="/dashboard/perfil" className="flex w-full items-center justify-between gap-3">
@@ -599,7 +606,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
     </>
   )
 
-  if (variant === 'inline') {
+  if (variant === 'inline' || variant === 'sidebar-footer') {
     return actions
   }
 

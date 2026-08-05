@@ -1,3 +1,5 @@
+## syntax=docker/dockerfile:1.7
+
 FROM node:20-bookworm-slim AS base
 
 WORKDIR /app
@@ -14,7 +16,8 @@ COPY prisma ./prisma
 # Instalar deps (incluye devDeps porque necesitamos prisma CLI/tsx para worker)
 # Evitamos scripts para que `postinstall` no falle durante el build.
 FROM base AS deps
-RUN npm ci --include=dev --ignore-scripts
+RUN --mount=type=cache,target=/root/.npm \
+	npm ci --include=dev --ignore-scripts
 
 FROM deps AS source
 
@@ -33,7 +36,8 @@ ENV CI=1
 ENV NEXT_TELEMETRY_DISABLED=1
 ARG BUILD_MAX_OLD_SPACE_SIZE=1536
 ENV NODE_OPTIONS=--max-old-space-size=${BUILD_MAX_OLD_SPACE_SIZE}
-RUN npm run build
+RUN --mount=type=cache,target=/app/.next/cache \
+	npm run build
 
 ENV NODE_ENV=production
 EXPOSE 3000

@@ -1698,9 +1698,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
     return (
       <div className="space-y-4 pb-4">
-        <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)] xl:items-start">
-          <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:sticky xl:top-4">
-            <CardContent className="space-y-4 p-3.5">
+        <div className="grid gap-4 xl:min-h-[calc(100vh-7rem)] xl:grid-cols-[360px_minmax(0,1fr)] xl:items-stretch">
+          <Card className="overflow-hidden rounded-[30px] border-slate-200 bg-white/95 shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:sticky xl:top-4 xl:h-[calc(100vh-7rem)]">
+            <CardContent className="space-y-4 p-3.5 xl:min-h-0 xl:overflow-y-auto">
               {props.sidebarHeader ? props.sidebarHeader : null}
 
               <Button className="h-12 w-full justify-start rounded-[24px] bg-[linear-gradient(135deg,#315efb,#5675ff)] px-4 text-left text-white shadow-[0_18px_36px_-24px_rgba(49,94,251,0.7)] hover:bg-[linear-gradient(135deg,#2b52dc,#4b6ef2)]" onClick={() => setSimulatorOpen(true)}>
@@ -1896,9 +1896,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
             </CardContent>
           </Card>
 
-          <Card className="overflow-hidden rounded-[32px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)]">
-            <div className="grid min-h-[780px] grid-rows-[auto_auto_minmax(0,1fr)]">
-              <div className="border-b border-slate-100 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-4 lg:px-5">
+          <Card className="overflow-hidden rounded-[32px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:h-[calc(100vh-7rem)]">
+            <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+              <div className="sticky top-0 z-20 border-b border-slate-100 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-4 lg:px-5">
                 {!selectedConversation ? (
                   <div className="flex h-full min-h-[160px] items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-slate-50/70 px-6 text-center text-sm text-slate-500">
                     Selecciona una conversación en la columna izquierda para abrir el chat y su contexto comercial.
@@ -1951,26 +1951,51 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                 <BellOff className="mr-2 h-4 w-4" />
                                 {isMuted ? 'Activar notificaciones' : 'Silenciar notificaciones'}
                               </DropdownMenuItem>
+                              {selectedConversation.lead ? (
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/dashboard/crm/leads/${selectedConversation.lead.id}`}>
+                                    <CheckCheck className="mr-2 h-4 w-4" />
+                                    Abrir lead
+                                  </Link>
+                                </DropdownMenuItem>
+                              ) : null}
+                              {selectedConversation.contactPhone ? (
+                                <DropdownMenuItem asChild>
+                                  <a href={`tel:${selectedConversation.contactPhone}`}>
+                                    <PhoneCall className="mr-2 h-4 w-4" />
+                                    Llamar
+                                  </a>
+                                </DropdownMenuItem>
+                              ) : null}
+                              {!selectedConversation.assignedTo && currentUserId ? (
+                                <DropdownMenuItem onSelect={() => void takeConversation(selectedConversation.id)} disabled={assigning}>
+                                  <Check className="mr-2 h-4 w-4" />
+                                  {assigning ? 'Tomando...' : 'Tomar conversación'}
+                                </DropdownMenuItem>
+                              ) : null}
+                              <DropdownMenuItem onSelect={() => void resolveConversation()} disabled={resolving || selectedConversation.status === 'RESOLVED'}>
+                                <Clock3 className="mr-2 h-4 w-4" />
+                                {resolving ? 'Resolviendo...' : 'Resolver'}
+                              </DropdownMenuItem>
+                              <DropdownMenuLabel>Vista del panel</DropdownMenuLabel>
+                              <DropdownMenuItem onSelect={() => setDetailPanelTab('CHAT')}>
+                                <MessageCircle className="mr-2 h-4 w-4" />
+                                Chat
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => setDetailPanelTab('CRM')}>
+                                <CheckCheck className="mr-2 h-4 w-4" />
+                                CRM
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => setDetailPanelTab('AI')}>
+                                <Bot className="mr-2 h-4 w-4" />
+                                IA
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => setDetailPanelTab('CAPTURES')}>
+                                <FileText className="mr-2 h-4 w-4" />
+                                Capturas
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                          {selectedConversation.lead ? (
-                            <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
-                              <Link href={`/dashboard/crm/leads/${selectedConversation.lead.id}`}>Abrir lead</Link>
-                            </Button>
-                          ) : null}
-                          {selectedConversation.contactPhone ? (
-                            <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
-                              <a href={`tel:${selectedConversation.contactPhone}`}>Llamar</a>
-                            </Button>
-                          ) : null}
-                          {!selectedConversation.assignedTo && currentUserId ? (
-                            <Button variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100" onClick={() => void takeConversation(selectedConversation.id)} disabled={assigning}>
-                              {assigning ? 'Tomando...' : 'Tomar conversación'}
-                            </Button>
-                          ) : null}
-                          <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void resolveConversation()} disabled={resolving || selectedConversation.status === 'RESOLVED'}>
-                            {resolving ? 'Resolviendo...' : 'Resolver'}
-                          </Button>
                         </div>
                       </div>
                     )
@@ -1978,61 +2003,13 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                 )}
               </div>
 
-              {selectedConversation ? (
-                <div className="border-b border-slate-100 bg-white px-4 py-3 lg:px-5">
-                  <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Vista del panel</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <button type="button" onClick={() => setDetailPanelTab('CHAT')} className={detailPanelTab === 'CHAT' ? 'inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm' : 'inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600'}><MessageCircle className="h-4 w-4" />Chat</button>
-                        <button type="button" onClick={() => setDetailPanelTab('CRM')} className={detailPanelTab === 'CRM' ? 'inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm' : 'inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600'}><CheckCheck className="h-4 w-4" />CRM</button>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Automatización</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <button type="button" onClick={() => setDetailPanelTab('AI')} className={detailPanelTab === 'AI' ? 'inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm' : 'inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600'}><Bot className="h-4 w-4" />IA</button>
-                        <button type="button" onClick={() => setDetailPanelTab('CAPTURES')} className={detailPanelTab === 'CAPTURES' ? 'inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm' : 'inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600'}><FileText className="h-4 w-4" />Capturas</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="min-h-0 overflow-y-auto bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.07),transparent_32%),linear-gradient(180deg,#ffffff,#fbfdff)] p-4 lg:p-5">
+              <div className={detailPanelTab === 'CHAT' ? 'min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.07),transparent_32%),linear-gradient(180deg,#ffffff,#fbfdff)] p-4 lg:p-5' : 'min-h-0 overflow-y-auto bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.07),transparent_32%),linear-gradient(180deg,#ffffff,#fbfdff)] p-4 lg:p-5'}>
                 {!selectedConversation ? null : detailPanelTab === 'CHAT' ? (
-                  <div className="space-y-4">
-                    {conversationAi ? (
-                      <div className="rounded-[24px] border border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,0.9),rgba(255,255,255,1))] p-4">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                              <Bot className="h-4 w-4 text-emerald-700" />
-                              Copiloto comercial
-                            </div>
-                            <p className="text-sm leading-6 text-slate-600">{conversationAi.summary}</p>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" className="rounded-xl border-emerald-200 bg-white" onClick={() => selectedConversation ? void loadConversationAi(selectedConversation.id) : undefined} disabled={generatingAi}>
-                              {generatingAi ? 'Analizando...' : 'Regenerar'}
-                            </Button>
-                            <Button variant="outline" className="rounded-xl border-emerald-200 bg-white text-emerald-700" onClick={() => {
-                              setMessageTypeDraft('TEXT')
-                              setAttachmentUrlDraft('')
-                              setAttachmentNameDraft('')
-                              setMessageDraft(conversationAi.suggestedReply)
-                            }}>
-                              Usar respuesta sugerida
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <Card className="rounded-[28px] border border-slate-200 bg-white/98 shadow-none">
-                      <CardContent className="space-y-4 p-4 lg:p-5">
-                        <div className="rounded-[24px] border border-slate-100 bg-slate-50/45 p-3">
-                          <div className="max-h-[430px] space-y-3 overflow-y-auto pr-1">
+                  <div className="h-full">
+                    <Card className="flex h-full min-h-0 flex-col rounded-[28px] border border-slate-200 bg-white/98 shadow-none">
+                      <CardContent className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-4 p-4 lg:p-5">
+                        <div className="min-h-0 rounded-[24px] border border-slate-100 bg-slate-50/45 p-3">
+                          <div className="h-full space-y-3 overflow-y-auto pr-1">
                           {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
                           {selectedConversation.messages.map((message: ConversationMessage) => {
                             const originMeta = getMessageOriginMeta(getMessageOrigin(message))
@@ -2061,7 +2038,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                               </div>
                             )
                           })}
-                        </div>
+                          </div>
                         </div>
 
                         <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] p-4">

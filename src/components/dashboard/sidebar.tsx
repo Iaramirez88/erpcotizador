@@ -662,6 +662,8 @@ type EmpresaBranding = {
   nit: string
 }
 
+const ORDEX_FALLBACK_LOGO = '/icon-192.png'
+
 export default function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname() ?? ''
   const { resolvedTheme } = useTheme()
@@ -861,6 +863,18 @@ export default function Sidebar({ user }: SidebarProps) {
     return (a + b).toUpperCase()
   }, [empresa?.nombre])
 
+  const personalDisplayName = useMemo(() => {
+    const trimmedUserName = (user.name ?? '').trim()
+    if (trimmedUserName) return trimmedUserName
+    return 'Ordex'
+  }, [user.name])
+
+  const sidebarBrandName = isPersonal ? personalDisplayName : (empresa?.nombre ?? 'SGDigital')
+  const sidebarBrandLogo = isPersonal && !(user.name ?? '').trim()
+    ? ORDEX_FALLBACK_LOGO
+    : (empresa?.logo ?? null)
+  const sidebarBrandAlt = sidebarBrandName || 'Ordex'
+
   // Para persona individual, mostrar todos los módulos (candado si no está habilitado por plan)
   const visibleNavigation = useMemo(() => {
     const base = !navPrefs ? moduleNavigation : moduleNavigation.filter((it) => navPrefs[it.href] !== false)
@@ -1034,15 +1048,15 @@ export default function Sidebar({ user }: SidebarProps) {
           <div className={cn("flex items-start justify-between gap-2", sidebarCollapsed ? "flex-col items-center" : "") }>
             <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "space-x-3")}>
               <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-[linear-gradient(135deg,#0f766e_0%,#2563eb_100%)] text-base font-bold text-primary-foreground shadow-[0_12px_24px_-18px_rgba(37,99,235,0.7)]">
-                {empresa?.logo ? (
-                  <Image src={empresa.logo} alt={empresa.nombre} width={36} height={36} className="h-9 w-9 object-contain" />
+                {sidebarBrandLogo ? (
+                  <Image src={sidebarBrandLogo} alt={sidebarBrandAlt} width={36} height={36} className="h-9 w-9 object-contain" />
                 ) : (
                   <span>{empresaInitials}</span>
                 )}
               </div>
               {!sidebarCollapsed ? (
                 <div>
-                  <h1 className={cn("text-sm font-bold leading-5", userStrongText)}>{empresa?.nombre ?? 'SGDigital'}</h1>
+                  <h1 className={cn("text-sm font-bold leading-5", userStrongText)}>{sidebarBrandName}</h1>
                 </div>
               ) : null}
             </div>
@@ -1081,9 +1095,6 @@ export default function Sidebar({ user }: SidebarProps) {
             </div>
           </div>
 
-          <div className={cn("mt-2 flex", sidebarCollapsed ? "justify-center" : "justify-end")}>
-            <Header user={user} variant="inline" />
-          </div>
         </div>
 
         {/* Navigation */}
@@ -1217,6 +1228,12 @@ export default function Sidebar({ user }: SidebarProps) {
 
         </nav>
         </TooltipProvider>
+
+        <div className={cn("border-t p-2.5", sectionBorder, sidebarCollapsed ? "px-1.5" : "px-2.5")}>
+          <div className={cn("flex", sidebarCollapsed ? "justify-center" : "justify-end")}>
+            <Header user={user} variant="sidebar-footer" />
+          </div>
+        </div>
       </aside>
     </>
   )

@@ -109,6 +109,7 @@ Nota de performance:
 - `app`, `worker` y `migrate` reutilizan la misma imagen Node para evitar reconstrucciones redundantes.
 - Si el droplet es pequeño, prefiere esta secuencia:
 - `docker compose -f docker-compose.prod.yml build app ocr`
+- No uses `--no-cache` salvo para depurar una build dañada. En despliegues normales se debe conservar la caché de Docker/BuildKit para reutilizar `npm ci` y la caché de compilación de Next.
 - `docker compose -f docker-compose.prod.yml up -d --no-build`
 
 Notas:
