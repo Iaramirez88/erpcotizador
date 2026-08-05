@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import { prisma } from '../src/lib/prisma'
+import { isCompanyIntelligenceEnabledForEmpresa } from '../src/lib/company-intelligence'
 import { persistDecisionEngineSnapshot } from '../src/lib/decision-engine/snapshots'
 
 function readArg(flag: string) {
@@ -79,9 +80,16 @@ async function main() {
   let scannedSedes = 0
   let created = 0
   let reused = 0
+  let skippedDisabled = 0
 
   for (const empresa of empresas) {
     scannedEmpresas += 1
+    const intelligenceEnabled = await isCompanyIntelligenceEnabledForEmpresa(empresa.id)
+
+    if (!intelligenceEnabled) {
+      skippedDisabled += 1
+      continue
+    }
 
     if (includeCompany) {
       const snapshot = await persistDecisionEngineSnapshot({
@@ -131,6 +139,7 @@ async function main() {
         result: {
           created,
           reused,
+          skippedDisabled,
         },
       },
       null,

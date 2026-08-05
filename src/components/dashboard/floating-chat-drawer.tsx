@@ -2216,10 +2216,9 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
               }
               return nextOpen
             })}
-            className="relative h-14 rounded-full bg-slate-950 px-5 text-white shadow-[0_20px_40px_-20px_rgba(15,23,42,0.65)] hover:bg-slate-800"
+            className="relative h-14 w-14 rounded-full bg-blue-600 px-0 text-white shadow-[0_20px_40px_-20px_rgba(37,99,235,0.65)] hover:bg-blue-700"
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h8M8 14h5M5 5h14a2 2 0 012 2v8a2 2 0 01-2 2H9l-4 4v-4H5a2 2 0 01-2-2V7a2 2 0 012-2z" /></svg>
-            <span>Chat</span>
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h8M8 14h5M5 5h14a2 2 0 012 2v8a2 2 0 01-2 2H9l-4 4v-4H5a2 2 0 01-2-2V7a2 2 0 012-2z" /></svg>
             {unreadTotal > 0 ? <span className="absolute -right-1 -top-1 min-w-6 rounded-full bg-rose-500 px-1.5 py-0.5 text-xs font-semibold text-white">{unreadTotal > 99 ? '99+' : unreadTotal}</span> : null}
           </Button>
         </div>

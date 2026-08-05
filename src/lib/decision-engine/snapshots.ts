@@ -1,6 +1,7 @@
 import { Prisma, SedeRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import type { DecisionEngineContext, DecisionEngineResult } from '@/lib/decision-engine/contracts'
+import { resolveAnalysisDateRange } from '@/lib/decision-engine/dates'
 import { createDecisionEngine } from '@/lib/decision-engine/engine'
 import { isCompanyIntelligenceEnabledForEmpresa } from '@/lib/company-intelligence'
 
@@ -125,16 +126,16 @@ export async function persistDecisionEngineSnapshot(
   options: PersistDecisionEngineSnapshotOptions = {}
 ) {
   const intelligenceEnabled = await isCompanyIntelligenceEnabledForEmpresa(context.empresaId)
-  const bundle = await buildDecisionEngineSnapshotBundle(context)
 
   if (!options.force) {
+    const range = resolveAnalysisDateRange(context)
     const existing = await prisma.decisionEngineSnapshot.findFirst({
       where: {
         empresaId: context.empresaId,
         sedeId: context.sedeId ?? null,
         scope: context.sedeId ? 'SEDE' : 'EMPRESA',
-        from: new Date(bundle.company.metadata.from),
-        to: new Date(bundle.company.metadata.to),
+        from: range.from,
+        to: range.to,
         engineVersion: 'v1',
       },
       orderBy: [{ createdAt: 'desc' }],
@@ -151,6 +152,7 @@ export async function persistDecisionEngineSnapshot(
         companyHealthStatus: true,
         executiveSummary: true,
         createdAt: true,
+        snapshot: true,
       },
     })
 
@@ -160,11 +162,13 @@ export async function persistDecisionEngineSnapshot(
         from: existing.from.toISOString(),
         to: existing.to.toISOString(),
         createdAt: existing.createdAt.toISOString(),
-        snapshot: bundle,
+        snapshot: existing.snapshot as unknown as DecisionEngineSnapshotBundle,
         reused: true,
       }
     }
   }
+
+  const bundle = await buildDecisionEngineSnapshotBundle(context)
 
   const created = await prisma.decisionEngineSnapshot.create({
     data: {

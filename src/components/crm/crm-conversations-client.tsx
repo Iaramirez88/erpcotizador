@@ -4,7 +4,9 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, Facebook, FileAudio, FileText, Image as ImageIcon, Instagram, Mail, MessageCircle, MoreVertical, PhoneCall, RefreshCcw } from 'lucide-react'
+import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, Facebook, FileAudio, FileText, Image as ImageIcon, Instagram, Mail, MessageCircle, MoreVertical, PhoneCall, Plus, RefreshCcw, SendHorizontal, Smile } from 'lucide-react'
+import { CrmFileLibraryPicker } from '@/components/crm/crm-file-library-picker'
+import type { CrmFileItem } from '@/components/crm/crm-files-types'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { CardInfoHeader } from '@/components/ui/card-info-header'
@@ -188,6 +190,7 @@ type CrmConversationsClientProps = {
 
 const STATUS_OPTIONS: Array<'ALL' | ConversationStatus> = ['ALL', 'OPEN', 'PENDING', 'BOT_ACTIVE', 'HUMAN_ACTIVE', 'RESOLVED', 'SPAM']
 const ATTENTION_STATUS_OPTIONS: ConversationStatus[] = ['OPEN', 'BOT_ACTIVE', 'HUMAN_ACTIVE', 'PENDING', 'RESOLVED', 'SPAM']
+const EMOJI_CHOICES = ['😀', '😂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀']
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
   const res = await fetch(url, init)
@@ -213,6 +216,18 @@ function inferAudioExtension(mimeType: string) {
   if (mimeType.includes('mp4')) return '.m4a'
   if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return '.mp3'
   return '.webm'
+}
+
+function mapLibraryItemToConversationAttachment(item: CrmFileItem) {
+  if (!item.url) {
+    throw new Error('Solo puedes vincular archivos existentes de la carpeta interna, no carpetas.')
+  }
+
+  return {
+    name: item.name,
+    url: item.url,
+    messageType: item.type === 'image' ? 'IMAGE' : item.type === 'audio' ? 'AUDIO' : 'DOCUMENT',
+  } as const
 }
 
 function formatDate(value: string | null | undefined, locale: string, fallback: string) {
@@ -756,6 +771,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [uploadingAttachment, setUploadingAttachment] = useState(false)
   const [attachmentUploadProgress, setAttachmentUploadProgress] = useState<number | null>(null)
   const [recordingAudio, setRecordingAudio] = useState(false)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
   const [hybridOverrideConfirmed, setHybridOverrideConfirmed] = useState(false)
   const attachmentInputRef = useRef<HTMLInputElement | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -1241,6 +1258,13 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     setRecordingAudio(false)
   }
 
+  function handleLibraryAttachment(item: CrmFileItem) {
+    const attachment = mapLibraryItemToConversationAttachment(item)
+    setAttachmentUrlDraft(attachment.url)
+    setAttachmentNameDraft(attachment.name)
+    setMessageTypeDraft(attachment.messageType)
+  }
+
   async function resolveConversation() {
     if (!selectedConversation) return
     setResolving(true)
@@ -1699,8 +1723,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     return (
       <div className="space-y-4 pb-4">
         <div className="grid gap-4 xl:min-h-[calc(100vh-7rem)] xl:grid-cols-[360px_minmax(0,1fr)] xl:items-stretch">
-          <Card className="overflow-hidden rounded-[30px] border-slate-200 bg-white/95 shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:sticky xl:top-4 xl:h-[calc(100vh-7rem)]">
-            <CardContent className="space-y-4 p-3.5 xl:min-h-0 xl:overflow-y-auto">
+          <Card className="overflow-hidden rounded-[30px] border-slate-200 bg-white/95 shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:sticky xl:top-4 xl:flex xl:h-[calc(100vh-7rem)] xl:flex-col">
+            <CardContent className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto p-3.5">
               {props.sidebarHeader ? props.sidebarHeader : null}
 
               <Button className="h-12 w-full justify-start rounded-[24px] bg-[linear-gradient(135deg,#315efb,#5675ff)] px-4 text-left text-white shadow-[0_18px_36px_-24px_rgba(49,94,251,0.7)] hover:bg-[linear-gradient(135deg,#2b52dc,#4b6ef2)]" onClick={() => setSimulatorOpen(true)}>
@@ -1898,9 +1922,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
           <Card className="overflow-hidden rounded-[32px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:h-[calc(100vh-7rem)]">
             <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-              <div className="sticky top-0 z-20 border-b border-slate-100 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-4 lg:px-5">
+              <div className="sticky top-0 z-20 border-b border-slate-100 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-3 lg:px-5">
                 {!selectedConversation ? (
-                  <div className="flex h-full min-h-[160px] items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-slate-50/70 px-6 text-center text-sm text-slate-500">
+                  <div className="flex h-full min-h-[120px] items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-slate-50/70 px-6 text-center text-sm text-slate-500">
                     Selecciona una conversación en la columna izquierda para abrir el chat y su contexto comercial.
                   </div>
                 ) : (
@@ -1910,8 +1934,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                     const selectedStatus = getConversationStatusMeta(selectedConversation.status)
                     const isMuted = mutedCrmConversationIds.includes(selectedConversation.id)
                     return (
-                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                        <div className="min-w-0 space-y-3">
+                      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="min-w-0 space-y-2">
                           <div className="flex min-w-0 items-start gap-3">
                             <div className="relative shrink-0">
                               <IdentityAvatar label={selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación'} imageUrl={selectedConversation.contactAvatarUrl} fallbackImageUrl="/crm-contact-avatar-default.svg" size="lg" />
@@ -1919,9 +1943,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                 <ChannelProviderBadge provider={selectedConversation.channelConnection.provider} size="md" />
                               </div>
                             </div>
-                            <div className="min-w-0 space-y-2">
+                            <div className="min-w-0 space-y-1.5">
                               <div className="flex flex-wrap items-center gap-2">
-                                <h2 className="text-[26px] font-semibold tracking-[-0.02em] text-slate-950">{renderHighlightedText(selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación sin alias', search)}</h2>
+                                <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-slate-950 sm:text-base">{renderHighlightedText(selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación sin alias', search)}</h2>
                                 {isMuted ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Silenciado</span> : null}
                               </div>
                               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -2003,7 +2027,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                 )}
               </div>
 
-              <div className={detailPanelTab === 'CHAT' ? 'min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.07),transparent_32%),linear-gradient(180deg,#ffffff,#fbfdff)] p-4 lg:p-5' : 'min-h-0 overflow-y-auto bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.07),transparent_32%),linear-gradient(180deg,#ffffff,#fbfdff)] p-4 lg:p-5'}>
+              <div className={detailPanelTab === 'CHAT' ? 'min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.07),transparent_32%),linear-gradient(180deg,#ffffff,#fbfdff)] p-3.5 lg:p-4' : 'min-h-0 overflow-y-auto bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.07),transparent_32%),linear-gradient(180deg,#ffffff,#fbfdff)] p-3.5 lg:p-4'}>
                 {!selectedConversation ? null : detailPanelTab === 'CHAT' ? (
                   <div className="h-full">
                     <Card className="flex h-full min-h-0 flex-col rounded-[28px] border border-slate-200 bg-white/98 shadow-none">
@@ -2063,27 +2087,87 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                               </div>
                             </div>
                           ) : null}
-                          <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)]">
-                            <div className="grid gap-2">
-                              <Label>Tipo</Label>
-                              <Select value={messageTypeDraft} onValueChange={(value) => setMessageTypeDraft(value as 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT')}>
-                                <SelectTrigger className="rounded-2xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="TEXT">Texto</SelectItem>
-                                  <SelectItem value="IMAGE">Imagen</SelectItem>
-                                  <SelectItem value="AUDIO">Audio</SelectItem>
-                                  <SelectItem value="DOCUMENT">Documento</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="grid gap-2">
-                              <Label>{messageTypeDraft === 'TEXT' ? 'Mensaje' : 'Texto o caption opcional'}</Label>
-                              <Textarea value={messageDraft} onChange={(e) => setMessageDraft(e.target.value)} rows={4} className="rounded-2xl border-slate-200 bg-white" placeholder={messageTypeDraft === 'TEXT' ? 'Escribe una respuesta...' : 'Opcional para multimedia, especialmente en WhatsApp.'} />
+                          <CrmFileLibraryPicker
+                            open={libraryPickerOpen}
+                            onOpenChange={setLibraryPickerOpen}
+                            onPick={handleLibraryAttachment}
+                            allowFolders={false}
+                            title="Cargar desde carpeta interna"
+                          />
+                          <input ref={attachmentInputRef} type="file" className="hidden" onChange={(event) => void handleAttachmentInputChange(event)} />
+                          <div className="grid gap-2">
+                            <Label>{messageTypeDraft === 'TEXT' ? 'Mensaje' : 'Texto o caption opcional'}</Label>
+                            <div className="flex items-end gap-2">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button type="button" variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-2xl border-slate-200 bg-white" disabled={!selectedConversation || uploadingAttachment} aria-label="Agregar emoji o adjunto">
+                                    <Plus className="h-5 w-5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start" side="top" className="w-60 rounded-2xl p-2">
+                                  <DropdownMenuLabel>Agregar al mensaje</DropdownMenuLabel>
+                                  <DropdownMenuItem onSelect={() => setShowEmojiPicker((current) => !current)}>
+                                    <Smile className="mr-2 h-4 w-4" />
+                                    Emojis
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => {
+                                    setMessageTypeDraft('IMAGE')
+                                    setShowEmojiPicker(false)
+                                    openAttachmentPicker()
+                                  }}>
+                                    <ImageIcon className="mr-2 h-4 w-4" />
+                                    Cargar imagen
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => {
+                                    setMessageTypeDraft('AUDIO')
+                                    setShowEmojiPicker(false)
+                                    openAttachmentPicker()
+                                  }}>
+                                    <FileAudio className="mr-2 h-4 w-4" />
+                                    Cargar audio
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => {
+                                    setShowEmojiPicker(false)
+                                    if (recordingAudio) stopAudioRecording()
+                                    else void startAudioRecording()
+                                  }}>
+                                    <FileAudio className="mr-2 h-4 w-4" />
+                                    {recordingAudio ? 'Detener grabación' : 'Grabar audio'}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => {
+                                    setMessageTypeDraft('DOCUMENT')
+                                    setShowEmojiPicker(false)
+                                    openAttachmentPicker()
+                                  }}>
+                                    <FileText className="mr-2 h-4 w-4" />
+                                    Cargar documento
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => {
+                                    setShowEmojiPicker(false)
+                                    setLibraryPickerOpen(true)
+                                  }}>
+                                    <FileText className="mr-2 h-4 w-4" />
+                                    Cargar desde carpeta interna
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                              <Textarea value={messageDraft} onChange={(e) => setMessageDraft(e.target.value)} rows={2} className="min-h-[54px] flex-1 resize-none rounded-2xl border-slate-200 bg-white" placeholder={messageTypeDraft === 'TEXT' ? 'Escribe una respuesta...' : 'Opcional para multimedia, especialmente en WhatsApp.'} />
+                              <Button type="button" size="icon" className="h-11 w-11 shrink-0 rounded-2xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => void submitMessage()} disabled={sending || uploadingAttachment || recordingAudio || Boolean(hybridComposerGuard && !hybridOverrideConfirmed)} aria-label="Enviar mensaje">
+                                <SendHorizontal className="h-5 w-5" />
+                              </Button>
                             </div>
                           </div>
+                          {showEmojiPicker ? (
+                            <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3">
+                              {EMOJI_CHOICES.map((emoji) => (
+                                <button key={emoji} type="button" onClick={() => setMessageDraft((current) => `${current}${emoji}`)} className="rounded-xl border border-slate-200 px-2.5 py-2 text-lg hover:bg-slate-50">
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
                           {messageTypeDraft !== 'TEXT' ? (
                             <div className="grid gap-3 lg:grid-cols-2">
-                              <input ref={attachmentInputRef} type="file" className="hidden" onChange={(event) => void handleAttachmentInputChange(event)} />
                               <div className="grid gap-2 lg:col-span-2">
                                 <Label>Adjunto</Label>
                                 <div className="flex flex-wrap gap-2">
@@ -2112,10 +2196,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                               </div>
                             </div>
                           ) : null}
-                          <div className="flex justify-end">
-                            <Button className="rounded-2xl bg-blue-600 px-5 text-white hover:bg-blue-700" onClick={() => void submitMessage()} disabled={sending || uploadingAttachment || recordingAudio || Boolean(hybridComposerGuard && !hybridOverrideConfirmed)}>
-                              {sending ? 'Enviando...' : 'Enviar mensaje'}
-                            </Button>
+                          <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+                            <p>{recordingAudio ? 'Grabando nota de voz... al detenerla se subirá automáticamente al chat.' : uploadingAttachment && attachmentUploadProgress !== null ? `Subiendo adjunto... ${attachmentUploadProgress}%` : attachmentUrlDraft ? 'Adjunto listo para enviar por el canal.' : 'Puedes enviar texto, emojis, audios, imágenes y documentos.'}</p>
+                            {sending ? <span className="font-medium text-blue-700">Enviando...</span> : null}
                           </div>
                         </div>
                       </CardContent>

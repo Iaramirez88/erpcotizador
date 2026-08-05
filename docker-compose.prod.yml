@@ -162,6 +162,10 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL}
+    mem_limit: ${DECISION_ENGINE_SCHEDULER_MEM_LIMIT:-512m}
+    mem_reservation: ${DECISION_ENGINE_SCHEDULER_MEM_RESERVATION:-128m}
+    cpus: "${DECISION_ENGINE_SCHEDULER_CPUS:-0.50}"
+    pids_limit: ${DECISION_ENGINE_SCHEDULER_PIDS_LIMIT:-128}
     depends_on:
       postgres:
         condition: service_healthy
