@@ -10,6 +10,7 @@ export const runtime = 'nodejs'
 
 const MAX_BYTES = 8 * 1024 * 1024
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'])
+const AUDIO_TYPES = new Set(['audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/webm', 'audio/mp4'])
 const DOCUMENT_TYPES = new Set([
   'application/pdf',
   'application/msword',
@@ -75,15 +76,24 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const fileSize = Number((file as { size?: unknown }).size || 0)
     const originalName = String((file as { name?: unknown }).name || 'archivo')
 
-    if (!IMAGE_TYPES.has(fileType) && !DOCUMENT_TYPES.has(fileType)) {
-      return NextResponse.json({ success: false, error: 'Formato no permitido. Usa imagen o documento común.' }, { status: 400 })
+    if (!IMAGE_TYPES.has(fileType) && !AUDIO_TYPES.has(fileType) && !DOCUMENT_TYPES.has(fileType)) {
+      return NextResponse.json({ success: false, error: 'Formato no permitido. Usa imagen, audio o documento común.' }, { status: 400 })
     }
     if (Number.isFinite(fileSize) && fileSize > MAX_BYTES) {
       return NextResponse.json({ success: false, error: 'Archivo demasiado grande (máx 8MB)' }, { status: 400 })
     }
 
     const bytes = Buffer.from(await file.arrayBuffer())
-    const ext = path.extname(originalName) || (fileType === 'image/jpeg' ? '.jpg' : fileType === 'image/png' ? '.png' : '')
+    const ext = path.extname(originalName) || (
+      fileType === 'image/jpeg' ? '.jpg'
+        : fileType === 'image/png' ? '.png'
+          : fileType === 'audio/mpeg' || fileType === 'audio/mp3' ? '.mp3'
+            : fileType === 'audio/ogg' ? '.ogg'
+              : fileType === 'audio/wav' ? '.wav'
+                : fileType === 'audio/webm' ? '.webm'
+                  : fileType === 'audio/mp4' ? '.m4a'
+                    : ''
+    )
     const safeBaseName = sanitizeBaseName(path.basename(originalName, path.extname(originalName)))
     const relDir = path.posix.join('uploads', 'crm-conversations', id)
     const absDir = path.join(process.cwd(), 'public', relDir)
@@ -100,7 +110,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       data: {
         name: originalName,
         url: publicUrl,
-        type: IMAGE_TYPES.has(fileType) ? 'image' : 'document',
+        type: IMAGE_TYPES.has(fileType) ? 'image' : AUDIO_TYPES.has(fileType) ? 'audio' : 'document',
         mimeType: fileType || null,
         sizeBytes: Number.isFinite(fileSize) ? fileSize : null,
       },

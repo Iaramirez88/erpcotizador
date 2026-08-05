@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
+import { getRequestBaseUrl } from '@/lib/app-url'
 import { assertCrmSedeAccess, normalizeString, parseMessageType } from '@/lib/crm'
 import { findOutboundMessagingLimitViolation, formatOutboundMessagingLimitViolation, getOutboundMessagingLimitConfig, getOutboundMessagingUsageSnapshot, hasOutboundMessagingLimits } from '@/lib/crm-channel-limits'
 import { getMetaMessagingDispatchConfig, sendMetaMediaMessage, sendMetaTextMessage } from '@/lib/crm-meta'
@@ -51,6 +52,19 @@ type RouteContext = {
 
 function isForceHybridOverrideEnabled(value: unknown) {
   return value === true
+}
+
+function resolveOutboundAttachmentUrl(request: Request, url: string): string {
+  if (/^https?:\/\//i.test(url)) return url
+
+  const baseUrl = getRequestBaseUrl(request)
+  if (!baseUrl) return url
+
+  try {
+    return new URL(url, `${baseUrl}/`).toString()
+  } catch {
+    return url
+  }
 }
 
 export async function POST(request: Request, context: RouteContext) {
@@ -154,6 +168,12 @@ export async function POST(request: Request, context: RouteContext) {
     let messageStatus: 'SENT' | 'FAILED' = 'SENT'
     let sendErrorMessage: string | null = null
     const attachmentsJson = attachment ? [{ type: attachment.type.toLowerCase(), url: attachment.url, name: attachment.filename || null }] : []
+    const outboundAttachment = attachment
+      ? {
+          ...attachment,
+          url: resolveOutboundAttachmentUrl(request, attachment.url),
+        }
+      : null
 
     if (!withinMessagingWindow) {
       const failedMessage = await prisma.$transaction(async (tx) => {
@@ -287,9 +307,9 @@ export async function POST(request: Request, context: RouteContext) {
               config: whatsappConfig,
               to: recipientPhone,
               attachment: {
-                type: attachment!.type,
-                url: attachment!.url,
-                filename: attachment!.filename,
+                type: outboundAttachment!.type,
+                url: outboundAttachment!.url,
+                filename: outboundAttachment!.filename,
                 caption: bodyText || null,
               },
             })
@@ -329,9 +349,9 @@ export async function POST(request: Request, context: RouteContext) {
               recipientId: recipientThreadId,
               provider: current.channelConnection.provider,
               attachment: {
-                type: attachment!.type,
-                url: attachment!.url,
-                filename: attachment!.filename,
+                type: outboundAttachment!.type,
+                url: outboundAttachment!.url,
+                filename: outboundAttachment!.filename,
                 caption: bodyText || null,
               },
             })

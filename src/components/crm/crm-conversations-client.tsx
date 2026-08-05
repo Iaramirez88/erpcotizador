@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, FileAudio, FileText, Image as ImageIcon, Mail, MessageCircle, MoreVertical, PhoneCall } from 'lucide-react'
+import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, Facebook, FileAudio, FileText, Image as ImageIcon, Instagram, Mail, MessageCircle, MoreVertical, PhoneCall, RefreshCcw } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { CardInfoHeader } from '@/components/ui/card-info-header'
@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { useChatMutePreferences } from '@/hooks/use-chat-mute-preferences'
 import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
+import { uploadFileWithProgress } from '@/lib/upload-file-with-progress'
 
 type ConversationStatus = 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM'
 type MessageDirection = 'INBOUND' | 'OUTBOUND' | 'SYSTEM'
@@ -30,6 +31,8 @@ type OpportunityStage = 'NEW' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON'
 type OriginFilter = 'ALL' | 'EMAIL' | 'FORM' | 'CHATBOT' | 'WHATSAPP' | 'SOCIAL' | 'PHONE' | 'REFERRAL' | 'IMPORT'
 type QueueScope = 'TEAM' | 'MINE' | 'UNASSIGNED'
 type QueueFocus = 'ALL' | 'IMMEDIATE' | 'WAITING_CUSTOMER' | 'NEW_UNASSIGNED' | 'BOT_HANDOFF' | 'HYBRID_PHONE_ACTIVITY' | 'HYBRID_COLLISION'
+type InboxStatusTab = 'PENDING' | 'RESOLVED' | 'ALL'
+type InboxDatePreset = '7D' | '30D' | 'ALL'
 
 type Assignee = {
   id: string
@@ -157,6 +160,14 @@ type MaterialLookupItem = {
 
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
 
+type UploadedConversationAttachment = {
+  name: string
+  url: string
+  type: 'image' | 'audio' | 'document'
+  mimeType?: string | null
+  sizeBytes?: number | null
+}
+
 type SendMessageResponse = JsonResponse<ConversationMessage> & {
   code?: string
   recentPhoneActivity?: {
@@ -179,6 +190,27 @@ const ATTENTION_STATUS_OPTIONS: ConversationStatus[] = ['OPEN', 'BOT_ACTIVE', 'H
 async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
   const res = await fetch(url, init)
   return (await res.json().catch(() => ({}))) as JsonResponse<T>
+}
+
+function mapDraftMessageTypeToAttachmentAccept(messageType: 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT') {
+  if (messageType === 'IMAGE') return 'image/png,image/jpeg,image/webp,image/gif'
+  if (messageType === 'AUDIO') return 'audio/mpeg,audio/mp3,audio/ogg,audio/wav,audio/webm,audio/mp4,.m4a'
+  if (messageType === 'DOCUMENT') return 'application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv'
+  return '*/*'
+}
+
+function mapUploadedAttachmentTypeToMessageType(type: UploadedConversationAttachment['type']): 'IMAGE' | 'AUDIO' | 'DOCUMENT' {
+  if (type === 'image') return 'IMAGE'
+  if (type === 'audio') return 'AUDIO'
+  return 'DOCUMENT'
+}
+
+function inferAudioExtension(mimeType: string) {
+  if (mimeType.includes('ogg')) return '.ogg'
+  if (mimeType.includes('wav')) return '.wav'
+  if (mimeType.includes('mp4')) return '.m4a'
+  if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return '.mp3'
+  return '.webm'
 }
 
 function formatDate(value: string | null | undefined, locale: string, fallback: string) {
@@ -211,6 +243,112 @@ function formatRelativeChannel(provider: ChannelProvider) {
     default:
       return provider
   }
+}
+
+function formatProviderDisplayName(provider: ChannelProvider) {
+  switch (provider) {
+    case 'WHATSAPP_CLOUD':
+    case 'WHATSAPP_SANDBOX':
+      return 'WhatsApp'
+    case 'MESSENGER':
+      return 'Messenger'
+    case 'FACEBOOK_PAGE':
+      return 'Facebook'
+    case 'INSTAGRAM_DM':
+      return 'Instagram'
+    case 'WEB_CHATBOT':
+      return 'Chatbot'
+    case 'WEB_FORM':
+      return 'Formulario'
+    default:
+      return provider
+  }
+}
+
+function formatConversationListTime(value: string, locale: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+
+  const now = new Date()
+  const isSameDay = date.getDate() === now.getDate()
+    && date.getMonth() === now.getMonth()
+    && date.getFullYear() === now.getFullYear()
+
+  return new Intl.DateTimeFormat(locale, isSameDay
+    ? { hour: '2-digit', minute: '2-digit' }
+    : { day: '2-digit', month: 'short' }).format(date)
+}
+
+function isConversationWithinDatePreset(lastMessageAt: string, preset: InboxDatePreset) {
+  if (preset === 'ALL') return true
+
+  const date = new Date(lastMessageAt)
+  if (Number.isNaN(date.getTime())) return false
+
+  const days = preset === '30D' ? 30 : 7
+  const threshold = Date.now() - days * 24 * 60 * 60 * 1000
+  return date.getTime() >= threshold
+}
+
+function WhatsAppLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
+      <circle cx="24" cy="24" r="16" fill="#25D366" />
+      <path d="M14.7 36.1 16.9 30a12.5 12.5 0 1 1 4.5 4.4l-6.7 1.7Z" fill="#25D366" />
+      <path d="M20.9 17.8c-.4-.9-.8-1-1.3-1h-1.1c-.4 0-.9.1-1.3.6-.4.5-1.7 1.6-1.7 3.9 0 2.3 1.7 4.6 1.9 4.9.3.3 3.2 5 8 6.8 1.2.4 2.1.7 2.8.8 1.2.2 2.3.2 3.1-.1.9-.3 2.6-1.1 2.9-2.2.4-1 .4-1.9.3-2-.1-.2-.5-.3-1-.6-.5-.2-2.9-1.4-3.4-1.6-.4-.2-.7-.2-1 .2-.3.5-1.2 1.6-1.4 1.9-.3.3-.5.4-1 .1-.5-.2-2-.8-3.8-2.4-1.4-1.2-2.3-2.7-2.6-3.2-.3-.5 0-.7.2-1 .2-.2.5-.5.7-.8.2-.3.3-.5.5-.8.2-.3.1-.6 0-.8-.1-.2-1-2.4-1.4-3.3Z" fill="#fff" />
+    </svg>
+  )
+}
+
+function ChannelProviderBadge({ provider, size = 'sm' }: { provider: ChannelProvider; size?: 'sm' | 'md' }) {
+  const shellClassName = size === 'md' ? 'h-9 w-9 rounded-2xl' : 'h-7 w-7 rounded-xl'
+  const iconClassName = size === 'md' ? 'h-5 w-5' : 'h-4 w-4'
+
+  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') {
+    return (
+      <span className={`inline-flex items-center justify-center border border-emerald-200 bg-white shadow-sm ${shellClassName}`}>
+        <WhatsAppLogo className={iconClassName} />
+      </span>
+    )
+  }
+
+  if (provider === 'INSTAGRAM_DM') {
+    return (
+      <span className={`inline-flex items-center justify-center border border-fuchsia-200 bg-[linear-gradient(135deg,_#fdf2f8,_#eef2ff)] text-fuchsia-700 shadow-sm ${shellClassName}`}>
+        <Instagram className={iconClassName} />
+      </span>
+    )
+  }
+
+  if (provider === 'FACEBOOK_PAGE') {
+    return (
+      <span className={`inline-flex items-center justify-center border border-blue-200 bg-blue-50 text-blue-700 shadow-sm ${shellClassName}`}>
+        <Facebook className={iconClassName} />
+      </span>
+    )
+  }
+
+  if (provider === 'MESSENGER') {
+    return (
+      <span className={`inline-flex items-center justify-center border border-sky-200 bg-sky-50 text-sky-700 shadow-sm ${shellClassName}`}>
+        <MessageCircle className={iconClassName} />
+      </span>
+    )
+  }
+
+  if (provider === 'WEB_CHATBOT') {
+    return (
+      <span className={`inline-flex items-center justify-center border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm ${shellClassName}`}>
+        <Bot className={iconClassName} />
+      </span>
+    )
+  }
+
+  return (
+    <span className={`inline-flex items-center justify-center border border-slate-200 bg-slate-50 text-slate-600 shadow-sm ${shellClassName}`}>
+      <FileText className={iconClassName} />
+    </span>
+  )
 }
 
 function getConversationOrigin(channel: Channel) {
@@ -565,6 +703,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [detailLoading, setDetailLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'ALL' | ConversationStatus>('ALL')
+  const [inboxStatusTab, setInboxStatusTab] = useState<InboxStatusTab>('PENDING')
+  const [datePreset, setDatePreset] = useState<InboxDatePreset>('7D')
   const [assignedFilter, setAssignedFilter] = useState<'ALL' | string>('ALL')
   const [channelFilter, setChannelFilter] = useState<'ALL' | string>('ALL')
   const [providerFilter, setProviderFilter] = useState<'ALL' | ChannelProvider>(props.initialProviderFilter ?? 'ALL')
@@ -611,7 +751,13 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [messageTypeDraft, setMessageTypeDraft] = useState<'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT'>('TEXT')
   const [attachmentUrlDraft, setAttachmentUrlDraft] = useState('')
   const [attachmentNameDraft, setAttachmentNameDraft] = useState('')
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [attachmentUploadProgress, setAttachmentUploadProgress] = useState<number | null>(null)
+  const [recordingAudio, setRecordingAudio] = useState(false)
   const [hybridOverrideConfirmed, setHybridOverrideConfirmed] = useState(false)
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
   const [simulateForm, setSimulateForm] = useState({
     channelConnectionId: '',
     nombre: '',
@@ -838,13 +984,40 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     return focusFiltered.filter((item) => getOriginFilterGroup(getConversationOrigin(item.channelConnection).key) === originFilter)
   }, [locale, originFilter, queueFocus, queueScopedConversations])
 
+  const dateScopedConversations = useMemo(() => {
+    return visibleConversations.filter((item) => isConversationWithinDatePreset(item.lastMessageAt, datePreset))
+  }, [datePreset, visibleConversations])
+
+  const inboxStatusCounts = useMemo(() => {
+    const pendingCount = dateScopedConversations.filter((item) => item.status !== 'RESOLVED' && item.status !== 'SPAM').length
+    const resolvedCount = dateScopedConversations.filter((item) => item.status === 'RESOLVED').length
+    return {
+      pendingCount,
+      resolvedCount,
+      allCount: dateScopedConversations.length,
+    }
+  }, [dateScopedConversations])
+
+  const displayedConversations = useMemo(() => {
+    if (inboxStatusTab === 'ALL') return dateScopedConversations
+    if (inboxStatusTab === 'RESOLVED') return dateScopedConversations.filter((item) => item.status === 'RESOLVED')
+    return dateScopedConversations.filter((item) => item.status !== 'RESOLVED' && item.status !== 'SPAM')
+  }, [dateScopedConversations, inboxStatusTab])
+
   useEffect(() => {
     setQueueFocus('ALL')
   }, [queueScope])
 
   useEffect(() => {
-    setSelectedConversationId((current) => current && visibleConversations.some((item) => item.id === current) ? current : visibleConversations[0]?.id ?? null)
-  }, [visibleConversations])
+    return () => {
+      mediaRecorderRef.current?.stop()
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+    }
+  }, [])
+
+  useEffect(() => {
+    setSelectedConversationId((current) => current && displayedConversations.some((item) => item.id === current) ? current : displayedConversations[0]?.id ?? null)
+  }, [displayedConversations])
 
   function toggleMuteSelectedConversation() {
     if (!selectedConversationId) return
@@ -955,6 +1128,115 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     } finally {
       setSending(false)
     }
+  }
+
+  function openAttachmentPicker() {
+    if (!attachmentInputRef.current || !selectedConversation || uploadingAttachment) return
+    attachmentInputRef.current.accept = mapDraftMessageTypeToAttachmentAccept(messageTypeDraft)
+    attachmentInputRef.current.value = ''
+    attachmentInputRef.current.click()
+  }
+
+  async function uploadConversationAttachment(file: File) {
+    if (!selectedConversation) {
+      alert('Selecciona una conversación antes de subir adjuntos.')
+      return
+    }
+
+    setUploadingAttachment(true)
+    setAttachmentUploadProgress(0)
+    try {
+      const json = await uploadFileWithProgress<UploadedConversationAttachment>({
+        url: `/api/crm/conversations/${selectedConversation.id}/attachments`,
+        file,
+        onProgress: (progress) => setAttachmentUploadProgress(progress),
+      })
+      if (!json.success || !json.data) {
+        alert(json.error || 'No se pudo subir el adjunto.')
+        return
+      }
+
+      setAttachmentUrlDraft(json.data.url)
+      setAttachmentNameDraft(json.data.name)
+      setMessageTypeDraft(mapUploadedAttachmentTypeToMessageType(json.data.type))
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'No se pudo subir el adjunto.')
+    } finally {
+      setUploadingAttachment(false)
+      setAttachmentUploadProgress(null)
+      if (attachmentInputRef.current) attachmentInputRef.current.value = ''
+    }
+  }
+
+  async function handleAttachmentInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    await uploadConversationAttachment(file)
+  }
+
+  async function startAudioRecording() {
+    if (!selectedConversation) {
+      alert('Selecciona una conversación antes de grabar audio.')
+      return
+    }
+    if (recordingAudio || uploadingAttachment) return
+    if (typeof window === 'undefined' || !window.navigator.mediaDevices?.getUserMedia) {
+      alert('Este navegador no permite grabar audio desde el CRM.')
+      return
+    }
+
+    try {
+      const stream = await window.navigator.mediaDevices.getUserMedia({ audio: true })
+      const preferredMimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
+      const selectedMimeType = preferredMimeTypes.find((mimeType) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mimeType))
+      const recorder = selectedMimeType ? new MediaRecorder(stream, { mimeType: selectedMimeType }) : new MediaRecorder(stream)
+      const chunks: BlobPart[] = []
+
+      mediaStreamRef.current = stream
+      mediaRecorderRef.current = recorder
+
+      recorder.addEventListener('dataavailable', (recordedEvent) => {
+        if (recordedEvent.data.size > 0) {
+          chunks.push(recordedEvent.data)
+        }
+      })
+
+      recorder.addEventListener('stop', () => {
+        const outputMimeType = recorder.mimeType || selectedMimeType || 'audio/webm'
+        const blob = new Blob(chunks, { type: outputMimeType })
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+        mediaStreamRef.current = null
+        mediaRecorderRef.current = null
+        setRecordingAudio(false)
+        if (blob.size === 0) return
+        const extension = inferAudioExtension(outputMimeType)
+        const file = new File([blob], `nota-voz-${Date.now()}${extension}`, { type: outputMimeType })
+        void uploadConversationAttachment(file)
+      })
+
+      recorder.start()
+      setMessageTypeDraft('AUDIO')
+      setRecordingAudio(true)
+    } catch (error) {
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      mediaStreamRef.current = null
+      mediaRecorderRef.current = null
+      setRecordingAudio(false)
+      alert(error instanceof Error ? error.message : 'No se pudo iniciar la grabación de audio.')
+    }
+  }
+
+  function stopAudioRecording() {
+    if (!recordingAudio) return
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop()
+      return
+    }
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+    mediaStreamRef.current = null
+    mediaRecorderRef.current = null
+    setRecordingAudio(false)
   }
 
   async function resolveConversation() {
@@ -1243,6 +1525,166 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     setHybridOverrideConfirmed(false)
   }, [selectedConversation?.id, hybridComposerGuard?.messageId])
 
+  const compactToolbarLayout = (
+    <div className="space-y-3">
+      <Card className="rounded-[28px] border-slate-200 bg-white/95 shadow-[0_20px_44px_-34px_rgba(15,23,42,0.32)]">
+        <CardContent className="space-y-4 p-4 lg:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Panel global CRM</p>
+              <div>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Prospectos y clientes</h2>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">Inbox omnicanal ordenado para revisar, responder y asignar conversaciones sin perder el contexto comercial.</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-2 text-sm text-slate-600">
+                <div className="grid gap-0.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Tiempo real</span>
+                  <span>{liveMode ? `Activo · ${formatDate(lastRefreshAt, locale, 'sin sincronizar')}` : 'Pausado'}</span>
+                </div>
+                <Switch checked={liveMode} onCheckedChange={setLiveMode} />
+              </div>
+              <Button variant="outline" className="rounded-2xl border-slate-200 bg-white" onClick={() => void Promise.all([loadConversations(), loadMeta()])}>
+                <RefreshCcw className="mr-2 h-4 w-4" />
+                Refrescar
+              </Button>
+              <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white">
+                <Link href="/dashboard/crm/agenda">Agenda</Link>
+              </Button>
+              <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white">
+                <Link href="/dashboard/notificaciones">Notificaciones</Link>
+              </Button>
+              <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => setSimulatorOpen(true)}>
+                Simular inbound
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_220px_auto] xl:items-center">
+            <div className="relative">
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar conversaciones, teléfonos, correos o mensajes..." className="h-11 rounded-2xl border-slate-200 bg-slate-50/60 pl-4 pr-4" />
+            </div>
+            <Select value={datePreset} onValueChange={(value) => setDatePreset(value as InboxDatePreset)}>
+              <SelectTrigger className="h-11 rounded-2xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7D">Últimos 7 días</SelectItem>
+                <SelectItem value="30D">Últimos 30 días</SelectItem>
+                <SelectItem value="ALL">Todo el historial</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setInboxStatusTab('PENDING')}
+                className={inboxStatusTab === 'PENDING' ? 'rounded-2xl border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-800' : 'rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600'}
+              >
+                Por resolver {inboxStatusCounts.pendingCount}
+              </button>
+              <button
+                type="button"
+                onClick={() => setInboxStatusTab('RESOLVED')}
+                className={inboxStatusTab === 'RESOLVED' ? 'rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800' : 'rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600'}
+              >
+                Resueltos {inboxStatusCounts.resolvedCount}
+              </button>
+              <button
+                type="button"
+                onClick={() => setInboxStatusTab('ALL')}
+                className={inboxStatusTab === 'ALL' ? 'rounded-2xl border border-slate-300 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-800' : 'rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600'}
+              >
+                Todos {inboxStatusCounts.allCount}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Conversaciones</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => setQueueScope('TEAM')} className={queueScope === 'TEAM' ? 'rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}>Todos</button>
+                <button type="button" onClick={() => setQueueScope('MINE')} className={queueScope === 'MINE' ? 'rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}>Asignados a mí</button>
+                <button type="button" onClick={() => setQueueScope('UNASSIGNED')} className={queueScope === 'UNASSIGNED' ? 'rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}>Sin asignar</button>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Por actividad</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => setQueueFocus('ALL')} className={queueFocus === 'ALL' ? 'rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}>Todos</button>
+                <button type="button" onClick={() => setQueueFocus('IMMEDIATE')} className={queueFocus === 'IMMEDIATE' ? 'rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}>Atención inmediata</button>
+                <button type="button" onClick={() => setQueueFocus('WAITING_CUSTOMER')} className={queueFocus === 'WAITING_CUSTOMER' ? 'rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}>Esperando cliente</button>
+                <button type="button" onClick={() => setQueueFocus('BOT_HANDOFF')} className={queueFocus === 'BOT_HANDOFF' ? 'rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}>Asignados a la IA</button>
+                <button type="button" onClick={() => setQueueFocus('HYBRID_PHONE_ACTIVITY')} className={queueFocus === 'HYBRID_PHONE_ACTIVITY' ? 'rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}>Actividad celular</button>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Canales</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => setProviderFilter('WHATSAPP_CLOUD')} className={(providerFilter === 'WHATSAPP_CLOUD' || providerFilter === 'WHATSAPP_SANDBOX') ? 'rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}>
+                  <span className="inline-flex items-center gap-2"><ChannelProviderBadge provider="WHATSAPP_CLOUD" />WhatsApp</span>
+                </button>
+                <button type="button" onClick={() => setProviderFilter('MESSENGER')} className={providerFilter === 'MESSENGER' ? 'rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}>
+                  <span className="inline-flex items-center gap-2"><ChannelProviderBadge provider="MESSENGER" />Messenger</span>
+                </button>
+                <button type="button" onClick={() => setProviderFilter('INSTAGRAM_DM')} className={providerFilter === 'INSTAGRAM_DM' ? 'rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1.5 text-xs font-semibold text-fuchsia-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}>
+                  <span className="inline-flex items-center gap-2"><ChannelProviderBadge provider="INSTAGRAM_DM" />Instagram</span>
+                </button>
+                <button type="button" onClick={() => setProviderFilter('FACEBOOK_PAGE')} className={providerFilter === 'FACEBOOK_PAGE' ? 'rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}>
+                  <span className="inline-flex items-center gap-2"><ChannelProviderBadge provider="FACEBOOK_PAGE" />Facebook</span>
+                </button>
+                <button type="button" onClick={() => setProviderFilter('ALL')} className={providerFilter === 'ALL' ? 'rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}>
+                  Todos
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'ALL' | ConversationStatus)}>
+              <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue placeholder="Estado exacto" /></SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={assignedFilter} onValueChange={setAssignedFilter}>
+              <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue placeholder="Asesor" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos los asesores</SelectItem>
+                {assignees.map((item) => <SelectItem key={item.id} value={item.id}>{formatAssigneeName(item)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={originFilter} onValueChange={(value) => setOriginFilter(value as OriginFilter)}>
+              <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue placeholder="Origen" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos los orígenes</SelectItem>
+                <SelectItem value="EMAIL">Correo</SelectItem>
+                <SelectItem value="FORM">Formulario</SelectItem>
+                <SelectItem value="CHATBOT">Chatbot</SelectItem>
+                <SelectItem value="WHATSAPP">WhatsApp</SelectItem>
+                <SelectItem value="SOCIAL">Social</SelectItem>
+                <SelectItem value="PHONE">Llamada</SelectItem>
+                <SelectItem value="REFERRAL">Referido</SelectItem>
+                <SelectItem value="IMPORT">Importado</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={channelFilter} onValueChange={setChannelFilter}>
+              <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue placeholder="Canal" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos los canales</SelectItem>
+                {channels.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" className="h-10 rounded-2xl border-slate-200 bg-white" onClick={() => void loadConversations()}>
+              Aplicar filtros
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+
   return (
     <div className="space-y-4.5 pb-4">
       {props.hideHero ? null : (
@@ -1297,6 +1739,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
           ]}
         />
       )}
+
+      {props.hideHero ? compactToolbarLayout : (
+      <>
 
       <Card className="rounded-[24px] border-slate-200 bg-white/90 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.28)]">
         <CardContent className="grid gap-2.5 p-3 md:grid-cols-5 md:p-4">
@@ -1535,20 +1980,22 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
           })}
         </CardContent>
       </Card>
+      </>
+      )}
 
       <div className="grid gap-3 xl:grid-cols-[340px_minmax(0,1fr)]">
         <Card className="rounded-[24px] border-slate-200 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.28)]">
           <CardHeader className="border-b border-slate-100 pb-4">
             <CardInfoHeader
-              title={<CardTitle className="text-lg">{queueScope === 'TEAM' ? 'Cola del equipo' : queueScope === 'MINE' ? 'Mis conversaciones' : 'Conversaciones sin tomar'} ({visibleConversations.length})</CardTitle>}
+              title={<CardTitle className="text-lg">{queueScope === 'TEAM' ? 'Cola del equipo' : queueScope === 'MINE' ? 'Mis conversaciones' : 'Conversaciones sin tomar'} ({displayedConversations.length})</CardTitle>}
               description={queueFocus === 'ALL' ? 'Hilos omnicanal ordenados por urgencia operativa, SLA y prioridad comercial.' : queueFocus === 'IMMEDIATE' ? 'Ataca primero los hilos con SLA vencido o criticidad alta.' : queueFocus === 'NEW_UNASSIGNED' ? 'Reclama rápido las conversaciones nuevas para que no queden sin responsable.' : queueFocus === 'BOT_HANDOFF' ? 'Revisa los casos donde el bot ya dejó contexto y hace falta intervención humana.' : 'Monitorea hilos pausados esperando respuesta del cliente.'}
               tone="action"
             />
           </CardHeader>
           <CardContent className="space-y-2.5 p-3 md:p-4">
             {loading ? <p className="text-sm text-muted-foreground">Cargando conversaciones...</p> : null}
-            {!loading && visibleConversations.length === 0 ? <p className="text-sm text-muted-foreground">No hay conversaciones para mostrar.</p> : null}
-            {visibleConversations.map((item) => {
+            {!loading && displayedConversations.length === 0 ? <p className="text-sm text-muted-foreground">No hay conversaciones para mostrar.</p> : null}
+            {displayedConversations.map((item) => {
               const isActive = item.id === selectedConversationId
               const isMuted = mutedCrmConversationIds.includes(item.id)
               const preview = item.messages?.[0]?.bodyText || item.sourceCampaign || item.contactEmail || item.contactPhone || naText
@@ -1557,6 +2004,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
               const slaMeta = getConversationSlaMeta(item, locale)
               const priorityMeta = getConversationPriorityMeta(item, locale)
               const statusMeta = getConversationStatusMeta(item.status)
+              const providerLabel = formatProviderDisplayName(item.channelConnection.provider)
               return (
                 <button
                   key={item.id}
@@ -1566,20 +2014,33 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-3">
-                      <IdentityAvatar label={item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || item.contactPhone || item.contactEmail || 'Contacto'} imageUrl={item.contactAvatarUrl} fallbackImageUrl="/crm-contact-avatar-default.svg" size="md" />
+                      <div className="relative shrink-0">
+                        <IdentityAvatar label={item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || item.contactPhone || item.contactEmail || 'Contacto'} imageUrl={item.contactAvatarUrl} fallbackImageUrl="/crm-contact-avatar-default.svg" size="md" />
+                        <div className="absolute -bottom-1 -right-1">
+                          <ChannelProviderBadge provider={item.channelConnection.provider} />
+                        </div>
+                      </div>
                       <div className="min-w-0 space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-semibold text-slate-900">{renderHighlightedText(item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto sin nombre', search)}</span>
-                          <OriginChip originKey={origin.key} label={origin.label} />
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                            <ChannelProviderBadge provider={item.channelConnection.provider} />
+                            {providerLabel}
+                          </span>
                           <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${priorityMeta.className}`}>{priorityMeta.label}</span>
                           {signal.hasPhoneActivity ? <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">Celular</span> : null}
                           {signal.hasCollision ? <span className="rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-900">Colisión</span> : null}
                           {isMuted ? <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600">Silenciado</span> : null}
                         </div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <OriginChip originKey={origin.key} label={origin.label} />
+                          <span>{item.channelConnection.name}</span>
+                        </div>
                         <p className="line-clamp-2 text-sm text-slate-600">{renderHighlightedText(preview, search)}</p>
                       </div>
                     </div>
                     <div className="grid gap-2 text-right">
+                      <span className="text-xs font-medium text-slate-500">{formatConversationListTime(item.lastMessageAt, locale)}</span>
                       <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${statusMeta.className}`}>{statusMeta.label}</span>
                       {item.unreadCount > 0 ? <span className="text-xs font-semibold text-amber-700">{item.unreadCount} sin leer</span> : null}
                     </div>
@@ -1631,7 +2092,12 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                   return (
                 <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-slate-50/70 p-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="flex min-w-0 items-start gap-3">
-                    <IdentityAvatar label={selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación'} imageUrl={selectedConversation.contactAvatarUrl} fallbackImageUrl="/crm-contact-avatar-default.svg" size="lg" />
+                    <div className="relative shrink-0">
+                      <IdentityAvatar label={selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación'} imageUrl={selectedConversation.contactAvatarUrl} fallbackImageUrl="/crm-contact-avatar-default.svg" size="lg" />
+                      <div className="absolute -bottom-1 -right-1">
+                        <ChannelProviderBadge provider={selectedConversation.channelConnection.provider} size="md" />
+                      </div>
+                    </div>
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold text-slate-950">{renderHighlightedText(selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación sin alias', search)}</h2>
@@ -1641,9 +2107,13 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                         {isMuted ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Silenciado</span> : null}
                       </div>
                       <p className="text-sm text-slate-600">
-                        {selectedConversation.contactPhone || naText} · {selectedConversation.contactEmail || naText} · {selectedConversation.channelConnection.name}
+                        {selectedConversation.contactPhone || naText} · {selectedConversation.contactEmail || naText}
                       </p>
                       <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+                        <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-700">
+                          <ChannelProviderBadge provider={selectedConversation.channelConnection.provider} />
+                          <span>{formatProviderDisplayName(selectedConversation.channelConnection.provider)}</span>
+                        </span>
                         <span className="inline-flex items-center gap-2">
                           <span>Origen:</span>
                           <OriginChip originKey={getConversationOrigin(selectedConversation.channelConnection).key} label={getConversationOrigin(selectedConversation.channelConnection).label} />
@@ -1673,6 +2143,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                     {selectedConversation.lead ? (
                       <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
                         <Link href={`/dashboard/crm/leads/${selectedConversation.lead.id}`}>Abrir lead</Link>
+                      </Button>
+                    ) : null}
+                    {selectedConversation.contactPhone ? (
+                      <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
+                        <a href={`tel:${selectedConversation.contactPhone}`}>Llamar</a>
                       </Button>
                     ) : null}
                     {!selectedConversation.assignedTo && currentUserId ? (
@@ -2086,18 +2561,64 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           </div>
                           {messageTypeDraft !== 'TEXT' ? (
                             <div className="grid gap-3 sm:grid-cols-2">
+                              <input
+                                ref={attachmentInputRef}
+                                type="file"
+                                className="hidden"
+                                onChange={(event) => void handleAttachmentInputChange(event)}
+                              />
                               <div className="grid gap-2 sm:col-span-2">
-                                <Label>URL del archivo</Label>
-                                <Input value={attachmentUrlDraft} onChange={(e) => setAttachmentUrlDraft(e.target.value)} placeholder="https://..." />
+                                <Label>Adjunto</Label>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button type="button" variant="outline" className="rounded-xl" onClick={openAttachmentPicker} disabled={uploadingAttachment}>
+                                    {uploadingAttachment ? 'Subiendo archivo...' : messageTypeDraft === 'IMAGE' ? 'Subir imagen' : messageTypeDraft === 'AUDIO' ? 'Subir audio' : 'Subir documento'}
+                                  </Button>
+                                  {messageTypeDraft === 'AUDIO' ? (
+                                    <Button type="button" variant={recordingAudio ? 'destructive' : 'outline'} className="rounded-xl" onClick={recordingAudio ? stopAudioRecording : () => void startAudioRecording()} disabled={uploadingAttachment}>
+                                      {recordingAudio ? 'Detener grabación' : 'Grabar voz'}
+                                    </Button>
+                                  ) : null}
+                                  {attachmentUrlDraft ? (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      className="rounded-xl text-slate-600"
+                                      onClick={() => {
+                                        setAttachmentUrlDraft('')
+                                        setAttachmentNameDraft('')
+                                      }}
+                                    >
+                                      Quitar adjunto
+                                    </Button>
+                                  ) : null}
+                                </div>
+                                <p className="text-xs text-slate-500">
+                                  {recordingAudio
+                                    ? 'Grabando nota de voz... al detenerla se subirá automáticamente al chat.'
+                                    : uploadingAttachment && attachmentUploadProgress !== null
+                                      ? `Subiendo adjunto... ${attachmentUploadProgress}%`
+                                      : attachmentUrlDraft
+                                        ? 'Adjunto listo para enviar por el canal.'
+                                        : 'El archivo se sube primero al CRM para que WhatsApp pueda descargarlo desde una URL pública.'}
+                                </p>
                               </div>
                               <div className="grid gap-2 sm:col-span-2">
                                 <Label>Nombre visible</Label>
                                 <Input value={attachmentNameDraft} onChange={(e) => setAttachmentNameDraft(e.target.value)} placeholder="catalogo.pdf o imagen-promocion.jpg" />
                               </div>
+                              {attachmentUrlDraft ? (
+                                <div className="sm:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3 text-sm text-slate-600">
+                                  <p className="font-medium text-slate-900">Archivo preparado</p>
+                                  <p className="mt-1 truncate">{attachmentNameDraft || attachmentUrlDraft}</p>
+                                  <a href={attachmentUrlDraft} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium text-sky-700 hover:underline">
+                                    Abrir adjunto
+                                  </a>
+                                </div>
+                              ) : null}
                             </div>
                           ) : null}
                           <div className="flex justify-end">
-                            <Button className="rounded-xl" onClick={() => void submitMessage()} disabled={sending || Boolean(hybridComposerGuard && !hybridOverrideConfirmed)}>
+                            <Button className="rounded-xl" onClick={() => void submitMessage()} disabled={sending || uploadingAttachment || recordingAudio || Boolean(hybridComposerGuard && !hybridOverrideConfirmed)}>
                               {sending ? 'Enviando...' : 'Enviar mensaje'}
                             </Button>
                           </div>
