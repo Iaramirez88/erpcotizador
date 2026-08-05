@@ -262,8 +262,8 @@ function SliceCard({ title, description, icon: Icon, tone, result, loading, href
 
             <div className="space-y-2">
               {result.alerts[0] ? <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"><span className="font-medium">Alerta:</span> {result.alerts[0].summary}</div> : null}
-              {result.risks[0] ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900"><span className="font-medium">Riesgo:</span> {result.risks[0].summary}</div> : null}
-              {result.opportunities[0] ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"><span className="font-medium">Oportunidad:</span> {result.opportunities[0].summary}</div> : null}
+              {result.risks[0] ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900"><span className="font-medium">Pendiente:</span> {result.risks[0].summary}</div> : null}
+              {result.opportunities[0] ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"><span className="font-medium">Mejora:</span> {result.opportunities[0].summary}</div> : null}
             </div>
 
             <Button asChild variant="outline" className="w-full rounded-xl border-slate-200 bg-white/90">
@@ -454,7 +454,7 @@ export function IntelligenceDashboardClient() {
         breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Inteligencia empresarial' }]}
         eyebrow="Analítica ejecutiva"
         title="Motor de inteligencia empresarial"
-        description="Lectura ejecutiva mínima del negocio construida sobre el Decision Engine, separada del dashboard operativo y de los reportes tradicionales."
+        description="Lectura ejecutiva asistida del negocio construida sobre el Decision Engine. Funciona como apoyo gerencial y no reemplaza la validación humana ni el análisis operativo detallado."
         actions={
           <>
             <Button asChild className="rounded-xl">
@@ -472,7 +472,7 @@ export function IntelligenceDashboardClient() {
         stats={[
           { label: 'Salud general', value: company?.healthScore ?? '—', hint: 'Puntaje consolidado actual', tone: 'sky' },
           { label: 'Acciones ahora', value: totalPriorityActions, hint: 'Acciones prioritarias inmediatas', tone: 'amber' },
-          { label: 'Riesgos activos', value: (company?.risks.length ?? 0) + (finance?.risks.length ?? 0) + (inventory?.risks.length ?? 0) + (operations?.risks.length ?? 0) + (purchases?.risks.length ?? 0), hint: 'Riesgos principales detectados', tone: 'teal' },
+          { label: 'Pendientes activos', value: (company?.risks.length ?? 0) + (finance?.risks.length ?? 0) + (inventory?.risks.length ?? 0) + (operations?.risks.length ?? 0) + (purchases?.risks.length ?? 0), hint: 'Pendientes principales detectados', tone: 'teal' },
         ]}
       />
 
@@ -480,7 +480,7 @@ export function IntelligenceDashboardClient() {
         <CardHeader className="border-b border-slate-100 pb-5">
           <CardInfoHeader
             title={<CardTitle className="text-2xl text-slate-950">Resumen ejecutivo</CardTitle>}
-            description="Este bloque consolida la lectura compañía para gerencia. CRM y Ventas se muestran debajo como slices reutilizables del mismo motor."
+            description="Este bloque consolida una lectura compañía para gerencia. CRM y Ventas se muestran debajo como slices reutilizables del mismo motor."
             tone="data"
           />
         </CardHeader>
@@ -502,22 +502,22 @@ export function IntelligenceDashboardClient() {
 
               <div className="grid gap-4 lg:grid-cols-3">
                 <div className="rounded-[24px] border border-rose-200 bg-rose-50/70 p-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-rose-900"><AlertTriangle className="h-4 w-4" /> Riesgos</div>
+                  <div className="flex items-center gap-2 text-sm font-semibold text-rose-900"><AlertTriangle className="h-4 w-4" /> Pendientes</div>
                   <div className="mt-3 space-y-2">
                     {company.risks.slice(0, 3).map((item) => (
                       <div key={item.id} className="rounded-2xl border border-rose-200 bg-white/80 px-3 py-3 text-sm text-rose-900">{item.summary}</div>
                     ))}
-                    {company.risks.length === 0 ? <div className="rounded-2xl border border-dashed border-rose-200 px-3 py-3 text-sm text-rose-800">Sin riesgo dominante en esta lectura.</div> : null}
+                    {company.risks.length === 0 ? <div className="rounded-2xl border border-dashed border-rose-200 px-3 py-3 text-sm text-rose-800">Sin pendiente dominante en esta lectura.</div> : null}
                   </div>
                 </div>
 
                 <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/70 p-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900"><TrendingUp className="h-4 w-4" /> Oportunidades</div>
+                  <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900"><TrendingUp className="h-4 w-4" /> Mejoras</div>
                   <div className="mt-3 space-y-2">
                     {company.opportunities.slice(0, 3).map((item) => (
                       <div key={item.id} className="rounded-2xl border border-emerald-200 bg-white/80 px-3 py-3 text-sm text-emerald-900">{item.summary}</div>
                     ))}
-                    {company.opportunities.length === 0 ? <div className="rounded-2xl border border-dashed border-emerald-200 px-3 py-3 text-sm text-emerald-800">Sin oportunidad dominante en esta lectura.</div> : null}
+                    {company.opportunities.length === 0 ? <div className="rounded-2xl border border-dashed border-emerald-200 px-3 py-3 text-sm text-emerald-800">Sin mejora dominante en esta lectura.</div> : null}
                   </div>
                 </div>
 

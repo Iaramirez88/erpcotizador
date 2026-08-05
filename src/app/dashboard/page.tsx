@@ -20,6 +20,7 @@ import { getCrmStorageUsageSummary } from '@/lib/crm-files'
 import { resolveDashboardConfig } from '@/lib/company-onboarding'
 import { redirect } from 'next/navigation'
 import { buildAllowedDashboardHrefsForUser, getAllowedModulesFromDashboardHrefs } from '@/lib/dashboard-access'
+import { isCompanyIntelligenceEnabled, removeIntelligenceHrefFromDashboardConfig } from '@/lib/company-intelligence'
 
 function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0 B'
@@ -54,6 +55,7 @@ export default async function DashboardPage() {
   let storageUsage: Awaited<ReturnType<typeof getCrmStorageUsageSummary>> | null = null
   let dashboardConfig: ReturnType<typeof resolveDashboardConfig> = null
   let permissionAllowedHrefs: string[] = []
+  let intelligenceEnabled = false
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -108,11 +110,15 @@ export default async function DashboardPage() {
       if (empresa) {
         const effectiveTier = resolveEffectivePlanTier(empresa, new Date())
         enabledPlanModules = await getEnabledModulesForEmpresa({ empresaId: user.empresaId, planTier: effectiveTier })
+        intelligenceEnabled = isCompanyIntelligenceEnabled(empresa.dashboardConfig)
         dashboardConfig = resolveDashboardConfig({
           dashboardConfig: empresa.dashboardConfig,
           onboardingData: empresa.onboardingData,
           businessType: empresa.businessType,
         })
+        if (!intelligenceEnabled) {
+          dashboardConfig = removeIntelligenceHrefFromDashboardConfig(dashboardConfig)
+        }
       }
 
       if (canViewCompanyStorage) {
@@ -125,7 +131,7 @@ export default async function DashboardPage() {
   }
 
   const displayName = session.user.name || session.user.email || 'equipo'
-  const canAccessIntelligence = permissionAllowedHrefs.includes('/dashboard/inteligencia')
+  const canAccessIntelligence = intelligenceEnabled && permissionAllowedHrefs.includes('/dashboard/inteligencia')
   const canAccessReports = permissionAllowedHrefs.includes('/dashboard/reportes')
   const continueHref = canAccessIntelligence ? '/dashboard/inteligencia' : canAccessReports ? '/dashboard/reportes' : '/dashboard'
   const storagePct = storageUsage?.totalBytes ? Math.min(100, Math.round((storageUsage.usedBytes / storageUsage.totalBytes) * 100)) : 0

@@ -25,6 +25,8 @@ interface SidebarProps {
     role?: string
     allowedModules?: string[] | null
     allowedNavHrefs?: string[] | null
+    canAccessBackups?: boolean
+    intelligenceEnabled?: boolean
   }
 }
 
@@ -45,7 +47,7 @@ const DEFAULT_SIDEBAR_TOOLTIP_PREFS: SidebarTooltipPrefs = { desktop: true, mobi
 
 const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard": "Resumen rapido de ventas, tareas y actividad del negocio.",
-  "/dashboard/inteligencia": "Cockpit ejecutivo con lectura del negocio, riesgos, oportunidades y acciones sugeridas.",
+  "/dashboard/inteligencia": "Cockpit ejecutivo con lectura asistida del negocio, pendientes, mejoras y acciones sugeridas.",
   "/dashboard/mapa-producto": "Vista general del sistema y sus modulos disponibles.",
   "/dashboard/reportes": "Indicadores, resultados y analisis para tomar decisiones.",
   "/dashboard/plantillas": "Formatos reutilizables para cotizaciones, mensajes y documentos.",
@@ -877,12 +879,20 @@ export default function Sidebar({ user }: SidebarProps) {
       if (it.href !== '/dashboard/configuracion/plan') return true
       return canManageBilling
     })
-    const withOnboardingScope = withBillingGate.filter((it) => {
+    const withBackupGate = withBillingGate.filter((it) => {
+      if (it.href !== '/dashboard/configuracion/respaldo') return true
+      return user.canAccessBackups === true
+    })
+    const withIntelligenceGate = withBackupGate.filter((it) => {
+      if (it.href !== '/dashboard/inteligencia') return true
+      return user.intelligenceEnabled === true
+    })
+    const withOnboardingScope = withIntelligenceGate.filter((it) => {
       if (allowedNavHrefSet) return allowedNavHrefSet.has(it.href)
       return !isOnboardingScopedDashboardHref(it.href)
     })
     return sortNavItemsByOrder(withOnboardingScope, effectiveNavOrder)
-  }, [navPrefs, enabledModules, user?.role, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation, effectiveNavOrder, allowedNavHrefSet])
+  }, [navPrefs, enabledModules, user?.role, user.canAccessBackups, user.intelligenceEnabled, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation, effectiveNavOrder, allowedNavHrefSet])
 
   const visibleHrefs = useMemo(() => {
     return new Set(visibleNavigation.map((it) => it.href))

@@ -8,6 +8,7 @@ import { CardInfoHeader } from '@/components/ui/card-info-header'
 import { Input } from '@/components/ui/input'
 import { InfoHint } from '@/components/ui/info-hint'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { getBusinessTypeLabel } from '@/lib/company-onboarding'
@@ -18,6 +19,7 @@ type EmpresaConfig = {
   nombre: string
   nit: string
   logo: string | null
+  intelligenceEnabled: boolean
   hasRegistrationCode: boolean
 }
 
@@ -44,6 +46,7 @@ export default function ConfigEmpresaPage() {
   const [nombre, setNombre] = useState('')
   const [nit, setNit] = useState('')
   const [logo, setLogo] = useState<string | null>(null)
+  const [intelligenceEnabled, setIntelligenceEnabled] = useState(false)
 
   const logoPreview = useMemo(() => (logo ?? config?.logo ?? null), [logo, config?.logo])
 
@@ -64,6 +67,7 @@ export default function ConfigEmpresaPage() {
         setNombre(json.data.nombre)
         setNit(json.data.nit)
         setLogo(json.data.logo)
+        setIntelligenceEnabled(Boolean(json.data.intelligenceEnabled))
       } catch {
         if (!cancelled) setError('No se pudo cargar la configuración.')
       }
@@ -116,7 +120,7 @@ export default function ConfigEmpresaPage() {
       const res = await fetch('/api/configuracion/empresa', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre: nextNombre, nit: nextNit, logo }),
+        body: JSON.stringify({ nombre: nextNombre, nit: nextNit, logo, intelligenceEnabled }),
       })
       const json = (await res.json().catch(() => null)) as { ok?: boolean; data?: EmpresaConfig; error?: string } | null
       if (!res.ok || !json?.ok || !json.data) {
@@ -124,6 +128,7 @@ export default function ConfigEmpresaPage() {
         return
       }
       setConfig(json.data)
+      setIntelligenceEnabled(Boolean(json.data.intelligenceEnabled))
       setStatus('Guardado.')
 
       window.dispatchEvent(
@@ -244,6 +249,32 @@ export default function ConfigEmpresaPage() {
             {saving ? 'Guardando…' : 'Guardar cambios'}
           </Button>
         </CardFooter>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardInfoHeader
+            title={<CardTitle>Motor de inteligencia empresarial</CardTitle>}
+            description="Actívalo solo si tu empresa desea recibir esta lectura ejecutiva asistida y sus alertas. Es una ayuda orientativa y no reemplaza la validación gerencial."
+            tone="action"
+          />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-4">
+            <div className="space-y-1">
+              <Label htmlFor="intelligence-enabled" className="text-sm font-medium text-slate-950">Permitir lectura ejecutiva y alertas asistidas</Label>
+              <CardDescription>
+                Cuando está apagado, se oculta el módulo de inteligencia del dashboard y se detienen sus notificaciones automáticas.
+              </CardDescription>
+            </div>
+            <Switch
+              id="intelligence-enabled"
+              checked={intelligenceEnabled}
+              onCheckedChange={setIntelligenceEnabled}
+              disabled={saving || loading || !config}
+            />
+          </div>
+        </CardContent>
       </Card>
 
       <Card>

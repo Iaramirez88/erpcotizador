@@ -2,6 +2,7 @@ import { Prisma, SedeRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import type { DecisionEngineContext, DecisionEngineResult } from '@/lib/decision-engine/contracts'
 import { createDecisionEngine } from '@/lib/decision-engine/engine'
+import { isCompanyIntelligenceEnabledForEmpresa } from '@/lib/company-intelligence'
 
 export type DecisionEngineSnapshotBundle = {
   generatedAt: string
@@ -41,8 +42,8 @@ function buildExecutiveNotification(bundle: DecisionEngineSnapshotBundle) {
 
   const type = health === 'CRITICO' ? 'ERROR' : 'WARNING'
   const title = health === 'CRITICO'
-    ? `Alerta ejecutiva: salud empresarial en ${health.toLowerCase()}`
-    : `Atención ejecutiva: salud empresarial en ${health.toLowerCase()}`
+    ? `Señal ejecutiva para revisión: salud empresarial en ${health.toLowerCase()}`
+    : `Atención ejecutiva para revisión: salud empresarial en ${health.toLowerCase()}`
   const body = topRisk
     ? `${topRisk.summary} Acciones inmediatas sugeridas: ${urgentActions}.`
     : `${bundle.company.executiveSummary} Acciones inmediatas sugeridas: ${urgentActions}.`
@@ -52,7 +53,7 @@ function buildExecutiveNotification(bundle: DecisionEngineSnapshotBundle) {
     title,
     body,
     actionUrl: '/dashboard/inteligencia',
-    actionLabel: 'Abrir inteligencia',
+    actionLabel: 'Abrir lectura asistida',
   } as const
 }
 
@@ -123,6 +124,7 @@ export async function persistDecisionEngineSnapshot(
   context: DecisionEngineContext,
   options: PersistDecisionEngineSnapshotOptions = {}
 ) {
+  const intelligenceEnabled = await isCompanyIntelligenceEnabledForEmpresa(context.empresaId)
   const bundle = await buildDecisionEngineSnapshotBundle(context)
 
   if (!options.force) {
@@ -197,6 +199,7 @@ export async function persistDecisionEngineSnapshot(
 
   return {
     ...(await (async () => {
+      if (!intelligenceEnabled) return { notifiedUsers: 0 }
       const notification = buildExecutiveNotification(bundle)
       if (!notification) return { notifiedUsers: 0 }
       const notifiedUsers = await notifyExecutiveSnapshot({

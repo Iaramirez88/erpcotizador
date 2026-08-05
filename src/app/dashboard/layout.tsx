@@ -23,6 +23,8 @@ import { getWebsiteServicesAccessForUser } from "@/lib/website-services"
 import DashboardDeferredWidgets from "@/components/dashboard/dashboard-deferred-widgets"
 import DashboardPermissionBoundary from '@/components/dashboard/dashboard-permission-boundary'
 import { buildAllowedDashboardHrefsForUser, buildAllowedDashboardPermissionKeysForUser, getAllowedModulesFromDashboardHrefs } from '@/lib/dashboard-access'
+import { isCompanyIntelligenceEnabledForEmpresa } from '@/lib/company-intelligence'
+import { getBackupAccess } from '@/lib/empresa-backups'
 
 export default async function DashboardLayout({
   children,
@@ -41,6 +43,8 @@ export default async function DashboardLayout({
   let allowedNavHrefs: string[] | null = null
   let canManageBilling = false
   let canAccessWebsiteServices = false
+  let canAccessBackups = false
+  let intelligenceEnabled = false
   let canAccessTeamChat = false
   let canAccessCrmChat = false
   try {
@@ -72,6 +76,15 @@ export default async function DashboardLayout({
       canAccessCrmChat = permissionKeys.includes('OPERACIONES.GLOBAL_CHAT_CRM')
       allowedModules = Array.from(new Set([...allowedModules, ...getAllowedModulesFromDashboardHrefs(allowedNavHrefs)]))
       canAccessWebsiteServices = websiteServicesAccess.canAccess
+      const [backupAccess, nextIntelligenceEnabled] = await Promise.all([
+        getBackupAccess({ empresaId: sede.empresaId, userId }),
+        isCompanyIntelligenceEnabledForEmpresa(sede.empresaId),
+      ])
+      canAccessBackups = backupAccess.canExport || backupAccess.canImport
+      intelligenceEnabled = nextIntelligenceEnabled
+      if (!intelligenceEnabled) {
+        allowedNavHrefs = allowedNavHrefs.filter((href) => href !== '/dashboard/inteligencia')
+      }
 
       const isSystemSuperAdmin = isSuperAdminEmail(layoutUser?.email)
       const isPlanOwner = Boolean(
@@ -97,6 +110,8 @@ export default async function DashboardLayout({
     allowedNavHrefs,
     canManageBilling,
     canAccessWebsiteServices,
+    canAccessBackups,
+    intelligenceEnabled,
   }
 
   return (

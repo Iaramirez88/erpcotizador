@@ -1,6 +1,7 @@
 import { ModuleKey } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { isCompanyIntelligenceEnabledForEmpresa } from '@/lib/company-intelligence'
 import { parseDateOnlyUtc } from '@/lib/decision-engine/dates'
 import { createDecisionEngine } from '@/lib/decision-engine/engine'
 
@@ -9,6 +10,9 @@ export const runtime = 'nodejs'
 export async function GET(request: NextRequest) {
   const access = await requireApiAccess(ModuleKey.REPORTES, 'READ')
   if (!access.ok) return access.response
+  if (!(await isCompanyIntelligenceEnabledForEmpresa(access.empresaId))) {
+    return NextResponse.json({ success: false, error: 'El motor de inteligencia empresarial está apagado para esta empresa.' }, { status: 403 })
+  }
 
   const { searchParams } = new URL(request.url)
   const from = parseDateOnlyUtc(searchParams.get('from') || '', false) ?? undefined

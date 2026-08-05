@@ -8,6 +8,7 @@ import {
   parseCompanyOnboardingData,
   resolveDashboardConfig,
 } from '@/lib/company-onboarding'
+import { isCompanyIntelligenceEnabled, removeIntelligenceHrefFromDashboardConfig } from '@/lib/company-intelligence'
 import { ALL_MODULE_KEYS, saveEmpresaModuleOverride } from '@/lib/plan-modules'
 import { ensureBusinessTypeSeedsForEmpresa } from '@/lib/business-type-seeds'
 import { getActiveSedeForUser } from '@/lib/rbac'
@@ -67,12 +68,15 @@ export async function GET() {
       onboardingData: context.empresa.onboardingData,
       businessType: context.empresa.businessType,
     })
+    const scopedDashboard = isCompanyIntelligenceEnabled(context.empresa.dashboardConfig)
+      ? dashboard
+      : removeIntelligenceHrefFromDashboardConfig(dashboard)
     const sede = await getActiveSedeForUser(context.userId)
     const permissionAllowedHrefs = await buildAllowedDashboardHrefsForUser({
       userId: context.userId,
       empresaId: context.empresa.id,
       sedeId: sede.id,
-      baseAllowedHrefs: dashboard?.allowedHrefs ?? null,
+      baseAllowedHrefs: scopedDashboard?.allowedHrefs ?? null,
     })
     const locked = Boolean(context.empresa.onboardingCompletedAt)
     const availableBusinessTypes = await getVisibleOnboardingBusinessTypes()
@@ -88,11 +92,11 @@ export async function GET() {
       completedAt: context.empresa.onboardingCompletedAt,
       availableBusinessTypes,
       data,
-      dashboard: dashboard
+      dashboard: scopedDashboard
         ? {
-            ...dashboard,
-            allowedHrefs: dashboard.allowedHrefs.length
-              ? dashboard.allowedHrefs.filter((href) => permissionAllowedHrefs.includes(href))
+            ...scopedDashboard,
+            allowedHrefs: scopedDashboard.allowedHrefs.length
+              ? scopedDashboard.allowedHrefs.filter((href) => permissionAllowedHrefs.includes(href))
               : permissionAllowedHrefs,
           }
         : { allowedHrefs: permissionAllowedHrefs },

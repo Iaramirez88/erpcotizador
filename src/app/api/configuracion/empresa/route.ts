@@ -1,7 +1,9 @@
+import { Prisma } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import bcrypt from 'bcryptjs'
+import { mergeCompanyIntelligenceSettings, parseCompanyIntelligenceSettings } from '@/lib/company-intelligence'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
 
 export const runtime = 'nodejs'
@@ -29,6 +31,7 @@ export async function GET() {
           nombre: true,
           nit: true,
           logo: true,
+          dashboardConfig: true,
           registrationCodeHash: true,
         },
       },
@@ -50,6 +53,7 @@ export async function GET() {
       nombre: empresa.nombre,
       nit: empresa.nit,
       logo: empresa.logo,
+      intelligenceEnabled: parseCompanyIntelligenceSettings(empresa.dashboardConfig).enabled,
       hasRegistrationCode: Boolean(empresa.registrationCodeHash),
     },
   })
@@ -76,15 +80,22 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Empresa no encontrada' }, { status: 404 })
   }
 
+  const currentEmpresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { dashboardConfig: true },
+  })
+
   const nombreRaw = asString(body.nombre).trim()
   const nitRaw = asString(body.nit).trim()
   const logoRaw = asString(body.logo).trim()
+  const intelligenceEnabled = typeof body.intelligenceEnabled === 'boolean' ? body.intelligenceEnabled : null
 
   const updateData: {
     nombre?: string
     logo?: string | null
     registrationCodeHash?: string | null
     nit?: string
+    dashboardConfig?: Prisma.InputJsonValue
   } = {}
 
   if (nombreRaw) updateData.nombre = nombreRaw
@@ -105,10 +116,16 @@ export async function PUT(request: NextRequest) {
     }
   }
 
+  if (intelligenceEnabled !== null) {
+    updateData.dashboardConfig = mergeCompanyIntelligenceSettings(currentEmpresa?.dashboardConfig, {
+      enabled: intelligenceEnabled,
+    }) as Prisma.InputJsonValue
+  }
+
   const empresa = await prisma.empresa.update({
     where: { id: empresaId },
     data: updateData,
-    select: { id: true, nombre: true, nit: true, logo: true, registrationCodeHash: true },
+    select: { id: true, nombre: true, nit: true, logo: true, dashboardConfig: true, registrationCodeHash: true },
   })
 
   return NextResponse.json({
@@ -118,6 +135,7 @@ export async function PUT(request: NextRequest) {
       nombre: empresa.nombre,
       nit: empresa.nit,
       logo: empresa.logo,
+      intelligenceEnabled: parseCompanyIntelligenceSettings(empresa.dashboardConfig).enabled,
       hasRegistrationCode: Boolean(empresa.registrationCodeHash),
     },
   })

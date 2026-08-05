@@ -49,12 +49,12 @@ export function buildExecutiveSummary(args: BuildExecutiveSummaryArgs) {
     : 'Finanzas no muestra tensión dominante en caja, cartera ni cierre contable.'
 
   const opportunityLine = args.opportunities.length > 0
-    ? `La principal oportunidad detectada es: ${args.opportunities[0]?.title.toLowerCase()}.`
-    : 'Por ahora el motor no detecta una oportunidad dominante que sobresalga sobre el resto.'
+    ? `La principal mejora sugerida en esta lectura es: ${args.opportunities[0]?.title.toLowerCase()}.`
+    : 'Por ahora la lectura no resalta una mejora dominante que sobresalga sobre el resto.'
 
   const riskLine = args.risks.length > 0
-    ? `El principal riesgo detectado es: ${args.risks[0]?.title.toLowerCase()}.`
-    : 'No hay un riesgo dominante por encima del resto en el periodo consultado.'
+    ? `El principal pendiente a revisar es: ${args.risks[0]?.title.toLowerCase()}.`
+    : 'No hay un pendiente dominante por encima del resto en el periodo consultado.'
 
   return [describeHealthStatus(args.healthStatus), trendLine, attentionLine, operationsLine, financeLine, opportunityLine, riskLine].join(' ')
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ModuleKey } from '@prisma/client'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { isCompanyIntelligenceEnabledForEmpresa } from '@/lib/company-intelligence'
 import { parseDateOnlyUtc } from '@/lib/decision-engine/dates'
 import { listDecisionEngineSnapshots, persistDecisionEngineSnapshot } from '@/lib/decision-engine/snapshots'
 
@@ -9,6 +10,9 @@ export const runtime = 'nodejs'
 export async function GET(request: NextRequest) {
   const access = await requireApiAccess(ModuleKey.REPORTES, 'READ')
   if (!access.ok) return access.response
+  if (!(await isCompanyIntelligenceEnabledForEmpresa(access.empresaId))) {
+    return NextResponse.json({ success: false, error: 'El motor de inteligencia empresarial está apagado para esta empresa.' }, { status: 403 })
+  }
 
   const { searchParams } = new URL(request.url)
   const limit = Number(searchParams.get('limit') || '12')
@@ -27,6 +31,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const access = await requireApiAccess(ModuleKey.REPORTES, 'READ')
   if (!access.ok) return access.response
+  if (!(await isCompanyIntelligenceEnabledForEmpresa(access.empresaId))) {
+    return NextResponse.json({ success: false, error: 'El motor de inteligencia empresarial está apagado para esta empresa.' }, { status: 403 })
+  }
 
   const body = (await request.json().catch(() => ({}))) as {
     from?: string
