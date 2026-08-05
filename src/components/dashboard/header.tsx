@@ -11,7 +11,7 @@ import Image from 'next/image'
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
-import { ChevronDown, LogOut } from 'lucide-react'
+import { ChevronDown, Lock, LogOut } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog, type SidebarTooltipPrefs } from "@/components/dashboard/nav-settings-dialog"
@@ -44,6 +44,7 @@ interface HeaderProps {
     canManageBilling?: boolean
     canAccessWebsiteServices?: boolean
   }
+  variant?: 'sticky' | 'inline'
 }
 
 const DEFAULT_SIDEBAR_TOOLTIP_PREFS: SidebarTooltipPrefs = { desktop: true, mobile: true }
@@ -71,7 +72,7 @@ function MenuIcon({ children }: { children: React.ReactNode }) {
   return <span className="inline-flex h-5 w-5 items-center justify-center text-slate-700">{children}</span>
 }
 
-export default function Header({ user }: HeaderProps) {
+export default function Header({ user, variant = 'sticky' }: HeaderProps) {
   const router = useRouter()
   const { t, language, setLanguage } = useI18n()
   const { theme, setTheme } = useTheme()
@@ -467,29 +468,10 @@ export default function Header({ user }: HeaderProps) {
       </DropdownMenuSub>
     )
 
-  return (
-    <header className="sticky top-0 z-50 border-b border-border/80 bg-background/88 px-2 py-1.5 text-foreground backdrop-blur-xl sm:px-3 lg:px-4">
-      <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-1.5">
-        {/* Breadcrumb / Title */}
-        <div className="flex min-w-0 items-center gap-1.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-            onClick={toggleMobileNav}
-            aria-label={t('header.openMenu')}
-            type="button"
-          >
-            <svg className="h-4.5 w-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </Button>
-
-          <h2 className="truncate text-sm font-semibold text-foreground">{t('header.controlPanel')}</h2>
-        </div>
-
-        {/* Actions */}
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+  const actions = (
+    <>
+      {/* Actions */}
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <NotificationsBell />
 
           {navPrefs ? (
@@ -537,6 +519,18 @@ export default function Header({ user }: HeaderProps) {
                       </svg>
                     </MenuIcon>
                     <span>Mi cuenta</span>
+                  </span>
+                  <MenuChevron />
+                </Link>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem asChild className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100">
+                <Link href="/auth/change-password" className="flex w-full items-center justify-between gap-3">
+                  <span className="flex items-center gap-3">
+                    <MenuIcon>
+                      <Lock className="h-5 w-5" />
+                    </MenuIcon>
+                    <span>Cambiar contraseña</span>
                   </span>
                   <MenuChevron />
                 </Link>
@@ -602,6 +596,32 @@ export default function Header({ user }: HeaderProps) {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+    </>
+  )
+
+  if (variant === 'inline') {
+    return actions
+  }
+
+  return (
+    <header className="sticky top-0 z-50 border-b border-border/80 bg-background/88 px-2 py-1.5 text-foreground backdrop-blur-xl sm:px-3 lg:px-4">
+      <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-1.5">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={toggleMobileNav}
+            aria-label={t('header.openMenu')}
+            type="button"
+          >
+            <svg className="h-4.5 w-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </Button>
+        </div>
+
+        {actions}
       </div>
     </header>
   )

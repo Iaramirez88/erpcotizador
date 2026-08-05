@@ -7,7 +7,6 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import Sidebar from "@/components/dashboard/sidebar"
-import Header from "@/components/dashboard/header"
 import { TourProvider } from "@/components/tour/tour-provider"
 import PlanModuleGate from "@/components/dashboard/plan-module-gate"
 import DashboardScopeGate from "@/components/dashboard/dashboard-scope-gate"
@@ -126,9 +125,6 @@ export default async function DashboardLayout({
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Header */}
-          <Header user={user} />
-
           {/* Page Content */}
           <main className="erp-shell relative flex-1 overflow-y-auto bg-white p-1 pb-14 dark:bg-[#08111f] sm:p-2 sm:pb-14 lg:p-2.5 lg:pb-14">
             <div className="erp-shell__content mx-auto flex w-full max-w-[1600px] flex-col gap-2.5">

@@ -2,10 +2,55 @@
   "version": 1,
   "entries": [
     {
+      "id": "52c88e4c-26e5-4466-a2cf-3658b0882ad8",
+      "createdAt": "2026-08-05T18:43:12.128Z",
+      "kind": "CRM_CONVERSATION_COPILOT",
+      "prompt": "INBOUND::Cita agendada para iva\nFecha: lunes, 11 de mayo de 2026, 11:00 a. m.\nServicio: gggg",
+      "actorUserId": "cmnm6joq9000ibs7kui12j2em",
+      "actorLabel": "IVAN ANTONIO RAMIREZ CELEITA",
+      "summary": "iva escribe por Agenda Web. Hay 1 mensajes con contenido en el hilo. El lead asociado está en estado NEW. Última intención detectada: Cita agendada para iva\nFecha: lunes, 11 de mayo de 2026, 11:00 a. m.\nServicio: gggg",
+      "responseText": "Hola iva, gracias por tu paciencia. Ya revisé tu mensaje y voy a responderte de forma prioritaria para retomar el hilo y avanzar con el siguiente paso.",
+      "metadata": {
+        "conversationId": "cmp1jszxq0005wo7knynjcva8",
+        "snapshotSignature": "d6f0e239cef240956ffc2cec8ab39a68589cda21",
+        "conversationStatus": "HUMAN_ACTIVE",
+        "assignedToUserId": "cmnm6joq9000ibs7kui12j2em",
+        "assignedToLabel": "IVAN ANTONIO RAMIREZ CELEITA",
+        "unreadCount": 0,
+        "lastMessageAt": "2026-05-11T18:41:40.210Z",
+        "leadId": "cmp1jszwf0004wo7kpb8ppyfo",
+        "leadStatus": "NEW",
+        "opportunityId": null,
+        "opportunityStage": null,
+        "clienteId": null,
+        "channelName": "Agenda Web",
+        "taskSuggestion": {
+          "title": "Seguimiento IA · iva",
+          "description": "Resumen IA: iva escribe por Agenda Web. Hay 1 mensajes con contenido en el hilo. El lead asociado está en estado NEW. Última intención detectada: Cita agendada para iva\nFecha: lunes, 11 de mayo de 2026, 11:00 a. m.\nServicio: gggg\n\nMotivo: El SLA está vencido y requiere reacción rápida.\n\nRespuesta sugerida:\nHola iva, gracias por tu paciencia. Ya revisé tu mensaje y voy a responderte de forma prioritaria para retomar el hilo y avanzar con el siguiente paso.",
+          "priority": "HIGH",
+          "dueAt": "2026-08-05T19:13:12.124Z",
+          "assignedToUserId": "cmnm6joq9000ibs7kui12j2em",
+          "assignedToLabel": "IVAN ANTONIO RAMIREZ CELEITA",
+          "reason": "El SLA está vencido y requiere reacción rápida."
+        },
+        "engine": {
+          "mode": "RULES",
+          "provider": "internal-rules",
+          "model": null
+        },
+        "nextActions": [
+          "Responder confirmando necesidad principal y siguiente paso comercial.",
+          "Hacer primera respuesta y dejar claro el canal de seguimiento.",
+          "Definir si el lead ya está listo para pasar a oportunidad o si aún falta calificación."
+        ]
+      },
+      "asset": null
+    },
+    {
       "id": "509da611-6fa7-4b0e-b67a-623914701824",
-      "createdAt": "2026-05-28T10:43:34.463Z",
       "kind": "LITOGRAFIA_QUOTE",
       "prompt": "Quiero 500 tarjetas de presentación 9x5 cm en propalcote 350 g, 4x4, laminado mate y esquinas redondeadas.",
+      "createdAt": "2026-05-28T10:43:34.463Z",
       "actorUserId": "cmnm6joq9000ibs7kui12j2em",
       "actorLabel": "IVAN ANTONIO RAMIREZ CELEITA",
       "summary": "TARJETA · 500 unidades · propalcote 350 g · 4 tintas · 9 x 5 cm · laminado mate",

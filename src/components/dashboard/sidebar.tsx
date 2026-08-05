@@ -12,6 +12,7 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog, type NavSettingsItem, type SidebarTooltipPrefs } from "@/components/dashboard/nav-settings-dialog"
+import Header from "@/components/dashboard/header"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import Image from "next/image"
 import { useI18n } from "@/components/providers/i18n-provider"
@@ -23,8 +24,14 @@ interface SidebarProps {
     name?: string | null
     email?: string | null
     role?: string
+    image?: string | null
+    isImpersonating?: boolean
+    impersonatedByName?: string | null
+    impersonatedByEmail?: string | null
     allowedModules?: string[] | null
     allowedNavHrefs?: string[] | null
+    canManageBilling?: boolean
+    canAccessWebsiteServices?: boolean
     canAccessBackups?: boolean
     intelligenceEnabled?: boolean
   }
@@ -982,11 +989,27 @@ export default function Sidebar({ user }: SidebarProps) {
   const softButton = isDark ? "border-white/10 text-slate-200 hover:bg-white/10" : "border-slate-200 text-slate-600 hover:bg-slate-100"
   const userSecondaryText = isDark ? "text-slate-400" : "text-slate-500"
   const userStrongText = isDark ? "text-slate-100" : "text-slate-900"
-  const avatarSurface = isDark ? "bg-white/10 text-slate-100" : "bg-slate-100 text-slate-700"
   const badgeSurface = isDark ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-600"
 
   return (
     <>
+      {!mobileNavOpen ? (
+        <button
+          type="button"
+          className={cn(
+            "fixed left-3 top-3 z-40 inline-flex h-10 w-10 items-center justify-center rounded-xl border shadow-sm md:hidden",
+            softButton,
+            isDark ? "bg-slate-900/95 backdrop-blur" : "bg-white/95 backdrop-blur"
+          )}
+          onClick={() => setMobileNavOpen(true)}
+          aria-label="Abrir menú"
+        >
+          <svg className="h-4.5 w-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      ) : null}
+
       {/* Backdrop (mobile) */}
       <div
         className={cn(
@@ -1008,52 +1031,58 @@ export default function Sidebar({ user }: SidebarProps) {
       >
         {/* Logo */}
         <div className={cn("border-b p-2.5", sectionBorder)}>
-          <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "space-x-3")}>
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-[linear-gradient(135deg,#0f766e_0%,#2563eb_100%)] text-base font-bold text-primary-foreground shadow-[0_12px_24px_-18px_rgba(37,99,235,0.7)]">
-              {empresa?.logo ? (
-                <Image src={empresa.logo} alt={empresa.nombre} width={36} height={36} className="h-9 w-9 object-contain" />
-              ) : (
-                <span>{empresaInitials}</span>
-              )}
-            </div>
-            {!sidebarCollapsed ? (
-              <div>
-                <h1 className={cn("text-sm font-bold leading-5", userStrongText)}>{empresa?.nombre ?? 'SGDigital'}</h1>
-                <p className={cn("text-[10px]", userSecondaryText)}>Cotizador Pro</p>
+          <div className={cn("flex items-start justify-between gap-2", sidebarCollapsed ? "flex-col items-center" : "") }>
+            <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "space-x-3")}>
+              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-[linear-gradient(135deg,#0f766e_0%,#2563eb_100%)] text-base font-bold text-primary-foreground shadow-[0_12px_24px_-18px_rgba(37,99,235,0.7)]">
+                {empresa?.logo ? (
+                  <Image src={empresa.logo} alt={empresa.nombre} width={36} height={36} className="h-9 w-9 object-contain" />
+                ) : (
+                  <span>{empresaInitials}</span>
+                )}
               </div>
-            ) : null}
+              {!sidebarCollapsed ? (
+                <div>
+                  <h1 className={cn("text-sm font-bold leading-5", userStrongText)}>{empresa?.nombre ?? 'SGDigital'}</h1>
+                </div>
+              ) : null}
+            </div>
 
-            <button
-              type="button"
-              className={cn("ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg border md:hidden", softButton)}
-              onClick={() => setMobileNavOpen(false)}
-              aria-label="Cerrar menú"
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <div className={cn("flex items-center gap-1", sidebarCollapsed ? "flex-col-reverse" : "") }>
+              <button
+                type="button"
+                className={cn("inline-flex h-8 w-8 items-center justify-center rounded-lg border md:hidden", softButton)}
+                onClick={() => setMobileNavOpen(false)}
+                aria-label="Cerrar menú"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
 
-            <button
-              type="button"
-              className={cn(
-                "ml-auto hidden h-8 w-8 items-center justify-center rounded-lg border md:inline-flex",
-                softButton,
-                sidebarCollapsed ? "ml-0" : ""
-              )}
-              onClick={toggleSidebarCollapsed}
-              title={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
-              aria-label={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
-            >
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d={sidebarCollapsed ? "M9 5l7 7-7 7" : "M15 19l-7-7 7-7"}
-                />
-              </svg>
-            </button>
+              <button
+                type="button"
+                className={cn(
+                  "hidden h-8 w-8 items-center justify-center rounded-lg border md:inline-flex",
+                  softButton
+                )}
+                onClick={toggleSidebarCollapsed}
+                title={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
+                aria-label={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
+              >
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d={sidebarCollapsed ? "M9 5l7 7-7 7" : "M15 19l-7-7 7-7"}
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div className={cn("mt-2 flex", sidebarCollapsed ? "justify-center" : "justify-end")}>
+            <Header user={user} variant="inline" />
           </div>
         </div>
 
@@ -1188,33 +1217,6 @@ export default function Sidebar({ user }: SidebarProps) {
 
         </nav>
         </TooltipProvider>
-
-        {/* User Info + Cambiar contraseña */}
-        <div className={cn("border-t p-2.5", sectionBorder, sidebarCollapsed ? "px-1.5" : "px-2.5")}>
-          <div className={cn("flex items-center space-x-2.5", sidebarCollapsed ? "justify-center" : "") }>
-            <div className={cn("flex h-8 w-8 items-center justify-center rounded-full text-[12px] font-medium", avatarSurface)}>
-              {user.name?.charAt(0).toUpperCase()}
-            </div>
-            {!sidebarCollapsed ? (
-              <div className="flex-1 min-w-0">
-                <p className={cn("truncate text-[12px] font-medium leading-4", userStrongText)}>{user.name}</p>
-                <p className={cn("truncate text-[10px] leading-4", userSecondaryText)}>{user.email}</p>
-              </div>
-            ) : null}
-          </div>
-
-          {!sidebarCollapsed ? (
-            <div className="mt-2.5">
-              <Link
-                href="/auth/change-password"
-                onClick={() => setMobileNavOpen(false)}
-                className={cn("text-[10px] font-medium hover:underline", isDark ? "text-sky-300" : "text-sky-700")}
-              >
-                Cambiar contraseña
-              </Link>
-            </div>
-          ) : null}
-        </div>
       </aside>
     </>
   )

@@ -1,5 +1,6 @@
 "use client"
 
+import type { ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BellOff, Check, CheckCheck, ChevronDown, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, Smile, Trash2, Users, X } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -155,7 +156,11 @@ function renderAttachments(attachments: ChatAttachment[] | undefined, onImageLoa
   )
 }
 
-export function CrmTeamChatClient() {
+type CrmTeamChatClientProps = {
+  sidebarHeader?: ReactNode
+}
+
+export function CrmTeamChatClient({ sidebarHeader }: CrmTeamChatClientProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesViewportRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
@@ -697,6 +702,8 @@ export function CrmTeamChatClient() {
     <div className="space-y-4">
       <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
         <div className="space-y-4">
+          {sidebarHeader ? sidebarHeader : null}
+
           <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
             <CardHeader className="border-b border-slate-100 pb-4">
               <CardTitle className="text-lg">Compañeros</CardTitle>
