@@ -3,23 +3,16 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import type { LucideIcon } from 'lucide-react'
-import { Activity, BarChart3, Bot, Copy, Download, Eye, Facebook, Globe, Goal, Instagram, Mail, MessageCircle, Sparkles, Target, TrendingUp, Upload } from 'lucide-react'
+import { Activity, Bot, Copy, Download, Eye, Facebook, Globe, Goal, Instagram, Target, TrendingUp, Upload } from 'lucide-react'
+import { CrmIntegrationsChatbotBuilderSections } from '@/components/crm/crm-integrations-chatbot-builder-sections'
+import { CrmIntegrationsChatbotFlowSection } from '@/components/crm/crm-integrations-chatbot-flow-section'
+import type { ChatbotCanvasConnection, ChatbotCanvasNode } from '@/components/crm/crm-integrations-chatbot-flow-types'
 import { useI18n } from '@/components/providers/i18n-provider'
+import { CrmIntegrationsChatbotBuilderModal } from '@/components/crm/crm-integrations-chatbot-builder-modal'
+import { CrmIntegrationsMetricsTab } from '@/components/crm/crm-integrations-metrics-tab'
+import { CrmIntegrationsChatbotWizardSections } from '@/components/crm/crm-integrations-chatbot-wizard-sections'
+import { CrmIntegrationsWebFormBuilderModal } from '@/components/crm/crm-integrations-web-form-builder-modal'
+import { CrmIntegrationsWebFormSections } from '@/components/crm/crm-integrations-web-form-sections'
 import { ErpPageHero, ErpSectionHeading } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,7 +20,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -357,25 +349,6 @@ type GoogleSheetsActionState = {
     processedRows: number
   }
   error: string
-}
-
-type ChatbotCanvasNode = {
-  stage: ChatbotFlowStage
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-type ChatbotCanvasConnection = {
-  id: string
-  fromStageId: string
-  toStageId: string
-  optionId: string
-  label: string
-  path: string
-  labelX: number
-  labelY: number
 }
 
 type ChannelGoalTargets = {
@@ -1088,96 +1061,6 @@ function getDetailedIntegrationGuide(args: {
     [{ label: args.language === 'en' ? 'Channel' : 'Canal', caption: args.language === 'en' ? 'Select an integration' : 'Selecciona una integración' }, { label: args.language === 'en' ? 'Guide' : 'Guía', caption: args.language === 'en' ? 'Steps and assets are loaded' : 'Se cargan pasos y assets' }, { label: args.language === 'en' ? 'Validation' : 'Validación', caption: args.language === 'en' ? 'QA is executed' : 'Se ejecuta QA' }, { label: args.language === 'en' ? 'Production' : 'Producción', caption: args.language === 'en' ? 'Channel ready to operate' : 'Canal listo para operar' }],
   )
 }
-
-const MANAGED_CHANNEL_SETTING_KEYS = new Set([
-  'testingToken',
-  'bridgeKind',
-  'googleSheetsSpreadsheetId',
-  'googleSheetsSheetName',
-  'googleSheetsPublishedCsvUrl',
-  'googleSheetsRowLimit',
-  'googleSheetsImportMode',
-  'googleSheetsOpportunityStage',
-  'bookingNotifyByEmail',
-  'bookingNotifyByWhatsApp',
-  'outgoingWebhookUrl',
-  'whatsappAccessToken',
-  'whatsappApiVersion',
-  'formSelector',
-  'chatbotTitle',
-  'chatbotPrompt',
-  'assistantName',
-  'publicEmbedEnabled',
-  'iframeHeight',
-  'allowedDomains',
-  'accentColor',
-  'pageBackgroundColor',
-  'backgroundColor',
-  'fontFamily',
-  'floatingLauncherEnabled',
-  'launcherLabel',
-  'launcherIcon',
-  'launcherPosition',
-  'launcherPlacement',
-  'launcherSize',
-  'launcherOffsetX',
-  'launcherOffsetY',
-  'launcherZIndex',
-  'panelZIndex',
-  'backdropZIndex',
-  'headerBadgeLabel',
-  'statusBadgeLabel',
-  'chatShellRadius',
-  'messageBubbleRadius',
-  'panelShadowPreset',
-  'chatbotCustomCss',
-  'formTitle',
-  'formDescription',
-  'submitCtaLabel',
-  'formSuccessMessage',
-  'formCardRadius',
-  'formInputRadius',
-  'formFieldSpacing',
-  'formPadding',
-  'formFontSize',
-  'formLabelColor',
-  'formInputTextColor',
-  'formInputBackgroundColor',
-  'formInputBorderColor',
-  'formCtaColor',
-  'formCtaTextColor',
-  'showNameField',
-  'showEmailField',
-  'showPhoneField',
-  'showCompanyField',
-  'showCityField',
-  'showProductField',
-  'showMessageField',
-  'nameLabel',
-  'namePlaceholder',
-  'emailLabel',
-  'emailPlaceholder',
-  'phoneLabel',
-  'phonePlaceholder',
-  'companyLabel',
-  'companyPlaceholder',
-  'cityLabel',
-  'cityPlaceholder',
-  'productLabel',
-  'productPlaceholder',
-  'messageLabel',
-  'messagePlaceholder',
-  'webFormCustomFields',
-  'webFormVariables',
-  'termsEnabled',
-  'termsRequired',
-  'termsLabel',
-  'termsLinkText',
-  'termsLinkUrl',
-  'quickActions',
-  'flowStages',
-  'allowHumanHandoff',
-])
 
 function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
   return fetch(url, init).then((res) => res.json().catch(() => ({}))) as Promise<JsonResponse<T>>
@@ -2818,6 +2701,129 @@ export function CrmIntegrationsClient() {
     setMetaSelectionFocusTarget(target)
   }, [channels, metaConnectionFeedback?.status, metaSelectionFocusTarget, selectedChannelId])
 
+  const openEditWizard = useCallback((channel: ChannelConnection, options?: { forceWizard?: boolean }) => {
+    if (channel.provider === 'WEB_CHATBOT' && !options?.forceWizard) {
+      router.push(`/dashboard/crm/chatbot?channelId=${encodeURIComponent(channel.id)}`)
+      return
+    }
+
+    const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
+    const bridgeKind = getBridgeKind(settings) as CrmBridgeKind
+    const templateMatch = TEMPLATE_PRESETS.find((preset) => preset.provider === channel.provider && (preset.bridgeKind ?? 'GENERIC') === (bridgeKind || 'GENERIC'))
+
+    setEditingChannelId(channel.id)
+    setWizardMetaAdvancedOpen(Boolean(channel.externalAccountId || channel.externalPageId || channel.externalPhoneNumberId || getWhatsAppAccessToken(settings) || getWhatsAppApiVersion(settings) !== 'v23.0'))
+    const nextForm: ChannelFormState = {
+      ...getInitialChannelForm(),
+      templateKey: templateMatch?.key ?? 'web-form',
+      name: channel.name,
+      provider: channel.provider,
+      status: channel.status,
+      testingToken: getTokenFromSettings(settings) || '',
+      bridgeKind: (bridgeKind || 'GENERIC') as CrmBridgeKind,
+      googleSheetsSpreadsheetId: getGoogleSheetsSpreadsheetId(settings),
+      googleSheetsSheetName: getGoogleSheetsSheetName(settings),
+      googleSheetsPublishedCsvUrl: getGoogleSheetsPublishedCsvUrl(settings),
+      googleSheetsRowLimit: getGoogleSheetsRowLimit(settings),
+      googleSheetsImportMode: getGoogleSheetsImportMode(settings),
+      googleSheetsOpportunityStage: getGoogleSheetsOpportunityStage(settings),
+      bookingNotifyByEmail: getBookingNotifyByEmail(settings),
+      bookingNotifyByWhatsApp: getBookingNotifyByWhatsApp(settings),
+      outgoingWebhookUrl: getOutgoingWebhookUrl(settings),
+      externalAccountId: channel.externalAccountId || '',
+      externalPageId: channel.externalPageId || '',
+      externalPhoneNumberId: channel.externalPhoneNumberId || '',
+      whatsappConnectionMode: getWhatsAppConnectionMode(settings),
+      whatsappDisplayPhoneNumber: getWhatsAppDisplayPhoneNumber(settings),
+      whatsappAccessToken: getWhatsAppAccessToken(settings),
+      whatsappApiVersion: getWhatsAppApiVersion(settings),
+      outboundLimitPerChannelDay: getOperationalLimitValue(settings, 'outboundLimitPerChannelDay'),
+      outboundLimitPerChannelMonth: getOperationalLimitValue(settings, 'outboundLimitPerChannelMonth'),
+      outboundLimitPerEmpresaDay: getOperationalLimitValue(settings, 'outboundLimitPerEmpresaDay'),
+      outboundLimitPerEmpresaMonth: getOperationalLimitValue(settings, 'outboundLimitPerEmpresaMonth'),
+      formSelector: getFormSelector(settings),
+      chatbotTitle: getChatbotTitle(settings),
+      chatbotPrompt: getChatbotPrompt(settings),
+      assistantName: getAssistantName(settings),
+      publicEmbedEnabled: getPublicEmbedEnabled(settings),
+      iframeHeight: getIframeHeight(settings),
+      allowedDomains: getAllowedDomains(settings),
+      accentColor: getAccentColor(settings),
+      pageBackgroundColor: getPageBackgroundColor(settings),
+      backgroundColor: getBackgroundColor(settings),
+      fontFamily: getFontFamily(settings),
+      floatingLauncherEnabled: getFloatingLauncherEnabled(settings),
+      launcherLabel: getLauncherLabel(settings),
+      launcherIcon: getLauncherIcon(settings),
+      launcherPosition: getLauncherPosition(settings),
+      launcherPlacement: getLauncherPlacement(settings),
+      launcherSize: getLauncherSize(settings),
+      launcherStartsCollapsed: getLauncherStartsCollapsed(settings),
+      launcherOffsetX: getLauncherOffsetX(settings),
+      launcherOffsetY: getLauncherOffsetY(settings),
+      launcherZIndex: getLauncherZIndex(settings),
+      panelZIndex: getPanelZIndex(settings),
+      backdropZIndex: getBackdropZIndex(settings),
+      headerBadgeLabel: getHeaderBadgeLabel(settings),
+      statusBadgeLabel: getStatusBadgeLabel(settings),
+      chatShellRadius: getChatShellRadius(settings),
+      messageBubbleRadius: getMessageBubbleRadius(settings),
+      panelShadowPreset: getPanelShadowPreset(settings),
+      formTitle: getSettingText(settings, 'formTitle', 'Solicita tu cotización'),
+      formDescription: getSettingText(settings, 'formDescription', 'Completa el formulario y nuestro equipo comercial te contactará.'),
+      submitCtaLabel: getSettingText(settings, 'submitCtaLabel', 'Enviar solicitud'),
+      formSuccessMessage: getSettingText(settings, 'formSuccessMessage', 'Gracias. Ya recibimos tu solicitud y la estamos enviando al CRM.'),
+      formCardRadius: getSettingText(settings, 'formCardRadius', '28'),
+      formInputRadius: getSettingText(settings, 'formInputRadius', '16'),
+      formFieldSpacing: getSettingText(settings, 'formFieldSpacing', '14'),
+      formPadding: getSettingText(settings, 'formPadding', '24'),
+      formFontSize: getSettingText(settings, 'formFontSize', '14'),
+      formLabelColor: getSettingText(settings, 'formLabelColor', '#0f172a'),
+      formInputTextColor: getSettingText(settings, 'formInputTextColor', '#0f172a'),
+      formInputBackgroundColor: getSettingText(settings, 'formInputBackgroundColor', '#ffffff'),
+      formInputBorderColor: getSettingText(settings, 'formInputBorderColor', '#cbd5e1'),
+      formCtaColor: getSettingText(settings, 'formCtaColor', getAccentColor(settings)),
+      formCtaTextColor: getSettingText(settings, 'formCtaTextColor', '#ffffff'),
+      showNameField: getBooleanSetting(settings, 'showNameField', true),
+      showEmailField: getBooleanSetting(settings, 'showEmailField', true),
+      showPhoneField: getBooleanSetting(settings, 'showPhoneField', true),
+      showCompanyField: getBooleanSetting(settings, 'showCompanyField', false),
+      showCityField: getBooleanSetting(settings, 'showCityField', false),
+      showProductField: getShowProductField(settings),
+      quickActions: normalizeChatbotQuickActions(settings?.quickActions),
+      flowStages: normalizeChatbotFlowStages(settings?.flowStages),
+      showMessageField: getBooleanSetting(settings, 'showMessageField', true),
+      nameLabel: getSettingText(settings, 'nameLabel', 'Nombre'),
+      namePlaceholder: getSettingText(settings, 'namePlaceholder', 'Tu nombre'),
+      emailLabel: getSettingText(settings, 'emailLabel', 'Correo'),
+      emailPlaceholder: getSettingText(settings, 'emailPlaceholder', 'tu@correo.com'),
+      phoneLabel: getSettingText(settings, 'phoneLabel', 'Teléfono o WhatsApp'),
+      phonePlaceholder: getSettingText(settings, 'phonePlaceholder', '300 000 0000'),
+      companyLabel: getSettingText(settings, 'companyLabel', 'Empresa'),
+      companyPlaceholder: getSettingText(settings, 'companyPlaceholder', 'Nombre de la empresa'),
+      cityLabel: getSettingText(settings, 'cityLabel', 'Ciudad'),
+      cityPlaceholder: getSettingText(settings, 'cityPlaceholder', 'Ciudad o sede'),
+      productLabel: getSettingText(settings, 'productLabel', 'Producto'),
+      productPlaceholder: getSettingText(settings, 'productPlaceholder', '¿Qué producto necesitas?'),
+      messageLabel: getSettingText(settings, 'messageLabel', 'Mensaje'),
+      messagePlaceholder: getSettingText(settings, 'messagePlaceholder', 'Cuéntanos qué necesitas y para cuándo.'),
+      webFormCustomFields: normalizeWebFormCustomFields(settings?.webFormCustomFields),
+      webFormVariables: normalizeWebFormVariables(settings?.webFormVariables),
+      termsEnabled: getBooleanSetting(settings, 'termsEnabled', false),
+      termsRequired: getBooleanSetting(settings, 'termsRequired', true),
+      termsLabel: getSettingText(settings, 'termsLabel', 'Acepto el tratamiento de datos personales.'),
+      termsLinkText: getSettingText(settings, 'termsLinkText', 'Leer términos'),
+      termsLinkUrl: getSettingText(settings, 'termsLinkUrl', ''),
+    }
+    setCreateForm(nextForm)
+    setWizardChatPreviewMode(getInitialChatbotPreviewMode(nextForm))
+    setWizardChatPreviewViewport('desktop')
+    setWizardChatbotSection('base')
+    setWizardWebFormSection('base')
+    setWizardStep('config')
+    setCreateOpen(true)
+  }, [router])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     const search = new URLSearchParams(window.location.search)
@@ -2855,7 +2861,7 @@ export function CrmIntegrationsClient() {
     if (!channel) return
     openEditWizard(channel, { forceWizard: true })
     window.history.replaceState({}, '', window.location.pathname)
-  }, [channels, pendingWizardChannelId])
+  }, [channels, openEditWizard, pendingWizardChannelId])
 
   useEffect(() => {
     let cancelled = false
@@ -3286,7 +3292,7 @@ export function CrmIntegrationsClient() {
         production: readiness.production,
       },
     }
-  }, [baseUrl, channels, goalTargets.captures, goalTargets.conversations, goalTargets.operational, stats.active, stats.testing])
+  }, [baseUrl, channels, goalTargets.captures, goalTargets.conversations, goalTargets.operational, language, stats.active, stats.testing])
 
   const endpoint = getEndpoint(baseUrl, selectedChannel)
   const selectedSettings = (selectedChannel?.settingsJson as Record<string, unknown> | null | undefined) ?? null
@@ -3299,9 +3305,7 @@ export function CrmIntegrationsClient() {
     ? (selectedBridgeKind === 'BOOKING' ? buildBookingEmbedUrl(baseUrl, selectedChannel.id) : buildWebFormEmbedUrl(baseUrl, selectedChannel.id))
     : ''
   const selectedChatbotTitle = getChatbotTitle(selectedSettings)
-  const selectedChatbotPrompt = getChatbotPrompt(selectedSettings)
   const selectedChatbotAssistant = getAssistantName(selectedSettings)
-  const selectedChatbotAccent = getAccentColor(selectedSettings)
   const selectedReadiness = useMemo(() => selectedChannel ? getChannelReadiness(selectedChannel, baseUrl) : null, [baseUrl, selectedChannel])
   const selectedMeta = useMemo(() => getMetaConnectionState(selectedSettings), [selectedSettings])
   const wizardMetaChecklist = useMemo(() => createUsesWebhook && usesMetaProvider(createForm.provider) ? getMetaWizardChecklist(createForm, baseUrl) : [], [baseUrl, createForm, createUsesWebhook])
@@ -3455,129 +3459,6 @@ export function CrmIntegrationsClient() {
     setWizardChatbotSection('base')
     setWizardWebFormSection('base')
     setWizardStep('template')
-    setCreateOpen(true)
-  }
-
-  function openEditWizard(channel: ChannelConnection, options?: { forceWizard?: boolean }) {
-    if (channel.provider === 'WEB_CHATBOT' && !options?.forceWizard) {
-      router.push(`/dashboard/crm/chatbot?channelId=${encodeURIComponent(channel.id)}`)
-      return
-    }
-
-    const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
-    const bridgeKind = getBridgeKind(settings) as CrmBridgeKind
-    const templateMatch = TEMPLATE_PRESETS.find((preset) => preset.provider === channel.provider && (preset.bridgeKind ?? 'GENERIC') === (bridgeKind || 'GENERIC'))
-
-    setEditingChannelId(channel.id)
-  setWizardMetaAdvancedOpen(Boolean(channel.externalAccountId || channel.externalPageId || channel.externalPhoneNumberId || getWhatsAppAccessToken(settings) || getWhatsAppApiVersion(settings) !== 'v23.0'))
-    const nextForm: ChannelFormState = {
-      ...getInitialChannelForm(),
-      templateKey: templateMatch?.key ?? 'web-form',
-      name: channel.name,
-      provider: channel.provider,
-      status: channel.status,
-      testingToken: getTokenFromSettings(settings) || '',
-      bridgeKind: (bridgeKind || 'GENERIC') as CrmBridgeKind,
-      googleSheetsSpreadsheetId: getGoogleSheetsSpreadsheetId(settings),
-      googleSheetsSheetName: getGoogleSheetsSheetName(settings),
-      googleSheetsPublishedCsvUrl: getGoogleSheetsPublishedCsvUrl(settings),
-      googleSheetsRowLimit: getGoogleSheetsRowLimit(settings),
-      googleSheetsImportMode: getGoogleSheetsImportMode(settings),
-      googleSheetsOpportunityStage: getGoogleSheetsOpportunityStage(settings),
-      bookingNotifyByEmail: getBookingNotifyByEmail(settings),
-      bookingNotifyByWhatsApp: getBookingNotifyByWhatsApp(settings),
-      outgoingWebhookUrl: getOutgoingWebhookUrl(settings),
-      externalAccountId: channel.externalAccountId || '',
-      externalPageId: channel.externalPageId || '',
-      externalPhoneNumberId: channel.externalPhoneNumberId || '',
-      whatsappConnectionMode: getWhatsAppConnectionMode(settings),
-      whatsappDisplayPhoneNumber: getWhatsAppDisplayPhoneNumber(settings),
-      whatsappAccessToken: getWhatsAppAccessToken(settings),
-      whatsappApiVersion: getWhatsAppApiVersion(settings),
-      outboundLimitPerChannelDay: getOperationalLimitValue(settings, 'outboundLimitPerChannelDay'),
-      outboundLimitPerChannelMonth: getOperationalLimitValue(settings, 'outboundLimitPerChannelMonth'),
-      outboundLimitPerEmpresaDay: getOperationalLimitValue(settings, 'outboundLimitPerEmpresaDay'),
-      outboundLimitPerEmpresaMonth: getOperationalLimitValue(settings, 'outboundLimitPerEmpresaMonth'),
-      formSelector: getFormSelector(settings),
-      chatbotTitle: getChatbotTitle(settings),
-      chatbotPrompt: getChatbotPrompt(settings),
-      assistantName: getAssistantName(settings),
-      publicEmbedEnabled: getPublicEmbedEnabled(settings),
-      iframeHeight: getIframeHeight(settings),
-      allowedDomains: getAllowedDomains(settings),
-      accentColor: getAccentColor(settings),
-      pageBackgroundColor: getPageBackgroundColor(settings),
-      backgroundColor: getBackgroundColor(settings),
-      fontFamily: getFontFamily(settings),
-      floatingLauncherEnabled: getFloatingLauncherEnabled(settings),
-      launcherLabel: getLauncherLabel(settings),
-      launcherIcon: getLauncherIcon(settings),
-      launcherPosition: getLauncherPosition(settings),
-      launcherPlacement: getLauncherPlacement(settings),
-      launcherSize: getLauncherSize(settings),
-      launcherStartsCollapsed: getLauncherStartsCollapsed(settings),
-      launcherOffsetX: getLauncherOffsetX(settings),
-      launcherOffsetY: getLauncherOffsetY(settings),
-      launcherZIndex: getLauncherZIndex(settings),
-      panelZIndex: getPanelZIndex(settings),
-      backdropZIndex: getBackdropZIndex(settings),
-      headerBadgeLabel: getHeaderBadgeLabel(settings),
-      statusBadgeLabel: getStatusBadgeLabel(settings),
-      chatShellRadius: getChatShellRadius(settings),
-      messageBubbleRadius: getMessageBubbleRadius(settings),
-      panelShadowPreset: getPanelShadowPreset(settings),
-      formTitle: getSettingText(settings, 'formTitle', 'Solicita tu cotización'),
-      formDescription: getSettingText(settings, 'formDescription', 'Completa el formulario y nuestro equipo comercial te contactará.'),
-      submitCtaLabel: getSettingText(settings, 'submitCtaLabel', 'Enviar solicitud'),
-      formSuccessMessage: getSettingText(settings, 'formSuccessMessage', 'Gracias. Ya recibimos tu solicitud y la estamos enviando al CRM.'),
-      formCardRadius: getSettingText(settings, 'formCardRadius', '28'),
-      formInputRadius: getSettingText(settings, 'formInputRadius', '16'),
-      formFieldSpacing: getSettingText(settings, 'formFieldSpacing', '14'),
-      formPadding: getSettingText(settings, 'formPadding', '24'),
-      formFontSize: getSettingText(settings, 'formFontSize', '14'),
-      formLabelColor: getSettingText(settings, 'formLabelColor', '#0f172a'),
-      formInputTextColor: getSettingText(settings, 'formInputTextColor', '#0f172a'),
-      formInputBackgroundColor: getSettingText(settings, 'formInputBackgroundColor', '#ffffff'),
-      formInputBorderColor: getSettingText(settings, 'formInputBorderColor', '#cbd5e1'),
-      formCtaColor: getSettingText(settings, 'formCtaColor', getAccentColor(settings)),
-      formCtaTextColor: getSettingText(settings, 'formCtaTextColor', '#ffffff'),
-      showNameField: getBooleanSetting(settings, 'showNameField', true),
-      showEmailField: getBooleanSetting(settings, 'showEmailField', true),
-      showPhoneField: getBooleanSetting(settings, 'showPhoneField', true),
-      showCompanyField: getBooleanSetting(settings, 'showCompanyField', false),
-      showCityField: getBooleanSetting(settings, 'showCityField', false),
-      showProductField: getShowProductField(settings),
-      quickActions: normalizeChatbotQuickActions(settings?.quickActions),
-      flowStages: normalizeChatbotFlowStages(settings?.flowStages),
-      showMessageField: getBooleanSetting(settings, 'showMessageField', true),
-      nameLabel: getSettingText(settings, 'nameLabel', 'Nombre'),
-      namePlaceholder: getSettingText(settings, 'namePlaceholder', 'Tu nombre'),
-      emailLabel: getSettingText(settings, 'emailLabel', 'Correo'),
-      emailPlaceholder: getSettingText(settings, 'emailPlaceholder', 'tu@correo.com'),
-      phoneLabel: getSettingText(settings, 'phoneLabel', 'Teléfono o WhatsApp'),
-      phonePlaceholder: getSettingText(settings, 'phonePlaceholder', '300 000 0000'),
-      companyLabel: getSettingText(settings, 'companyLabel', 'Empresa'),
-      companyPlaceholder: getSettingText(settings, 'companyPlaceholder', 'Nombre de la empresa'),
-      cityLabel: getSettingText(settings, 'cityLabel', 'Ciudad'),
-      cityPlaceholder: getSettingText(settings, 'cityPlaceholder', 'Ciudad o sede'),
-      productLabel: getSettingText(settings, 'productLabel', 'Producto'),
-      productPlaceholder: getSettingText(settings, 'productPlaceholder', '¿Qué producto necesitas?'),
-      messageLabel: getSettingText(settings, 'messageLabel', 'Mensaje'),
-      messagePlaceholder: getSettingText(settings, 'messagePlaceholder', 'Cuéntanos qué necesitas y para cuándo.'),
-      webFormCustomFields: normalizeWebFormCustomFields(settings?.webFormCustomFields),
-      webFormVariables: normalizeWebFormVariables(settings?.webFormVariables),
-      termsEnabled: getBooleanSetting(settings, 'termsEnabled', false),
-      termsRequired: getBooleanSetting(settings, 'termsRequired', true),
-      termsLabel: getSettingText(settings, 'termsLabel', 'Acepto el tratamiento de datos personales.'),
-      termsLinkText: getSettingText(settings, 'termsLinkText', 'Leer términos'),
-      termsLinkUrl: getSettingText(settings, 'termsLinkUrl', ''),
-    }
-    setCreateForm(nextForm)
-    setWizardChatPreviewMode(getInitialChatbotPreviewMode(nextForm))
-    setWizardChatPreviewViewport('desktop')
-    setWizardChatbotSection('base')
-    setWizardWebFormSection('base')
-    setWizardStep('config')
     setCreateOpen(true)
   }
 
@@ -3802,25 +3683,6 @@ export function CrmIntegrationsClient() {
         : { externalPageId: metaSelectionDraft.selectedPageId }
 
     await syncMeta(channel.id, selection)
-  }
-
-  async function disconnectMeta(channelId: string) {
-    setUpdatingChannelId(channelId)
-    try {
-      const json = await requestJson<ChannelConnection>(`/api/crm/channels/${channelId}/meta/disconnect`, { method: 'POST' })
-      if (!json.success) {
-        setMetaConnectionFeedback({
-          status: 'error',
-          message: json.error || 'No se pudo desconectar Meta.',
-        })
-        return
-      }
-      setMetaConnectionFeedback(null)
-      await loadChannels()
-      setSelectedChannelId(channelId)
-    } finally {
-      setUpdatingChannelId(null)
-    }
   }
 
   async function saveChannel() {
@@ -4325,498 +4187,44 @@ export function CrmIntegrationsClient() {
     const sectionOptions = isWizard ? WEB_FORM_SECTION_OPTIONS : WEB_FORM_SECTION_OPTIONS.filter((item) => item.id !== 'base')
 
     return (
-      <Tabs value={section} onValueChange={(value) => setSection(value as WebFormConfigSection)} className="space-y-4">
-        <div className="overflow-x-auto pb-1">
-          <TabsList className="inline-flex h-auto min-w-max flex-nowrap rounded-2xl border border-slate-200 bg-slate-50 p-1 md:flex-wrap">
-            {sectionOptions.map((item) => (
-              <TabsTrigger key={item.id} value={item.id} className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">
-                {item.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
-
-        {isWizard ? (
-          <TabsContent value="base" className="space-y-4">
-            <div className="space-y-4">
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
-                <div className="mb-4">
-                  <p className="text-sm font-semibold text-slate-900">Identidad del canal</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">Define cómo quedará identificado el canal dentro del CRM antes de configurar su captura.</p>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="grid gap-2 md:col-span-2">
-                    <Label>Nombre del canal</Label>
-                    <Input value={createForm.name} onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))} className="h-11 rounded-xl bg-white" />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Proveedor técnico</Label>
-                    <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700">
-                      {createForm.provider}
-                    </div>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Estado inicial</Label>
-                    <Select value={createForm.status} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, status: value as ChannelStatus }))}>
-                      <SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {CHANNEL_STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
-                <div className="mb-4">
-                  <p className="text-sm font-semibold text-slate-900">Conexión y acceso</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">Aquí defines token, modo de captura y el puente técnico con el que entrarán los leads.</p>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="grid gap-2 md:col-span-2">
-                    <Label>Token de prueba / verificación</Label>
-                    <div className="flex gap-2">
-                      <Input value={createForm.testingToken} onChange={(e) => setCreateForm((prev) => ({ ...prev, testingToken: e.target.value }))} className="h-11 rounded-xl bg-white" />
-                      <Button type="button" variant="outline" className="rounded-xl bg-white" onClick={() => setCreateForm((prev) => ({ ...prev, testingToken: makeDemoToken() }))}>Regenerar</Button>
-                    </div>
-                    <p className="text-xs leading-5 text-slate-500">Se usa para pruebas seguras, verificación y bridges demo.</p>
-                  </div>
-                  <div className="grid gap-2 md:col-span-2">
-                    <Label>Selector del formulario legacy</Label>
-                    <Input value={createForm.formSelector} onChange={(e) => setCreateForm((prev) => ({ ...prev, formSelector: e.target.value }))} className="h-11 rounded-xl bg-white" placeholder="#lead-form" />
-                    <p className="text-xs leading-5 text-slate-500">Se conserva para sitios que ya tienen su propio formulario. El modo recomendado ahora es iframe público hospedado por SGDigital.</p>
-                  </div>
-                  <div className="grid gap-2 md:col-span-2">
-                    <Label>Tipo de bridge</Label>
-                    <Select value={createForm.bridgeKind} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, bridgeKind: value as CrmBridgeKind }))}>
-                      <SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="GENERIC">GENERIC</SelectItem>
-                        <SelectItem value="BOOKING">BOOKING</SelectItem>
-                        <SelectItem value="GMAIL">GMAIL</SelectItem>
-                        <SelectItem value="OUTLOOK">OUTLOOK</SelectItem>
-                        <SelectItem value="GOOGLE_SHEETS">GOOGLE_SHEETS</SelectItem>
-                        <SelectItem value="GOOGLE_CALENDAR">GOOGLE_CALENDAR</SelectItem>
-                        <SelectItem value="MICROSOFT_365_CALENDAR">MICROSOFT_365_CALENDAR</SelectItem>
-                        <SelectItem value="SLACK">SLACK</SelectItem>
-                        <SelectItem value="TEAMS">TEAMS</SelectItem>
-                        <SelectItem value="META_LEAD_ADS">META_LEAD_ADS</SelectItem>
-                        <SelectItem value="EXTERNAL_FORM">EXTERNAL_FORM</SelectItem>
-                        <SelectItem value="TIKTOK">TIKTOK</SelectItem>
-                        <SelectItem value="YOUTUBE">YOUTUBE</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {createForm.bridgeKind === 'BOOKING' ? (
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Confirmaciones al usuario</Label>
-                      <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-2">
-                        <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
-                          <span>Enviar correo al agendar</span>
-                          <Switch checked={createForm.bookingNotifyByEmail} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, bookingNotifyByEmail: checked }))} />
-                        </label>
-                        <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
-                          <span>Enviar WhatsApp al agendar</span>
-                          <Switch checked={createForm.bookingNotifyByWhatsApp} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, bookingNotifyByWhatsApp: checked }))} />
-                        </label>
-                      </div>
-                      <p className="text-xs leading-5 text-slate-500">Estas opciones disparan confirmación al usuario cuando la cita entra por el iframe o por el API.</p>
-                    </div>
-                  ) : null}
-                  {isOutgoingWebhookBridge(createForm.bridgeKind) ? (
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Webhook saliente</Label>
-                      <Input value={createForm.outgoingWebhookUrl} onChange={(e) => setCreateForm((prev) => ({ ...prev, outgoingWebhookUrl: e.target.value }))} className="h-11 rounded-xl bg-white" placeholder={createForm.bridgeKind === 'SLACK' ? 'https://hooks.slack.com/services/...' : createForm.bridgeKind === 'TEAMS' ? 'https://...webhook.office.com/...' : 'https://tu-automatizacion.com/webhooks/calendar'} />
-                      <p className="text-xs leading-5 text-slate-500">Slack y Teams reciben alertas internas. Google Calendar y Microsoft 365 Calendar reciben tareas o citas del CRM cuando tienen fecha programada.</p>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </TabsContent>
-        ) : null}
-
-        <TabsContent value="styles" className="space-y-4">
-          <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
-            <div className="md:col-span-2">
-              <p className="text-sm font-semibold text-slate-900">Dirección visual</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">Define colores base, look del contenedor y contraste de inputs y CTA.</p>
-            </div>
-            <div className="grid gap-2"><Label>Color de acento</Label><Input value={form.accentColor} onChange={(e) => patchForm({ accentColor: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Color CTA</Label><Input value={form.formCtaColor} onChange={(e) => patchForm({ formCtaColor: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Texto CTA</Label><Input value={form.formCtaTextColor} onChange={(e) => patchForm({ formCtaTextColor: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Fondo general</Label><Input value={form.pageBackgroundColor} onChange={(e) => patchForm({ pageBackgroundColor: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Fondo interno</Label><Input value={form.backgroundColor} onChange={(e) => patchForm({ backgroundColor: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Color labels</Label><Input value={form.formLabelColor} onChange={(e) => patchForm({ formLabelColor: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Color borde inputs</Label><Input value={form.formInputBorderColor} onChange={(e) => patchForm({ formInputBorderColor: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Fondo inputs</Label><Input value={form.formInputBackgroundColor} onChange={(e) => patchForm({ formInputBackgroundColor: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Texto inputs</Label><Input value={form.formInputTextColor} onChange={(e) => patchForm({ formInputTextColor: e.target.value })} className="h-11 rounded-xl" /></div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="fields" className="space-y-4">
-          <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2 xl:grid-cols-3">
-            {[ 
-              { key: 'showNameField', label: 'Nombre' },
-              { key: 'showEmailField', label: 'Correo' },
-              { key: 'showPhoneField', label: 'Teléfono' },
-              { key: 'showCompanyField', label: 'Empresa' },
-              { key: 'showCityField', label: 'Ciudad' },
-              { key: 'showProductField', label: 'Producto' },
-              { key: 'showMessageField', label: 'Mensaje' },
-            ].map((field) => (
-              <div key={field.key} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{field.label}</p>
-                  <p className="text-xs text-slate-500">Mostrar en el formulario</p>
-                </div>
-                <Switch checked={Boolean(form[field.key as keyof WebFormBuilderState])} onCheckedChange={(checked) => patchForm({ [field.key]: checked } as Partial<WebFormBuilderState>)} />
-              </div>
-            ))}
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="grid gap-2"><Label>Label nombre</Label><Input value={form.nameLabel} onChange={(e) => patchForm({ nameLabel: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Placeholder nombre</Label><Input value={form.namePlaceholder} onChange={(e) => patchForm({ namePlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Label correo</Label><Input value={form.emailLabel} onChange={(e) => patchForm({ emailLabel: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Placeholder correo</Label><Input value={form.emailPlaceholder} onChange={(e) => patchForm({ emailPlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Label teléfono</Label><Input value={form.phoneLabel} onChange={(e) => patchForm({ phoneLabel: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Placeholder teléfono</Label><Input value={form.phonePlaceholder} onChange={(e) => patchForm({ phonePlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Label empresa</Label><Input value={form.companyLabel} onChange={(e) => patchForm({ companyLabel: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Placeholder empresa</Label><Input value={form.companyPlaceholder} onChange={(e) => patchForm({ companyPlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Label ciudad</Label><Input value={form.cityLabel} onChange={(e) => patchForm({ cityLabel: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Placeholder ciudad</Label><Input value={form.cityPlaceholder} onChange={(e) => patchForm({ cityPlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Label producto</Label><Input value={form.productLabel} onChange={(e) => patchForm({ productLabel: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={form.productPlaceholder} onChange={(e) => patchForm({ productPlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2 md:col-span-2"><Label>Label mensaje</Label><Input value={form.messageLabel} onChange={(e) => patchForm({ messageLabel: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2 md:col-span-2"><Label>Placeholder mensaje</Label><Input value={form.messagePlaceholder} onChange={(e) => patchForm({ messagePlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
-          </div>
-
-          <div className="rounded-[24px] border border-slate-200 bg-white p-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Campos personalizados</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">Agrega campos extra tipo input, textarea, phone, email, select, check o file.</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {WEB_FORM_CUSTOM_FIELD_TYPE_OPTIONS.map((item) => (
-                  <Button key={item.value} type="button" variant="outline" className="rounded-xl" onClick={() => addField(item.value)}>
-                    + {item.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-4">
-              {form.webFormCustomFields.length ? form.webFormCustomFields.map((field) => (
-                <div key={field.id} className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{field.label || 'Campo personalizado'}</p>
-                      <p className="text-xs text-slate-500">{getWebFormFieldTypeLabel(field.type)} · key {field.key}</p>
-                    </div>
-                    <Button type="button" variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => removeField(field.id)}>
-                      Eliminar campo
-                    </Button>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <div className="grid gap-2"><Label>Label</Label><Input value={field.label} onChange={(e) => updateField(field.id, { label: e.target.value })} className="h-11 rounded-xl" /></div>
-                    <div className="grid gap-2"><Label>Key interna</Label><Input value={field.key} onChange={(e) => updateField(field.id, { key: e.target.value })} className="h-11 rounded-xl" /></div>
-                    <div className="grid gap-2">
-                      <Label>Tipo</Label>
-                      <Select value={field.type} onValueChange={(value) => updateField(field.id, { type: value as WebFormCustomFieldType, options: value === 'select' ? (field.options.length ? field.options : ['Opción 1', 'Opción 2']) : [], fullWidth: value === 'textarea' || value === 'file' ? true : field.fullWidth })}>
-                        <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {WEB_FORM_CUSTOM_FIELD_TYPE_OPTIONS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2"><Label>Texto guía / placeholder</Label><Input value={field.placeholder} onChange={(e) => updateField(field.id, { placeholder: e.target.value })} className="h-11 rounded-xl" /></div>
-                    <div className="grid gap-2 md:col-span-2"><Label>Ayuda</Label><Input value={field.helpText} onChange={(e) => updateField(field.id, { helpText: e.target.value })} className="h-11 rounded-xl" /></div>
-                    <div className="grid gap-2"><Label>Valor por defecto</Label><Input value={field.defaultValue} onChange={(e) => updateField(field.id, { defaultValue: e.target.value })} className="h-11 rounded-xl" /></div>
-                    {field.type === 'select' ? <div className="grid gap-2"><Label>Opciones</Label><Input value={field.options.join(', ')} onChange={(e) => updateField(field.id, { options: e.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} className="h-11 rounded-xl" placeholder="Opción 1, Opción 2" /></div> : null}
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">Campo obligatorio</p>
-                        <p className="text-xs text-slate-500">Exige completarlo antes de enviar.</p>
-                      </div>
-                      <Switch checked={field.required} onCheckedChange={(checked) => updateField(field.id, { required: checked })} />
-                    </div>
-                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">Ancho completo</p>
-                        <p className="text-xs text-slate-500">Ocupa toda la fila en el formulario.</p>
-                      </div>
-                      <Switch checked={field.fullWidth} onCheckedChange={(checked) => updateField(field.id, { fullWidth: checked })} />
-                    </div>
-                  </div>
-                </div>
-              )) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-sm text-slate-500">Aún no hay campos personalizados. Usa los botones superiores para agregarlos.</div>}
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="variables" className="space-y-4">
-          <div className="rounded-[24px] border border-slate-200 bg-white p-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Variables ocultas</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">Sirven para pasar UTMs, campañas o valores fijos sin mostrarlos al usuario.</p>
-              </div>
-              <Button type="button" className="rounded-xl" onClick={() => addVariable()}>
-                Agregar variable
-              </Button>
-            </div>
-
-            <div className="mt-4 space-y-4">
-              {form.webFormVariables.length ? form.webFormVariables.map((variable) => (
-                <div key={variable.id} className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{variable.label || 'Variable oculta'}</p>
-                      <p className="text-xs text-slate-500">{variable.source === 'query' ? 'Tomada de la URL' : 'Valor estático'} · key {variable.key}</p>
-                    </div>
-                    <Button type="button" variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => removeVariable(variable.id)}>
-                      Eliminar variable
-                    </Button>
-                  </div>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <div className="grid gap-2"><Label>Label</Label><Input value={variable.label} onChange={(e) => updateVariable(variable.id, { label: e.target.value })} className="h-11 rounded-xl" /></div>
-                    <div className="grid gap-2"><Label>Key interna</Label><Input value={variable.key} onChange={(e) => updateVariable(variable.id, { key: e.target.value })} className="h-11 rounded-xl" /></div>
-                    <div className="grid gap-2">
-                      <Label>Origen</Label>
-                      <Select value={variable.source} onValueChange={(value) => updateVariable(variable.id, { source: value as WebFormVariable['source'] })}>
-                        <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="query">Query param</SelectItem>
-                          <SelectItem value="static">Valor estático</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {variable.source === 'query' ? <div className="grid gap-2"><Label>Nombre del query param</Label><Input value={variable.queryParam} onChange={(e) => updateVariable(variable.id, { queryParam: e.target.value })} className="h-11 rounded-xl" placeholder="utm_source" /></div> : <div className="grid gap-2"><Label>Valor fijo</Label><Input value={variable.value} onChange={(e) => updateVariable(variable.id, { value: e.target.value })} className="h-11 rounded-xl" /></div>}
-                  </div>
-                </div>
-              )) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-sm text-slate-500">No hay variables ocultas configuradas todavía.</div>}
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="size" className="space-y-4">
-          <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
-            <div className="grid gap-2"><Label>Altura del iframe</Label><Input value={form.iframeHeight} onChange={(e) => patchForm({ iframeHeight: normalizePixelValue(e.target.value, '840') })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Tamaño base</Label><Input value={form.formFontSize} onChange={(e) => patchForm({ formFontSize: normalizePixelValue(e.target.value, '14') })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Radio tarjeta</Label><Input value={form.formCardRadius} onChange={(e) => patchForm({ formCardRadius: normalizePixelValue(e.target.value, '28') })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Radio inputs</Label><Input value={form.formInputRadius} onChange={(e) => patchForm({ formInputRadius: normalizePixelValue(e.target.value, '16') })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Espaciado entre campos</Label><Input value={form.formFieldSpacing} onChange={(e) => patchForm({ formFieldSpacing: normalizePixelValue(e.target.value, '14') })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Padding interno</Label><Input value={form.formPadding} onChange={(e) => patchForm({ formPadding: normalizePixelValue(e.target.value, '24') })} className="h-11 rounded-xl" /></div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="texts" className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="grid gap-2 md:col-span-2"><Label>Título del formulario</Label><Input value={form.formTitle} onChange={(e) => patchForm({ formTitle: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2 md:col-span-2"><Label>Descripción comercial</Label><Textarea value={form.formDescription} onChange={(e) => patchForm({ formDescription: e.target.value })} rows={3} className="rounded-2xl" /></div>
-            <div className="grid gap-2"><Label>Texto del CTA</Label><Input value={form.submitCtaLabel} onChange={(e) => patchForm({ submitCtaLabel: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2"><Label>Fuente CSS</Label><Input value={form.fontFamily} onChange={(e) => patchForm({ fontFamily: e.target.value })} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2 md:col-span-2"><Label>Mensaje de éxito</Label><Textarea value={form.formSuccessMessage} onChange={(e) => patchForm({ formSuccessMessage: e.target.value })} rows={3} className="rounded-2xl" /></div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="terms" className="space-y-4">
-          <div className="space-y-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Mostrar aceptación de términos</p>
-                <p className="text-xs text-slate-500">Añade checkbox de autorización o tratamiento de datos.</p>
-              </div>
-              <Switch checked={form.termsEnabled} onCheckedChange={(checked) => patchForm({ termsEnabled: checked })} />
-            </div>
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Requerir aceptación</p>
-                <p className="text-xs text-slate-500">Bloquea el envío si el usuario no acepta.</p>
-              </div>
-              <Switch checked={form.termsRequired} onCheckedChange={(checked) => patchForm({ termsRequired: checked })} disabled={!form.termsEnabled} />
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="grid gap-2 md:col-span-2"><Label>Texto principal</Label><Textarea value={form.termsLabel} onChange={(e) => patchForm({ termsLabel: e.target.value })} rows={2} className="rounded-2xl" disabled={!form.termsEnabled} /></div>
-              <div className="grid gap-2"><Label>Texto del enlace</Label><Input value={form.termsLinkText} onChange={(e) => patchForm({ termsLinkText: e.target.value })} className="h-11 rounded-xl" disabled={!form.termsEnabled} /></div>
-              <div className="grid gap-2"><Label>URL de términos</Label><Input value={form.termsLinkUrl} onChange={(e) => patchForm({ termsLinkUrl: e.target.value })} className="h-11 rounded-xl" placeholder="https://..." disabled={!form.termsEnabled} /></div>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="technical" className="space-y-4">
-          <div className="space-y-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Publicar formulario por iframe</p>
-                <p className="text-xs text-slate-500">Expone URL pública e iframe para el sitio del cliente.</p>
-              </div>
-              <Switch checked={form.publicEmbedEnabled} onCheckedChange={(checked) => patchForm({ publicEmbedEnabled: checked })} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Dominios permitidos</Label>
-              <Textarea value={form.allowedDomains} onChange={(e) => patchForm({ allowedDomains: e.target.value })} rows={3} className="rounded-2xl" placeholder="cliente.com, demo.cliente.com" />
-            </div>
-            {isWizard ? (
-              <div className="grid gap-2">
-                <Label>Selector del formulario legacy</Label>
-                <Input value={createForm.formSelector} onChange={(e) => setCreateForm((current) => ({ ...current, formSelector: e.target.value }))} className="h-11 rounded-xl" placeholder="#lead-form" />
-              </div>
-            ) : null}
-          </div>
-        </TabsContent>
-      </Tabs>
+      <CrmIntegrationsWebFormSections
+        kind={kind}
+        section={section}
+        setSection={(value) => setSection(value as WebFormConfigSection)}
+        form={form}
+        patchForm={(patch) => patchForm(patch as never)}
+        addField={addField}
+        updateField={updateField}
+        removeField={removeField}
+        addVariable={addVariable}
+        updateVariable={updateVariable}
+        removeVariable={removeVariable}
+        normalizePixelValue={normalizePixelValue}
+        getWebFormFieldTypeLabel={getWebFormFieldTypeLabel}
+        customFieldTypeOptions={WEB_FORM_CUSTOM_FIELD_TYPE_OPTIONS}
+        sectionOptions={sectionOptions}
+        wizardForm={isWizard ? createForm : undefined}
+        setWizardForm={isWizard ? setCreateForm : undefined}
+        makeDemoToken={makeDemoToken}
+        channelStatusOptions={CHANNEL_STATUS_OPTIONS}
+        isOutgoingWebhookBridge={isOutgoingWebhookBridge}
+      />
     )
   }
 
   function renderChatbotWizardConfigurationSections() {
     return (
-      <Tabs value={wizardChatbotSection} onValueChange={(value) => setWizardChatbotSection(value as ChatbotWizardSection)} className="space-y-4">
-        <div className="overflow-x-auto pb-1">
-          <TabsList className="inline-flex h-auto min-w-max flex-nowrap rounded-2xl border border-slate-200 bg-slate-50 p-1 md:flex-wrap">
-            {CHATBOT_WIZARD_SECTION_OPTIONS.map((item) => (
-              <TabsTrigger key={item.id} value={item.id} className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">
-                {item.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
-
-        <TabsContent value="base" className="space-y-4">
-          <div className="space-y-4">
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
-              <div className="mb-4">
-                <p className="text-sm font-semibold text-slate-900">Identidad del canal</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">Define cómo aparecerá el chatbot dentro del CRM y con qué estado arranca.</p>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="grid gap-2 md:col-span-2">
-                  <Label>Nombre del canal</Label>
-                  <Input value={createForm.name} onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))} className="h-11 rounded-xl bg-white" />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Proveedor técnico</Label>
-                  <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700">{createForm.provider}</div>
-                </div>
-                <div className="grid gap-2">
-                  <Label>Estado inicial</Label>
-                  <Select value={createForm.status} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, status: value as ChannelStatus }))}>
-                    <SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {CHANNEL_STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
-              <div className="mb-4">
-                <p className="text-sm font-semibold text-slate-900">Conexión y acceso</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">Controla el token de pruebas, la URL pública del iframe y las restricciones por dominio.</p>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="grid gap-2 md:col-span-2">
-                  <Label>Token de prueba / verificación</Label>
-                  <div className="flex gap-2">
-                    <Input value={createForm.testingToken} onChange={(e) => setCreateForm((prev) => ({ ...prev, testingToken: e.target.value }))} className="h-11 rounded-xl bg-white" />
-                    <Button type="button" variant="outline" className="rounded-xl bg-white" onClick={() => setCreateForm((prev) => ({ ...prev, testingToken: makeDemoToken() }))}>Regenerar</Button>
-                  </div>
-                  <p className="text-xs leading-5 text-slate-500">Se usa para pruebas seguras, verificación y bridges demo.</p>
-                </div>
-                <div className="grid gap-2 md:col-span-2">
-                  <Label>Dominios permitidos</Label>
-                  <Textarea value={createForm.allowedDomains} onChange={(e) => setCreateForm((prev) => ({ ...prev, allowedDomains: e.target.value }))} rows={3} className="rounded-2xl bg-white" placeholder="cliente.com, demo.cliente.com" />
-                </div>
-                <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">Publicar iframe sin token</p>
-                    <p className="text-xs text-slate-500">Recomendado para la demo controlada del cliente.</p>
-                  </div>
-                  <Switch checked={createForm.publicEmbedEnabled} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, publicEmbedEnabled: checked }))} />
-                </div>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="brand" className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="grid gap-2 md:col-span-2"><Label>Título visible del chatbot</Label><Input value={createForm.chatbotTitle} onChange={(e) => setCreateForm((prev) => ({ ...prev, chatbotTitle: e.target.value }))} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2 md:col-span-2"><Label>Nombre del asistente</Label><Input value={createForm.assistantName} onChange={(e) => setCreateForm((prev) => ({ ...prev, assistantName: e.target.value }))} className="h-11 rounded-xl" /></div>
-            <div className="grid gap-2 md:col-span-2"><Label>Prompt inicial</Label><Textarea value={createForm.chatbotPrompt} onChange={(e) => setCreateForm((prev) => ({ ...prev, chatbotPrompt: e.target.value }))} rows={4} className="rounded-2xl" /></div>
-            <div className="grid gap-2"><Label>Altura del iframe</Label><Input value={createForm.iframeHeight} onChange={(e) => setCreateForm((prev) => ({ ...prev, iframeHeight: e.target.value }))} className="h-11 rounded-xl" placeholder="720" /></div>
-            <div className="grid gap-2"><Label>Fuente CSS</Label><Input value={createForm.fontFamily} onChange={(e) => setCreateForm((prev) => ({ ...prev, fontFamily: e.target.value }))} className="h-11 rounded-xl" placeholder="ui-sans-serif, system-ui, sans-serif" /></div>
-            <div className="grid gap-2"><Label>Color de acento</Label><div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2"><input type="color" value={createForm.accentColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, accentColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar color de acento" /><div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.accentColor }} /><Input value={createForm.accentColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, accentColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="#1d4ed8" /></div></div>
-            <div className="grid gap-2"><Label>Color de fondo general</Label><div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2"><input type="color" value={createForm.pageBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, pageBackgroundColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar color de fondo general" /><div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.pageBackgroundColor }} /><Input value={createForm.pageBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, pageBackgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="#eef5ff" /></div></div>
-            <div className="grid gap-2"><Label>Color de fondo interno</Label><div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2"><input type="color" value={createForm.backgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, backgroundColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar color de fondo interno" /><div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.backgroundColor }} /><Input value={createForm.backgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, backgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="#f8fbff" /></div></div>
-            <div className="grid gap-2"><Label>Etiqueta superior</Label><Input value={createForm.headerBadgeLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, headerBadgeLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="Chatbot CRM" /></div>
-            <div className="grid gap-2"><Label>Estado del asistente</Label><Input value={createForm.statusBadgeLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, statusBadgeLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="En linea" /></div>
-            <div className="grid gap-2"><Label>Radio del panel</Label><div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2"><Input value={createForm.chatShellRadius} onChange={(e) => setCreateForm((prev) => ({ ...prev, chatShellRadius: normalizePixelValue(e.target.value, '30') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="30" /><span className="text-xs font-medium text-slate-500">px</span></div></div>
-            <div className="grid gap-2"><Label>Radio de burbujas</Label><div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2"><Input value={createForm.messageBubbleRadius} onChange={(e) => setCreateForm((prev) => ({ ...prev, messageBubbleRadius: normalizePixelValue(e.target.value, '22') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="22" /><span className="text-xs font-medium text-slate-500">px</span></div></div>
-            <div className="grid gap-2 md:col-span-2"><Label>Sombra del panel</Label><Select value={createForm.panelShadowPreset} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, panelShadowPreset: value as PanelShadowPreset }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="soft">Suave</SelectItem><SelectItem value="medium">Media</SelectItem><SelectItem value="strong">Fuerte</SelectItem></SelectContent></Select></div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="launcher" className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Habilitar launcher flotante</p>
-                <p className="text-xs text-slate-500">Controla si se genera y se usa el botón flotante además del iframe público.</p>
-              </div>
-              <Switch checked={createForm.floatingLauncherEnabled} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, floatingLauncherEnabled: checked }))} />
-            </div>
-            <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Abrir panel al cargar</p>
-                <p className="text-xs text-slate-500">Si se desactiva, el widget inicia colapsado y muestra solo el launcher.</p>
-              </div>
-              <Switch checked={!createForm.launcherStartsCollapsed} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, launcherStartsCollapsed: !checked }))} disabled={!createForm.floatingLauncherEnabled} />
-            </div>
-            <div className="grid gap-2"><Label>Texto del launcher flotante</Label><Input value={createForm.launcherLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, launcherLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="Abrir asesor virtual" /></div>
-            <div className="grid gap-2"><Label>Icono del launcher</Label><Select value={createForm.launcherIcon} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherIcon: value }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bot">bot</SelectItem><SelectItem value="message-circle">message-circle</SelectItem><SelectItem value="sparkles">sparkles</SelectItem></SelectContent></Select></div>
-            <div className="grid gap-2"><Label>Alineación horizontal</Label><Select value={createForm.launcherPosition} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherPosition: value as LauncherPosition }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Derecha</SelectItem><SelectItem value="center">Centro</SelectItem><SelectItem value="left">Izquierda</SelectItem></SelectContent></Select></div>
-            <div className="grid gap-2"><Label>Tipo de posición</Label><Select value={createForm.launcherPlacement} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherPlacement: value as LauncherPlacement }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="fixed">Fixed</SelectItem><SelectItem value="absolute">Absolute</SelectItem></SelectContent></Select></div>
-            <div className="grid gap-2"><Label>Tamaño del launcher</Label><Select value={createForm.launcherSize} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherSize: value as LauncherSize }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="compact">Compacto</SelectItem><SelectItem value="standard">Estándar</SelectItem><SelectItem value="large">Grande</SelectItem></SelectContent></Select></div>
-            <div className="grid gap-2"><Label>Offset horizontal</Label><div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2"><Input value={createForm.launcherOffsetX} onChange={(e) => setCreateForm((prev) => ({ ...prev, launcherOffsetX: normalizePixelValue(e.target.value, '60') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="60" /><span className="text-xs font-medium text-slate-500">px</span></div></div>
-            <div className="grid gap-2"><Label>Offset vertical</Label><div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2"><Input value={createForm.launcherOffsetY} onChange={(e) => setCreateForm((prev) => ({ ...prev, launcherOffsetY: normalizePixelValue(e.target.value, '60') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="60" /><span className="text-xs font-medium text-slate-500">px</span></div></div>
-            <div className="grid gap-2"><Label>Z-index overlay</Label><Input value={createForm.backdropZIndex} onChange={(e) => setCreateForm((prev) => ({ ...prev, backdropZIndex: normalizeZIndexValue(e.target.value, '2147483645') }))} className="h-11 rounded-xl" placeholder="2147483645" /></div>
-            <div className="grid gap-2"><Label>Z-index panel</Label><Input value={createForm.panelZIndex} onChange={(e) => setCreateForm((prev) => ({ ...prev, panelZIndex: normalizeZIndexValue(e.target.value, '2147483646') }))} className="h-11 rounded-xl" placeholder="2147483646" /></div>
-            <div className="grid gap-2"><Label>Z-index launcher</Label><Input value={createForm.launcherZIndex} onChange={(e) => setCreateForm((prev) => ({ ...prev, launcherZIndex: normalizeZIndexValue(e.target.value, '2147483647') }))} className="h-11 rounded-xl" placeholder="2147483647" /></div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="copy" className="space-y-4">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Solicitar producto en la captura inicial</p>
-                <p className="text-xs text-slate-500">Permite que el bot consulte inventario y responda con referencia, precio y disponibilidad.</p>
-              </div>
-              <Switch checked={createForm.showProductField} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, showProductField: checked }))} />
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="grid gap-2"><Label>Label nombre</Label><Input value={createForm.nameLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, nameLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-              <div className="grid gap-2"><Label>Placeholder nombre</Label><Input value={createForm.namePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, namePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-              <div className="grid gap-2"><Label>Label correo</Label><Input value={createForm.emailLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, emailLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-              <div className="grid gap-2"><Label>Placeholder correo</Label><Input value={createForm.emailPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, emailPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-              <div className="grid gap-2"><Label>Label teléfono</Label><Input value={createForm.phoneLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, phoneLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-              <div className="grid gap-2"><Label>Placeholder teléfono</Label><Input value={createForm.phonePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, phonePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-              <div className="grid gap-2"><Label>Label producto</Label><Input value={createForm.productLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, productLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-              <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={createForm.productPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-              <div className="grid gap-2"><Label>Label mensaje</Label><Input value={createForm.messageLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, messageLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-              <div className="grid gap-2"><Label>Placeholder mensaje</Label><Input value={createForm.messagePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-            </div>
-          </div>
-        </TabsContent>
-      </Tabs>
+      <CrmIntegrationsChatbotWizardSections
+        section={wizardChatbotSection}
+        setSection={(value) => setWizardChatbotSection(value as ChatbotWizardSection)}
+        form={createForm}
+        setForm={setCreateForm}
+        sectionOptions={CHATBOT_WIZARD_SECTION_OPTIONS}
+        channelStatusOptions={CHANNEL_STATUS_OPTIONS}
+        makeDemoToken={makeDemoToken}
+        normalizePixelValue={normalizePixelValue}
+        normalizeZIndexValue={normalizeZIndexValue}
+      />
     )
   }
 
@@ -4948,7 +4356,7 @@ export function CrmIntegrationsClient() {
           ? `${baseUrl || 'https://tu-dominio.com'}${createForm.bridgeKind === 'BOOKING' ? '/booking/<canal-generado>' : '/form/<canal-generado>'}`
           : '',
     }
-  }, [baseUrl, createForm, createIsPublicWebForm, createUsesWebhook])
+  }, [baseUrl, createForm, createIsBridge, createIsPublicWebForm, createUsesWebhook])
 
   const selectedAssetTabs = useMemo(() => {
     if (!selectedChannel) return ['overview']
@@ -5018,295 +4426,16 @@ export function CrmIntegrationsClient() {
           ) : null}
         </div>
 
-        <TabsContent value="metrics" className="space-y-5">
-          <Card className="overflow-hidden rounded-[30px] border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.18),_transparent_36%),linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,250,252,0.95))] shadow-[0_28px_80px_-46px_rgba(2,132,199,0.45)]">
-            <CardContent className="p-6 md:p-7">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="space-y-3">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-700">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    {language === 'en' ? 'Omnichannel intelligence' : 'Inteligencia omnicanal'}
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">{language === 'en' ? 'Metrics, goals, and trends' : 'Métricas, metas y tendencias'}</h2>
-                    <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 md:text-base">
-                      {language === 'en' ? 'This area concentrates the executive dashboard. It is kept separate so daily operations stay lighter and analysis opens only when you need it.' : 'Este espacio concentra el tablero ejecutivo. Lo dejamos aparte para que la operación diaria siga ligera y aquí puedas abrir el análisis sólo cuando lo necesites.'}
-                    </p>
-                  </div>
-                </div>
-                <Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={() => setMetricsExpanded((current) => !current)}>
-                  {metricsExpanded ? (language === 'en' ? 'Collapse dashboard' : 'Colapsar dashboard') : (language === 'en' ? 'Expand dashboard' : 'Expandir dashboard')}
-                </Button>
-              </div>
-
-              <div className="mt-5 grid gap-3 md:grid-cols-3">
-                <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between text-slate-500">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">{language === 'en' ? 'Activation' : 'Activación'}</span>
-                    <Target className="h-4 w-4 text-sky-500" />
-                  </div>
-                  <p className="mt-3 text-3xl font-semibold text-slate-950">{channelAnalytics.scorecards.activationRate}%</p>
-                  <p className="mt-1 text-sm text-slate-600">{language === 'en' ? 'Active or testing channels over the total.' : 'Canales activos o en testing sobre el total.'}</p>
-                </div>
-                <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between text-slate-500">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">{language === 'en' ? 'Production' : 'Producción'}</span>
-                    <Goal className="h-4 w-4 text-emerald-500" />
-                  </div>
-                  <p className="mt-3 text-3xl font-semibold text-slate-950">{channelAnalytics.scorecards.productionRate}%</p>
-                  <p className="mt-1 text-sm text-slate-600">{language === 'en' ? 'Channels ready for real operation.' : 'Canales listos para salir a operación real.'}</p>
-                </div>
-                <div className="rounded-[22px] border border-cyan-200 bg-[linear-gradient(135deg,#0f172a,#0b4a6f)] p-4 text-white shadow-[0_24px_50px_-34px_rgba(15,23,42,0.7)]">
-                  <div className="flex items-center justify-between text-cyan-100">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">Momentum</span>
-                    <TrendingUp className="h-4 w-4 text-cyan-300" />
-                  </div>
-                  <p className="mt-3 text-3xl font-semibold">{formatCompactNumber(stats.captures + stats.conversations, language)}</p>
-                  <p className="mt-1 text-sm text-cyan-50/90">{language === 'en' ? 'Total interactions traced from integrations.' : 'Interacciones totales trazadas desde integraciones.'}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-            <Card className="rounded-[30px] border-slate-200 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] text-slate-950 shadow-[0_28px_80px_-46px_rgba(15,23,42,0.22)]">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-slate-950">{language === 'en' ? 'Configurable goals' : 'Metas configurables'}</CardTitle>
-                <CardDescription className="text-slate-600">{language === 'en' ? 'You can override the suggested targets and progress recalculates instantly.' : 'Puedes sobreescribir los objetivos sugeridos y el progreso se recalcula al instante.'}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-3">
-                  <div className="grid gap-2">
-                    <Label className="text-sm font-medium text-slate-700">{language === 'en' ? 'Operational channels target' : 'Meta de canales operativos'}</Label>
-                    <Input value={goalTargets.operational} onChange={(event) => setGoalTargets((current) => ({ ...current, operational: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.operational)} className="rounded-2xl border-slate-300 bg-white text-slate-950 placeholder:text-slate-500" />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label className="text-sm font-medium text-slate-700">{language === 'en' ? 'Captures target' : 'Meta de capturas'}</Label>
-                    <Input value={goalTargets.captures} onChange={(event) => setGoalTargets((current) => ({ ...current, captures: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.captures)} className="rounded-2xl border-slate-300 bg-white text-slate-950 placeholder:text-slate-500" />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label className="text-sm font-medium text-slate-700">{language === 'en' ? 'Conversations target' : 'Meta de conversaciones'}</Label>
-                    <Input value={goalTargets.conversations} onChange={(event) => setGoalTargets((current) => ({ ...current, conversations: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.conversations)} className="rounded-2xl border-slate-300 bg-white text-slate-950 placeholder:text-slate-500" />
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {channelAnalytics.goals.map((goal) => {
-                    const Icon = goal.icon
-                    return (
-                      <div key={goal.label} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="space-y-1">
-                            <p className="text-sm font-semibold text-slate-950">{goal.label}</p>
-                            <p className="text-sm text-slate-600">{goal.caption}</p>
-                          </div>
-                          <div className={`rounded-2xl bg-gradient-to-br ${goal.accent} p-3 text-white shadow-lg`}>
-                            <Icon className="h-5 w-5" />
-                          </div>
-                        </div>
-                        <div className="mt-4 flex items-end justify-between gap-3">
-                          <div>
-                            <p className="text-2xl font-semibold text-slate-950">{formatCompactNumber(goal.value, language)}</p>
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{language === 'en' ? 'Target' : 'Meta'} {formatCompactNumber(goal.target, language)}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-2xl font-semibold text-slate-950">{goal.progress}%</p>
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{language === 'en' ? 'Reached' : 'Cumplido'}</p>
-                          </div>
-                        </div>
-                        <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-200">
-                          <div className={`h-full rounded-full bg-gradient-to-r ${goal.accent} transition-all duration-700`} style={{ width: `${goal.progress}%` }} />
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="space-y-5">
-              {metricsExpanded ? (
-                <>
-                  <div className="grid gap-5 2xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-                    <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.34)]">
-                      <CardHeader className="flex flex-col gap-3 border-b border-slate-100 pb-5 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <CardTitle>{language === 'en' ? 'Channels with highest impact' : 'Canales con mayor impacto'}</CardTitle>
-                          <CardDescription>{language === 'en' ? 'Comparison of captures and conversations by channel in the commercial layer.' : 'Comparativo de capturas y conversaciones por canal en la capa comercial.'}</CardDescription>
-                        </div>
-                        <div className="rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                          Top {Math.max(1, channelAnalytics.performance.length)}
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-4 md:p-6">
-                        <div className="h-[340px] w-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={channelAnalytics.performance} barGap={10}>
-                              <CartesianGrid strokeDasharray="4 8" stroke="#e2e8f0" vertical={false} />
-                              <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fill: '#475569', fontSize: 12 }} />
-                              <YAxis tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 12 }} allowDecimals={false} />
-                              <Tooltip
-                                cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }}
-                                content={({ active, payload }) => {
-                                  if (!active || !payload?.length) return null
-                                  const item = payload[0]?.payload as { fullName: string; provider: string; captures: number; conversations: number } | undefined
-                                  if (!item) return null
-                                  return (
-                                    <div className="rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl">
-                                      <p className="text-sm font-semibold text-slate-950">{item.fullName}</p>
-                                      <p className="text-xs uppercase tracking-[0.14em] text-slate-500">{item.provider}</p>
-                                      <div className="mt-2 space-y-1 text-sm text-slate-700">
-                                        <p>{language === 'en' ? 'Captures:' : 'Capturas:'} <span className="font-semibold text-slate-950">{item.captures}</span></p>
-                                        <p>{language === 'en' ? 'Conversations:' : 'Conversaciones:'} <span className="font-semibold text-slate-950">{item.conversations}</span></p>
-                                      </div>
-                                    </div>
-                                  )
-                                }}
-                              />
-                              <Bar dataKey="captures" name={language === 'en' ? 'Captures' : 'Capturas'} radius={[10, 10, 0, 0]} fill="#0ea5e9" />
-                              <Bar dataKey="conversations" name={language === 'en' ? 'Conversations' : 'Conversaciones'} radius={[10, 10, 0, 0]} fill="#0f172a" />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                        {channelAnalytics.performance.length === 0 ? (
-                          <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                            {language === 'en' ? 'Create channels to start seeing real-time performance comparisons.' : 'Crea canales para empezar a ver comparativos de rendimiento en tiempo real.'}
-                          </div>
-                        ) : null}
-                      </CardContent>
-                    </Card>
-
-                    <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.34)]">
-                      <CardHeader className="border-b border-slate-100 pb-5">
-                        <CardTitle>{language === 'en' ? 'Channel mix' : 'Mix de canales'}</CardTitle>
-                        <CardDescription>{language === 'en' ? 'Distribution by source to detect concentration and diversification of the stack.' : 'Distribución por origen para detectar concentración y diversificación del stack.'}</CardDescription>
-                      </CardHeader>
-                      <CardContent className="grid gap-4 p-4 md:p-6">
-                        <div className="h-[260px] w-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie
-                                data={channelAnalytics.distribution.length > 0 ? channelAnalytics.distribution : [{ label: language === 'en' ? 'No channels' : 'Sin canales', value: 1, color: '#cbd5e1' }]}
-                                dataKey="value"
-                                nameKey="label"
-                                innerRadius={62}
-                                outerRadius={92}
-                                paddingAngle={4}
-                                stroke="none"
-                              >
-                                {(channelAnalytics.distribution.length > 0 ? channelAnalytics.distribution : [{ label: language === 'en' ? 'No channels' : 'Sin canales', value: 1, color: '#cbd5e1' }]).map((entry) => (
-                                  <Cell key={entry.label} fill={entry.color} />
-                                ))}
-                              </Pie>
-                              <Tooltip
-                                content={({ active, payload }) => {
-                                  if (!active || !payload?.length) return null
-                                  const item = payload[0]?.payload as { label: string; value: number } | undefined
-                                  if (!item) return null
-                                  return (
-                                    <div className="rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl">
-                                      <p className="text-sm font-semibold text-slate-950">{item.label}</p>
-                                      <p className="text-sm text-slate-600">{item.value} {language === 'en' ? 'channel(s)' : 'canal(es)'}</p>
-                                    </div>
-                                  )
-                                }}
-                              />
-                            </PieChart>
-                          </ResponsiveContainer>
-                        </div>
-                        <div className="space-y-3">
-                          {(channelAnalytics.distribution.length > 0 ? channelAnalytics.distribution : [{ label: language === 'en' ? 'No channels' : 'Sin canales', value: 0, color: '#cbd5e1' }]).map((entry) => (
-                            <div key={entry.label} className="flex items-center justify-between rounded-[20px] border border-slate-100 bg-slate-50/80 px-4 py-3">
-                              <div className="flex items-center gap-3">
-                                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: entry.color }} />
-                                <span className="text-sm font-medium text-slate-700">{entry.label}</span>
-                              </div>
-                              <span className="text-sm font-semibold text-slate-950">{entry.value}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.34)]">
-                    <CardHeader className="flex flex-col gap-3 border-b border-slate-100 pb-5 lg:flex-row lg:items-center lg:justify-between">
-                      <div>
-                        <CardTitle>{language === 'en' ? 'Monthly activity pace' : 'Ritmo de actividad por mes'}</CardTitle>
-                        <CardDescription>{language === 'en' ? 'Timeline based on the latest activity or update of each channel.' : 'Lectura temporal con base en última actividad o actualización de cada canal.'}</CardDescription>
-                      </div>
-                      <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
-                        {language === 'en' ? 'Last 6 months' : 'Últimos 6 meses'}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-4 md:p-6">
-                      <div className="h-[320px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={channelAnalytics.timeline}>
-                            <defs>
-                              <linearGradient id="crmCapturesGradient" x1="0" x2="0" y1="0" y2="1">
-                                <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.95} />
-                                <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0.2} />
-                              </linearGradient>
-                              <linearGradient id="crmConversationsGradient" x1="0" x2="0" y1="0" y2="1">
-                                <stop offset="0%" stopColor="#f97316" stopOpacity={0.95} />
-                                <stop offset="100%" stopColor="#f97316" stopOpacity={0.2} />
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="4 8" stroke="#e2e8f0" vertical={false} />
-                            <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#475569', fontSize: 12 }} />
-                            <YAxis tickLine={false} axisLine={false} allowDecimals={false} tick={{ fill: '#64748b', fontSize: 12 }} />
-                            <Tooltip
-                              content={({ active, payload, label }) => {
-                                if (!active || !payload?.length) return null
-                                const captures = Number(payload.find((item) => item.dataKey === 'captures')?.value ?? 0)
-                                const conversations = Number(payload.find((item) => item.dataKey === 'conversations')?.value ?? 0)
-                                const channelsInMonth = Number((payload[0]?.payload as { channels?: number } | undefined)?.channels ?? 0)
-                                return (
-                                  <div className="rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl">
-                                    <p className="text-sm font-semibold text-slate-950">{label}</p>
-                                    <div className="mt-2 space-y-1 text-sm text-slate-700">
-                                      <p>{language === 'en' ? 'Captures:' : 'Capturas:'} <span className="font-semibold text-slate-950">{captures}</span></p>
-                                      <p>{language === 'en' ? 'Conversations:' : 'Conversaciones:'} <span className="font-semibold text-slate-950">{conversations}</span></p>
-                                      <p>{language === 'en' ? 'Channels with activity:' : 'Canales con actividad:'} <span className="font-semibold text-slate-950">{channelsInMonth}</span></p>
-                                    </div>
-                                  </div>
-                                )
-                              }}
-                            />
-                            <Line type="monotone" dataKey="captures" name={language === 'en' ? 'Captures' : 'Capturas'} stroke="url(#crmCapturesGradient)" strokeWidth={3} dot={{ r: 4, fill: '#0ea5e9' }} activeDot={{ r: 6 }} />
-                            <Line type="monotone" dataKey="conversations" name={language === 'en' ? 'Conversations' : 'Conversaciones'} stroke="url(#crmConversationsGradient)" strokeWidth={3} dot={{ r: 4, fill: '#f97316' }} activeDot={{ r: 6 }} />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </>
-              ) : (
-                <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.34)]">
-                  <CardHeader>
-                    <CardTitle className="text-slate-950">{language === 'en' ? 'Collapsed dashboard' : 'Dashboard colapsado'}</CardTitle>
-                    <CardDescription className="text-slate-600">{language === 'en' ? 'Expand it when you want to review charts, trends, and distribution by channel.' : 'Expándelo cuando quieras revisar gráficos, tendencias y distribución por canal.'}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="grid gap-3 md:grid-cols-3">
-                    <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">{language === 'en' ? 'Configured' : 'Configurados'}</p>
-                      <p className="mt-2 text-3xl font-semibold text-slate-950">{channelAnalytics.scorecards.configured}</p>
-                    </div>
-                    <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">Demo-ready</p>
-                      <p className="mt-2 text-3xl font-semibold text-slate-950">{channelAnalytics.scorecards.demo}</p>
-                    </div>
-                    <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">Go-live</p>
-                      <p className="mt-2 text-3xl font-semibold text-slate-950">{channelAnalytics.scorecards.production}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </div>
-        </TabsContent>
+        <CrmIntegrationsMetricsTab
+          language={language}
+          metricsExpanded={metricsExpanded}
+          setMetricsExpanded={setMetricsExpanded}
+          goalTargets={goalTargets}
+          setGoalTargets={setGoalTargets}
+          stats={stats}
+          channelAnalytics={channelAnalytics}
+          formatCompactNumber={formatCompactNumber}
+        />
       <TabsContent value="operations" className="space-y-4">
         <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <Card className="rounded-[24px] border-slate-200 bg-white/95 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.3)]">
@@ -6567,583 +5696,91 @@ export function CrmIntegrationsClient() {
       </TabsContent>
       </Tabs>
 
-      <Dialog open={chatbotBuilderModalOpen} onOpenChange={setChatbotBuilderModalOpen}>
-        <DialogContent className="h-[92vh] max-h-[92vh] max-w-7xl overflow-hidden rounded-[30px] border-emerald-200 bg-white/98 p-0 shadow-[0_28px_80px_-42px_rgba(16,185,129,0.28)]">
-          <div className="grid h-full min-h-0 gap-0 xl:grid-cols-[0.95fr_1.05fr]">
-            <div className="min-h-0 overflow-y-auto border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,.16),transparent_30%),linear-gradient(180deg,#f6fffb,#ffffff)] p-6 xl:border-b-0 xl:border-r">
-              <DialogHeader>
-                <DialogTitle>Editor visual del chatbot</DialogTitle>
-                <DialogDescription>Configura el iframe y el launcher desde un modal dedicado. Cada cambio se refleja en el preview en tiempo real.</DialogDescription>
-              </DialogHeader>
-
-              <div className="mt-5 space-y-4 pr-1">
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { value: 'flow', label: 'Flujo' },
-                    { value: 'brand', label: 'Marca' },
-                    { value: 'launcher', label: 'Launcher' },
-                    { value: 'copy', label: 'Copy' },
-                  ].map((section) => (
-                    <button
-                      key={section.value}
-                      type="button"
-                      onClick={() => setChatbotBuilderSection(section.value as ChatbotBuilderSection)}
-                      className={chatbotBuilderSection === section.value ? 'rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600'}
-                    >
-                      {section.label}
-                    </button>
-                  ))}
-                </div>
-
-                {chatbotBuilderSection === 'flow' ? (
-                  <div className="space-y-4">
-                    <div className="rounded-[24px] border border-slate-200 bg-white/80 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">Canvas del flujo</p>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">Ahora el mapa también sirve para editar ramas: selecciona una conexión para cambiar el destino, crear una etapa nueva conectada o quitar el vínculo.</p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold text-violet-800">Rama por respuesta</span>
-                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-800">Nodo activo</span>
-                          <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-semibold text-sky-800">Conexión editable</span>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-medium text-slate-600">
-                        <span className="rounded-full bg-white px-2.5 py-1 text-slate-700">Haz clic en un nodo para editar su contenido</span>
-                        <span className="rounded-full bg-white px-2.5 py-1 text-slate-700">Haz clic en una rama para editar a dónde termina la respuesta</span>
-                        <Button type="button" variant="outline" className="h-7 rounded-xl px-2.5 text-[11px]" onClick={() => selectedChatbotFlowStage ? addChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId) : null} disabled={!selectedChatbotFlowStage}>Agregar respuesta a la etapa activa</Button>
-                      </div>
-
-                      <div className="mt-4 overflow-auto rounded-[22px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,.08),transparent_28%),linear-gradient(180deg,#f8fffc,#ffffff)] p-3">
-                        <div className="relative" style={{ width: chatbotCanvasModel.width, height: chatbotCanvasModel.height }}>
-                          <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${chatbotCanvasModel.width} ${chatbotCanvasModel.height}`} fill="none">
-                            {chatbotCanvasModel.connections.map((connection) => {
-                              const isSelected = connection.id === selectedChatbotConnectionId
-                              return (
-                                <g key={connection.id}>
-                                  <path d={connection.path} stroke={isSelected ? '#0ea5e9' : '#94a3b8'} strokeWidth={isSelected ? 3 : 1.6} strokeDasharray={isSelected ? '0' : '6 6'} strokeLinecap="round" />
-                                </g>
-                              )
-                            })}
-                          </svg>
-
-                          {chatbotCanvasModel.connections.map((connection) => {
-                            const isSelected = connection.id === selectedChatbotConnectionId
-                            const targetTitle = chatbotBuilderDraft.flowStages.find((stage) => stage.id === connection.toStageId)?.title || connection.toStageId
-                            return (
-                              <button
-                                key={`${connection.id}-label`}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedChatbotConnectionId(connection.id)
-                                  setSelectedChatbotStageId(connection.fromStageId as ChatbotFlowStageId)
-                                }}
-                                className={isSelected ? 'absolute z-10 rounded-full border border-sky-300 bg-sky-100 px-2.5 py-1 text-[10px] font-semibold text-sky-800 shadow-sm' : 'absolute z-10 rounded-full border border-violet-200 bg-white/95 px-2.5 py-1 text-[10px] font-semibold text-violet-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50'}
-                                style={{ left: connection.labelX, top: connection.labelY, transform: 'translate(-50%, -50%)' }}
-                                title={`Editar rama hacia ${targetTitle}`}
-                              >
-                                {connection.label}
-                              </button>
-                            )
-                          })}
-
-                          {chatbotCanvasModel.nodes.map((node, index) => {
-                            const isSelected = node.stage.id === selectedChatbotStageId
-                            return (
-                              <button
-                                key={node.stage.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedChatbotStageId(node.stage.id as ChatbotFlowStageId)
-                                  setSelectedChatbotConnectionId(null)
-                                }}
-                                className={isSelected ? 'absolute rounded-[24px] border border-emerald-300 bg-emerald-50/95 p-4 text-left shadow-[0_18px_46px_-28px_rgba(16,185,129,.45)]' : 'absolute rounded-[24px] border border-slate-200 bg-white/95 p-4 text-left shadow-[0_16px_40px_-30px_rgba(15,23,42,.24)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(15,23,42,.28)]'}
-                                style={{ left: node.x, top: node.y, width: node.width, minHeight: node.height }}
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Nodo {index + 1}</p>
-                                    <p className="mt-1 text-sm font-semibold text-slate-900">{node.stage.title}</p>
-                                  </div>
-                                  <span className={`rounded-full bg-gradient-to-r ${getFlowStageAccent(node.stage.id)} px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white`}>
-                                    {getFlowStageNextFieldLabel(node.stage.nextField)}
-                                  </span>
-                                </div>
-                                <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-600">{node.stage.prompt}</p>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-700">{node.stage.responseOptions.length} ramas</span>
-                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-700">{node.stage.quickActionIds.length} quick actions</span>
-                                </div>
-                                {node.stage.responseOptions.length ? (
-                                  <div className="mt-3 space-y-1.5">
-                                    {node.stage.responseOptions.slice(0, 3).map((option) => {
-                                      const targetTitle = chatbotBuilderDraft.flowStages.find((stage) => stage.id === option.targetStageId)?.title || option.targetStageId
-                                      return (
-                                        <div key={option.id} className="flex items-center justify-between gap-2 rounded-2xl border border-violet-100 bg-violet-50/70 px-2.5 py-1.5 text-[10px] text-violet-900">
-                                          <span className="font-semibold">{option.label}</span>
-                                          <span className="truncate text-right text-violet-700">{targetTitle}</span>
-                                        </div>
-                                      )
-                                    })}
-                                    {node.stage.responseOptions.length > 3 ? <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600">+{node.stage.responseOptions.length - 3} ramas más</span> : null}
-                                  </div>
-                                ) : null}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-
-                      {selectedChatbotConnection && selectedChatbotConnectionSourceStage && selectedChatbotConnectionOption ? (
-                        <div className="mt-4 rounded-[22px] border border-sky-200 bg-sky-50/80 p-4">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">Rama seleccionada</p>
-                              <p className="mt-1 text-sm font-semibold text-slate-900">{selectedChatbotConnectionOption.label}</p>
-                              <p className="mt-1 text-xs text-slate-600">Sale desde {selectedChatbotConnectionSourceStage.title} y actualmente termina en {chatbotBuilderDraft.flowStages.find((stage) => stage.id === selectedChatbotConnection.toStageId)?.title || selectedChatbotConnection.toStageId}.</p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <Button type="button" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={() => setSelectedChatbotStageId(selectedChatbotConnection.toStageId as ChatbotFlowStageId)}>
-                                Ir al nodo destino
-                              </Button>
-                              <Button type="button" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={() => addConnectedChatbotStage(selectedChatbotConnection.fromStageId as ChatbotFlowStageId, selectedChatbotConnection.optionId)}>
-                                Crear etapa y conectar
-                              </Button>
-                              <Button type="button" variant="outline" className="h-8 rounded-xl border-rose-200 px-3 text-xs text-rose-700" onClick={() => removeChatbotResponseOption(selectedChatbotConnection.fromStageId as ChatbotFlowStageId, selectedChatbotConnection.optionId)}>
-                                Quitar vínculo
-                              </Button>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 grid gap-3 md:grid-cols-2">
-                            <div className="grid gap-2">
-                              <Label>La respuesta termina en</Label>
-                              <Select value={selectedChatbotConnection.toStageId} onValueChange={(value) => updateChatbotResponseOption(selectedChatbotConnection.fromStageId as ChatbotFlowStageId, selectedChatbotConnection.optionId, { targetStageId: value })}>
-                                <SelectTrigger className="h-11 rounded-xl bg-white">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {chatbotBuilderDraft.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="grid gap-2">
-                              <Label>Match de esta lógica</Label>
-                              <Select value={selectedChatbotConnectionOption.matchMode} onValueChange={(value) => updateChatbotResponseOption(selectedChatbotConnection.fromStageId as ChatbotFlowStageId, selectedChatbotConnection.optionId, { matchMode: value as ChatbotFlowResponseMatchMode })}>
-                                <SelectTrigger className="h-11 rounded-xl bg-white">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="contains">Contiene palabras</SelectItem>
-                                  <SelectItem value="exact">Coincidencia exacta</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="grid gap-2 md:col-span-2">
-                              <Label>Frases que activan esta rama</Label>
-                              <Textarea value={selectedChatbotConnectionOption.matchValue} onChange={(event) => updateChatbotResponseOption(selectedChatbotConnection.fromStageId as ChatbotFlowStageId, selectedChatbotConnection.optionId, { matchValue: event.target.value })} rows={2} className="rounded-2xl bg-white" />
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="rounded-[24px] border border-slate-200 bg-white/80 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">Lista estructurada de etapas</p>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">Además del canvas, aquí puedes reordenar nodos, revisar ramas y crear etapas nuevas.</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button type="button" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={addChatbotStage}>Agregar etapa</Button>
-                          <div className="rounded-full bg-slate-950 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">SendPulse-style</div>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid gap-3">
-                        {chatbotBuilderDraft.flowStages.map((stage, index) => {
-                          const stageActions = chatbotBuilderDraft.quickActions.filter((action) => stage.quickActionIds.includes(action.id) && action.enabled)
-                          return (
-                            <div
-                              key={stage.id}
-                              onClick={() => setSelectedChatbotStageId(stage.id as ChatbotFlowStageId)}
-                              className={selectedChatbotStageId === stage.id ? 'cursor-pointer rounded-[24px] border border-emerald-300 bg-emerald-50/80 p-4 text-left shadow-sm' : 'cursor-pointer rounded-[24px] border border-slate-200 bg-white p-4 text-left'}
-                              role="button"
-                              tabIndex={0}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                  event.preventDefault()
-                                  setSelectedChatbotStageId(stage.id as ChatbotFlowStageId)
-                                }
-                              }}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Etapa {index + 1}</p>
-                                  <p className="mt-1 text-sm font-semibold text-slate-900">{stage.title}</p>
-                                </div>
-                                <div className={`rounded-full bg-gradient-to-r ${getFlowStageAccent(stage.id)} px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white`}>{getFlowStageNextFieldLabel(stage.nextField)}</div>
-                              </div>
-                              <p className="mt-2 text-xs leading-5 text-slate-600">{stage.description}</p>
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                {stageActions.map((action) => <span key={action.id} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-700">{action.label}</span>)}
-                                {stage.responseOptions.map((option) => <span key={option.id} className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold text-violet-800">{option.label}</span>)}
-                              </div>
-                              <div className="mt-3 flex gap-2">
-                                <Button type="button" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={(event) => { event.stopPropagation(); moveChatbotStage(stage.id as ChatbotFlowStageId, -1) }} disabled={index === 0}>Subir</Button>
-                                <Button type="button" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={(event) => { event.stopPropagation(); moveChatbotStage(stage.id as ChatbotFlowStageId, 1) }} disabled={index === chatbotBuilderDraft.flowStages.length - 1}>Bajar</Button>
-                                {!PROTECTED_CHATBOT_STAGE_IDS.has(stage.id) ? <Button type="button" variant="outline" className="h-8 rounded-xl border-rose-200 px-3 text-xs text-rose-700" onClick={(event) => { event.stopPropagation(); deleteChatbotStage(stage.id as ChatbotFlowStageId) }}>Eliminar</Button> : null}
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-
-                    {selectedChatbotFlowStage ? (
-                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">Editor de etapa</p>
-                            <p className="mt-1 text-xs leading-5 text-slate-500">Ajusta la pregunta, el objetivo, las ramas posibles y las acciones visibles en esta etapa.</p>
-                          </div>
-                          <div className={`rounded-full bg-gradient-to-r ${getFlowStageAccent(selectedChatbotFlowStage.id)} px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white`}>{selectedChatbotFlowStage.title}</div>
-                        </div>
-
-                        <div className="mt-4 grid gap-3 md:grid-cols-2">
-                          <div className="grid gap-2"><Label>Título</Label><Input value={selectedChatbotFlowStage.title} onChange={(e) => updateChatbotStage(selectedChatbotFlowStage.id as ChatbotFlowStageId, { title: e.target.value })} className="h-11 rounded-xl" /></div>
-                          <div className="grid gap-2"><Label>Siguiente paso esperado</Label><Select value={selectedChatbotFlowStage.nextField} onValueChange={(value) => updateChatbotStage(selectedChatbotFlowStage.id as ChatbotFlowStageId, { nextField: value as ChatbotFlowNextField })}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="name">Nombre</SelectItem><SelectItem value="email">Correo</SelectItem><SelectItem value="phone">Teléfono</SelectItem><SelectItem value="whatsapp">WhatsApp</SelectItem><SelectItem value="product">Producto</SelectItem><SelectItem value="quantity">Cantidad</SelectItem><SelectItem value="company">Empresa</SelectItem><SelectItem value="document">Documento / NIT</SelectItem><SelectItem value="city">Ciudad</SelectItem><SelectItem value="address">Dirección</SelectItem><SelectItem value="confirmation">Resumen y confirmación</SelectItem><SelectItem value="none">Cierre</SelectItem></SelectContent></Select></div>
-                          <div className="grid gap-2 md:col-span-2"><Label>Descripción operativa</Label><Textarea value={selectedChatbotFlowStage.description} onChange={(e) => updateChatbotStage(selectedChatbotFlowStage.id as ChatbotFlowStageId, { description: e.target.value })} rows={2} className="rounded-2xl" /></div>
-                          <div className="grid gap-2 md:col-span-2"><Label>Prompt de etapa</Label><Textarea value={selectedChatbotFlowStage.prompt} onChange={(e) => updateChatbotStage(selectedChatbotFlowStage.id as ChatbotFlowStageId, { prompt: e.target.value })} rows={4} className="rounded-2xl" /></div>
-                        </div>
-
-                        <div className="mt-4 grid gap-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Respuestas que abren ramas</p>
-                              <p className="mt-1 text-xs leading-5 text-slate-500">Cada respuesta puede mostrarse como botón y también activar una rama si el usuario escribe palabras similares.</p>
-                            </div>
-                            <Button type="button" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={() => addChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId)}>Agregar respuesta</Button>
-                          </div>
-
-                          {selectedChatbotFlowStage.responseOptions.length ? selectedChatbotFlowStage.responseOptions.map((option) => (
-                            <div key={option.id} className="rounded-[22px] border border-violet-200 bg-white p-4">
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-semibold text-slate-900">{option.label}</p>
-                                  <p className="text-xs text-slate-500">ID técnico: {option.id}</p>
-                                </div>
-                                <Button type="button" variant="outline" className="h-8 rounded-xl border-rose-200 px-3 text-xs text-rose-700" onClick={() => removeChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id)}>Eliminar</Button>
-                              </div>
-                              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                <div className="grid gap-2"><Label>Etiqueta visible</Label><Input value={option.label} onChange={(e) => updateChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id, { label: e.target.value })} className="h-11 rounded-xl" /></div>
-                                <div className="grid gap-2"><Label>Mensaje que enviará</Label><Input value={option.userMessage} onChange={(e) => updateChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id, { userMessage: e.target.value })} className="h-11 rounded-xl" /></div>
-                                <div className="grid gap-2"><Label>Cómo hace match</Label><Select value={option.matchMode} onValueChange={(value) => updateChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id, { matchMode: value as ChatbotFlowResponseMatchMode })}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="contains">Contiene palabras</SelectItem><SelectItem value="exact">Coincidencia exacta</SelectItem></SelectContent></Select></div>
-                                <div className="grid gap-2"><Label>Etapa destino</Label><Select value={option.targetStageId} onValueChange={(value) => updateChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id, { targetStageId: value })}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent>{chatbotBuilderDraft.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}</SelectContent></Select></div>
-                                <div className="grid gap-2 md:col-span-2"><Label>Palabras o frases que disparan esta rama</Label><Textarea value={option.matchValue} onChange={(e) => updateChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id, { matchValue: e.target.value })} rows={2} className="rounded-2xl" placeholder="Ej: cotizar, precio, necesito comprar" /></div>
-                                <div className="grid gap-2 md:col-span-2"><Label>Respuesta del bot al tomar esta rama</Label><Textarea value={option.assistantReply} onChange={(e) => updateChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id, { assistantReply: e.target.value })} rows={3} className="rounded-2xl" /></div>
-                              </div>
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold text-violet-800">{getResponseMatchModeLabel(option.matchMode)}</span>
-                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-700">Destino: {chatbotBuilderDraft.flowStages.find((stage) => stage.id === option.targetStageId)?.title || option.targetStageId}</span>
-                              </div>
-                            </div>
-                          )) : <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">Esta etapa todavía no tiene respuestas guiadas. Agrégalas para construir ramas concretas como en SendPulse.</div>}
-                        </div>
-
-                        <div className="mt-4 grid gap-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Botones rápidos visibles</p>
-                          {chatbotBuilderDraft.quickActions.map((action) => (
-                            <div key={action.id} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-900">{action.label}</p>
-                                <p className="text-xs text-slate-500">{action.message}</p>
-                              </div>
-                              <Switch checked={selectedChatbotFlowStage.quickActionIds.includes(action.id) && action.enabled} onCheckedChange={(checked) => toggleChatbotStageQuickAction(selectedChatbotFlowStage.id as ChatbotFlowStageId, action.id, checked)} disabled={!action.enabled} />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <div className="rounded-[24px] border border-slate-200 bg-white/80 p-4">
-                      <p className="text-sm font-semibold text-slate-900">Biblioteca de quick actions</p>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">Define la etiqueta y el mensaje que cada botón enviará al flujo automático.</p>
-                      <div className="mt-4 grid gap-3">
-                        {chatbotBuilderDraft.quickActions.map((action) => (
-                          <div key={action.id} className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-900">{action.kind === 'human' ? 'Escalamiento humano' : action.kind === 'stock' ? 'Consulta de stock' : action.kind === 'catalog' ? 'Explorar catálogo' : action.kind === 'create_quote' ? 'Crear cotización' : action.kind === 'create_invoice' ? 'Crear factura' : action.kind === 'create_work_order' ? 'Crear orden' : 'Mensaje libre'}</p>
-                                <p className="text-xs text-slate-500">ID técnico: {action.id}</p>
-                              </div>
-                              <Switch checked={action.enabled} onCheckedChange={(checked) => updateChatbotQuickAction(action.id, { enabled: checked })} />
-                            </div>
-                            <div className="mt-3 grid gap-3 md:grid-cols-2">
-                              <div className="grid gap-2"><Label>Etiqueta</Label><Input value={action.label} onChange={(e) => updateChatbotQuickAction(action.id, { label: e.target.value })} className="h-11 rounded-xl" /></div>
-                              <div className="grid gap-2"><Label>Mensaje que envía</Label><Input value={action.message} onChange={(e) => updateChatbotQuickAction(action.id, { message: e.target.value })} className="h-11 rounded-xl" /></div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+      <CrmIntegrationsChatbotBuilderModal
+        open={chatbotBuilderModalOpen}
+        onOpenChange={setChatbotBuilderModalOpen}
+        chatbotBuilderSection={chatbotBuilderSection}
+        setChatbotBuilderSection={setChatbotBuilderSection}
+        chatbotBuilderPreviewMode={chatbotBuilderPreviewMode}
+        setChatbotBuilderPreviewMode={setChatbotBuilderPreviewMode}
+        chatbotBuilderPreviewViewport={chatbotBuilderPreviewViewport}
+        setChatbotBuilderPreviewViewport={setChatbotBuilderPreviewViewport}
+        savingChatbotBuilder={savingChatbotBuilder}
+        onRevert={() => {
+          const nextBuilderState = getChatbotBuilderState(selectedSettings)
+          setChatbotBuilderDraft(nextBuilderState)
+          setChatbotBuilderPreviewMode(getInitialChatbotPreviewMode(nextBuilderState))
+        }}
+        onClose={() => setChatbotBuilderModalOpen(false)}
+        onSave={() => void saveSelectedChatbotBuilder()}
+        previewContent={renderChatbotPreview(chatbotBuilderDraft, { mode: chatbotBuilderPreviewMode, viewport: chatbotBuilderPreviewViewport })}
+      >
+        {chatbotBuilderSection === 'flow' ? (
+                  <CrmIntegrationsChatbotFlowSection
+                    flowStages={chatbotBuilderDraft.flowStages}
+                    quickActions={chatbotBuilderDraft.quickActions}
+                    chatbotCanvasModel={chatbotCanvasModel}
+                    selectedChatbotConnectionId={selectedChatbotConnectionId}
+                    selectedChatbotStageId={selectedChatbotStageId}
+                    selectedChatbotFlowStage={selectedChatbotFlowStage}
+                    selectedChatbotConnection={selectedChatbotConnection}
+                    selectedChatbotConnectionSourceStage={selectedChatbotConnectionSourceStage}
+                    selectedChatbotConnectionOption={selectedChatbotConnectionOption}
+                    protectedStageIds={PROTECTED_CHATBOT_STAGE_IDS}
+                    getFlowStageAccent={getFlowStageAccent}
+                    getFlowStageNextFieldLabel={getFlowStageNextFieldLabel}
+                    getResponseMatchModeLabel={getResponseMatchModeLabel}
+                    onAddResponseToActiveStage={() => selectedChatbotFlowStage ? addChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId) : null}
+                    onSelectConnection={(connectionId, fromStageId) => {
+                      setSelectedChatbotConnectionId(connectionId)
+                      setSelectedChatbotStageId(fromStageId as ChatbotFlowStageId)
+                    }}
+                    onSelectStage={(stageId) => {
+                      setSelectedChatbotStageId(stageId as ChatbotFlowStageId)
+                      setSelectedChatbotConnectionId(null)
+                    }}
+                    onGoToConnectionTarget={(stageId) => setSelectedChatbotStageId(stageId as ChatbotFlowStageId)}
+                    onAddConnectedStage={(fromStageId, optionId) => addConnectedChatbotStage(fromStageId as ChatbotFlowStageId, optionId)}
+                    onRemoveConnection={(fromStageId, optionId) => removeChatbotResponseOption(fromStageId as ChatbotFlowStageId, optionId)}
+                    onUpdateConnectionTarget={(fromStageId, optionId, targetStageId) => updateChatbotResponseOption(fromStageId as ChatbotFlowStageId, optionId, { targetStageId })}
+                    onUpdateConnectionMatchMode={(fromStageId, optionId, matchMode) => updateChatbotResponseOption(fromStageId as ChatbotFlowStageId, optionId, { matchMode })}
+                    onUpdateConnectionMatchValue={(fromStageId, optionId, matchValue) => updateChatbotResponseOption(fromStageId as ChatbotFlowStageId, optionId, { matchValue })}
+                    onAddStage={addChatbotStage}
+                    onMoveStage={(stageId, delta) => moveChatbotStage(stageId as ChatbotFlowStageId, delta)}
+                    onDeleteStage={(stageId) => deleteChatbotStage(stageId as ChatbotFlowStageId)}
+                    onUpdateStage={(stageId, patch) => updateChatbotStage(stageId as ChatbotFlowStageId, patch)}
+                    onAddResponseOption={(stageId) => addChatbotResponseOption(stageId as ChatbotFlowStageId)}
+                    onRemoveResponseOption={(stageId, optionId) => removeChatbotResponseOption(stageId as ChatbotFlowStageId, optionId)}
+                    onUpdateResponseOption={(stageId, optionId, patch) => updateChatbotResponseOption(stageId as ChatbotFlowStageId, optionId, patch)}
+                    onToggleStageQuickAction={(stageId, actionId, checked) => toggleChatbotStageQuickAction(stageId as ChatbotFlowStageId, actionId, checked)}
+                    onUpdateQuickAction={updateChatbotQuickAction}
+                  />
                 ) : null}
 
-                {chatbotBuilderSection === 'brand' ? (
-                  <>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="grid gap-2 md:col-span-2"><Label>Título del chatbot</Label><Input value={chatbotBuilderDraft.chatbotTitle} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatbotTitle: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2 md:col-span-2"><Label>Nombre del asistente</Label><Input value={chatbotBuilderDraft.assistantName} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, assistantName: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2 md:col-span-2"><Label>Prompt inicial legacy</Label><Textarea value={chatbotBuilderDraft.chatbotPrompt} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatbotPrompt: e.target.value }))} rows={3} className="rounded-2xl" /></div>
-                      <div className="grid gap-2"><Label>Altura iframe</Label><Input value={chatbotBuilderDraft.iframeHeight} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, iframeHeight: normalizePixelValue(e.target.value, '720') }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Fuente CSS</Label><Input value={chatbotBuilderDraft.fontFamily} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, fontFamily: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2 md:col-span-2"><Label>Dominios permitidos</Label><Textarea value={chatbotBuilderDraft.allowedDomains} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, allowedDomains: e.target.value }))} rows={2} className="rounded-2xl" placeholder="cliente.com, demo.cliente.com" /></div>
-                    </div>
-
-                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
-                      <div className="grid gap-2"><Label>Color acento</Label><Input value={chatbotBuilderDraft.accentColor} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, accentColor: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Fondo general</Label><Input value={chatbotBuilderDraft.pageBackgroundColor} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, pageBackgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Fondo interno</Label><Input value={chatbotBuilderDraft.backgroundColor} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, backgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Etiqueta superior</Label><Input value={chatbotBuilderDraft.headerBadgeLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, headerBadgeLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Estado del asistente</Label><Input value={chatbotBuilderDraft.statusBadgeLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, statusBadgeLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Radio del panel</Label><Input value={chatbotBuilderDraft.chatShellRadius} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatShellRadius: normalizePixelValue(e.target.value, '30') }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Radio de burbujas</Label><Input value={chatbotBuilderDraft.messageBubbleRadius} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messageBubbleRadius: normalizePixelValue(e.target.value, '22') }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Sombra del panel</Label><Select value={chatbotBuilderDraft.panelShadowPreset} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, panelShadowPreset: value as PanelShadowPreset }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="soft">Suave</SelectItem><SelectItem value="medium">Media</SelectItem><SelectItem value="strong">Fuerte</SelectItem></SelectContent></Select></div>
-                    </div>
-                  </>
+                {chatbotBuilderSection !== 'flow' ? (
+                  <CrmIntegrationsChatbotBuilderSections
+                    section={chatbotBuilderSection as 'brand' | 'launcher' | 'copy'}
+                    draft={chatbotBuilderDraft}
+                    setDraft={setChatbotBuilderDraft}
+                    normalizePixelValue={normalizePixelValue}
+                    normalizeZIndexValue={normalizeZIndexValue}
+                    getPreChatFormPreset={getPublicChatbotPreChatFormPreset}
+                    getPreChatFormPresets={getPublicChatbotPreChatFormPresets}
+                  />
                 ) : null}
+      </CrmIntegrationsChatbotBuilderModal>
 
-                {chatbotBuilderSection === 'launcher' ? (
-                  <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
-                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">Launcher flotante</p>
-                        <p className="text-xs text-slate-500">Activa o desactiva el botón flotante</p>
-                      </div>
-                      <Switch checked={chatbotBuilderDraft.floatingLauncherEnabled} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, floatingLauncherEnabled: checked }))} />
-                    </div>
-                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">Abrir panel al cargar</p>
-                        <p className="text-xs text-slate-500">Si se apaga, el widget inicia colapsado y solo deja visible el launcher</p>
-                      </div>
-                      <Switch checked={!chatbotBuilderDraft.launcherStartsCollapsed} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, launcherStartsCollapsed: !checked }))} disabled={!chatbotBuilderDraft.floatingLauncherEnabled} />
-                    </div>
-                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">Solicitar producto</p>
-                        <p className="text-xs text-slate-500">Muestra el campo rápido en el composer</p>
-                      </div>
-                      <Switch checked={chatbotBuilderDraft.showProductField} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, showProductField: checked }))} />
-                    </div>
-                    <div className="grid gap-2"><Label>Texto launcher</Label><Input value={chatbotBuilderDraft.launcherLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, launcherLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                    <div className="grid gap-2"><Label>Icono launcher</Label><Select value={chatbotBuilderDraft.launcherIcon} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherIcon: value }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bot">bot</SelectItem><SelectItem value="message-circle">message-circle</SelectItem><SelectItem value="sparkles">sparkles</SelectItem></SelectContent></Select></div>
-                    <div className="grid gap-2"><Label>Alineación launcher</Label><Select value={chatbotBuilderDraft.launcherPosition} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherPosition: value as LauncherPosition }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Derecha</SelectItem><SelectItem value="center">Centro</SelectItem><SelectItem value="left">Izquierda</SelectItem></SelectContent></Select></div>
-                    <div className="grid gap-2"><Label>Tipo posición</Label><Select value={chatbotBuilderDraft.launcherPlacement} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherPlacement: value as LauncherPlacement }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="fixed">Fixed</SelectItem><SelectItem value="absolute">Absolute</SelectItem></SelectContent></Select></div>
-                    <div className="grid gap-2"><Label>Tamaño launcher</Label><Select value={chatbotBuilderDraft.launcherSize} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherSize: value as LauncherSize }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="compact">Compacto</SelectItem><SelectItem value="standard">Estándar</SelectItem><SelectItem value="large">Grande</SelectItem></SelectContent></Select></div>
-                    <div className="grid gap-2"><Label>Offset horizontal</Label><Input value={chatbotBuilderDraft.launcherOffsetX} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, launcherOffsetX: normalizePixelValue(e.target.value, '60') }))} className="h-11 rounded-xl bg-white" /></div>
-                    <div className="grid gap-2"><Label>Offset vertical</Label><Input value={chatbotBuilderDraft.launcherOffsetY} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, launcherOffsetY: normalizePixelValue(e.target.value, '60') }))} className="h-11 rounded-xl bg-white" /></div>
-                    <div className="grid gap-2"><Label>Z-index overlay</Label><Input value={chatbotBuilderDraft.backdropZIndex} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, backdropZIndex: normalizeZIndexValue(e.target.value, '2147483645') }))} className="h-11 rounded-xl bg-white" /></div>
-                    <div className="grid gap-2"><Label>Z-index panel</Label><Input value={chatbotBuilderDraft.panelZIndex} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, panelZIndex: normalizeZIndexValue(e.target.value, '2147483646') }))} className="h-11 rounded-xl bg-white" /></div>
-                    <div className="grid gap-2"><Label>Z-index launcher</Label><Input value={chatbotBuilderDraft.launcherZIndex} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, launcherZIndex: normalizeZIndexValue(e.target.value, '2147483647') }))} className="h-11 rounded-xl bg-white" /></div>
-                  </div>
-                ) : null}
-
-                {chatbotBuilderSection === 'copy' ? (
-                  <div className="grid gap-4">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="grid gap-2"><Label>Label producto</Label><Input value={chatbotBuilderDraft.productLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, productLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={chatbotBuilderDraft.productPlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2 md:col-span-2"><Label>Label mensaje</Label><Input value={chatbotBuilderDraft.messageLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messageLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2 md:col-span-2"><Label>Placeholder mensaje</Label><Input value={chatbotBuilderDraft.messagePlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                    </div>
-
-                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
-                      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">Formulario previo al chat</p>
-                          <p className="text-xs text-slate-500">Pide datos y área antes de abrir la conversación del visitante.</p>
-                        </div>
-                        <Switch checked={chatbotBuilderDraft.preChatFormEnabled} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormEnabled: checked }))} />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Reiniciar conversación después de</Label>
-                        <Input value={chatbotBuilderDraft.chatResetConversationAfterValue} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatResetConversationAfterValue: e.target.value.replace(/[^0-9]/g, '') || '1' }))} className="h-11 rounded-xl" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Unidad</Label>
-                        <Select value={chatbotBuilderDraft.chatResetConversationAfterUnit} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, chatResetConversationAfterUnit: value as PublicChatbotResetConversationUnit }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="minutes">Minutos</SelectItem><SelectItem value="hours">Horas</SelectItem><SelectItem value="days">Días</SelectItem></SelectContent></Select>
-                      </div>
-                      <div className="grid gap-2 md:col-span-2">
-                        <Label>Acción al vencer</Label>
-                        <Select value={chatbotBuilderDraft.chatResetConversationAfterAction} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, chatResetConversationAfterAction: value as ChatbotInactivityAction }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="restart">Volver al inicio</SelectItem><SelectItem value="close">Cerrar conversación</SelectItem></SelectContent></Select>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Plantilla</Label>
-                        <Select value={chatbotBuilderDraft.preChatFormTemplate} onValueChange={(value) => {
-                          const preset = getPublicChatbotPreChatFormPreset(value)
-                          setChatbotBuilderDraft((current) => ({
-                            ...current,
-                            preChatFormTemplate: preset.value,
-                            preChatFormTitle: preset.title,
-                            preChatFormDescription: preset.description,
-                            preChatFormSubmitLabel: preset.submitLabel,
-                            preChatFormShowNameField: preset.showNameField,
-                            preChatFormShowEmailField: preset.showEmailField,
-                            preChatFormShowPhoneField: preset.showPhoneField,
-                            preChatFormRequireName: preset.requireName,
-                            preChatFormRequireEmail: preset.requireEmail,
-                            preChatFormRequirePhone: preset.requirePhone,
-                            preChatFormRequireContactMethod: preset.requireContactMethod,
-                            preChatFormShowDepartmentField: preset.showDepartmentField,
-                            preChatFormDepartmentLabel: preset.departmentLabel,
-                            preChatFormDepartmentPlaceholder: preset.departmentPlaceholder,
-                            preChatFormDepartmentOptions: preset.departmentOptions.map((item) => item.label).join('\n'),
-                          }))
-                        }}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent>{getPublicChatbotPreChatFormPresets().map((preset) => <SelectItem key={preset.value} value={preset.value}>{preset.label}</SelectItem>)}</SelectContent></Select>
-                      </div>
-                      <div className="text-xs text-slate-500 md:col-span-2">Ejemplos: 5 minutos, 1 hora o 12 horas. Al vencer el tiempo, el visitante ve un hilo nuevo y el CRM puede seguir agrupando por correo o teléfono.</div>
-                      {chatbotBuilderDraft.preChatFormEnabled ? (
-                        <>
-                          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:col-span-2 md:grid-cols-3">
-                            <div className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 md:col-span-3">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-900">Inactividad del formulario previo</p>
-                                <p className="text-xs text-slate-500">Si el prospecto no termina esta plantilla, puedes reiniciarla o cerrar la conversación.</p>
-                              </div>
-                              <Switch checked={chatbotBuilderDraft.preChatFormInactivityEnabled} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormInactivityEnabled: checked }))} />
-                            </div>
-                            {chatbotBuilderDraft.preChatFormInactivityEnabled ? (
-                              <>
-                                <div className="grid gap-2">
-                                  <Label>Tiempo</Label>
-                                  <Input value={chatbotBuilderDraft.preChatFormInactivityValue} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormInactivityValue: e.target.value.replace(/[^0-9]/g, '') || '1' }))} className="h-11 rounded-xl" />
-                                </div>
-                                <div className="grid gap-2">
-                                  <Label>Unidad</Label>
-                                  <Select value={chatbotBuilderDraft.preChatFormInactivityUnit} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormInactivityUnit: value as ChatbotInactivityUnit }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="minutes">Minutos</SelectItem><SelectItem value="hours">Horas</SelectItem><SelectItem value="days">Días</SelectItem></SelectContent></Select>
-                                </div>
-                                <div className="grid gap-2">
-                                  <Label>Al vencer</Label>
-                                  <Select value={chatbotBuilderDraft.preChatFormInactivityAction} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormInactivityAction: value as ChatbotInactivityAction }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="restart">Volver al inicio</SelectItem><SelectItem value="close">Cerrar conversación</SelectItem></SelectContent></Select>
-                                </div>
-                              </>
-                            ) : null}
-                          </div>
-                          <div className="grid gap-2 md:col-span-2"><Label>Título del formulario</Label><Input value={chatbotBuilderDraft.preChatFormTitle} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormTitle: e.target.value }))} className="h-11 rounded-xl" /></div>
-                          <div className="grid gap-2 md:col-span-2"><Label>Descripción</Label><Textarea value={chatbotBuilderDraft.preChatFormDescription} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormDescription: e.target.value }))} rows={3} className="rounded-2xl" /></div>
-                          <div className="grid gap-2 md:col-span-2"><Label>Texto del botón</Label><Input value={chatbotBuilderDraft.preChatFormSubmitLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormSubmitLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar nombre</span><Switch checked={chatbotBuilderDraft.preChatFormShowNameField} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormShowNameField: checked }))} /></div>
-                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Requerir nombre</span><Switch checked={chatbotBuilderDraft.preChatFormRequireName} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormRequireName: checked }))} disabled={!chatbotBuilderDraft.preChatFormShowNameField} /></div>
-                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar correo</span><Switch checked={chatbotBuilderDraft.preChatFormShowEmailField} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormShowEmailField: checked }))} /></div>
-                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Requerir correo</span><Switch checked={chatbotBuilderDraft.preChatFormRequireEmail} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormRequireEmail: checked }))} disabled={!chatbotBuilderDraft.preChatFormShowEmailField} /></div>
-                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar teléfono</span><Switch checked={chatbotBuilderDraft.preChatFormShowPhoneField} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormShowPhoneField: checked }))} /></div>
-                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Requerir teléfono</span><Switch checked={chatbotBuilderDraft.preChatFormRequirePhone} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormRequirePhone: checked }))} disabled={!chatbotBuilderDraft.preChatFormShowPhoneField} /></div>
-                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Exigir al menos correo o teléfono</span><Switch checked={chatbotBuilderDraft.preChatFormRequireContactMethod} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormRequireContactMethod: checked }))} disabled={!chatbotBuilderDraft.preChatFormShowEmailField && !chatbotBuilderDraft.preChatFormShowPhoneField} /></div>
-                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Mostrar selector de departamento</span><Switch checked={chatbotBuilderDraft.preChatFormShowDepartmentField} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormShowDepartmentField: checked }))} /></div>
-                          {chatbotBuilderDraft.preChatFormShowDepartmentField ? (
-                            <>
-                              <div className="grid gap-2"><Label>Label departamento</Label><Input value={chatbotBuilderDraft.preChatFormDepartmentLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormDepartmentLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                              <div className="grid gap-2"><Label>Placeholder departamento</Label><Input value={chatbotBuilderDraft.preChatFormDepartmentPlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormDepartmentPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                              <div className="grid gap-2 md:col-span-2"><Label>Opciones del departamento</Label><Textarea value={chatbotBuilderDraft.preChatFormDepartmentOptions} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormDepartmentOptions: e.target.value }))} rows={4} className="rounded-2xl" placeholder="Ventas&#10;Soporte técnico&#10;Facturación" /></div>
-                            </>
-                          ) : null}
-                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Mostrar nota legal</span><Switch checked={chatbotBuilderDraft.termsEnabled} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, termsEnabled: checked }))} /></div>
-                          {chatbotBuilderDraft.termsEnabled ? (
-                            <>
-                              <div className="grid gap-2 md:col-span-2"><Label>Texto legal</Label><Textarea value={chatbotBuilderDraft.termsLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, termsLabel: e.target.value }))} rows={2} className="rounded-2xl" /></div>
-                              <div className="grid gap-2"><Label>Texto enlace</Label><Input value={chatbotBuilderDraft.termsLinkText} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, termsLinkText: e.target.value }))} className="h-11 rounded-xl" /></div>
-                              <div className="grid gap-2"><Label>URL política</Label><Input value={chatbotBuilderDraft.termsLinkUrl} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, termsLinkUrl: e.target.value }))} className="h-11 rounded-xl" placeholder="https://..." /></div>
-                            </>
-                          ) : null}
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="flex min-h-0 flex-col overflow-hidden bg-[linear-gradient(180deg,#ffffff,#f6fffb)] p-6">
-              <div className="rounded-[26px] border border-emerald-200 bg-emerald-50/70 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Preview en vivo</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">Puedes revisar el estado inicial configurado, forzar solo launcher o abrir el panel, tanto en desktop como en mobile.</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {[{ value: 'floating', label: 'Estado inicial' }, { value: 'compact', label: 'Solo launcher' }, { value: 'expanded', label: 'Panel abierto' }].map((mode) => (
-                      <button key={mode.value} type="button" onClick={() => setChatbotBuilderPreviewMode(mode.value as ChatbotPreviewMode)} className={chatbotBuilderPreviewMode === mode.value ? 'rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600'}>{mode.label}</button>
-                    ))}
-                    {[{ value: 'desktop', label: 'Desktop' }, { value: 'mobile', label: 'Mobile' }].map((viewport) => (
-                      <button key={viewport.value} type="button" onClick={() => setChatbotBuilderPreviewViewport(viewport.value as ChatbotPreviewViewport)} className={chatbotBuilderPreviewViewport === viewport.value ? 'rounded-full border border-sky-300 bg-sky-100 px-3 py-1 text-[11px] font-semibold text-sky-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600'}>{viewport.label}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
-                {renderChatbotPreview(chatbotBuilderDraft, { mode: chatbotBuilderPreviewMode, viewport: chatbotBuilderPreviewViewport })}
-              </div>
-              <DialogFooter className="mt-5 border-t border-slate-100 pt-5">
-                <Button variant="outline" className="rounded-xl" onClick={() => {
-                  const nextBuilderState = getChatbotBuilderState(selectedSettings)
-                  setChatbotBuilderDraft(nextBuilderState)
-                  setChatbotBuilderPreviewMode(getInitialChatbotPreviewMode(nextBuilderState))
-                }} disabled={savingChatbotBuilder}>
-                  Revertir
-                </Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => setChatbotBuilderModalOpen(false)} disabled={savingChatbotBuilder}>
-                  Cerrar
-                </Button>
-                <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => void saveSelectedChatbotBuilder()} disabled={savingChatbotBuilder}>
-                  {savingChatbotBuilder ? 'Guardando...' : 'Guardar constructor'}
-                </Button>
-              </DialogFooter>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={webFormBuilderModalOpen} onOpenChange={setWebFormBuilderModalOpen}>
-        <DialogContent className="h-[92vh] max-h-[92vh] max-w-7xl overflow-hidden rounded-[30px] border-sky-200 bg-white/98 p-0 shadow-[0_28px_80px_-42px_rgba(14,165,233,0.35)]">
-          <div className="grid h-full min-h-0 gap-0 xl:grid-cols-[0.95fr_1.05fr]">
-            <div className="min-h-0 overflow-y-auto border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,.18),transparent_30%),linear-gradient(180deg,#f8fbff,#ffffff)] p-6 xl:border-b-0 xl:border-r">
-              <DialogHeader>
-                <DialogTitle>Editor visual del formulario web</DialogTitle>
-                <DialogDescription>El usuario edita en un modal dedicado y cada ajuste se refleja al instante en el preview del iframe.</DialogDescription>
-              </DialogHeader>
-
-              <div className="mt-5 pr-1">
-                {renderWebFormConfigurationSections('builder')}
-              </div>
-            </div>
-
-            <div className="flex min-h-0 flex-col overflow-hidden bg-[linear-gradient(180deg,#ffffff,#f8fbff)] p-6">
-              <div className="rounded-[26px] border border-sky-200 bg-sky-50/70 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Preview en vivo</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">Lo que ves aquí es la versión real que quedará disponible en la URL pública y en el iframe del canal.</p>
-              </div>
-              <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
-                {renderWebFormPreview(webFormBuilderDraft, { maxWidthClassName: 'max-w-2xl', outerPaddingClassName: 'p-4', titleClassName: 'text-lg', messageMinHeight: 112 })}
-              </div>
-              <DialogFooter className="mt-5 border-t border-slate-100 pt-5">
-                <Button variant="outline" className="rounded-xl" onClick={() => setWebFormBuilderDraft(getWebFormBuilderState(selectedSettings))} disabled={savingWebFormBuilder}>
-                  Revertir
-                </Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => setWebFormBuilderModalOpen(false)} disabled={savingWebFormBuilder}>
-                  Cerrar
-                </Button>
-                <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => void saveSelectedWebFormBuilder()} disabled={savingWebFormBuilder}>
-                  {savingWebFormBuilder ? 'Guardando...' : 'Guardar constructor'}
-                </Button>
-              </DialogFooter>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CrmIntegrationsWebFormBuilderModal
+        open={webFormBuilderModalOpen}
+        onOpenChange={setWebFormBuilderModalOpen}
+        savingWebFormBuilder={savingWebFormBuilder}
+        onRevert={() => setWebFormBuilderDraft(getWebFormBuilderState(selectedSettings))}
+        onClose={() => setWebFormBuilderModalOpen(false)}
+        onSave={() => void saveSelectedWebFormBuilder()}
+        previewContent={renderWebFormPreview(webFormBuilderDraft, { maxWidthClassName: 'max-w-2xl', outerPaddingClassName: 'p-4', titleClassName: 'text-lg', messageMinHeight: 112 })}
+      >
+        {renderWebFormConfigurationSections('builder')}
+      </CrmIntegrationsWebFormBuilderModal>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="h-[92vh] max-h-[92vh] w-[97vw] max-w-[1560px] overflow-hidden rounded-[30px] border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-42px_rgba(15,23,42,0.45)]">

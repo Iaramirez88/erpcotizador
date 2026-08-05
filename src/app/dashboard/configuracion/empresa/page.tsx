@@ -38,8 +38,11 @@ type OnboardingConfig = {
 export default function ConfigEmpresaPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [savingIntelligence, setSavingIntelligence] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
+  const [intelligenceError, setIntelligenceError] = useState<string | null>(null)
+  const [intelligenceStatus, setIntelligenceStatus] = useState<string | null>(null)
 
   const [config, setConfig] = useState<EmpresaConfig | null>(null)
   const [onboarding, setOnboarding] = useState<OnboardingConfig | null>(null)
@@ -138,6 +141,42 @@ export default function ConfigEmpresaPage() {
       )
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function saveIntelligenceSetting(nextEnabled: boolean) {
+    if (!config) return
+
+    const previousValue = intelligenceEnabled
+    setIntelligenceEnabled(nextEnabled)
+    setSavingIntelligence(true)
+    setIntelligenceError(null)
+    setIntelligenceStatus(null)
+
+    try {
+      const res = await fetch('/api/configuracion/empresa', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intelligenceEnabled: nextEnabled }),
+      })
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; data?: EmpresaConfig; error?: string } | null
+      if (!res.ok || !json?.ok || !json.data) {
+        setIntelligenceEnabled(previousValue)
+        setIntelligenceError(json?.error ?? 'No se pudo actualizar el módulo.')
+        return
+      }
+
+      const nextConfig = json.data
+      setConfig((current) => current ? { ...current, ...nextConfig } : nextConfig)
+      setIntelligenceEnabled(Boolean(nextConfig.intelligenceEnabled))
+      setIntelligenceStatus(nextConfig.intelligenceEnabled
+        ? 'Módulo prendido. Ya puedes verlo en el dashboard.'
+        : 'Módulo apagado. Se ocultó del dashboard y se detuvieron sus alertas automáticas.')
+    } catch {
+      setIntelligenceEnabled(previousValue)
+      setIntelligenceError('No se pudo actualizar el módulo.')
+    } finally {
+      setSavingIntelligence(false)
     }
   }
 
@@ -266,13 +305,21 @@ export default function ConfigEmpresaPage() {
               <CardDescription>
                 Cuando está apagado, se oculta el módulo de inteligencia del dashboard y se detienen sus notificaciones automáticas.
               </CardDescription>
+              {intelligenceError ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{intelligenceError}</div> : null}
+              {intelligenceStatus ? <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{intelligenceStatus}</div> : null}
             </div>
             <Switch
               id="intelligence-enabled"
               checked={intelligenceEnabled}
-              onCheckedChange={setIntelligenceEnabled}
-              disabled={saving || loading || !config}
+              onCheckedChange={(checked) => void saveIntelligenceSetting(checked)}
+              disabled={saving || savingIntelligence || loading || !config}
             />
+          </div>
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-600">
+            <span>{savingIntelligence ? 'Guardando estado del módulo...' : intelligenceEnabled ? 'Estado actual: prendido' : 'Estado actual: apagado'}</span>
+            <span className={intelligenceEnabled ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700' : 'rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700'}>
+              {intelligenceEnabled ? 'Activo' : 'Inactivo'}
+            </span>
           </div>
         </CardContent>
       </Card>

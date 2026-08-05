@@ -1525,6 +1525,12 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     setHybridOverrideConfirmed(false)
   }, [selectedConversation?.id, hybridComposerGuard?.messageId])
 
+  const [detailPanelTab, setDetailPanelTab] = useState<'CHAT' | 'CRM' | 'AI' | 'CAPTURES'>('CHAT')
+
+  useEffect(() => {
+    setDetailPanelTab('CHAT')
+  }, [selectedConversationId])
+
   const compactToolbarLayout = (
     <div className="space-y-3">
       <Card className="rounded-[28px] border-slate-200 bg-white/95 shadow-[0_20px_44px_-34px_rgba(15,23,42,0.32)]">
@@ -1684,6 +1690,740 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       </Card>
     </div>
   )
+
+  if (props.hideHero) {
+    const selectedProvider = selectedConversation ? formatProviderDisplayName(selectedConversation.channelConnection.provider) : null
+
+    return (
+      <div className="space-y-4 pb-4">
+        <Card className="overflow-hidden rounded-[34px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.18),transparent_28%),linear-gradient(135deg,#ffffff_0%,#f7fbff_52%,#fdfefe_100%)] shadow-[0_28px_80px_-44px_rgba(37,99,235,0.34)]">
+          <CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-start lg:justify-between lg:p-6">
+            <div className="space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-700">
+                <span className="h-2 w-2 rounded-full bg-blue-600" />
+                Panel global CRM
+              </div>
+              <div className="space-y-1.5">
+                <h2 className="text-[28px] font-semibold tracking-[-0.02em] text-slate-950">Prospectos y clientes</h2>
+                <p className="max-w-3xl text-sm leading-6 text-slate-600">Workspace de conversaciones con navegación lateral, chat dominante y contexto comercial organizado por pestañas.</p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                <span className="rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 font-medium">{queueSummary.teamCount} conversaciones activas</span>
+                <span className="rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 font-medium">{queueFocusSummary.immediateCount} urgentes</span>
+                <span className="rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 font-medium">{queueSummary.unassignedCount} sin asignar</span>
+              </div>
+            </div>
+            <div className="grid gap-2 lg:min-w-[340px]">
+              <div className="flex items-center justify-between rounded-[24px] border border-slate-200 bg-white/92 px-4 py-3 text-sm text-slate-600 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.35)]">
+                <div className="grid gap-0.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Tiempo real</span>
+                  <span>{liveMode ? `Activo · ${formatDate(lastRefreshAt, locale, 'sin sincronizar')}` : 'Pausado'}</span>
+                </div>
+                <Switch checked={liveMode} onCheckedChange={setLiveMode} />
+              </div>
+              <div className="flex flex-wrap gap-2 rounded-[24px] border border-slate-200 bg-white/88 p-2 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.25)]">
+                <Button variant="outline" className="rounded-2xl border-slate-200 bg-white" onClick={() => void Promise.all([loadConversations(), loadMeta()])}>
+                  <RefreshCcw className="mr-2 h-4 w-4" />
+                  Refrescar
+                </Button>
+                <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white">
+                  <Link href="/dashboard/crm/agenda">Agenda</Link>
+                </Button>
+                <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white">
+                  <Link href="/dashboard/notificaciones">Notificaciones</Link>
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)] xl:items-start">
+          <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:sticky xl:top-4">
+            <CardContent className="space-y-4 p-3.5">
+              <Button className="h-12 w-full justify-start rounded-[24px] bg-[linear-gradient(135deg,#315efb,#5675ff)] px-4 text-left text-white shadow-[0_18px_36px_-24px_rgba(49,94,251,0.7)] hover:bg-[linear-gradient(135deg,#2b52dc,#4b6ef2)]" onClick={() => setSimulatorOpen(true)}>
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-white/18 text-base font-semibold">+</span>
+                <span className="ml-3 flex flex-col items-start">
+                  <span className="text-sm font-semibold">Nuevo chat</span>
+                  <span className="text-[11px] font-medium text-blue-100">Simular inbound o abrir un nuevo hilo</span>
+                </span>
+              </Button>
+
+              <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#f8fbff,#ffffff)] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                <div className="space-y-3">
+                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar conversaciones..." className="h-11 rounded-2xl border-slate-200 bg-white" />
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                    <Select value={datePreset} onValueChange={(value) => setDatePreset(value as InboxDatePreset)}>
+                      <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="7D">Últimos 7 días</SelectItem>
+                        <SelectItem value="30D">Últimos 30 días</SelectItem>
+                        <SelectItem value="ALL">Todo el historial</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button variant="outline" className="h-10 rounded-2xl border-slate-200 bg-white px-3" onClick={() => void loadConversations()}>
+                      Aplicar
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 rounded-2xl bg-slate-100/90 p-1">
+                    <button type="button" onClick={() => setInboxStatusTab('PENDING')} className={inboxStatusTab === 'PENDING' ? 'rounded-xl bg-white px-2.5 py-2 text-sm font-semibold text-blue-700 shadow-sm' : 'rounded-xl px-2.5 py-2 text-sm font-semibold text-slate-500'}>
+                      <span className="block">Por resolver</span>
+                      <span className="mt-0.5 block text-[11px] text-slate-400">{inboxStatusCounts.pendingCount}</span>
+                    </button>
+                    <button type="button" onClick={() => setInboxStatusTab('RESOLVED')} className={inboxStatusTab === 'RESOLVED' ? 'rounded-xl bg-white px-2.5 py-2 text-sm font-semibold text-emerald-700 shadow-sm' : 'rounded-xl px-2.5 py-2 text-sm font-semibold text-slate-500'}>
+                      <span className="block">Resueltos</span>
+                      <span className="mt-0.5 block text-[11px] text-slate-400">{inboxStatusCounts.resolvedCount}</span>
+                    </button>
+                    <button type="button" onClick={() => setInboxStatusTab('ALL')} className={inboxStatusTab === 'ALL' ? 'rounded-xl bg-white px-2.5 py-2 text-sm font-semibold text-slate-800 shadow-sm' : 'rounded-xl px-2.5 py-2 text-sm font-semibold text-slate-500'}>
+                      <span className="block">Todos</span>
+                      <span className="mt-0.5 block text-[11px] text-slate-400">{inboxStatusCounts.allCount}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-3.5">
+                <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Conversaciones</p>
+                <div className="mt-3 space-y-1.5">
+                  <button type="button" onClick={() => setQueueScope('TEAM')} className={queueScope === 'TEAM' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
+                    <span className="inline-flex items-center gap-2 text-sm font-medium"><MessageCircle className="h-4 w-4" />Todos</span>
+                    <span className={queueScope === 'TEAM' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.teamCount}</span>
+                  </button>
+                  <button type="button" onClick={() => setQueueScope('MINE')} className={queueScope === 'MINE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
+                    <span className="inline-flex items-center gap-2 text-sm font-medium"><CheckCheck className="h-4 w-4" />Asignados a mí</span>
+                    <span className={queueScope === 'MINE' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.mineCount}</span>
+                  </button>
+                  <button type="button" onClick={() => setQueueScope('UNASSIGNED')} className={queueScope === 'UNASSIGNED' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
+                    <span className="inline-flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" />Sin asignar</span>
+                    <span className={queueScope === 'UNASSIGNED' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.unassignedCount}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-3.5">
+                <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Por actividad</p>
+                <div className="mt-3 space-y-1.5">
+                  <button type="button" onClick={() => setQueueFocus('ALL')} className={queueFocus === 'ALL' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><MessageCircle className="h-4 w-4" />Todos</span><span className={queueFocus === 'ALL' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.allCount}</span></button>
+                  <button type="button" onClick={() => setQueueFocus('IMMEDIATE')} className={queueFocus === 'IMMEDIATE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><AlertTriangle className="h-4 w-4" />No leídos / urgentes</span><span className={queueFocus === 'IMMEDIATE' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.immediateCount}</span></button>
+                  <button type="button" onClick={() => setQueueFocus('WAITING_CUSTOMER')} className={queueFocus === 'WAITING_CUSTOMER' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" />Sin respuestas</span><span className={queueFocus === 'WAITING_CUSTOMER' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.waitingCustomerCount}</span></button>
+                  <button type="button" onClick={() => setQueueFocus('BOT_HANDOFF')} className={queueFocus === 'BOT_HANDOFF' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><Bot className="h-4 w-4" />Asignadas a la IA</span><span className={queueFocus === 'BOT_HANDOFF' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.botHandoffCount}</span></button>
+                  <button type="button" onClick={() => setQueueFocus('HYBRID_PHONE_ACTIVITY')} className={queueFocus === 'HYBRID_PHONE_ACTIVITY' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><PhoneCall className="h-4 w-4" />Actividad celular</span><span className={queueFocus === 'HYBRID_PHONE_ACTIVITY' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.hybridPhoneActivityCount}</span></button>
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-3.5">
+                <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Canales</p>
+                <div className="mt-3 space-y-1.5">
+                  <button type="button" onClick={() => setProviderFilter('WHATSAPP_CLOUD')} className={(providerFilter === 'WHATSAPP_CLOUD' || providerFilter === 'WHATSAPP_SANDBOX') ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="WHATSAPP_CLOUD" />WhatsApp</span><span className="text-[11px] text-slate-400">Chat</span></button>
+                  <button type="button" onClick={() => setProviderFilter('MESSENGER')} className={providerFilter === 'MESSENGER' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="MESSENGER" />Messenger</span><span className="text-[11px] text-slate-400">Meta</span></button>
+                  <button type="button" onClick={() => setProviderFilter('INSTAGRAM_DM')} className={providerFilter === 'INSTAGRAM_DM' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="INSTAGRAM_DM" />Instagram</span><span className="text-[11px] text-slate-400">DM</span></button>
+                  <button type="button" onClick={() => setProviderFilter('FACEBOOK_PAGE')} className={providerFilter === 'FACEBOOK_PAGE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="FACEBOOK_PAGE" />Facebook</span><span className="text-[11px] text-slate-400">Page</span></button>
+                  <button type="button" onClick={() => setProviderFilter('ALL')} className={providerFilter === 'ALL' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><Mail className="h-4 w-4" />Todos</span><span className="text-[11px] text-slate-400">Inbox</span></button>
+                </div>
+              </div>
+
+              <details className="rounded-[28px] border border-slate-200 bg-white p-3.5">
+                <summary className="cursor-pointer list-none px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Filtros avanzados</summary>
+                <div className="mt-3 grid gap-2">
+                  <Select value={assignedFilter} onValueChange={setAssignedFilter}>
+                    <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue placeholder="Asesor" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Todos los asesores</SelectItem>
+                      {assignees.map((item) => <SelectItem key={item.id} value={item.id}>{formatAssigneeName(item)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={originFilter} onValueChange={(value) => setOriginFilter(value as OriginFilter)}>
+                    <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue placeholder="Origen" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Todos los orígenes</SelectItem>
+                      <SelectItem value="EMAIL">Correo</SelectItem>
+                      <SelectItem value="FORM">Formulario</SelectItem>
+                      <SelectItem value="CHATBOT">Chatbot</SelectItem>
+                      <SelectItem value="WHATSAPP">WhatsApp</SelectItem>
+                      <SelectItem value="SOCIAL">Social</SelectItem>
+                      <SelectItem value="PHONE">Llamada</SelectItem>
+                      <SelectItem value="REFERRAL">Referido</SelectItem>
+                      <SelectItem value="IMPORT">Importado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={channelFilter} onValueChange={setChannelFilter}>
+                    <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue placeholder="Canal" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Todos los canales</SelectItem>
+                      {channels.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </details>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white">
+                <div className="border-b border-slate-100 px-4 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">Bandeja</p>
+                      <p className="mt-1 text-xs text-slate-500">{displayedConversations.length} conversaciones visibles</p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{queueScope === 'TEAM' ? 'Equipo' : queueScope === 'MINE' ? 'Mías' : 'Sin asignar'}</span>
+                  </div>
+                </div>
+                <div className="max-h-[calc(100vh-320px)] space-y-1.5 overflow-y-auto p-3">
+                  {loading ? <p className="px-2 py-4 text-sm text-slate-500">Cargando conversaciones...</p> : null}
+                  {!loading && displayedConversations.length === 0 ? <p className="px-2 py-4 text-sm text-slate-500">No hay conversaciones para mostrar.</p> : null}
+                  {displayedConversations.map((item) => {
+                    const isActive = item.id === selectedConversationId
+                    const preview = item.messages?.[0]?.bodyText || item.sourceCampaign || item.contactEmail || item.contactPhone || naText
+                    const slaMeta = getConversationSlaMeta(item, locale)
+                    const statusMeta = getConversationStatusMeta(item.status)
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setSelectedConversationId(item.id)}
+                        className={isActive ? 'w-full rounded-[22px] border border-blue-200 bg-[linear-gradient(135deg,rgba(239,246,255,0.95),rgba(255,255,255,1))] p-3 text-left shadow-[0_16px_32px_-28px_rgba(37,99,235,0.6)]' : 'w-full rounded-[22px] border border-transparent bg-white p-3 text-left transition hover:border-slate-200 hover:bg-slate-50/70'}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <div className="relative shrink-0">
+                              <IdentityAvatar label={item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || item.contactPhone || item.contactEmail || 'Contacto'} imageUrl={item.contactAvatarUrl} fallbackImageUrl="/crm-contact-avatar-default.svg" size="sm" />
+                              <div className="absolute -bottom-1 -right-1">
+                                <ChannelProviderBadge provider={item.channelConnection.provider} />
+                              </div>
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-semibold text-slate-950">{renderHighlightedText(item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto', search)}</p>
+                                {item.unreadCount > 0 ? <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white">{item.unreadCount}</span> : null}
+                              </div>
+                              <p className="mt-0.5 line-clamp-1 text-[13px] leading-5 text-slate-500">{renderHighlightedText(preview, search)}</p>
+                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                                <span>{formatProviderDisplayName(item.channelConnection.provider)}</span>
+                                <span className={`rounded-full border px-2 py-0.5 ${slaMeta.className}`}>{slaMeta.label}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="shrink-0 space-y-1 text-right">
+                            <span className="block text-[11px] font-medium text-slate-400">{formatConversationListTime(item.lastMessageAt, locale)}</span>
+                            <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusMeta.className}`}>{statusMeta.label}</span>
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden rounded-[32px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)]">
+            <div className="grid min-h-[780px] grid-rows-[auto_auto_minmax(0,1fr)]">
+              <div className="border-b border-slate-100 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-4 lg:px-5">
+                {!selectedConversation ? (
+                  <div className="flex h-full min-h-[160px] items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-slate-50/70 px-6 text-center text-sm text-slate-500">
+                    Selecciona una conversación en la columna izquierda para abrir el chat y su contexto comercial.
+                  </div>
+                ) : (
+                  (() => {
+                    const selectedSla = getConversationSlaMeta(selectedConversation, locale)
+                    const selectedPriority = getConversationPriorityMeta(selectedConversation, locale)
+                    const selectedStatus = getConversationStatusMeta(selectedConversation.status)
+                    const isMuted = mutedCrmConversationIds.includes(selectedConversation.id)
+                    return (
+                      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="min-w-0 space-y-3">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <div className="relative shrink-0">
+                              <IdentityAvatar label={selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación'} imageUrl={selectedConversation.contactAvatarUrl} fallbackImageUrl="/crm-contact-avatar-default.svg" size="lg" />
+                              <div className="absolute -bottom-1 -right-1">
+                                <ChannelProviderBadge provider={selectedConversation.channelConnection.provider} size="md" />
+                              </div>
+                            </div>
+                            <div className="min-w-0 space-y-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h2 className="text-[26px] font-semibold tracking-[-0.02em] text-slate-950">{renderHighlightedText(selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación sin alias', search)}</h2>
+                                {isMuted ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Silenciado</span> : null}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold uppercase tracking-[0.16em] text-slate-600">{selectedProvider}</span>
+                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-600">{selectedConversation.contactPhone || naText}</span>
+                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-600">{selectedConversation.contactEmail || naText}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedStatus.className}`}>{selectedStatus.label}</span>
+                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedPriority.className}`}>{selectedPriority.label}</span>
+                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedSla.className}`}>{selectedSla.label}</span>
+                            <span className="text-sm text-slate-500">{selectedSla.elapsedLabel}</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2 rounded-[24px] border border-slate-200 bg-white/92 p-2 shadow-[0_14px_32px_-28px_rgba(15,23,42,0.35)]">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="icon" className="rounded-xl border-slate-200 bg-white" aria-label="Opciones de conversación">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-60 rounded-2xl p-2">
+                              <DropdownMenuLabel>Conversación CRM</DropdownMenuLabel>
+                              <DropdownMenuItem onSelect={toggleMuteSelectedConversation}>
+                                <BellOff className="mr-2 h-4 w-4" />
+                                {isMuted ? 'Activar notificaciones' : 'Silenciar notificaciones'}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          {selectedConversation.lead ? (
+                            <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
+                              <Link href={`/dashboard/crm/leads/${selectedConversation.lead.id}`}>Abrir lead</Link>
+                            </Button>
+                          ) : null}
+                          {selectedConversation.contactPhone ? (
+                            <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
+                              <a href={`tel:${selectedConversation.contactPhone}`}>Llamar</a>
+                            </Button>
+                          ) : null}
+                          {!selectedConversation.assignedTo && currentUserId ? (
+                            <Button variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100" onClick={() => void takeConversation(selectedConversation.id)} disabled={assigning}>
+                              {assigning ? 'Tomando...' : 'Tomar conversación'}
+                            </Button>
+                          ) : null}
+                          <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void resolveConversation()} disabled={resolving || selectedConversation.status === 'RESOLVED'}>
+                            {resolving ? 'Resolviendo...' : 'Resolver'}
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })()
+                )}
+              </div>
+
+              {selectedConversation ? (
+                <div className="border-b border-slate-100 bg-white px-4 py-3 lg:px-5">
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Vista del panel</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button type="button" onClick={() => setDetailPanelTab('CHAT')} className={detailPanelTab === 'CHAT' ? 'inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm' : 'inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600'}><MessageCircle className="h-4 w-4" />Chat</button>
+                        <button type="button" onClick={() => setDetailPanelTab('CRM')} className={detailPanelTab === 'CRM' ? 'inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm' : 'inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600'}><CheckCheck className="h-4 w-4" />CRM</button>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Automatización</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button type="button" onClick={() => setDetailPanelTab('AI')} className={detailPanelTab === 'AI' ? 'inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm' : 'inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600'}><Bot className="h-4 w-4" />IA</button>
+                        <button type="button" onClick={() => setDetailPanelTab('CAPTURES')} className={detailPanelTab === 'CAPTURES' ? 'inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm' : 'inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600'}><FileText className="h-4 w-4" />Capturas</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="min-h-0 overflow-y-auto bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.07),transparent_32%),linear-gradient(180deg,#ffffff,#fbfdff)] p-4 lg:p-5">
+                {!selectedConversation ? null : detailPanelTab === 'CHAT' ? (
+                  <div className="space-y-4">
+                    {conversationAi ? (
+                      <div className="rounded-[24px] border border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,0.9),rgba(255,255,255,1))] p-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                              <Bot className="h-4 w-4 text-emerald-700" />
+                              Copiloto comercial
+                            </div>
+                            <p className="text-sm leading-6 text-slate-600">{conversationAi.summary}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" className="rounded-xl border-emerald-200 bg-white" onClick={() => selectedConversation ? void loadConversationAi(selectedConversation.id) : undefined} disabled={generatingAi}>
+                              {generatingAi ? 'Analizando...' : 'Regenerar'}
+                            </Button>
+                            <Button variant="outline" className="rounded-xl border-emerald-200 bg-white text-emerald-700" onClick={() => {
+                              setMessageTypeDraft('TEXT')
+                              setAttachmentUrlDraft('')
+                              setAttachmentNameDraft('')
+                              setMessageDraft(conversationAi.suggestedReply)
+                            }}>
+                              Usar respuesta sugerida
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <Card className="rounded-[28px] border border-slate-200 bg-white/98 shadow-none">
+                      <CardContent className="space-y-4 p-4 lg:p-5">
+                        <div className="rounded-[24px] border border-slate-100 bg-slate-50/45 p-3">
+                          <div className="max-h-[430px] space-y-3 overflow-y-auto pr-1">
+                          {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
+                          {selectedConversation.messages.map((message: ConversationMessage) => {
+                            const originMeta = getMessageOriginMeta(getMessageOrigin(message))
+                            const hasCollision = hasMessageCollision(message)
+                            const statusLabel = getCrmMessageStatusLabel(message.status)
+
+                            return (
+                              <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[86%] rounded-[28px] border border-blue-200 bg-[linear-gradient(135deg,#eff6ff,#ffffff)] px-4 py-3 text-sm text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[86%] rounded-[26px] border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600' : 'mr-auto max-w-[86%] rounded-[28px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
+                                <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
+                                  <div className="flex items-center gap-2">
+                                    <span>{message.direction}</span>
+                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold normal-case ${originMeta.className}`}>{originMeta.label}</span>
+                                    {hasCollision ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold normal-case text-amber-800">Colisión</span> : null}
+                                  </div>
+                                  <span>{formatDate(message.occurredAt, locale, naText)}</span>
+                                </div>
+                                {hasCollision ? <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Se detectó una posible doble respuesta entre el celular y el CRM en esta conversación.</p> : null}
+                                <p className="mt-2 whitespace-pre-wrap leading-6">{renderHighlightedText(message.bodyText || 'Sin contenido textual', search)}</p>
+                                {renderConversationAttachments(message.attachmentsJson)}
+                                {message.direction === 'OUTBOUND' && statusLabel ? (
+                                  <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-slate-500">
+                                    {renderCrmMessageStatusIcon(message.status)}
+                                    <span>{statusLabel}</span>
+                                  </div>
+                                ) : null}
+                              </div>
+                            )
+                          })}
+                        </div>
+                        </div>
+
+                        <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] p-4">
+                          {messagingWindowState ? (
+                            <div className={messagingWindowState.open ? 'rounded-2xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs text-emerald-800' : 'rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-800'}>
+                              <span className="font-semibold">{messagingWindowState.label}:</span> {messagingWindowState.hint}
+                            </div>
+                          ) : null}
+                          {hybridComposerGuard ? (
+                            <div className={hybridComposerGuard.hasCollision ? 'rounded-2xl border border-rose-200 bg-rose-50/80 px-3 py-3 text-xs text-rose-800' : 'rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-xs text-amber-900'}>
+                              <div className="flex items-start gap-2">
+                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                                <div className="space-y-2">
+                                  <p className="font-semibold">{hybridComposerGuard.hasCollision ? 'Riesgo alto de doble respuesta' : 'Actividad reciente desde celular detectada'}</p>
+                                  <p>Se detectó un mensaje saliente desde celular el {formatDate(hybridComposerGuard.occurredAt, locale, naText)}. Revisa esa intervención antes de contestar desde el CRM.</p>
+                                  {hybridComposerGuard.bodyText ? <p className="rounded-xl bg-white/70 px-2.5 py-2 text-[11px] leading-5 text-slate-700">"{hybridComposerGuard.bodyText}"</p> : null}
+                                  <label className="flex items-start gap-2 text-[11px] text-slate-700">
+                                    <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-slate-300" checked={hybridOverrideConfirmed} onChange={(event) => setHybridOverrideConfirmed(event.target.checked)} />
+                                    <span>Confirmo que revisé la actividad del celular y aun así quiero responder desde el CRM.</span>
+                                  </label>
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
+                          <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)]">
+                            <div className="grid gap-2">
+                              <Label>Tipo</Label>
+                              <Select value={messageTypeDraft} onValueChange={(value) => setMessageTypeDraft(value as 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT')}>
+                                <SelectTrigger className="rounded-2xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="TEXT">Texto</SelectItem>
+                                  <SelectItem value="IMAGE">Imagen</SelectItem>
+                                  <SelectItem value="AUDIO">Audio</SelectItem>
+                                  <SelectItem value="DOCUMENT">Documento</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>{messageTypeDraft === 'TEXT' ? 'Mensaje' : 'Texto o caption opcional'}</Label>
+                              <Textarea value={messageDraft} onChange={(e) => setMessageDraft(e.target.value)} rows={4} className="rounded-2xl border-slate-200 bg-white" placeholder={messageTypeDraft === 'TEXT' ? 'Escribe una respuesta...' : 'Opcional para multimedia, especialmente en WhatsApp.'} />
+                            </div>
+                          </div>
+                          {messageTypeDraft !== 'TEXT' ? (
+                            <div className="grid gap-3 lg:grid-cols-2">
+                              <input ref={attachmentInputRef} type="file" className="hidden" onChange={(event) => void handleAttachmentInputChange(event)} />
+                              <div className="grid gap-2 lg:col-span-2">
+                                <Label>Adjunto</Label>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button type="button" variant="outline" className="rounded-xl" onClick={openAttachmentPicker} disabled={uploadingAttachment}>
+                                    {uploadingAttachment ? 'Subiendo archivo...' : messageTypeDraft === 'IMAGE' ? 'Subir imagen' : messageTypeDraft === 'AUDIO' ? 'Subir audio' : 'Subir documento'}
+                                  </Button>
+                                  {messageTypeDraft === 'AUDIO' ? (
+                                    <Button type="button" variant={recordingAudio ? 'destructive' : 'outline'} className="rounded-xl" onClick={recordingAudio ? stopAudioRecording : () => void startAudioRecording()} disabled={uploadingAttachment}>
+                                      {recordingAudio ? 'Detener grabación' : 'Grabar voz'}
+                                    </Button>
+                                  ) : null}
+                                  {attachmentUrlDraft ? (
+                                    <Button type="button" variant="ghost" className="rounded-xl text-slate-600" onClick={() => {
+                                      setAttachmentUrlDraft('')
+                                      setAttachmentNameDraft('')
+                                    }}>
+                                      Quitar adjunto
+                                    </Button>
+                                  ) : null}
+                                </div>
+                                <p className="text-xs text-slate-500">{recordingAudio ? 'Grabando nota de voz... al detenerla se subirá automáticamente al chat.' : uploadingAttachment && attachmentUploadProgress !== null ? `Subiendo adjunto... ${attachmentUploadProgress}%` : attachmentUrlDraft ? 'Adjunto listo para enviar por el canal.' : 'El archivo se sube primero al CRM para que WhatsApp pueda descargarlo desde una URL pública.'}</p>
+                              </div>
+                              <div className="grid gap-2 lg:col-span-2">
+                                <Label>Nombre visible</Label>
+                                <Input value={attachmentNameDraft} onChange={(e) => setAttachmentNameDraft(e.target.value)} className="rounded-2xl border-slate-200 bg-white" placeholder="catalogo.pdf o imagen-promocion.jpg" />
+                              </div>
+                            </div>
+                          ) : null}
+                          <div className="flex justify-end">
+                            <Button className="rounded-2xl bg-blue-600 px-5 text-white hover:bg-blue-700" onClick={() => void submitMessage()} disabled={sending || uploadingAttachment || recordingAudio || Boolean(hybridComposerGuard && !hybridOverrideConfirmed)}>
+                              {sending ? 'Enviando...' : 'Enviar mensaje'}
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : detailPanelTab === 'CRM' ? (
+                  <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+                    <div className="space-y-4">
+                      <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-none">
+                        <CardHeader>
+                          <CardTitle className="text-base">Atención y asignación</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="grid gap-1.5">
+                            <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado de atención</Label>
+                            <Select value={statusDraft} onValueChange={(value) => setStatusDraft(value as ConversationStatus)}>
+                              <SelectTrigger className="rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {ATTENTION_STATUS_OPTIONS.map((item) => {
+                                  const meta = getConversationStatusMeta(item)
+                                  return <SelectItem key={item} value={item}>{meta.label}</SelectItem>
+                                })}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid gap-1.5">
+                            <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Responsable</Label>
+                            <Select value={assigneeDraft} onValueChange={setAssigneeDraft}>
+                              <SelectTrigger className="rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">Sin asesor</SelectItem>
+                                {assignees.map((item) => <SelectItem key={item.id} value={item.id}>{formatAssigneeName(item)}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <Button className="w-full rounded-xl" onClick={() => void submitAssign()} disabled={assigning}>{assigning ? 'Guardando...' : 'Guardar atención'}</Button>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-none">
+                        <CardHeader>
+                          <CardTitle className="text-base">Relaciones CRM</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-2 text-sm text-slate-600">
+                          <p>Lead: {selectedConversation.lead ? <Link href={`/dashboard/crm/leads/${selectedConversation.lead.id}`} className="font-medium text-sky-700 hover:underline">{selectedConversation.lead.nombre}</Link> : 'Sin lead'}</p>
+                          <p>Cliente: {selectedConversation.cliente?.nombre || 'Sin cliente'}</p>
+                          <p>Oportunidad: {selectedConversation.opportunity?.title || 'Sin oportunidad'}</p>
+                          {selectedConversation.opportunity && selectedConversation.cliente ? (
+                            <Button asChild variant="ghost" className="h-auto p-0 text-sky-700 hover:text-sky-800">
+                              <Link href={`/dashboard/cotizador?crmOpportunityId=${selectedConversation.opportunity.id}&clienteId=${selectedConversation.cliente.id}&opportunityTitle=${encodeURIComponent(selectedConversation.opportunity.title)}`}>Ir al cotizador</Link>
+                            </Button>
+                          ) : null}
+                        </CardContent>
+                      </Card>
+
+                      <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-none">
+                        <CardHeader>
+                          <CardTitle className="text-base">Alertas y seguimiento</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3 text-sm text-slate-600">
+                          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${getConversationPriorityMeta(selectedConversation, locale).className}`}>{getConversationPriorityMeta(selectedConversation, locale).label}</span>
+                              <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${getConversationSlaMeta(selectedConversation, locale).className}`}>{getConversationSlaMeta(selectedConversation, locale).label}</span>
+                            </div>
+                            <p className="text-sm leading-6 text-slate-600">{getConversationSlaMeta(selectedConversation, locale).elapsedLabel}. Usa esta señal para priorizar respuesta, asignación y resolución del hilo.</p>
+                          </div>
+                          {selectedConversation.lead ? (
+                            <Button asChild variant="outline" className="w-full rounded-xl border-slate-200 bg-white">
+                              <Link href="/dashboard/crm">Ir a editar lead y pasar a pipeline</Link>
+                            </Button>
+                          ) : null}
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-none">
+                      <CardHeader>
+                        <CardTitle className="text-base">Interés y stock</CardTitle>
+                        <CardDescription>Busca el producto que pidió el cliente y deja trazabilidad comercial.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                          <Input value={materialSearch} onChange={(e) => setMaterialSearch(e.target.value)} onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              void searchMaterials()
+                            }
+                          }} placeholder="Buscar producto, proveedor o categoría..." />
+                          <Button className="rounded-xl" variant="outline" onClick={() => void searchMaterials()} disabled={materialLoading}>{materialLoading ? 'Buscando...' : 'Buscar stock'}</Button>
+                        </div>
+                        {materialResults.length > 0 ? (
+                          <div className="space-y-2">
+                            {materialResults.map((material) => {
+                              const stock = getVisibleStock(material)
+                              const selected = selectedMaterial?.id === material.id
+                              return (
+                                <button key={material.id} type="button" onClick={() => setSelectedMaterial(material)} className={selected ? 'w-full rounded-2xl border border-emerald-300 bg-emerald-50/80 p-3 text-left shadow-sm' : 'w-full rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-left'}>
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <p className="font-medium text-slate-900">{material.nombre}</p>
+                                      <p className="mt-1 text-xs text-slate-500">{material.categoria || 'Sin categoría'} · {material.proveedor || 'Sin proveedor'}</p>
+                                    </div>
+                                    <div className="text-right text-xs">
+                                      <p className={stock > 0 ? 'font-semibold text-emerald-700' : 'font-semibold text-rose-700'}>{stock > 0 ? `Stock ${stock}` : 'Sin stock'}</p>
+                                      <p className="mt-1 text-slate-500">{formatMoney(getMaterialPrice(material), locale)}</p>
+                                    </div>
+                                  </div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        ) : null}
+                        <div className="grid gap-2">
+                          <Label>Qué pidió o en qué está interesado</Label>
+                          <Textarea value={interestNotes} onChange={(e) => setInterestNotes(e.target.value)} rows={4} placeholder="Ejemplo: quiere 200 unidades, entrega esta semana, validar stock inmediato y cerrar en venta real si hay disponibilidad." />
+                        </div>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <Button variant="outline" className="rounded-xl" onClick={() => {
+                            setSelectedMaterial(null)
+                            setInterestNotes('')
+                          }} disabled={savingInterest}>Limpiar</Button>
+                          <Button className="rounded-xl" onClick={() => void saveInterestSelection()} disabled={savingInterest}>{savingInterest ? 'Consignando...' : 'Consignar interés'}</Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : detailPanelTab === 'AI' ? (
+                  <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-none">
+                    <CardHeader>
+                      <CardTitle className="text-base">Copiloto comercial</CardTitle>
+                      <CardDescription>Resumen, sugerencias y acciones operativas a partir del hilo actual.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex flex-wrap justify-between gap-2">
+                        <Button variant="outline" className="rounded-xl border-emerald-200 bg-white" onClick={() => selectedConversation ? void loadConversationAi(selectedConversation.id) : undefined} disabled={generatingAi}>{generatingAi ? 'Analizando...' : conversationAi ? 'Regenerar sugerencia' : 'Generar sugerencia IA'}</Button>
+                        {selectedConversation ? <Link href={`/dashboard/crm/auditoria-ia?conversationId=${selectedConversation.id}`} className="inline-flex items-center text-sm font-medium text-emerald-700 hover:underline">Ver auditoría de este hilo</Link> : null}
+                      </div>
+                      {conversationAi ? (
+                        <>
+                          <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-wide">
+                            <span className={`rounded-full border px-2.5 py-1 font-semibold ${getConversationSentimentMeta(conversationAi.sentiment).className}`}>{getConversationSentimentMeta(conversationAi.sentiment).label}</span>
+                            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700">Confianza {conversationAi.confidence}</span>
+                            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700">{conversationAi.engine.mode === 'LLM' ? `IA ${conversationAi.engine.model || conversationAi.engine.provider}` : 'Reglas internas'}</span>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Resumen</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-700">{conversationAi.summary}</p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Respuesta sugerida</p>
+                              <Button variant="ghost" className="h-auto rounded-lg px-2 py-1 text-xs text-emerald-700 hover:text-emerald-800" onClick={() => {
+                                setMessageTypeDraft('TEXT')
+                                setAttachmentUrlDraft('')
+                                setAttachmentNameDraft('')
+                                setMessageDraft(conversationAi.suggestedReply)
+                                setDetailPanelTab('CHAT')
+                              }}>Usar en borrador</Button>
+                            </div>
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{conversationAi.suggestedReply}</p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                            <div className="grid gap-2 text-sm text-slate-700 sm:grid-cols-3">
+                              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">Prioridad: {conversationAi.taskSuggestion.priority}</div>
+                              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">Vence: {formatDate(conversationAi.taskSuggestion.dueAt, locale, 'Sin fecha')}</div>
+                              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">Responsable: {conversationAi.taskSuggestion.assignedToLabel || 'Sin asignar'}</div>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void createTaskFromAiSuggestion()} disabled={creatingAiTask}>{creatingAiTask ? 'Creando tarea...' : 'Crear tarea'}</Button>
+                              <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void createOpportunityFromAiSuggestion()} disabled={creatingAiOpportunity || Boolean(selectedConversation.opportunity) || (!selectedConversation.lead && !selectedConversation.cliente)}>{creatingAiOpportunity ? 'Creando oportunidad...' : 'Pasar a oportunidad'}</Button>
+                            </div>
+                          </div>
+                          {conversationAi.nextActions.length ? (
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Siguiente paso sugerido</p>
+                              <div className="mt-2 space-y-2">
+                                {conversationAi.nextActions.map((action) => <div key={action} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-700">{action}</div>)}
+                              </div>
+                            </div>
+                          ) : null}
+                        </>
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-6 text-sm text-slate-500">Genera la sugerencia IA para ver resumen, respuesta y acciones recomendadas.</div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-none">
+                    <CardHeader>
+                      <CardTitle className="text-base">Últimas capturas</CardTitle>
+                      <CardDescription>Datos detectados, automatización aplicada y trazabilidad de deduplicación.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {selectedConversation.captures.length === 0 ? <p className="text-sm text-muted-foreground">Sin capturas registradas.</p> : null}
+                      {selectedConversation.captures.map((capture) => (
+                        (() => {
+                          const normalized = asRecord(capture.normalizedDataJson)
+                          const dedupe = asRecord(normalized?.dedupe)
+                          const dedupeLead = asRecord(dedupe?.lead)
+                          const dedupeConversation = asRecord(dedupe?.conversation)
+                          const detectedName = pickString(normalized?.aiName) || pickString(normalized?.fromName)
+                          const detectedEmail = pickString(normalized?.aiEmail) || pickString(normalized?.fromAddress)
+                          const detectedPhone = pickString(normalized?.aiPhone) || pickString(normalized?.phone)
+                          const detectedCompany = pickString(normalized?.aiCompany) || pickString(normalized?.empresaNombre)
+                          const detectedCity = pickString(normalized?.aiCity) || pickString(normalized?.ciudad)
+                          const detectedRequest = pickString(normalized?.aiRequestSummary) || pickString(normalized?.messageText)
+                          const detectedProduct = pickString(normalized?.aiProductOrService)
+                          const autoCategory = pickString(normalized?.autoCategory)
+                          const autoLeadStatus = pickString(normalized?.autoLeadStatusApplied) || pickString(normalized?.autoLeadStatus)
+                          const autoOpportunityId = pickString(normalized?.autoOpportunityId)
+                          const autoTaskId = pickString(normalized?.autoTaskId)
+                          const leadDedupeStrategy = pickString(dedupeLead?.strategy)
+                          const leadDedupeConfidence = pickString(dedupeLead?.confidence)
+                          const leadDedupeFields = pickStringArray(dedupeLead?.matchedFields)
+                          const conversationDedupeStrategy = pickString(dedupeConversation?.strategy)
+                          const conversationDedupeConfidence = pickString(dedupeConversation?.confidence)
+                          const conversationDedupeFields = pickStringArray(dedupeConversation?.matchedFields)
+
+                          return (
+                            <div key={capture.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium text-slate-900">{capture.captureType}</span>
+                                <span className="text-xs text-slate-500">{formatDate(capture.createdAt, locale, naText)}</span>
+                              </div>
+                              <p className="mt-1 text-xs text-slate-500">{capture.utmSource || 'sin utm_source'} · {capture.utmMedium || 'sin utm_medium'} · {capture.utmCampaign || 'sin campaña'}</p>
+                              {detectedName || detectedEmail || detectedPhone || detectedCompany || detectedCity || detectedRequest ? (
+                                <div className="mt-3 grid gap-2 rounded-2xl border border-slate-200 bg-white/80 p-3 text-xs text-slate-600">
+                                  <p className="font-semibold text-slate-900">Desglose detectado</p>
+                                  {detectedName ? <p><span className="font-medium text-slate-900">Nombre:</span> {detectedName}</p> : null}
+                                  {detectedEmail ? <p><span className="font-medium text-slate-900">Correo:</span> {detectedEmail}</p> : null}
+                                  {detectedPhone ? <p><span className="font-medium text-slate-900">Teléfono:</span> {detectedPhone}</p> : null}
+                                  {detectedCompany ? <p><span className="font-medium text-slate-900">Empresa:</span> {detectedCompany}</p> : null}
+                                  {detectedCity ? <p><span className="font-medium text-slate-900">Ciudad:</span> {detectedCity}</p> : null}
+                                  {detectedProduct ? <p><span className="font-medium text-slate-900">Producto/servicio:</span> {detectedProduct}</p> : null}
+                                  {detectedRequest ? <p className="leading-5"><span className="font-medium text-slate-900">Solicitud:</span> {detectedRequest}</p> : null}
+                                </div>
+                              ) : null}
+                              {autoCategory || autoLeadStatus || autoOpportunityId || autoTaskId ? (
+                                <div className="mt-3 grid gap-2 rounded-2xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900">
+                                  <p className="font-semibold">Automatización comercial</p>
+                                  {autoCategory ? <p><span className="font-medium">Clasificación:</span> {autoCategory}</p> : null}
+                                  {autoLeadStatus ? <p><span className="font-medium">Estado lead:</span> {autoLeadStatus}</p> : null}
+                                  {autoOpportunityId ? <p><span className="font-medium">Oportunidad:</span> creada/vinculada</p> : null}
+                                  {autoTaskId ? <p><span className="font-medium">Tarea:</span> creada/vinculada</p> : null}
+                                </div>
+                              ) : null}
+                              {leadDedupeStrategy || conversationDedupeStrategy ? (
+                                <div className="mt-3 grid gap-2 rounded-2xl border border-sky-200 bg-sky-50/70 p-3 text-xs text-sky-900">
+                                  <p className="font-semibold">Trazabilidad de deduplicación</p>
+                                  {leadDedupeStrategy ? <div className="grid gap-1 rounded-xl border border-sky-200 bg-white/80 p-2.5"><p className="font-medium text-slate-900">Lead reutilizado</p><p><span className="font-medium text-slate-900">Regla:</span> {leadDedupeStrategy}</p>{leadDedupeConfidence ? <p><span className="font-medium text-slate-900">Confianza:</span> {leadDedupeConfidence}</p> : null}{leadDedupeFields.length ? <p><span className="font-medium text-slate-900">Campos:</span> {leadDedupeFields.join(', ')}</p> : null}</div> : null}
+                                  {conversationDedupeStrategy ? <div className="grid gap-1 rounded-xl border border-sky-200 bg-white/80 p-2.5"><p className="font-medium text-slate-900">Conversación reutilizada</p><p><span className="font-medium text-slate-900">Regla:</span> {conversationDedupeStrategy}</p>{conversationDedupeConfidence ? <p><span className="font-medium text-slate-900">Confianza:</span> {conversationDedupeConfidence}</p> : null}{conversationDedupeFields.length ? <p><span className="font-medium text-slate-900">Campos:</span> {conversationDedupeFields.join(', ')}</p> : null}</div> : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          )
+                        })()
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4.5 pb-4">
