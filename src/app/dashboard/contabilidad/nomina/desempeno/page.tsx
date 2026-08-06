@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
@@ -13,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollPerformanceReviewRow } from '@/lib/payroll'
 
 const EMPTY_FORM = {
@@ -60,20 +62,20 @@ export default function NominaDesempenoPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll + HR',
+        eyebrow: 'Performance admin',
         title: 'Performance',
-        description: 'Real performance cycles with employee linkage, manager follow-up, competencies and score tracking.',
+        description: 'RRHH performance backoffice for review cycles, leadership calibration and development follow-up, separated from the collaborator self-service surface.',
         create: 'Create review',
         cardTitle: 'Performance cycles',
-        cardDescription: 'Track open reviews, calibration and closed evaluations without leaving the payroll operating model.',
+        cardDescription: 'Administrative review tray for open evaluations, calibration and closures without mixing with the employee-facing portal.',
       }
     : {
-        eyebrow: 'Nómina + HR',
+        eyebrow: 'Desempeño RRHH',
         title: 'Desempeño',
-        description: 'Ciclos reales de desempeño con vínculo a empleados, seguimiento de líder, competencias y scores.',
+        description: 'Backoffice de desempeño RRHH para ciclos de evaluación, calibración y seguimiento de desarrollo, separado del autoservicio del colaborador.',
         create: 'Crear evaluación',
         cardTitle: 'Ciclos de desempeño',
-        cardDescription: 'Controla evaluaciones abiertas, calibración y cierres sin salir del modelo operativo de nómina.',
+        cardDescription: 'Bandeja administrativa para controlar evaluaciones abiertas, calibración y cierres sin mezclar esta operación con el portal del colaborador.',
       }
 
   async function load() {
@@ -176,6 +178,16 @@ export default function NominaDesempenoPage() {
         eyebrow={copy.eyebrow}
         title={copy.title}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('gestion-personas')}>{language === 'en' ? 'Open people station' : 'Abrir estación people'}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('portal-empleado')}>{language === 'en' ? 'View collaborator portal' : 'Ver portal del colaborador'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: language === 'en' ? 'Open' : 'Abiertas', value: rows.filter((item) => item.status === 'ABIERTA').length, hint: language === 'en' ? 'Waiting on inputs' : 'Esperando respuestas', tone: 'amber' },
           { label: language === 'en' ? 'Calibration' : 'Calibración', value: rows.filter((item) => item.status === 'EN_CALIBRACION').length, hint: language === 'en' ? 'Leadership review' : 'Revisión de liderazgo', tone: 'sky' },

@@ -26,11 +26,11 @@ export type TourDefinition = {
 
 export function tourIdFromPath(pathname: string): TourId | null {
   // Mantener reglas simples y explícitas
-  if (pathname.startsWith('/dashboard/contabilidad/nomina/empleados')) return 'dashboard-nomina-empleados.v1'
-  if (pathname.startsWith('/dashboard/contabilidad/nomina/novedades')) return 'dashboard-nomina-novedades.v1'
-  if (pathname.startsWith('/dashboard/contabilidad/nomina/periodos')) return 'dashboard-nomina-periodos.v1'
-  if (pathname.startsWith('/dashboard/contabilidad/nomina/liquidaciones')) return 'dashboard-nomina-liquidaciones.v1'
-  if (pathname.startsWith('/dashboard/contabilidad/nomina')) return 'dashboard-nomina.v1'
+  if (pathname.startsWith('/dashboard/nomina/empleados') || pathname.startsWith('/dashboard/contabilidad/nomina/empleados')) return 'dashboard-nomina-empleados.v1'
+  if (pathname.startsWith('/dashboard/nomina/novedades') || pathname.startsWith('/dashboard/contabilidad/nomina/novedades')) return 'dashboard-nomina-novedades.v1'
+  if (pathname.startsWith('/dashboard/nomina/periodos') || pathname.startsWith('/dashboard/contabilidad/nomina/periodos')) return 'dashboard-nomina-periodos.v1'
+  if (pathname.startsWith('/dashboard/nomina/liquidaciones') || pathname.startsWith('/dashboard/contabilidad/nomina/liquidaciones')) return 'dashboard-nomina-liquidaciones.v1'
+  if (pathname.startsWith('/dashboard/nomina') || pathname.startsWith('/dashboard/contabilidad/nomina')) return 'dashboard-nomina.v1'
   if (pathname.startsWith('/dashboard/contabilidad/plan-de-cuentas')) return 'dashboard-contabilidad-plan.v1'
   if (pathname.startsWith('/dashboard/contabilidad/centros-de-costo')) return 'dashboard-contabilidad-centros.v1'
   if (pathname.startsWith('/dashboard/contabilidad/reglas')) return 'dashboard-contabilidad-reglas.v1'

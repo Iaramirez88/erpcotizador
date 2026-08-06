@@ -1,9 +1,11 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { NominaSurfaceCallout } from '@/components/dashboard/nomina-surface-callout'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollEmployeeServiceCaseRow, PayrollPeriodRow } from '@/lib/payroll'
 
 const EMPTY_FORM = {
@@ -66,16 +69,16 @@ export default function NominaServicioColaboradorPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll + HR',
+        eyebrow: 'HR service admin',
         title: 'Employee Service Center',
-        description: 'Operational case tray for certificates, access, payroll data changes and portal support linked to the employee record.',
+        description: 'RRHH service backoffice for certificates, data changes, access requests and portal support coming from the collaborator experience.',
         actions: { create: 'Create service case', save: 'Save changes', add: 'Create case', cancel: 'Cancel', edit: 'Edit', remove: 'Delete' },
         dialog: { title: 'Service case', description: 'Store the employee request, service level, current status and closing notes.' },
       }
     : {
-        eyebrow: 'Nómina + HR',
+        eyebrow: 'RRHH servicio',
         title: 'Servicio al Colaborador',
-        description: 'Bandeja operativa de casos para certificados, accesos, cambios de datos de nómina y soporte del portal ligados a la ficha del colaborador.',
+        description: 'Backoffice de servicio RRHH para certificados, accesos, cambios de datos de nómina y soporte del portal que nacen desde la experiencia del colaborador.',
         actions: { create: 'Crear caso de servicio', save: 'Guardar cambios', add: 'Crear caso', cancel: 'Cancelar', edit: 'Editar', remove: 'Eliminar' },
         dialog: { title: 'Caso de servicio', description: 'Guarda la solicitud del colaborador, el nivel de servicio, el estado actual y las notas de cierre.' },
       }
@@ -194,6 +197,16 @@ export default function NominaServicioColaboradorPage() {
         eyebrow={copy.eyebrow}
         title={copy.title}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('portal-empleado')}>{language === 'en' ? 'View employee portal' : 'Ver portal del colaborador'}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('canal-denuncias')}>{language === 'en' ? 'Open ethics cases' : 'Abrir casos éticos'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: language === 'en' ? 'Open' : 'Abiertos', value: rows.filter((item) => item.status === 'ABIERTO').length, hint: language === 'en' ? 'New requests' : 'Solicitudes nuevas', tone: 'amber' },
           { label: language === 'en' ? 'In progress' : 'En gestión', value: rows.filter((item) => item.status === 'EN_GESTION').length, hint: language === 'en' ? 'Assigned cases' : 'Casos asignados', tone: 'sky' },
@@ -202,6 +215,17 @@ export default function NominaServicioColaboradorPage() {
       />
 
       <NominaSubnav />
+
+      <NominaSurfaceCallout
+        adminTitle={language === 'en' ? 'Service tickets are triaged and resolved here.' : 'Aquí se radican, priorizan y resuelven los casos.'}
+        adminDescription={language === 'en' ? 'RRHH defines SLA, response, resolution and portal visibility for each collaborator request.' : 'RRHH define SLA, respuesta, resolución y visibilidad en portal para cada solicitud del colaborador.'}
+        employeeTitle={language === 'en' ? 'The collaborator only sees the request status and final response.' : 'El colaborador solo ve el estado de su caso y la respuesta final.'}
+        employeeDescription={language === 'en' ? 'This separates the internal handling workflow from the self-service experience.' : 'Esto separa el flujo interno de atención de la experiencia de autoservicio.'}
+        primaryHref={nominaHref('portal-empleado')}
+        primaryLabel={language === 'en' ? 'Open collaborator portal' : 'Abrir portal del colaborador'}
+        secondaryHref={nominaHref('canal-denuncias')}
+        secondaryLabel={language === 'en' ? 'Open ethics cases' : 'Abrir casos éticos'}
+      />
 
       <div className="flex justify-end gap-2">
         <DataViewToggle mode={mode} onChange={setMode} />

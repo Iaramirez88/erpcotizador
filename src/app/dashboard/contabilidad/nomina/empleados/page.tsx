@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { NominaSurfaceCallout } from '@/components/dashboard/nomina-surface-callout'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { Button } from '@/components/ui/button'
@@ -13,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollContractRow, PayrollEmployeeRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
 
@@ -91,9 +93,9 @@ export default function NominaEmpleadosPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll',
-        title: 'Employees and contracts',
-        description: 'Workforce backbone: employee record, hire and exit dates, role, cost center, contract, salary and social security details.',
+      eyebrow: 'HR admin',
+      title: 'Employees and contracts',
+      description: 'Administrative workspace for RRHH: employee records, employment lifecycle, contracts, salary and social security details.',
         stats: {
           active: 'Active',
           activeHint: 'Employees in payroll cycle',
@@ -103,7 +105,7 @@ export default function NominaEmpleadosPage() {
           retiredHint: 'With history and settlement',
         },
         banner: {
-          text: 'Create the employee first, then the contract. From this screen you can also correct branch, cost center and work details.',
+          text: 'Administrative action center for RRHH. Create the employee first, then the contract, and maintain branch, cost center and work details from the same screen.',
           createContract: 'Create contract',
           createEmployee: 'Create employee',
         },
@@ -211,9 +213,9 @@ export default function NominaEmpleadosPage() {
         },
       }
     : {
-        eyebrow: 'Nómina',
-        title: 'Empleados y contratos',
-        description: 'Base laboral del módulo: hoja de vida, fecha de ingreso, retiro, cargo, centro de costo, contrato, salario y afiliaciones.',
+      eyebrow: 'RRHH admin',
+      title: 'Empleados y contratos',
+      description: 'Superficie administrativa de RRHH para gestionar hoja de vida, ciclo laboral, contrato, salario, afiliaciones y estructura operativa.',
         stats: {
           active: 'Activos',
           activeHint: 'Empleados en ciclo de pago',
@@ -223,7 +225,7 @@ export default function NominaEmpleadosPage() {
           retiredHint: 'Con historial y liquidación',
         },
         banner: {
-          text: 'Primero crea el empleado, luego su contrato. Desde esta pantalla también puedes corregir sede, centro de costo y datos laborales.',
+          text: 'Centro de acción para RRHH. Primero crea el empleado, luego su contrato, y desde aquí corrige sede, centro de costo y datos laborales.',
           createContract: 'Crear contrato',
           createEmployee: 'Crear empleado',
         },
@@ -589,6 +591,17 @@ export default function NominaEmpleadosPage() {
       />
 
       <NominaSubnav />
+
+      <NominaSurfaceCallout
+        adminTitle={language === 'en' ? 'Employee records and contracts are managed here.' : 'Aquí se gestionan fichas laborales y contratos.'}
+        adminDescription={language === 'en' ? 'RRHH updates employment data, salary structure, affiliations and accounting assignment from this workspace.' : 'RRHH actualiza datos laborales, estructura salarial, afiliaciones y asignación contable desde esta estación.'}
+        employeeTitle={language === 'en' ? 'The collaborator only sees approved personal data in the portal.' : 'El colaborador solo ve sus datos aprobados en el portal.'}
+        employeeDescription={language === 'en' ? 'Contact changes and self-service requests happen in the employee portal, not in this admin tray.' : 'Los cambios de contacto y solicitudes de autoservicio ocurren en el portal del colaborador, no en esta bandeja administrativa.'}
+        primaryHref={nominaHref('portal-empleado')}
+        primaryLabel={language === 'en' ? 'Open collaborator portal' : 'Abrir portal del colaborador'}
+        secondaryHref={nominaHref('servicio-colaborador')}
+        secondaryLabel={language === 'en' ? 'Go to service center' : 'Ir a servicio al colaborador'}
+      />
 
       <Card className="rounded-[24px] border-sky-200 bg-sky-50/70">
         <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm text-slate-700">

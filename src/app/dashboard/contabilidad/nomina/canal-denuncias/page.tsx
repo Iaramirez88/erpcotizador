@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
@@ -14,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollWhistleblowerCaseRow } from '@/lib/payroll'
 
 const EMPTY_FORM = {
@@ -69,16 +71,16 @@ export default function NominaCanalDenunciasPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll + HR',
+        eyebrow: 'Ethics admin',
         title: 'Whistleblowing Channel',
-        description: 'Confidential reporting tray for ethics, harassment, data privacy or fraud cases with traceable intake and resolution.',
+        description: 'Confidential RRHH and compliance backoffice to receive, investigate and close cases submitted through the separated collaborator experience.',
         actions: { create: 'Create case', save: 'Save changes', add: 'Create case', cancel: 'Cancel', edit: 'Edit', remove: 'Delete' },
         dialog: { title: 'Whistleblowing case', description: 'Store the complaint, confidentiality level, assigned owner and investigation outcome.' },
       }
     : {
-        eyebrow: 'Nómina + HR',
+        eyebrow: 'Ética y cumplimiento',
         title: 'Canal de Denuncias',
-        description: 'Bandeja confidencial para reportes de ética, acoso, protección de datos o fraude con radicación y resolución trazables.',
+        description: 'Backoffice confidencial de RRHH y cumplimiento para recibir, investigar y cerrar reportes enviados desde la superficie separada del colaborador.',
         actions: { create: 'Crear caso', save: 'Guardar cambios', add: 'Crear caso', cancel: 'Cancelar', edit: 'Editar', remove: 'Eliminar' },
         dialog: { title: 'Caso de denuncia', description: 'Guarda la denuncia, el nivel de confidencialidad, el responsable asignado y el resultado de la investigación.' },
       }
@@ -187,6 +189,16 @@ export default function NominaCanalDenunciasPage() {
         eyebrow={copy.eyebrow}
         title={copy.title}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('portal-empleado')}>{language === 'en' ? 'View employee form' : 'Ver formulario del colaborador'}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('servicio-colaborador')}>{language === 'en' ? 'Open service center' : 'Abrir servicio al colaborador'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: language === 'en' ? 'Received' : 'Recibidas', value: rows.filter((item) => item.status === 'RECIBIDA').length, hint: language === 'en' ? 'Pending triage' : 'Pendientes de triage', tone: 'amber' },
           { label: language === 'en' ? 'Investigation' : 'Investigación', value: rows.filter((item) => item.status === 'INVESTIGACION' || item.status === 'EN_COMITE').length, hint: language === 'en' ? 'Active handling' : 'Gestión activa', tone: 'sky' },

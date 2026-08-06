@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
@@ -13,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollOnboardingJourneyRow, PayrollPeriodRow } from '@/lib/payroll'
 import type { PayrollPeopleOverview } from '@/lib/payroll-people'
 
@@ -85,16 +87,16 @@ export default function NominaOnboardingPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll + HR',
+        eyebrow: 'Onboarding admin',
         title: 'Real Onboarding',
-        description: 'Operational onboarding journeys linked to employees, periods and workflow templates, with checklist execution and handoff to portal and documents.',
+        description: 'RRHH onboarding backoffice with operational journeys, checklist execution and handoff toward the collaborator portal and documents.',
         actions: { create: 'Create onboarding journey', save: 'Save changes', add: 'Create journey', cancel: 'Cancel', edit: 'Edit', remove: 'Delete' },
         dialog: { title: 'Onboarding journey', description: 'Assign the employee, operational phase, dates and checklist that drive the first days execution.' },
       }
     : {
-        eyebrow: 'Nómina + HR',
+        eyebrow: 'Onboarding RRHH',
         title: 'Onboarding real',
-        description: 'Journeys operativos de ingreso ligados a empleados, períodos y plantillas de workflow, con checklist ejecutable y paso al portal y documentos.',
+        description: 'Backoffice de RRHH para journeys operativos de ingreso, checklist ejecutable y traspaso controlado hacia portal y documentos del colaborador.',
         actions: { create: 'Crear journey de onboarding', save: 'Guardar cambios', add: 'Crear journey', cancel: 'Cancelar', edit: 'Editar', remove: 'Eliminar' },
         dialog: { title: 'Journey de onboarding', description: 'Asigna colaborador, fase operativa, fechas y checklist que gobiernan la ejecución de los primeros días.' },
       }
@@ -217,6 +219,16 @@ export default function NominaOnboardingPage() {
         eyebrow={copy.eyebrow}
         title={copy.title}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('empleados')}>{language === 'en' ? 'Open employees' : 'Abrir empleados'}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('portal-empleado')}>{language === 'en' ? 'View collaborator portal' : 'Ver portal del colaborador'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: language === 'en' ? 'Planned' : 'Planificados', value: rows.filter((item) => item.status === 'PLANIFICADO').length, hint: language === 'en' ? 'Not started yet' : 'Aún no arrancan', tone: 'amber' },
           { label: language === 'en' ? 'In progress' : 'En curso', value: rows.filter((item) => item.status === 'EN_CURSO').length, hint: language === 'en' ? 'Operational execution' : 'Ejecución operativa', tone: 'sky' },

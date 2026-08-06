@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -14,6 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollNoveltyRow, PayrollPeriodRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
 
@@ -57,9 +59,9 @@ export default function NominaNovedadesPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll',
+        eyebrow: 'Payroll changes admin',
         title: 'Payroll Changes and Leave',
-        description: 'Operational register for overtime, allowances, absences, medical leave, loans and payroll deductions.',
+        description: 'Administrative payroll event register for overtime, absences, leave, loans and deductions before they impact calculation or employee outputs.',
         stats: {
           filed: 'Filed',
           applied: 'Applied',
@@ -119,9 +121,9 @@ export default function NominaNovedadesPage() {
         },
       }
     : {
-        eyebrow: 'Nómina',
+        eyebrow: 'Novedades RRHH',
         title: 'Novedades e incapacidades',
-        description: 'Registro operativo de horas extra, bonificaciones, ausencias, incapacidades, préstamos y descuentos de nómina.',
+        description: 'Registro administrativo de horas extra, ausencias, incapacidades, préstamos y descuentos antes de impactar cálculo y salidas visibles al colaborador.',
         stats: {
           filed: 'Radicadas',
           applied: 'Aplicadas',
@@ -309,6 +311,16 @@ export default function NominaNovedadesPage() {
         eyebrow={copy.eyebrow}
         title={<span data-tour="nomina-novedades-title">{copy.title}</span>}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('periodos')}>{language === 'en' ? 'Open payroll periods' : 'Abrir períodos'}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('portal-empleado')}>{language === 'en' ? 'View collaborator portal' : 'Ver portal del colaborador'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: copy.stats.filed, value: rows.filter((item) => item.status === 'RADICADA').length, hint: copy.stats.filedHint, tone: 'amber' },
           { label: copy.stats.applied, value: rows.filter((item) => item.status === 'APLICADA').length, hint: copy.stats.appliedHint, tone: 'teal' },

@@ -283,7 +283,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     moduleKey: ModuleKey.CONTABILIDAD,
     section: 'Finanzas',
     label: 'Nómina',
-    hrefs: ['/dashboard/contabilidad/nomina'],
+    hrefs: ['/dashboard/nomina'],
     capabilities: [{ domain: 'FINANZAS', subdomain: 'PAYROLL' }],
   },
   {

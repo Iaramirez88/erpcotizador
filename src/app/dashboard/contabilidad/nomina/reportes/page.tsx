@@ -1,8 +1,10 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { NominaSurfaceCallout } from '@/components/dashboard/nomina-surface-callout'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { Button } from '@/components/ui/button'
@@ -14,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeDocumentRow, PayrollEmployeeRow, PayrollPayslipRow, PayrollPeriodRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
 
@@ -61,9 +64,9 @@ export default function NominaReportesPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll',
+        eyebrow: 'Documents admin',
         title: 'E-signature and Documents',
-        description: 'Operational tray for payroll documents, delivery, employee portal visibility and electronic signature tracking.',
+        description: 'Administrative payroll document tray for delivery, portal visibility and electronic signature before the collaborator consumes or signs each asset.',
         stats: {
           pending: 'Pending signature',
           signed: 'Signed',
@@ -113,9 +116,9 @@ export default function NominaReportesPage() {
         pending: 'Pending',
       }
     : {
-        eyebrow: 'Nómina',
+        eyebrow: 'Documentos RRHH',
         title: 'Firma Electrónica y Gestión de Documentos',
-        description: 'Bandeja operativa para documentos laborales, entregas, visibilidad en portal del colaborador y trazabilidad de firma electrónica.',
+        description: 'Bandeja administrativa para documentos laborales, entregas, visibilidad en portal y trazabilidad de firma antes de que el colaborador consuma o firme cada activo.',
         stats: {
           pending: 'Pendientes de firma',
           signed: 'Firmados',
@@ -292,6 +295,16 @@ export default function NominaReportesPage() {
         eyebrow={copy.eyebrow}
         title={copy.title}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('periodos')}>{language === 'en' ? 'Open payroll periods' : 'Abrir períodos'}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('portal-empleado')}>{language === 'en' ? 'View collaborator portal' : 'Ver portal del colaborador'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: copy.stats.pending, value: pendingSignature.length, hint: copy.stats.pendingHint, tone: 'amber' },
           { label: copy.stats.signed, value: signedDocuments.length, hint: copy.stats.signedHint, tone: 'teal' },
@@ -300,6 +313,17 @@ export default function NominaReportesPage() {
       />
 
       <NominaSubnav />
+
+      <NominaSurfaceCallout
+        adminTitle={language === 'en' ? 'Document delivery and signature workflow are managed here.' : 'Aquí se administra la entrega documental y el flujo de firma.'}
+        adminDescription={language === 'en' ? 'RRHH publishes, tracks and closes labor documents before or while they are exposed to the collaborator.' : 'RRHH publica, rastrea y cierra documentos laborales antes o durante su exposición al colaborador.'}
+        employeeTitle={language === 'en' ? 'The collaborator only receives visible assets and pending signatures.' : 'El colaborador solo recibe activos visibles y firmas pendientes.'}
+        employeeDescription={language === 'en' ? 'Portal visibility and signature status here define what appears in self-service.' : 'La visibilidad en portal y el estado de firma aquí definen lo que aparece en autoservicio.'}
+        primaryHref={nominaHref('portal-empleado')}
+        primaryLabel={language === 'en' ? 'Open collaborator portal' : 'Abrir portal del colaborador'}
+        secondaryHref={nominaHref('periodos')}
+        secondaryLabel={language === 'en' ? 'Go to payroll cycles' : 'Ir a ciclos de nómina'}
+      />
 
       <div className="flex justify-end gap-2">
         <DataViewToggle mode={mode} onChange={setMode} />

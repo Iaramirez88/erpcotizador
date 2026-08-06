@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
@@ -13,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollPeriodRow, PayrollSettlementRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
 
@@ -53,9 +55,9 @@ export default function NominaLiquidacionesPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll',
+        eyebrow: 'Offboarding admin',
         title: 'Settlements and Offboarding',
-        description: 'Final settlement control for terminations, pending payment, accounting handoff and payroll exit follow-up.',
+        description: 'RRHH and payroll backoffice for offboarding, final payout, accounting handoff and employee exit traceability.',
         stats: {
           pending: 'Pending',
           paid: 'Paid',
@@ -101,9 +103,9 @@ export default function NominaLiquidacionesPage() {
         },
       }
     : {
-        eyebrow: 'Nómina',
+        eyebrow: 'Retiro RRHH',
         title: 'Liquidaciones y retiro',
-        description: 'Control de liquidación final por retiro, pago pendiente, pase contable y seguimiento de salida del colaborador.',
+        description: 'Backoffice de RRHH y nómina para liquidación final, pago pendiente, pase contable y trazabilidad de salida del colaborador.',
         stats: {
           pending: 'Pendientes',
           paid: 'Pagadas',
@@ -251,6 +253,16 @@ export default function NominaLiquidacionesPage() {
         eyebrow={copy.eyebrow}
         title={<span data-tour="nomina-liquidaciones-title">{copy.title}</span>}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('empleados')}>{language === 'en' ? 'Open employee records' : 'Abrir fichas de empleado'}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('reportes')}>{language === 'en' ? 'Open settlement documents' : 'Abrir documentos de liquidación'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: copy.stats.pending, value: rows.filter((item) => item.status === 'PENDIENTE').length, hint: copy.stats.pendingHint, tone: 'amber' },
           { label: copy.stats.paid, value: rows.filter((item) => item.status === 'PAGADA').length, hint: copy.stats.paidHint, tone: 'teal' },

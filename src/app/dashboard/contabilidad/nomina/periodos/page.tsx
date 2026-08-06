@@ -1,8 +1,10 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { NominaSurfaceCallout } from '@/components/dashboard/nomina-surface-callout'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollPayslipRow, PayrollPeriodRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
 
@@ -42,9 +45,9 @@ export default function NominaPeriodosPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll',
+        eyebrow: 'Payroll cycle admin',
         title: 'Periods and calculation',
-        description: 'Manage payroll cycles, calculation runs, payslips and automatic accounting posting.',
+        description: 'Payroll backoffice for cycle creation, calculation, payslips and accounting posting before the employee consumes the resulting outputs.',
         stats: {
           frequency: 'Cadence',
           frequencyHint: 'Biweekly, monthly, weekly and day-rate',
@@ -102,9 +105,9 @@ export default function NominaPeriodosPage() {
         confirmDelete: 'Delete this period?',
       }
     : {
-        eyebrow: 'Nómina',
+        eyebrow: 'Ciclos de nómina',
         title: 'Períodos y cálculo',
-        description: 'Gestión de cortes de nómina, ejecución de cálculo, desprendibles y contabilización automática.',
+        description: 'Backoffice de nómina para cortes, cálculo, desprendibles y contabilización antes de que el colaborador consuma los resultados finales.',
         stats: {
           frequency: 'Periodicidad',
           frequencyHint: 'Quincenal, mensual, semanal y jornales',
@@ -271,6 +274,16 @@ export default function NominaPeriodosPage() {
         eyebrow={copy.eyebrow}
         title={<span data-tour="nomina-periodos-title">{copy.title}</span>}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('reportes')}>{language === 'en' ? 'Open documents and payslips' : 'Abrir documentos y desprendibles'}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('portal-empleado')}>{language === 'en' ? 'View collaborator portal' : 'Ver portal del colaborador'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: copy.stats.frequency, value: '4', hint: copy.stats.frequencyHint, tone: 'sky' },
           { label: copy.stats.paid, value: periods.filter((item) => item.status === 'PAGADA').length, hint: copy.stats.paidHint, tone: 'teal' },
@@ -279,6 +292,17 @@ export default function NominaPeriodosPage() {
       />
 
       <NominaSubnav />
+
+      <NominaSurfaceCallout
+        adminTitle={language === 'en' ? 'Payroll cycles, calculation and posting are controlled here.' : 'Aquí se controlan cortes, cálculo y contabilización.'}
+        adminDescription={language === 'en' ? 'This is the operating station for payroll runs, accounting handoff and payslip generation.' : 'Esta es la estación operativa para corridas de nómina, pase contable y generación de desprendibles.'}
+        employeeTitle={language === 'en' ? 'The collaborator only consumes the final outputs.' : 'El colaborador solo consume los resultados finales.'}
+        employeeDescription={language === 'en' ? 'Payslips and documents become visible in the portal after RRHH closes the corresponding cycle.' : 'Los desprendibles y documentos se vuelven visibles en el portal cuando RRHH cierra el ciclo correspondiente.'}
+        primaryHref={nominaHref('reportes')}
+        primaryLabel={language === 'en' ? 'Open documents and payslips' : 'Abrir documentos y desprendibles'}
+        secondaryHref={nominaHref('portal-empleado')}
+        secondaryLabel={language === 'en' ? 'View collaborator portal' : 'Ver portal del colaborador'}
+      />
 
       <div className="flex justify-end" data-tour="nomina-periodos-actions">
         <div className="flex flex-wrap gap-2">

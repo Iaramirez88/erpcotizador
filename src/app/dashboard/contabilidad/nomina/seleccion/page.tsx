@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
@@ -13,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollRecruitmentCandidateRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
 
@@ -62,16 +64,16 @@ export default function NominaSeleccionPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll + HR',
+        eyebrow: 'Recruiting admin',
         title: 'Recruiting',
-        description: 'Operational candidate pipeline for payroll and people roles, with openings, stages and hiring readiness in one tray.',
+        description: 'RRHH recruiting backoffice for openings, candidate stages and hiring readiness before the person enters onboarding and the collaborator experience.',
         actions: { create: 'Create candidate', save: 'Save changes', add: 'Create candidate', cancel: 'Cancel', edit: 'Edit', remove: 'Delete' },
         dialog: { title: 'Candidate pipeline', description: 'Store the opening, candidate profile, stage, salary expectation and interviewer notes.' },
       }
     : {
-        eyebrow: 'Nómina + HR',
+        eyebrow: 'Selección RRHH',
         title: 'Selección',
-        description: 'Pipeline operativo de candidatos para roles de nómina y people, con vacantes, etapas y alistamiento de contratación en una sola bandeja.',
+        description: 'Backoffice de selección RRHH para vacantes, etapas y alistamiento de contratación antes de pasar al onboarding y a la experiencia del colaborador.',
         actions: { create: 'Crear candidato', save: 'Guardar cambios', add: 'Crear candidato', cancel: 'Cancelar', edit: 'Editar', remove: 'Eliminar' },
         dialog: { title: 'Pipeline de candidato', description: 'Guarda la vacante, el perfil del candidato, la etapa, la aspiración salarial y las notas de entrevista.' },
       }
@@ -164,6 +166,16 @@ export default function NominaSeleccionPage() {
         eyebrow={copy.eyebrow}
         title={copy.title}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('onboarding')}>{language === 'en' ? 'Open onboarding' : 'Abrir onboarding'}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('portal-empleado')}>{language === 'en' ? 'View collaborator portal' : 'Ver portal del colaborador'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: language === 'en' ? 'Active' : 'Activos', value: rows.filter((item) => item.status === 'ACTIVO').length, hint: language === 'en' ? 'Open pipeline' : 'Pipeline abierto', tone: 'sky' },
           { label: language === 'en' ? 'Interviews' : 'Entrevistas', value: rows.filter((item) => item.stage === 'ENTREVISTA').length, hint: language === 'en' ? 'In assessment' : 'En evaluación', tone: 'amber' },
@@ -181,7 +193,7 @@ export default function NominaSeleccionPage() {
       <Card className="rounded-[26px] border-slate-200">
         <CardHeader>
           <CardTitle>{language === 'en' ? 'Candidate pipeline' : 'Pipeline de candidatos'}</CardTitle>
-          <CardDescription>{language === 'en' ? 'Track openings, recruiting source, stage, score and hiring decision from a single operational tray.' : 'Controla vacante, fuente, etapa, score y decisión de contratación desde una sola bandeja operativa.'}</CardDescription>
+          <CardDescription>{language === 'en' ? 'Administrative recruiting tray to qualify candidates before they move into onboarding and employee setup.' : 'Bandeja administrativa de selección para calificar candidatos antes de pasarlos a onboarding y alta laboral.'}</CardDescription>
         </CardHeader>
         <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
           {rows.map((item) => (

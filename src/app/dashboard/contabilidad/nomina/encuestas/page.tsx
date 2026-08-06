@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
@@ -14,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollSurveyCampaignRow } from '@/lib/payroll'
 
 const EMPTY_FORM = {
@@ -62,16 +64,16 @@ export default function NominaEncuestasPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll + HR',
+        eyebrow: 'Survey admin',
         title: 'Surveys',
-        description: 'Operational survey campaigns for climate, onboarding and benefits feedback, with audience, anonymity and response metrics.',
+        description: 'RRHH survey backoffice for climate, onboarding and benefits feedback, while answers belong to the separated collaborator experience.',
         actions: { create: 'Create survey', save: 'Save changes', add: 'Create survey', cancel: 'Cancel', edit: 'Edit', remove: 'Delete' },
         dialog: { title: 'Survey campaign', description: 'Store the campaign, audience, timing, anonymity settings and response metrics.' },
       }
     : {
-        eyebrow: 'Nómina + HR',
+        eyebrow: 'Encuestas RRHH',
         title: 'Encuestas',
-        description: 'Campañas operativas de encuestas para clima, onboarding y beneficios, con audiencia, anonimato y métricas de respuesta.',
+        description: 'Backoffice de encuestas RRHH para clima, onboarding y beneficios, dejando la respuesta del colaborador en una experiencia separada.',
         actions: { create: 'Crear encuesta', save: 'Guardar cambios', add: 'Crear encuesta', cancel: 'Cancelar', edit: 'Editar', remove: 'Eliminar' },
         dialog: { title: 'Campaña de encuesta', description: 'Guarda la campaña, audiencia, fechas, anonimato y métricas de participación.' },
       }
@@ -165,6 +167,16 @@ export default function NominaEncuestasPage() {
         eyebrow={copy.eyebrow}
         title={copy.title}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('gestion-personas')}>{language === 'en' ? 'Open people station' : 'Abrir estación people'}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('portal-empleado')}>{language === 'en' ? 'View collaborator portal' : 'Ver portal del colaborador'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: language === 'en' ? 'Active' : 'Activas', value: rows.filter((item) => item.status === 'ACTIVA').length, hint: language === 'en' ? 'Collecting feedback' : 'Recogiendo feedback', tone: 'sky' },
           { label: language === 'en' ? 'Scheduled' : 'Programadas', value: rows.filter((item) => item.status === 'PROGRAMADA').length, hint: language === 'en' ? 'Pending launch' : 'Pendientes de apertura', tone: 'amber' },
@@ -182,7 +194,7 @@ export default function NominaEncuestasPage() {
       <Card className="rounded-[26px] border-slate-200">
         <CardHeader>
           <CardTitle>{language === 'en' ? 'Survey campaigns' : 'Campañas de encuestas'}</CardTitle>
-          <CardDescription>{language === 'en' ? 'Track audience, timing, anonymity and participation from a single survey tray.' : 'Controla audiencia, fechas, anonimato y participación desde una sola bandeja de campañas.'}</CardDescription>
+          <CardDescription>{language === 'en' ? 'Administrative survey tray to configure audiences and timing before the collaborator answers in a separated surface.' : 'Bandeja administrativa para configurar audiencia y fechas antes de que el colaborador responda en una superficie separada.'}</CardDescription>
         </CardHeader>
         <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
           {rows.map((item) => (

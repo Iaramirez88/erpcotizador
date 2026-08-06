@@ -18,6 +18,7 @@ import Image from "next/image"
 import { useI18n } from "@/components/providers/i18n-provider"
 import { useTheme } from "@/components/providers/theme-provider"
 import { buildDashboardNavDefinitions, getDashboardSectionOrder, isOnboardingScopedDashboardHref, moduleForDashboardHref, sectionForDashboardHref } from "@/lib/dashboard-navigation"
+import { nominaHref } from '@/lib/nomina-routes'
 
 interface SidebarProps {
   user: {
@@ -30,6 +31,9 @@ interface SidebarProps {
     impersonatedByEmail?: string | null
     allowedModules?: string[] | null
     allowedNavHrefs?: string[] | null
+    canAccessPayrollAdmin?: boolean
+    hasPayrollPortal?: boolean
+    payrollEntryHref?: string
     canManageBilling?: boolean
     canAccessWebsiteServices?: boolean
     canAccessBackups?: boolean
@@ -59,7 +63,7 @@ const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard/reportes": "Indicadores, resultados y analisis para tomar decisiones.",
   "/dashboard/plantillas": "Formatos reutilizables para cotizaciones, mensajes y documentos.",
   "/dashboard/contabilidad": "Movimientos contables, comprobantes y control financiero.",
-  "/dashboard/contabilidad/nomina": "Liquidacion y seguimiento de pagos al personal.",
+  "/dashboard/nomina": "Nomina, RRHH y portal del empleado con autoservicio y gestion people.",
   "/dashboard/cotizador": "Crea cotizaciones nuevas de forma rapida y guiada.",
   "/dashboard/cotizaciones": "Consulta, edita y da seguimiento a cotizaciones creadas.",
   "/dashboard/remisiones": "Gestiona entregas, despachos y soportes de salida.",
@@ -242,7 +246,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
   },
   {
     name: 'Nómina',
-    href: "/dashboard/contabilidad/nomina",
+    href: "/dashboard/nomina",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
@@ -770,11 +774,13 @@ export default function Sidebar({ user }: SidebarProps) {
               ? json.dashboard!.prioritizedHrefs.filter((href): href is string => typeof href === 'string' && href.startsWith('/dashboard'))
               : []
           )
-          setAllowedNavHrefs(
-            Array.isArray(json.dashboard?.allowedHrefs)
+          setAllowedNavHrefs((current) => {
+            const next = Array.isArray(json.dashboard?.allowedHrefs)
               ? json.dashboard!.allowedHrefs.filter((href): href is string => typeof href === 'string' && href.startsWith('/dashboard'))
               : []
-          )
+            const preserved = current.filter((href) => href === nominaHref('portal-empleado'))
+            return Array.from(new Set([...next, ...preserved]))
+          })
         }
       } catch {}
     }
@@ -877,7 +883,25 @@ export default function Sidebar({ user }: SidebarProps) {
 
   // Para persona individual, mostrar todos los módulos (candado si no está habilitado por plan)
   const visibleNavigation = useMemo(() => {
-    const base = !navPrefs ? moduleNavigation : moduleNavigation.filter((it) => navPrefs[it.href] !== false)
+    const payrollEntryHref = user.payrollEntryHref ?? nominaHref()
+    const baseNavigation = moduleNavigation.map((item) => {
+      if (item.href !== nominaHref()) return item
+      if (user.canAccessPayrollAdmin !== true && user.hasPayrollPortal === true) {
+        return {
+          ...item,
+          name: 'Mi portal',
+          href: payrollEntryHref,
+          description: 'Portal del empleado con desprendibles, vacaciones, beneficios y solicitudes.',
+        }
+      }
+
+      return {
+        ...item,
+        href: payrollEntryHref,
+      }
+    })
+
+    const base = !navPrefs ? baseNavigation : baseNavigation.filter((it) => navPrefs[it.href] !== false)
     const withRbacGate = base.filter((it) => {
       if (allowedNavHrefSet?.has(it.href)) return true
       if (it.href === '/dashboard/configuracion/servicios-web') {
@@ -913,7 +937,7 @@ export default function Sidebar({ user }: SidebarProps) {
       return !isOnboardingScopedDashboardHref(it.href)
     })
     return sortNavItemsByOrder(withOnboardingScope, effectiveNavOrder)
-  }, [navPrefs, enabledModules, user?.role, user.canAccessBackups, user.intelligenceEnabled, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation, effectiveNavOrder, allowedNavHrefSet])
+  }, [navPrefs, enabledModules, user?.role, user.canAccessBackups, user.intelligenceEnabled, user.canAccessPayrollAdmin, user.hasPayrollPortal, user.payrollEntryHref, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation, effectiveNavOrder, allowedNavHrefSet])
 
   const visibleHrefs = useMemo(() => {
     return new Set(visibleNavigation.map((it) => it.href))

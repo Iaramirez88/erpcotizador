@@ -236,7 +236,7 @@ const START_CARDS: StartCardDefinition[] = [
   {
     title: 'Recursos Humanos',
     description: 'Entra a nómina, empleados, onboarding, beneficios, desempeño y servicio al colaborador desde un frente unificado.',
-    href: '/dashboard/contabilidad/nomina',
+    href: '/dashboard/nomina',
     cta: 'Abrir RRHH',
     moduleKey: 'CONTABILIDAD',
     icon: 'hr',

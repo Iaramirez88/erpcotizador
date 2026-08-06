@@ -10,6 +10,7 @@ import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollPeopleOverview } from '@/lib/payroll-people'
 
 function formatDate(value: string | null, locale: string) {
@@ -37,16 +38,16 @@ export default function NominaGestionPersonasPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll + HR',
+        eyebrow: 'People admin',
         title: 'People Management',
-        description: 'Operational people layer aligned with Buk references: organizational structure, employee portal, users and profiles, workflows and reporting on top of the current payroll module.',
+        description: 'Administrative people layer aligned with Buk references: organization, profiles, workflows and reporting, while the collaborator portal stays as a separate employee-facing surface.',
         stats: [
           { label: 'Org units', hint: 'Stored demo structure', tone: 'sky' as const },
           { label: 'Portal cards', hint: 'Self-service content', tone: 'teal' as const },
           { label: 'Reports', hint: 'People analytics outputs', tone: 'neutral' as const },
         ],
-        architectureTitle: 'Connected capability map',
-        architectureDescription: 'This page does not invent a second system. It extends payroll with real database entities and reuses current routes where they already exist.',
+        architectureTitle: 'People backoffice map',
+        architectureDescription: 'This page is the administrative layer. It extends payroll with real entities and keeps the collaborator portal as a separate consumption surface.',
         modulesTitle: 'Reference modules',
         modulesDescription: 'These references anchor the Buk-like scope while preserving the current visual language.',
         openEmployees: 'Open employees',
@@ -85,16 +86,16 @@ export default function NominaGestionPersonasPage() {
         ],
       }
     : {
-        eyebrow: 'Nómina + HR',
+        eyebrow: 'People admin',
         title: 'Gestión de Personas',
-        description: 'Capa operativa de personas alineada con referencias de Buk: estructura organizacional, portal del colaborador, usuarios y perfiles, workflows y reportería sobre el módulo actual de nómina.',
+        description: 'Capa administrativa de people alineada con referencias de Buk: estructura organizacional, usuarios, perfiles, workflows y reportería, dejando el portal del colaborador como superficie separada.',
         stats: [
           { label: 'Unidades', hint: 'Estructura demo persistida', tone: 'sky' as const },
           { label: 'Tarjetas portal', hint: 'Autoservicio visible', tone: 'teal' as const },
           { label: 'Reportes', hint: 'Salidas de people analytics', tone: 'neutral' as const },
         ],
-        architectureTitle: 'Mapa de capacidades conectado',
-        architectureDescription: 'Esta página no inventa un segundo sistema. Extiende Nómina con entidades reales en base de datos y reutiliza rutas actuales cuando ya existen.',
+        architectureTitle: 'Mapa del backoffice people',
+        architectureDescription: 'Esta página es la capa administrativa. Extiende Nómina con entidades reales y deja el portal del colaborador como superficie separada de consumo.',
         modulesTitle: 'Módulos de referencia',
         modulesDescription: 'Estas referencias amarran el alcance estilo Buk sin romper la línea visual actual.',
         openEmployees: 'Abrir empleados',
@@ -154,6 +155,16 @@ export default function NominaGestionPersonasPage() {
         eyebrow={copy.eyebrow}
         title={copy.title}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('empleados')}>{copy.openEmployees}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('portal-empleado')}>{language === 'en' ? 'View collaborator portal' : 'Ver portal del colaborador'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: copy.stats[0].label, value: overview?.orgUnits.length ?? 0, hint: copy.stats[0].hint, tone: copy.stats[0].tone },
           { label: copy.stats[1].label, value: overview?.portalHighlights.length ?? 0, hint: copy.stats[1].hint, tone: copy.stats[1].tone },
@@ -171,31 +182,31 @@ export default function NominaGestionPersonasPage() {
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             <Button asChild className="rounded-xl">
-              <Link href="/dashboard/contabilidad/nomina/empleados">{copy.openEmployees}</Link>
+              <Link href={nominaHref('empleados')}>{copy.openEmployees}</Link>
             </Button>
             <Button asChild variant="outline" className="rounded-xl bg-white/80">
-              <Link href="/dashboard/contabilidad/nomina/onboarding">{language === 'en' ? 'Open onboarding' : 'Abrir onboarding'}</Link>
+              <Link href={nominaHref('onboarding')}>{language === 'en' ? 'Open onboarding' : 'Abrir onboarding'}</Link>
             </Button>
             <Button asChild variant="outline" className="rounded-xl bg-white/80">
-              <Link href="/dashboard/contabilidad/nomina/servicio-colaborador">{language === 'en' ? 'Open service center' : 'Abrir servicio'}</Link>
+              <Link href={nominaHref('servicio-colaborador')}>{language === 'en' ? 'Open service center' : 'Abrir servicio'}</Link>
             </Button>
             <Button asChild variant="outline" className="rounded-xl bg-white/80">
-              <Link href="/dashboard/contabilidad/nomina/canal-denuncias">{language === 'en' ? 'Open ethics channel' : 'Abrir canal de denuncias'}</Link>
+              <Link href={nominaHref('canal-denuncias')}>{language === 'en' ? 'Open ethics channel' : 'Abrir canal de denuncias'}</Link>
             </Button>
             <Button asChild variant="outline" className="rounded-xl bg-white/80">
-              <Link href="/dashboard/contabilidad/nomina/seleccion">{language === 'en' ? 'Open recruiting' : 'Abrir selección'}</Link>
+              <Link href={nominaHref('seleccion')}>{language === 'en' ? 'Open recruiting' : 'Abrir selección'}</Link>
             </Button>
             <Button asChild variant="outline" className="rounded-xl bg-white/80">
-              <Link href="/dashboard/contabilidad/nomina/encuestas">{language === 'en' ? 'Open surveys' : 'Abrir encuestas'}</Link>
+              <Link href={nominaHref('encuestas')}>{language === 'en' ? 'Open surveys' : 'Abrir encuestas'}</Link>
             </Button>
             <Button asChild variant="outline" className="rounded-xl bg-white/80">
-              <Link href="/dashboard/contabilidad/nomina/desempeno">{language === 'en' ? 'Open performance' : 'Abrir desempeño'}</Link>
+              <Link href={nominaHref('desempeno')}>{language === 'en' ? 'Open performance' : 'Abrir desempeño'}</Link>
             </Button>
             <Button asChild variant="outline" className="rounded-xl bg-white/80">
-              <Link href="/dashboard/contabilidad/nomina/capacitaciones">{language === 'en' ? 'Open learning' : 'Abrir capacitaciones'}</Link>
+              <Link href={nominaHref('capacitaciones')}>{language === 'en' ? 'Open learning' : 'Abrir capacitaciones'}</Link>
             </Button>
             <Button asChild variant="outline" className="rounded-xl bg-white/80">
-              <Link href="/dashboard/contabilidad/nomina/periodos">{copy.openPeriods}</Link>
+              <Link href={nominaHref('periodos')}>{copy.openPeriods}</Link>
             </Button>
           </CardContent>
         </Card>

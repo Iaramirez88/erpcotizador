@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
@@ -13,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollTrainingAssignmentRow } from '@/lib/payroll'
 
 const EMPTY_FORM = {
@@ -60,15 +62,15 @@ export default function NominaCapacitacionesPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll + HR',
+        eyebrow: 'Learning admin',
         title: 'Learning',
-        description: 'Real training assignments with modality, provider, duration and completion tracking.',
+        description: 'RRHH learning backoffice for training assignments, providers and completion tracking before certificates or updates surface to the collaborator.',
         create: 'Create training',
       }
     : {
-        eyebrow: 'Nómina + HR',
+        eyebrow: 'Formación RRHH',
         title: 'Capacitaciones',
-        description: 'Asignaciones reales de formación con modalidad, proveedor, duración y seguimiento de cierre.',
+        description: 'Backoffice de formación RRHH para asignaciones, proveedores y cierre de capacitaciones antes de reflejar certificados o avances al colaborador.',
         create: 'Crear capacitación',
       }
 
@@ -172,6 +174,16 @@ export default function NominaCapacitacionesPage() {
         eyebrow={copy.eyebrow}
         title={copy.title}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('gestion-personas')}>{language === 'en' ? 'Open people station' : 'Abrir estación people'}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('portal-empleado')}>{language === 'en' ? 'View collaborator portal' : 'Ver portal del colaborador'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: language === 'en' ? 'Planned' : 'Planificadas', value: rows.filter((item) => item.status === 'PLANIFICADA').length, hint: language === 'en' ? 'Upcoming sessions' : 'Sesiones próximas', tone: 'amber' },
           { label: language === 'en' ? 'In progress' : 'En curso', value: rows.filter((item) => item.status === 'EN_CURSO').length, hint: language === 'en' ? 'Active completion' : 'Cierre activo', tone: 'sky' },
@@ -189,7 +201,7 @@ export default function NominaCapacitacionesPage() {
       <Card className="rounded-[26px] border-slate-200">
         <CardHeader>
           <CardTitle>{language === 'en' ? 'Training assignments' : 'Asignaciones de formación'}</CardTitle>
-          <CardDescription>{language === 'en' ? 'Manage payroll and people learning plans without leaving the current module.' : 'Gestiona planes de formación de nómina y people sin salir del módulo actual.'}</CardDescription>
+          <CardDescription>{language === 'en' ? 'Administrative training tray to assign, complete and certify learning plans before they appear in the collaborator journey.' : 'Bandeja administrativa para asignar, cerrar y certificar planes de formación antes de reflejarlos en la ruta del colaborador.'}</CardDescription>
         </CardHeader>
         <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
           {rows.map((item) => (

@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
@@ -13,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollPeriodRow } from '@/lib/payroll'
 import type { PayrollAttendanceEntryRow } from '@/lib/payroll-operations'
 
@@ -54,18 +56,18 @@ export default function NominaAsistenciaPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll',
+        eyebrow: 'Attendance admin',
         title: 'Attendance Control',
-        description: 'Real-time shift, lateness, leave and overtime control backed by payroll data.',
+        description: 'RRHH and payroll backoffice for shifts, lateness, leave and overtime before those events affect calculation or employee visibility.',
         actions: { create: 'Create attendance record', save: 'Save changes', add: 'Create record', cancel: 'Cancel', edit: 'Edit', remove: 'Delete' },
         dialog: { title: 'Attendance record', description: 'Store check-in, check-out, leave and overtime information tied to the employee and, optionally, the payroll period.' },
         labels: { employee: 'Employee', period: 'Period', date: 'Date', shift: 'Shift', status: 'Status', checkIn: 'Check-in', checkOut: 'Check-out', late: 'Late minutes', overtime: 'Overtime minutes', leave: 'Leave type', notes: 'Notes', noPeriod: 'No period' },
         errors: { save: 'Unable to save record', remove: 'Unable to delete record' },
       }
     : {
-        eyebrow: 'Nómina',
+        eyebrow: 'Asistencia RRHH',
         title: 'Control de Asistencia',
-        description: 'Control real de turnos, tardanzas, permisos y horas extra soportado sobre la base actual de nómina.',
+        description: 'Backoffice de RRHH y nómina para turnos, tardanzas, permisos y horas extra antes de impactar cálculo o visibilidad del colaborador.',
         actions: { create: 'Crear registro de asistencia', save: 'Guardar cambios', add: 'Crear registro', cancel: 'Cancelar', edit: 'Editar', remove: 'Eliminar' },
         dialog: { title: 'Registro de asistencia', description: 'Guarda marcación de entrada, salida, permisos y horas extra vinculadas al empleado y, si aplica, al período.' },
         labels: { employee: 'Empleado', period: 'Período', date: 'Fecha', shift: 'Turno', status: 'Estado', checkIn: 'Entrada', checkOut: 'Salida', late: 'Minutos tarde', overtime: 'Minutos extra', leave: 'Tipo de permiso', notes: 'Notas', noPeriod: 'Sin período' },
@@ -174,6 +176,16 @@ export default function NominaAsistenciaPage() {
         eyebrow={copy.eyebrow}
         title={copy.title}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('novedades')}>{language === 'en' ? 'Open payroll changes' : 'Abrir novedades'}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('portal-empleado')}>{language === 'en' ? 'View collaborator portal' : 'Ver portal del colaborador'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: language === 'en' ? 'Present' : 'Presentes', value: rows.filter((item) => item.status === 'PRESENTE').length, hint: language === 'en' ? 'Completed shifts' : 'Turnos completos', tone: 'teal' },
           { label: language === 'en' ? 'Late' : 'Tardanzas', value: rows.filter((item) => item.status === 'TARDE').length, hint: language === 'en' ? 'Needs follow-up' : 'Requieren seguimiento', tone: 'amber' },
@@ -191,7 +203,7 @@ export default function NominaAsistenciaPage() {
       <Card className="rounded-[26px] border-slate-200">
         <CardHeader>
           <CardTitle>{copy.title}</CardTitle>
-          <CardDescription>{copy.description}</CardDescription>
+          <CardDescription>{language === 'en' ? 'Administrative attendance tray used to validate presence, overtime and leave before payroll processing.' : 'Bandeja administrativa para validar presencia, horas extra y permisos antes del procesamiento de nómina.'}</CardDescription>
         </CardHeader>
         <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
           {rows.map((item) => (

@@ -1,9 +1,11 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { NominaSurfaceCallout } from '@/components/dashboard/nomina-surface-callout'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,6 +19,7 @@ import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import type { PayrollEmployeeRow } from '@/lib/payroll'
 import type { PayrollBenefitOfferingRow, PayrollBenefitRequestRow } from '@/lib/payroll-operations'
 import { Switch } from '@/components/ui/switch'
+import { nominaHref } from '@/lib/nomina-routes'
 import { formatCurrency } from '@/lib/utils'
 
 const EMPTY_FORM = {
@@ -76,18 +79,18 @@ export default function NominaBeneficiosPage() {
 
   const copy = language === 'en'
     ? {
-        eyebrow: 'Payroll',
+        eyebrow: 'HR admin',
         title: 'Benefits Management',
-        description: 'Operational benefit requests plus a real catalog of plans and discount packs connected to payroll employees.',
+        description: 'RRHH backoffice for benefit requests and catalog offers that later become visible in the employee portal and service experience.',
         actions: { create: 'Create benefit request', save: 'Save changes', add: 'Create request', cancel: 'Cancel', edit: 'Edit', remove: 'Delete' },
         dialog: { title: 'Benefit request', description: 'Store the benefit type, plan, vendor, value and approval status for the employee.' },
         offeringActions: { create: 'Create catalog offer', save: 'Save offer', add: 'Create offer', cancel: 'Cancel', edit: 'Edit', remove: 'Delete' },
         offeringDialog: { title: 'Catalog offer', description: 'Store a real benefit plan or discount pack with pricing, spotlight and vendor information.' },
       }
     : {
-        eyebrow: 'Nómina',
+        eyebrow: 'RRHH admin',
         title: 'Gestión de Beneficios',
-        description: 'Solicitudes reales de beneficios más un catálogo operativo de planes y packs de descuentos conectados al empleado.',
+        description: 'Backoffice de RRHH para gestionar solicitudes y catálogo de beneficios que luego consume el colaborador desde su portal y su experiencia de servicio.',
         actions: { create: 'Crear solicitud de beneficio', save: 'Guardar cambios', add: 'Crear solicitud', cancel: 'Cancelar', edit: 'Editar', remove: 'Eliminar' },
         dialog: { title: 'Solicitud de beneficio', description: 'Guarda tipo de beneficio, plan, aliado, valor y estado de aprobación para el colaborador.' },
         offeringActions: { create: 'Crear oferta de catálogo', save: 'Guardar oferta', add: 'Crear oferta', cancel: 'Cancelar', edit: 'Editar', remove: 'Eliminar' },
@@ -265,6 +268,16 @@ export default function NominaBeneficiosPage() {
         eyebrow={copy.eyebrow}
         title={copy.title}
         description={copy.description}
+        actions={
+          <>
+            <Button asChild className="rounded-2xl">
+              <Link href={nominaHref('portal-empleado')}>{language === 'en' ? 'View employee portal' : 'Ver portal del colaborador'}</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl bg-white/90">
+              <Link href={nominaHref('servicio-colaborador')}>{language === 'en' ? 'Open service center' : 'Abrir servicio al colaborador'}</Link>
+            </Button>
+          </>
+        }
         stats={[
           { label: language === 'en' ? 'Requested' : 'Solicitadas', value: rows.filter((item) => item.status === 'SOLICITADA').length, hint: language === 'en' ? 'Pending approval' : 'Pendientes de aprobación', tone: 'amber' },
           { label: language === 'en' ? 'Delivered' : 'Entregadas', value: rows.filter((item) => item.status === 'ENTREGADA').length, hint: language === 'en' ? 'Already granted' : 'Ya otorgadas', tone: 'teal' },
@@ -273,6 +286,17 @@ export default function NominaBeneficiosPage() {
       />
 
       <NominaSubnav />
+
+      <NominaSurfaceCallout
+        adminTitle={language === 'en' ? 'This backoffice defines catalog offers and approvals.' : 'Este backoffice define catálogo y aprobaciones.'}
+        adminDescription={language === 'en' ? 'RRHH controls which benefit plans, advances and discounts become available or delivered.' : 'RRHH controla qué planes, adelantos y descuentos quedan disponibles o entregados.'}
+        employeeTitle={language === 'en' ? 'The collaborator only sees visible benefits and personal requests.' : 'El colaborador solo ve beneficios visibles y sus solicitudes personales.'}
+        employeeDescription={language === 'en' ? 'Portal visibility, status and delivery here determine what appears in self-service.' : 'La visibilidad, el estado y la entrega aquí determinan lo que aparece en autoservicio.'}
+        primaryHref={nominaHref('portal-empleado')}
+        primaryLabel={language === 'en' ? 'Open collaborator portal' : 'Abrir portal del colaborador'}
+        secondaryHref={nominaHref('servicio-colaborador')}
+        secondaryLabel={language === 'en' ? 'Open service cases' : 'Abrir casos de servicio'}
+      />
 
       <div className="flex justify-end gap-2">
         <DataViewToggle mode={mode} onChange={setMode} />

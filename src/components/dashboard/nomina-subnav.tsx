@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useI18n } from '@/components/providers/i18n-provider'
+import { useDashboardAccess } from '@/components/dashboard/dashboard-access-context'
+import { nominaHref, normalizeNominaPathname } from '@/lib/nomina-routes'
 import { cn } from '@/lib/utils'
 
 type NominaNavItem = {
@@ -12,53 +14,71 @@ type NominaNavItem = {
 }
 
 function isItemActive(pathname: string, href: string) {
-  if (href === '/dashboard/contabilidad/nomina') {
-    return pathname === href
+  const normalizedPathname = normalizeNominaPathname(pathname)
+
+  if (href === nominaHref()) {
+    return normalizedPathname === href
   }
 
-  return pathname === href || pathname.startsWith(href + '/')
+  return normalizedPathname === href || normalizedPathname.startsWith(href + '/')
 }
 
 export function NominaSubnav() {
   const pathname = usePathname() ?? ''
   const { language } = useI18n()
-  const nominaNavItems: NominaNavItem[] = language === 'en'
+  const { canAccessPayrollAdmin, hasPayrollPortal } = useDashboardAccess()
+
+  const adminItems: NominaNavItem[] = language === 'en'
     ? [
-        { label: 'Overview', href: '/dashboard/contabilidad/nomina' },
-        { label: 'Employees', href: '/dashboard/contabilidad/nomina/empleados' },
-        { label: 'Attendance', href: '/dashboard/contabilidad/nomina/asistencia', shortLabel: 'Attend.' },
-        { label: 'Benefits', href: '/dashboard/contabilidad/nomina/beneficios' },
-        { label: 'Onboarding', href: '/dashboard/contabilidad/nomina/onboarding' },
-        { label: 'Service', href: '/dashboard/contabilidad/nomina/servicio-colaborador' },
-        { label: 'Ethics', href: '/dashboard/contabilidad/nomina/canal-denuncias' },
-        { label: 'Recruiting', href: '/dashboard/contabilidad/nomina/seleccion' },
-        { label: 'Surveys', href: '/dashboard/contabilidad/nomina/encuestas' },
-        { label: 'Performance', href: '/dashboard/contabilidad/nomina/desempeno' },
-        { label: 'Learning', href: '/dashboard/contabilidad/nomina/capacitaciones' },
-        { label: 'People', href: '/dashboard/contabilidad/nomina/gestion-personas' },
-        { label: 'Periods', href: '/dashboard/contabilidad/nomina/periodos' },
-        { label: 'Changes', href: '/dashboard/contabilidad/nomina/novedades' },
-        { label: 'Settlements', href: '/dashboard/contabilidad/nomina/liquidaciones', shortLabel: 'Settle' },
-        { label: 'Reports', href: '/dashboard/contabilidad/nomina/reportes' },
+        { label: 'Overview', href: nominaHref() },
+        { label: 'Employees', href: nominaHref('empleados') },
+        { label: 'Attendance', href: nominaHref('asistencia'), shortLabel: 'Attend.' },
+        { label: 'Benefits', href: nominaHref('beneficios') },
+        { label: 'Onboarding', href: nominaHref('onboarding') },
+        { label: 'Service', href: nominaHref('servicio-colaborador') },
+        { label: 'Ethics', href: nominaHref('canal-denuncias') },
+        { label: 'Recruiting', href: nominaHref('seleccion') },
+        { label: 'Surveys', href: nominaHref('encuestas') },
+        { label: 'Performance', href: nominaHref('desempeno') },
+        { label: 'Learning', href: nominaHref('capacitaciones') },
+        { label: 'People', href: nominaHref('gestion-personas') },
+        { label: 'Periods', href: nominaHref('periodos') },
+        { label: 'Changes', href: nominaHref('novedades') },
+        { label: 'Settlements', href: nominaHref('liquidaciones'), shortLabel: 'Settle' },
+        { label: 'Reports', href: nominaHref('reportes') },
       ]
     : [
-        { label: 'Resumen', href: '/dashboard/contabilidad/nomina' },
-        { label: 'Empleados', href: '/dashboard/contabilidad/nomina/empleados' },
-        { label: 'Asistencia', href: '/dashboard/contabilidad/nomina/asistencia' },
-        { label: 'Beneficios', href: '/dashboard/contabilidad/nomina/beneficios' },
-        { label: 'Onboarding', href: '/dashboard/contabilidad/nomina/onboarding' },
-        { label: 'Servicio', href: '/dashboard/contabilidad/nomina/servicio-colaborador' },
-        { label: 'Denuncias', href: '/dashboard/contabilidad/nomina/canal-denuncias' },
-        { label: 'Selección', href: '/dashboard/contabilidad/nomina/seleccion' },
-        { label: 'Encuestas', href: '/dashboard/contabilidad/nomina/encuestas' },
-        { label: 'Desempeño', href: '/dashboard/contabilidad/nomina/desempeno' },
-        { label: 'Capacitaciones', href: '/dashboard/contabilidad/nomina/capacitaciones' },
-        { label: 'Gestión de personas', href: '/dashboard/contabilidad/nomina/gestion-personas', shortLabel: 'Personas' },
-        { label: 'Períodos', href: '/dashboard/contabilidad/nomina/periodos' },
-        { label: 'Novedades', href: '/dashboard/contabilidad/nomina/novedades' },
-        { label: 'Liquidaciones', href: '/dashboard/contabilidad/nomina/liquidaciones', shortLabel: 'Liquidar' },
-        { label: 'Reportes', href: '/dashboard/contabilidad/nomina/reportes' },
+        { label: 'Resumen', href: nominaHref() },
+        { label: 'Empleados', href: nominaHref('empleados') },
+        { label: 'Asistencia', href: nominaHref('asistencia') },
+        { label: 'Beneficios', href: nominaHref('beneficios') },
+        { label: 'Onboarding', href: nominaHref('onboarding') },
+        { label: 'Servicio', href: nominaHref('servicio-colaborador') },
+        { label: 'Denuncias', href: nominaHref('canal-denuncias') },
+        { label: 'Selección', href: nominaHref('seleccion') },
+        { label: 'Encuestas', href: nominaHref('encuestas') },
+        { label: 'Desempeño', href: nominaHref('desempeno') },
+        { label: 'Capacitaciones', href: nominaHref('capacitaciones') },
+        { label: 'Gestión de personas', href: nominaHref('gestion-personas'), shortLabel: 'Personas' },
+        { label: 'Períodos', href: nominaHref('periodos') },
+        { label: 'Novedades', href: nominaHref('novedades') },
+        { label: 'Liquidaciones', href: nominaHref('liquidaciones'), shortLabel: 'Liquidar' },
+        { label: 'Reportes', href: nominaHref('reportes') },
       ]
+
+  const portalItem: NominaNavItem | null = hasPayrollPortal
+    ? {
+        label: language === 'en' ? 'My portal' : 'Mi portal',
+        href: nominaHref('portal-empleado'),
+        shortLabel: 'Portal',
+      }
+    : null
+
+  const nominaNavItems: NominaNavItem[] = canAccessPayrollAdmin
+    ? [adminItems[0], ...(portalItem ? [portalItem] : []), ...adminItems.slice(1)]
+    : portalItem
+      ? [portalItem]
+      : []
 
   return (
     <div className="overflow-x-auto">

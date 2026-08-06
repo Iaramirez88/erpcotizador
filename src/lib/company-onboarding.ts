@@ -240,7 +240,7 @@ const BUSINESS_TYPE_ALLOWED_HREFS: Record<BusinessType, string[]> = {
   RESTAURANTE: ['/dashboard/restaurante', '/dashboard/pos', '/dashboard/clientes', '/dashboard/inventario', '/dashboard/compras', '/dashboard/proveedores'],
   ABOGADOS: ['/dashboard/clientes', '/dashboard/cotizaciones'],
   CLINICA: ['/dashboard/clientes', '/dashboard/pos'],
-  CONTABILIDAD: ['/dashboard/clientes', '/dashboard/contabilidad', '/dashboard/contabilidad/nomina'],
+  CONTABILIDAD: ['/dashboard/clientes', '/dashboard/contabilidad', '/dashboard/nomina'],
   DOTACIONES: ['/dashboard/dotaciones', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/clientes', '/dashboard/inventario', '/dashboard/compras', '/dashboard/proveedores', '/dashboard/remisiones'],
   LITOGRAFIA: ['/dashboard/litografia', '/dashboard/litografia/conocimiento-ia', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/clientes', '/dashboard/ordenes', '/dashboard/escaneos', '/dashboard/productos'],
   COMERCIO: ['/dashboard/pos', '/dashboard/clientes', '/dashboard/inventario', '/dashboard/compras', '/dashboard/proveedores', '/dashboard/remisiones'],
@@ -252,7 +252,7 @@ const BUSINESS_TYPE_PRIORITIES: Record<BusinessType, string[]> = {
   RESTAURANTE: ['/dashboard/restaurante', '/dashboard/pos', '/dashboard/inventario', '/dashboard/compras'],
   ABOGADOS: ['/dashboard/clientes', '/dashboard/cotizaciones'],
   CLINICA: ['/dashboard/clientes', '/dashboard/pos'],
-  CONTABILIDAD: ['/dashboard/contabilidad', '/dashboard/contabilidad/nomina', '/dashboard/clientes'],
+  CONTABILIDAD: ['/dashboard/contabilidad', '/dashboard/nomina', '/dashboard/clientes'],
   DOTACIONES: ['/dashboard/dotaciones', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/remisiones'],
   LITOGRAFIA: ['/dashboard/litografia', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/ordenes'],
   COMERCIO: ['/dashboard/pos', '/dashboard/inventario', '/dashboard/remisiones'],
@@ -332,8 +332,8 @@ const ADDON_ALLOWED_HREFS: Record<OptionalAddon, string[]> = {
     '/dashboard/espacios-trabajo',
     '/dashboard/chat',
   ],
-  CONTABILIDAD: ['/dashboard/contabilidad', '/dashboard/contabilidad/nomina'],
-  NOMINA: ['/dashboard/contabilidad/nomina'],
+  CONTABILIDAD: ['/dashboard/contabilidad', '/dashboard/nomina'],
+  NOMINA: ['/dashboard/nomina'],
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -519,7 +519,7 @@ function buildPrioritizedHrefs(data: CompanyOnboardingData, modules: ModuleKey[]
     basePriority.push('/dashboard/inventario')
   }
   if (data.workflowNeeds.includes('ACCOUNTING') && modules.includes('CONTABILIDAD')) {
-    basePriority.push('/dashboard/contabilidad', '/dashboard/contabilidad/nomina')
+    basePriority.push('/dashboard/contabilidad', '/dashboard/nomina')
   }
   if (data.workflowNeeds.includes('APPOINTMENTS') && data.businessType === 'ODONTOLOGIA') {
     basePriority.unshift('/dashboard/odontologia')

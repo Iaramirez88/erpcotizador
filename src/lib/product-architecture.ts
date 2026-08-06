@@ -91,7 +91,8 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/configuracion/desperdicios', label: 'Desperdicios', labelKey: 'nav.waste', section: 'Recursos', layer: 'Recursos', domain: 'Reglas de consumo', moduleKey: 'CONFIG' },
 
   { href: '/dashboard/contabilidad', label: 'Contabilidad', labelKey: 'nav.accounting', section: 'Finanzas', layer: 'Finanzas', domain: 'Contabilidad', moduleKey: 'CONTABILIDAD' },
-  { href: '/dashboard/contabilidad/nomina', label: 'Nómina', section: 'Finanzas', layer: 'Finanzas', domain: 'Nómina', moduleKey: 'CONTABILIDAD' },
+  { href: '/dashboard/nomina', label: 'Nómina', section: 'Finanzas', layer: 'Finanzas', domain: 'Nómina y RRHH', moduleKey: 'CONTABILIDAD' },
+  { href: '/dashboard/nomina/portal-empleado', label: 'Mi portal laboral', section: 'Finanzas', layer: 'Finanzas', domain: 'Autoservicio del empleado', moduleKey: 'CONTABILIDAD' },
 
   { href: '/dashboard/reportes', label: 'Reportes', labelKey: 'nav.reports', section: 'Analítica', layer: 'Analítica', domain: 'Reportes y BI', moduleKey: 'REPORTES' },
   { href: '/dashboard/crm/auditoria-ia', label: 'Auditoría IA CRM', section: 'Analítica', layer: 'Analítica', domain: 'Auditoría IA comercial', moduleKey: 'CRM' },
