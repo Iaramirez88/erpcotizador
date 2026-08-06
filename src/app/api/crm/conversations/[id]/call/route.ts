@@ -62,10 +62,9 @@ function buildGuestInviteMessage(args: {
 }) {
   return [
     `Hola ${args.contactLabel || 'cliente'},`,
-    `${args.advisorName} te invitó a una ${args.callType === 'audio' ? 'llamada de audio' : 'videollamada'} desde SGDigital CRM.`,
-    'Puedes entrar desde tu navegador con este enlace seguro:',
+    `${args.advisorName} te invita a una ${args.callType === 'audio' ? 'llamada' : 'videollamada'}:`,
     args.inviteUrl,
-    'Si ves el aviso de micrófono o cámara, acéptalo para unirte a la llamada.',
+    'Abre el enlace y acepta micrófono/cámara.',
   ].filter(Boolean).join('\n\n')
 }
 
@@ -454,7 +453,7 @@ export async function POST(request: Request, context: RouteContext) {
     const sessionKey = crypto.randomUUID()
     const baseUrl = getRequestBaseUrl(request)
     const guestInviteUrl = baseUrl
-      ? `${baseUrl}/llamada?callType=${encodeURIComponent(requestedCallType)}#url=${encodeURIComponent(joinUrl)}&token=${encodeURIComponent(guestToken.token)}&name=${encodeURIComponent(contactLabel)}&room=${encodeURIComponent(roomName)}`
+      ? `${baseUrl}/llamada?m=${requestedCallType === 'audio' ? 'a' : 'v'}#h=${encodeURIComponent(addonRuntime.domainHost)}&r=${encodeURIComponent(roomName)}&t=${encodeURIComponent(guestToken.token)}`
       : null
     const inviteDispatch = shouldSendWhatsappInvite && guestInviteUrl
       ? await sendWhatsAppDailyInvite({

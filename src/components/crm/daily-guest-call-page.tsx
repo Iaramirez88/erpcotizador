@@ -16,11 +16,14 @@ type DailyCallLike = {
 function parseHashParams(hash: string) {
   const raw = hash.startsWith('#') ? hash.slice(1) : hash
   const params = new URLSearchParams(raw)
+  const host = params.get('h') || ''
+  const room = params.get('r') || ''
   return {
-    url: params.get('url') || '',
-    token: params.get('token') || '',
-    name: params.get('name') || 'Invitado',
-    room: params.get('room') || '',
+    host,
+    room,
+    url: host && room ? `https://${host}/${room}` : '',
+    token: params.get('t') || '',
+    name: 'Invitado',
   }
 }
 
@@ -40,7 +43,7 @@ export function DailyGuestCallPage() {
     return () => window.removeEventListener('hashchange', updateHash)
   }, [])
 
-  const callType = searchParams?.get('callType') === 'audio' ? 'audio' : 'video'
+  const callType = searchParams?.get('m') === 'a' ? 'audio' : 'video'
   const session = useMemo(() => parseHashParams(hashValue), [hashValue])
 
   useEffect(() => {
