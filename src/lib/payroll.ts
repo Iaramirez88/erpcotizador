@@ -114,6 +114,7 @@ export type PayrollNoveltyRow = {
   startsAt?: string | null
   endsAt?: string | null
   supportNumber?: string | null
+  supportUrl?: string | null
 }
 
 export type PayrollSettlementRow = {

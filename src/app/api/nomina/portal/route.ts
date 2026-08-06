@@ -182,6 +182,11 @@ async function buildPortalPayload() {
       data: {
         user,
         employee: null,
+        payslips: [],
+        documents: [],
+        benefits: [],
+        novelties: [],
+        complaints: [],
         offers: [],
       },
     }

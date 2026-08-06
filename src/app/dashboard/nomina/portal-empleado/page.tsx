@@ -115,8 +115,15 @@ export default function NominaPortalEmpleadoPage() {
     void load()
   }, [])
 
-  const pendingBenefits = useMemo(() => data?.benefits.filter((item) => item.status !== 'ENTREGADA').length ?? 0, [data])
-  const incapacityHistory = useMemo(() => data?.novelties.filter((item) => item.type === 'INCAPACIDAD') ?? [], [data])
+  const payslips = data?.payslips ?? []
+  const documents = data?.documents ?? []
+  const benefits = data?.benefits ?? []
+  const novelties = data?.novelties ?? []
+  const complaints = data?.complaints ?? []
+  const offers = data?.offers ?? []
+
+  const pendingBenefits = useMemo(() => benefits.filter((item) => item.status !== 'ENTREGADA').length, [benefits])
+  const incapacityHistory = useMemo(() => novelties.filter((item) => item.type === 'INCAPACIDAD'), [novelties])
 
   async function saveProfile() {
     setProfileSaving(true)
@@ -207,7 +214,7 @@ export default function NominaPortalEmpleadoPage() {
         }
         stats={[
           { label: 'Vacaciones', value: data?.employee?.vacation.availableDays ?? 0, hint: 'Días disponibles', tone: 'teal' },
-          { label: 'Desprendibles', value: data?.payslips.length ?? 0, hint: 'Historial reciente', tone: 'sky' },
+          { label: 'Desprendibles', value: payslips.length, hint: 'Historial reciente', tone: 'sky' },
           { label: 'Beneficios', value: pendingBenefits, hint: 'Solicitudes activas', tone: 'amber' },
         ]}
       />
@@ -300,14 +307,14 @@ export default function NominaPortalEmpleadoPage() {
                   <CardDescription>Solicitudes personales y catálogo visible para el colaborador.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {data.benefits.slice(0, 4).map((item) => (
+                  {benefits.slice(0, 4).map((item) => (
                     <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
                       <div className="font-medium text-slate-950">{item.title}</div>
                       <div className="mt-1 text-sm text-slate-500">{item.description}</div>
                       <div className="mt-2 text-sm text-slate-600">{item.vendorName ?? 'Beneficio interno'} · {item.status}</div>
                     </div>
                   ))}
-                  {data.offers.slice(0, 2).map((item) => (
+                  {offers.slice(0, 2).map((item) => (
                     <div key={item.id} className="rounded-2xl border border-dashed border-violet-200 bg-violet-50/70 p-4">
                       <div className="font-medium text-slate-950">{item.title}</div>
                       <div className="mt-1 text-sm text-slate-500">{item.description}</div>
@@ -324,7 +331,7 @@ export default function NominaPortalEmpleadoPage() {
                 <ErpSectionHeading title="Desprendibles y documentos" description="Recibos recientes y documentos visibles en el portal." />
               </CardHeader>
               <CardContent className="space-y-3">
-                {data.payslips.map((item) => (
+                {payslips.map((item) => (
                   <div key={item.id} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
                     <div>
                       <div className="font-medium text-slate-950">{item.periodLabel}</div>
@@ -333,7 +340,7 @@ export default function NominaPortalEmpleadoPage() {
                     <div className="text-sm text-slate-600">{item.signed ? 'Firmado' : 'Pendiente'}</div>
                   </div>
                 ))}
-                {data.documents.map((item) => (
+                {documents.map((item) => (
                   <div key={item.id} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
                     <div>
                       <div className="font-medium text-slate-950">{item.title}</div>
@@ -438,14 +445,14 @@ export default function NominaPortalEmpleadoPage() {
                 <CardDescription>Seguimiento de tus reportes y solicitudes visibles dentro del portal.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {data.complaints.map((item) => (
+                {complaints.map((item) => (
                   <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
                     <div className="font-medium text-slate-950">{item.title}</div>
                     <div className="mt-1 text-sm text-slate-500">{item.category} · {item.status} · {formatDate(item.createdAt)}</div>
                     <div className="mt-2 text-sm text-slate-600">{item.summary}</div>
                   </div>
                 ))}
-                {data.complaints.length === 0 ? (
+                {complaints.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">Aún no has radicado denuncias desde este portal.</div>
                 ) : null}
               </CardContent>

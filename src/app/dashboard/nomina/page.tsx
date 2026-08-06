@@ -127,7 +127,7 @@ export default function NominaDashboardPage() {
       title: 'Beneficios',
       href: nominaHref('beneficios'),
       icon: HeartHandshake,
-      metric: `${portal?.benefits.length ?? 0} visibles`,
+      metric: `${portal?.benefits?.length ?? 0} visibles`,
       hint: 'Bonos, descuentos y planes',
       tone: 'from-violet-100 to-fuchsia-50 border-violet-200',
     },
@@ -135,11 +135,11 @@ export default function NominaDashboardPage() {
       title: 'Denuncias y servicio',
       href: nominaHref('canal-denuncias'),
       icon: ShieldAlert,
-      metric: `${portal?.complaints.length ?? 0} casos propios`,
+      metric: `${portal?.complaints?.length ?? 0} casos propios`,
       hint: 'Canal ético y soporte al colaborador',
       tone: 'from-amber-100 to-orange-50 border-amber-200',
     },
-  ], [activeEmployees, nextPeriod, openPeriods, portal?.benefits.length, portal?.complaints.length])
+  ], [activeEmployees, nextPeriod, openPeriods, portal?.benefits?.length, portal?.complaints?.length])
 
   const employeeFeatures = [
     { icon: UserRound, label: 'Actualizar contacto y perfil profesional' },
@@ -161,7 +161,7 @@ export default function NominaDashboardPage() {
     },
     {
       title: 'Desprendibles y documentos',
-      value: `${portal?.payslips.length ?? 0} recientes`,
+      value: `${portal?.payslips?.length ?? 0} recientes`,
       detail: 'Encuentra pagos, soportes y documentos compartidos por RRHH.',
       href: nominaHref('portal-empleado'),
       icon: FileSpreadsheet,
@@ -169,7 +169,7 @@ export default function NominaDashboardPage() {
     },
     {
       title: 'Beneficios activos',
-      value: `${portal?.benefits.length ?? 0} visibles`,
+      value: `${portal?.benefits?.length ?? 0} visibles`,
       detail: 'Revisa solicitudes, descuentos y convenios disponibles.',
       href: nominaHref('portal-empleado'),
       icon: Gift,
@@ -177,13 +177,13 @@ export default function NominaDashboardPage() {
     },
     {
       title: 'Canal confidencial',
-      value: `${portal?.complaints.length ?? 0} casos`,
+      value: `${portal?.complaints?.length ?? 0} casos`,
       detail: 'Reporta novedades sensibles desde un formulario breve y trazable.',
       href: nominaHref('portal-empleado'),
       icon: ShieldAlert,
       tone: 'from-amber-100 to-orange-50 border-amber-200',
     },
-  ], [portal?.benefits.length, portal?.complaints.length, portal?.employee?.vacation.availableDays, portal?.payslips.length])
+  ], [portal?.benefits?.length, portal?.complaints?.length, portal?.employee?.vacation.availableDays, portal?.payslips?.length])
 
   return (
     <div className="space-y-6">

@@ -33,6 +33,8 @@ const EMPTY_FORM = {
   startsAt: '',
   endsAt: '',
   supportNumber: '',
+  file: null as File | null,
+  hasExistingSupport: false,
 }
 
 function formatDate(value: string | null | undefined, locale: string) {
@@ -96,9 +98,15 @@ export default function NominaNovedadesPage() {
           startsAt: 'From',
           endsAt: 'To',
           supportNumber: 'Support number',
+          attachment: 'Attachment support',
           detail: 'Detail',
           value: 'Amount',
           source: 'Source',
+          attachmentRequired: 'Required for medical leave',
+          attachmentOptional: 'Optional for flights, garnishments, vacations and other novelties',
+          attachmentPresent: 'Attachment on file',
+          attachmentMissing: 'No attachment',
+          openAttachment: 'Open attachment',
         },
         types: {
           INCAPACIDAD: 'Medical leave',
@@ -158,9 +166,15 @@ export default function NominaNovedadesPage() {
           startsAt: 'Desde',
           endsAt: 'Hasta',
           supportNumber: 'Número soporte',
+          attachment: 'Adjunto soporte',
           detail: 'Detalle',
           value: 'Valor',
           source: 'Fuente',
+          attachmentRequired: 'Obligatorio para incapacidades',
+          attachmentOptional: 'Opcional para vuelos, embargos, vacaciones y demás novedades',
+          attachmentPresent: 'Con adjunto',
+          attachmentMissing: 'Sin adjunto',
+          openAttachment: 'Abrir adjunto',
         },
         types: {
           INCAPACIDAD: 'Incapacidad',
@@ -254,6 +268,8 @@ export default function NominaNovedadesPage() {
       startsAt: item.startsAt?.slice(0, 10) ?? '',
       endsAt: item.endsAt?.slice(0, 10) ?? '',
       supportNumber: item.supportNumber ?? '',
+      file: null,
+      hasExistingSupport: Boolean(item.supportUrl),
     })
     setDialogOpen(true)
   }
@@ -261,18 +277,33 @@ export default function NominaNovedadesPage() {
   async function handleSave() {
     setSaving(true)
     setError(null)
-    const payload = {
-      ...(editingId ? { id: editingId } : {}),
-      ...form,
-      periodId: form.periodId || undefined,
-      amount: form.amount ? Number(form.amount) : undefined,
-      days: form.days ? Number(form.days) : undefined,
-      quantity: form.quantity ? Number(form.quantity) : undefined,
+
+    if (form.type === 'INCAPACIDAD' && !form.file && !form.hasExistingSupport) {
+      setError(language === 'en' ? 'Medical leave requires a PDF or image attachment.' : 'La incapacidad requiere adjuntar un PDF o imagen de soporte.')
+      setSaving(false)
+      return
     }
+
+    const payload = new FormData()
+    if (editingId) payload.set('id', editingId)
+    payload.set('employeeId', form.employeeId)
+    payload.set('type', form.type)
+    payload.set('detail', form.detail)
+    payload.set('status', form.status)
+    payload.set('source', form.source)
+    if (form.periodId) payload.set('periodId', form.periodId)
+    if (form.amount) payload.set('amount', form.amount)
+    if (form.days) payload.set('days', form.days)
+    if (form.quantity) payload.set('quantity', form.quantity)
+    if (form.occurredOn) payload.set('occurredOn', form.occurredOn)
+    if (form.startsAt) payload.set('startsAt', form.startsAt)
+    if (form.endsAt) payload.set('endsAt', form.endsAt)
+    if (form.supportNumber) payload.set('supportNumber', form.supportNumber)
+    if (form.file) payload.set('file', form.file)
+
     const res = await fetch('/api/nomina/novedades', {
       method: editingId ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: payload,
     })
     const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null
     if (!res.ok || !json?.ok) {
@@ -366,7 +397,9 @@ export default function NominaNovedadesPage() {
                     <span className="rounded-full border border-slate-200 px-2.5 py-1">{copy.statuses[item.status]}</span>
                     <span className="rounded-full border border-slate-200 px-2.5 py-1">{copy.labels.source}: {item.source}</span>
                     <span className="rounded-full border border-slate-200 px-2.5 py-1">{formatDate(item.occurredOn, locale)}</span>
+                    <span className="rounded-full border border-slate-200 px-2.5 py-1">{item.supportUrl ? copy.labels.attachmentPresent : copy.labels.attachmentMissing}</span>
                   </div>
+                  {item.supportUrl ? <div className="mt-2"><Link href={item.supportUrl} target="_blank" className="text-sm font-medium text-sky-700">{copy.labels.openAttachment}</Link></div> : null}
                   <div className="mt-3 flex justify-end gap-2">
                     <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
                     <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
@@ -397,7 +430,9 @@ export default function NominaNovedadesPage() {
                     <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{copy.labels.days}: {item.days ?? 0}</span>
                     <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{copy.labels.supportNumber}: {item.supportNumber ?? '—'}</span>
                     <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{formatDate(item.startsAt, locale)} - {formatDate(item.endsAt, locale)}</span>
+                    <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{item.supportUrl ? copy.labels.attachmentPresent : copy.labels.attachmentMissing}</span>
                   </div>
+                  {item.supportUrl ? <div className="mt-2"><Link href={item.supportUrl} target="_blank" className="text-sm font-medium text-sky-700">{copy.labels.openAttachment}</Link></div> : null}
                   <div className="mt-3 flex justify-end gap-2">
                     <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
                     <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
@@ -427,6 +462,12 @@ export default function NominaNovedadesPage() {
             <div className="grid gap-2"><Label>{copy.labels.startsAt}</Label><Input type="date" value={form.startsAt} onChange={(event) => setForm((current) => ({ ...current, startsAt: event.target.value }))} /></div>
             <div className="grid gap-2"><Label>{copy.labels.endsAt}</Label><Input type="date" value={form.endsAt} onChange={(event) => setForm((current) => ({ ...current, endsAt: event.target.value }))} /></div>
             <div className="grid gap-2"><Label>{copy.labels.supportNumber}</Label><Input value={form.supportNumber} onChange={(event) => setForm((current) => ({ ...current, supportNumber: event.target.value }))} /></div>
+            <div className="grid gap-2 md:col-span-2">
+              <Label>{copy.labels.attachment}</Label>
+              <Input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(event) => setForm((current) => ({ ...current, file: event.target.files?.[0] ?? null }))} />
+              <div className="text-xs text-slate-500">{form.type === 'INCAPACIDAD' ? copy.labels.attachmentRequired : copy.labels.attachmentOptional}</div>
+              {form.hasExistingSupport && !form.file ? <div className="text-xs text-emerald-700">{copy.labels.attachmentPresent}</div> : null}
+            </div>
             <div className="grid gap-2 md:col-span-2"><Label>{copy.labels.detail}</Label><Textarea value={form.detail} onChange={(event) => setForm((current) => ({ ...current, detail: event.target.value }))} rows={3} /></div>
           </div>
           {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
