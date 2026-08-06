@@ -28,3 +28,6 @@
 - [x] Grabacion opcional
 - [x] Metricas de uso y consumo mensual
 - [x] Cobro/activacion comercial del addon
+# ====== daily ==========
+SGDIGITAL_DAILY_API_KEY=tu_api_key_de_daily
+SGDIGITAL_DAILY_DOMAIN=tu-dominio.daily.co

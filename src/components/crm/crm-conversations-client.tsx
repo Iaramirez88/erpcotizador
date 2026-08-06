@@ -222,6 +222,15 @@ type PreparedCallSession = {
   contactLabel: string
   provider: ChannelProvider
   readinessMessage: string
+  guestInviteUrl: string | null
+  inviteDispatch: {
+    attempted: boolean
+    sent: boolean
+    channel: 'WHATSAPP' | 'NONE'
+    recipient: string | null
+    inviteUrl: string | null
+    error: string | null
+  }
 }
 
 type UploadedConversationAttachment = {
@@ -1126,7 +1135,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       const json = await requestJson<PreparedCallSession>(`/api/crm/conversations/${selectedConversation.id}/call`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callType }),
+        body: JSON.stringify({ callType, sendWhatsappInvite: callType === 'video' }),
       })
 
       if (!json.success || !json.data) {
@@ -3879,6 +3888,17 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                   <div className="mt-1 leading-6">La llamada queda registrada en CRM cuando Daily notifica entrada, salida o error de sesión.</div>
                   <div className="mt-2 text-xs text-slate-500">URL base calculada: {preparedCallSession.joinUrl}</div>
                 </div>
+                {preparedCallSession.callType === 'video' ? (
+                  <div className={preparedCallSession.inviteDispatch.sent ? 'rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900' : 'rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900'}>
+                    <div className="font-semibold">Invitación al cliente</div>
+                    <div className="mt-1 leading-6">
+                      {preparedCallSession.inviteDispatch.sent
+                        ? `Se envió el enlace de acceso por WhatsApp a ${preparedCallSession.inviteDispatch.recipient || 'el contacto'}.`
+                        : preparedCallSession.inviteDispatch.error || 'No se pudo enviar automáticamente la invitación por WhatsApp.'}
+                    </div>
+                    {preparedCallSession.guestInviteUrl ? <div className="mt-2 break-all text-xs opacity-80">Enlace invitado: {preparedCallSession.guestInviteUrl}</div> : null}
+                  </div>
+                ) : null}
                 <CrmDailyCallEmbed session={preparedCallSession} onStateChange={setCallState} />
               </div>
             ) : null}

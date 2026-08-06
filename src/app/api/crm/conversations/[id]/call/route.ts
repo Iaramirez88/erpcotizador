@@ -1,7 +1,10 @@
 import { AccessLevel, Prisma } from '@prisma/client'
 import { NextResponse } from 'next/server'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
+import { getRequestBaseUrl } from '@/lib/app-url'
+import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
 import { getDailyCallsAddonRuntimeForEmpresa } from '@/lib/crm-addons'
+import { findOutboundMessagingLimitViolation, formatOutboundMessagingLimitViolation, getOutboundMessagingLimitConfig, getOutboundMessagingUsageSnapshot, hasOutboundMessagingLimits } from '@/lib/crm-channel-limits'
 import { prisma } from '@/lib/prisma'
 import { assertCrmSedeAccess } from '@/lib/crm'
 
@@ -16,6 +19,15 @@ type DailyRoomResponse = {
   url?: string
 }
 
+type InviteDispatchResult = {
+  attempted: boolean
+  sent: boolean
+  channel: 'WHATSAPP' | 'NONE'
+  recipient: string | null
+  inviteUrl: string | null
+  error: string | null
+}
+
 function normalizeRoomSegment(value: string, fallback: string) {
   const normalized = value
     .toLowerCase()
@@ -24,6 +36,37 @@ function normalizeRoomSegment(value: string, fallback: string) {
     .replace(/^-+|-+$/g, '')
 
   return normalized || fallback
+}
+
+function hasOpenMessagingWindow(lastInboundAt: Date | null) {
+  if (!lastInboundAt) return false
+  return (Date.now() - lastInboundAt.getTime()) <= 24 * 60 * 60 * 1000
+}
+
+function withMessageOrigin(payload: Prisma.InputJsonValue, messageOrigin: 'CRM_AGENT' | 'BOT' | 'SYSTEM') {
+  const base = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : {}
+
+  return {
+    ...base,
+    messageOrigin,
+  } as Prisma.InputJsonValue
+}
+
+function buildGuestInviteMessage(args: {
+  advisorName: string
+  contactLabel: string
+  inviteUrl: string
+  callType: 'video' | 'audio'
+}) {
+  return [
+    `Hola ${args.contactLabel || 'cliente'},`,
+    `${args.advisorName} te invitó a una ${args.callType === 'audio' ? 'llamada de audio' : 'videollamada'} desde SGDigital CRM.`,
+    'Puedes entrar desde tu navegador con este enlace seguro:',
+    args.inviteUrl,
+    'Si ves el aviso de micrófono o cámara, acéptalo para unirte a la llamada.',
+  ].filter(Boolean).join('\n\n')
 }
 
 async function dailyRequest<T>(args: {
@@ -114,6 +157,7 @@ async function createDailyMeetingToken(args: {
   canRecord: boolean
   userId: string
   userName: string
+  isOwner?: boolean
 }) {
   const nowSeconds = Math.floor(Date.now() / 1000)
   const expiresAt = nowSeconds + (2 * 60 * 60)
@@ -126,7 +170,7 @@ async function createDailyMeetingToken(args: {
         room_name: args.roomName,
         user_name: args.userName,
         user_id: args.userId.slice(0, 36),
-        is_owner: true,
+        is_owner: args.isOwner !== false,
         nbf: nowSeconds - 30,
         exp: expiresAt,
         eject_at_token_exp: true,
@@ -148,6 +192,125 @@ async function createDailyMeetingToken(args: {
     token,
     expiresAt: new Date(expiresAt * 1000).toISOString(),
   }
+}
+
+async function sendWhatsAppDailyInvite(args: {
+  empresaId: string
+  userId: string
+  conversation: {
+    id: string
+    sedeId: string | null
+    leadId: string | null
+    opportunityId: string | null
+    clienteId: string | null
+    status: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM'
+    resolvedAt: Date | null
+    contactPhone: string | null
+    channelConnection: {
+      id: string
+      name: string
+      provider: 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM'
+      externalPhoneNumberId: string | null
+      externalPageId: string | null
+      settingsJson: Prisma.JsonValue
+    }
+    messages: Array<{ occurredAt: Date }>
+  }
+  advisorName: string
+  contactLabel: string
+  inviteUrl: string
+  callType: 'video' | 'audio'
+}): Promise<InviteDispatchResult> {
+  const isWhatsApp = args.conversation.channelConnection.provider === 'WHATSAPP_CLOUD' || args.conversation.channelConnection.provider === 'WHATSAPP_SANDBOX'
+  if (!isWhatsApp) {
+    return { attempted: false, sent: false, channel: 'NONE', recipient: null, inviteUrl: args.inviteUrl, error: 'La invitación automática solo está disponible para conversaciones de WhatsApp.' }
+  }
+
+  const recipientPhone = normalizeWhatsAppRecipient(args.conversation.contactPhone)
+  if (!recipientPhone) {
+    return { attempted: true, sent: false, channel: 'WHATSAPP', recipient: null, inviteUrl: args.inviteUrl, error: 'La conversación no tiene un número válido para enviar la invitación.' }
+  }
+
+  if (!hasOpenMessagingWindow(args.conversation.messages[0]?.occurredAt ?? null)) {
+    return { attempted: true, sent: false, channel: 'WHATSAPP', recipient: recipientPhone, inviteUrl: args.inviteUrl, error: 'La ventana de 24 horas de WhatsApp está cerrada. Aún no implementamos plantillas aprobadas para invitar a llamada.' }
+  }
+
+  const whatsappConfig = getWhatsAppDispatchConfig(args.conversation.channelConnection)
+  if (!whatsappConfig.enabled) {
+    return { attempted: true, sent: false, channel: 'WHATSAPP', recipient: recipientPhone, inviteUrl: args.inviteUrl, error: 'El canal de WhatsApp no tiene credenciales productivas completas.' }
+  }
+
+  const outboundLimits = getOutboundMessagingLimitConfig(args.conversation.channelConnection.settingsJson)
+  if (hasOutboundMessagingLimits(outboundLimits)) {
+    const usage = await getOutboundMessagingUsageSnapshot({ empresaId: args.empresaId, channelConnectionId: args.conversation.channelConnection.id })
+    const violation = findOutboundMessagingLimitViolation(outboundLimits, usage)
+    if (violation) {
+      return { attempted: true, sent: false, channel: 'WHATSAPP', recipient: recipientPhone, inviteUrl: args.inviteUrl, error: formatOutboundMessagingLimitViolation(violation) }
+    }
+  }
+
+  const bodyText = buildGuestInviteMessage(args)
+  let providerMessageId: string | null = null
+  let messageStatus: 'SENT' | 'FAILED' = 'SENT'
+  let sendErrorMessage: string | null = null
+  let providerPayload: Prisma.InputJsonValue = withMessageOrigin({ provider: args.conversation.channelConnection.provider, dispatch: 'whatsapp-call-invite', inviteUrl: args.inviteUrl }, 'CRM_AGENT')
+
+  try {
+    const result = await sendWhatsAppTextMessage({ config: whatsappConfig, to: recipientPhone, bodyText })
+    providerMessageId = result.providerMessageId
+    providerPayload = withMessageOrigin({ ...(result.payloadJson as Record<string, unknown>), dispatch: 'whatsapp-call-invite', inviteUrl: args.inviteUrl }, 'CRM_AGENT')
+  } catch (error) {
+    messageStatus = 'FAILED'
+    sendErrorMessage = error instanceof Error ? error.message : 'No se pudo enviar la invitación por WhatsApp.'
+    providerPayload = withMessageOrigin({ provider: args.conversation.channelConnection.provider, dispatch: 'whatsapp-call-invite', inviteUrl: args.inviteUrl, error: sendErrorMessage }, 'CRM_AGENT')
+  }
+
+  const occurredAt = new Date()
+  await prisma.$transaction(async (tx) => {
+    await tx.crmMessage.create({
+      data: {
+        empresaId: args.empresaId,
+        sedeId: args.conversation.sedeId,
+        conversationId: args.conversation.id,
+        providerMessageId,
+        direction: 'OUTBOUND',
+        messageType: 'TEXT',
+        status: messageStatus,
+        bodyText,
+        payloadJson: providerPayload,
+        attachmentsJson: [],
+        sentByUserId: args.userId,
+        occurredAt,
+      },
+    })
+
+    await tx.crmConversation.update({
+      where: { id: args.conversation.id },
+      data: {
+        lastMessageAt: occurredAt,
+        directionLastMessage: 'OUTBOUND',
+        status: messageStatus === 'FAILED' ? args.conversation.status : args.conversation.status === 'RESOLVED' ? 'HUMAN_ACTIVE' : 'PENDING',
+        resolvedAt: messageStatus === 'FAILED' ? args.conversation.resolvedAt : args.conversation.status === 'RESOLVED' ? null : args.conversation.resolvedAt,
+      },
+    })
+
+    await tx.crmActivity.create({
+      data: {
+        empresaId: args.empresaId,
+        sedeId: args.conversation.sedeId,
+        type: 'WHATSAPP',
+        summary: messageStatus === 'FAILED' ? 'Falló el envío de invitación a videollamada' : 'Invitación a videollamada enviada por WhatsApp',
+        details: sendErrorMessage ? `${bodyText}\n\nError proveedor: ${sendErrorMessage}` : `${bodyText}\n\nInvitación enviada al contacto ${recipientPhone}.`,
+        leadId: args.conversation.leadId,
+        opportunityId: args.conversation.opportunityId,
+        clienteId: args.conversation.clienteId,
+        occurredAt,
+        createdById: args.userId,
+      },
+    })
+  })
+
+  return { attempted: true, sent: messageStatus === 'SENT', channel: 'WHATSAPP', recipient: recipientPhone, inviteUrl: args.inviteUrl, error: sendErrorMessage }
 }
 
 async function resolveDailyCallPermissions(args: {
@@ -188,6 +351,7 @@ export async function POST(request: Request, context: RouteContext) {
     const { id } = await context.params
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
     const requestedCallType = body?.callType === 'audio' ? 'audio' : 'video'
+    const shouldSendWhatsappInvite = body?.sendWhatsappInvite === true
 
     const [conversation, addonRuntime, user] = await Promise.all([
       prisma.crmConversation.findUnique({
@@ -195,7 +359,13 @@ export async function POST(request: Request, context: RouteContext) {
         include: {
           lead: { select: { id: true, nombre: true } },
           cliente: { select: { id: true, nombre: true } },
-          channelConnection: { select: { id: true, name: true, provider: true } },
+          channelConnection: { select: { id: true, name: true, provider: true, externalPhoneNumberId: true, externalPageId: true, settingsJson: true } },
+          messages: {
+            where: { direction: 'INBOUND' },
+            orderBy: { occurredAt: 'desc' },
+            take: 1,
+            select: { occurredAt: true },
+          },
         },
       }),
       getDailyCallsAddonRuntimeForEmpresa(access.empresaId),
@@ -269,9 +439,52 @@ export async function POST(request: Request, context: RouteContext) {
       canRecord: permissions.canRecord,
       userId: access.userId,
       userName: ownerDisplayName,
+      isOwner: true,
+    })
+    const guestToken = await createDailyMeetingToken({
+      apiKey: addonRuntime.apiKey,
+      roomName,
+      callType: requestedCallType,
+      canRecord: false,
+      userId: `guest-${conversation.id}`,
+      userName: contactLabel,
+      isOwner: false,
     })
     const joinUrl = room.url || `https://${addonRuntime.domainHost}/${roomName}`
     const sessionKey = crypto.randomUUID()
+    const baseUrl = getRequestBaseUrl(request)
+    const guestInviteUrl = baseUrl
+      ? `${baseUrl}/llamada?callType=${encodeURIComponent(requestedCallType)}#url=${encodeURIComponent(joinUrl)}&token=${encodeURIComponent(guestToken.token)}&name=${encodeURIComponent(contactLabel)}&room=${encodeURIComponent(roomName)}`
+      : null
+    const inviteDispatch = shouldSendWhatsappInvite && guestInviteUrl
+      ? await sendWhatsAppDailyInvite({
+          empresaId: access.empresaId,
+          userId: access.userId,
+          conversation: {
+            id: conversation.id,
+            sedeId: conversation.sedeId,
+            leadId: conversation.leadId,
+            opportunityId: conversation.opportunityId,
+            clienteId: conversation.clienteId,
+            status: conversation.status,
+            resolvedAt: conversation.resolvedAt,
+            contactPhone: conversation.contactPhone,
+            channelConnection: conversation.channelConnection,
+            messages: conversation.messages,
+          },
+          advisorName: ownerDisplayName,
+          contactLabel,
+          inviteUrl: guestInviteUrl,
+          callType: requestedCallType,
+        })
+      : {
+          attempted: false,
+          sent: false,
+          channel: 'NONE' as const,
+          recipient: null,
+          inviteUrl: guestInviteUrl,
+          error: guestInviteUrl ? null : 'No se pudo resolver la URL pública del invitado.',
+        }
 
     return NextResponse.json({
       success: true,
@@ -292,6 +505,8 @@ export async function POST(request: Request, context: RouteContext) {
         contactLabel,
         provider: conversation.channelConnection.provider,
         readinessMessage: addonRuntime.addon.validation.message,
+        guestInviteUrl,
+        inviteDispatch,
       },
     })
   } catch (error) {
