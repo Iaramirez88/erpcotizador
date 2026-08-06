@@ -383,19 +383,19 @@ function getMessageOrigin(message: ConversationMessage): MessageOrigin {
   return 'CUSTOMER'
 }
 
-function getMessageOriginMeta(origin: MessageOrigin) {
-  switch (origin) {
-    case 'PHONE_APP':
-      return { label: 'Celular', className: 'bg-amber-100 text-amber-800' }
-    case 'CRM_AGENT':
-      return { label: 'CRM', className: 'bg-sky-100 text-sky-800' }
-    case 'BOT':
-      return { label: 'Bot', className: 'bg-emerald-100 text-emerald-800' }
-    case 'SYSTEM':
-      return { label: 'Sistema', className: 'bg-slate-200 text-slate-700' }
-    default:
-      return { label: 'Cliente', className: 'bg-white/80 text-slate-700' }
-  }
+function getConversationContactLabel(conversation: ConversationListItem | ConversationDetail) {
+  return conversation.contactDisplayName || conversation.lead?.nombre || conversation.cliente?.nombre || conversation.contactPhone || conversation.contactEmail || 'Contacto'
+}
+
+function getMessageDisplayName(message: ConversationMessage, conversation: ConversationListItem | ConversationDetail) {
+  if (message.direction === 'SYSTEM') return 'Sistema'
+
+  const origin = getMessageOrigin(message)
+  if (origin === 'BOT') return 'Bot'
+  if (origin === 'PHONE_APP') return message.sentByUser ? formatAssigneeName(message.sentByUser) : 'Celular'
+  if (message.direction === 'OUTBOUND') return message.sentByUser ? formatAssigneeName(message.sentByUser) : 'Asesor'
+
+  return getConversationContactLabel(conversation)
 }
 
 function renderConversationAttachments(attachments: ConversationMessage['attachmentsJson']) {
@@ -463,24 +463,6 @@ function renderConversationAttachments(attachments: ConversationMessage['attachm
 
 function hasMessageCollision(message: ConversationMessage) {
   return message.payloadJson?.collisionDetected === true
-}
-
-function renderCrmMessageStatusIcon(status: ConversationMessage['status']) {
-  if (status === 'READ') return <CheckCheck className="h-3.5 w-3.5 text-sky-600" />
-  if (status === 'DELIVERED') return <Check className="h-3.5 w-3.5 text-sky-600" />
-  if (status === 'SENT') return <Check className="h-3.5 w-3.5 text-slate-400" />
-  if (status === 'QUEUED') return <Clock3 className="h-3.5 w-3.5 text-slate-400" />
-  if (status === 'FAILED') return <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
-  return null
-}
-
-function getCrmMessageStatusLabel(status: ConversationMessage['status']) {
-  if (status === 'READ') return 'Visto'
-  if (status === 'DELIVERED') return 'Llegó'
-  if (status === 'SENT') return 'Enviado'
-  if (status === 'QUEUED') return 'Enviando'
-  if (status === 'FAILED') return 'Falló'
-  return status || null
 }
 
 function getConversationListSignal(item: ConversationListItem) {
@@ -1722,9 +1704,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
     return (
       <div className="space-y-4 pb-4">
-        <div className="grid gap-4 xl:min-h-[calc(100vh-7rem)] xl:grid-cols-[360px_minmax(0,1fr)] xl:items-stretch">
-          <Card className="overflow-hidden rounded-[30px] border-slate-200 bg-white/95 shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:sticky xl:top-4 xl:flex xl:h-[calc(100vh-7rem)] xl:flex-col">
-            <CardContent className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto p-3.5">
+        <div className="grid gap-4 xl:grid-cols-[320px_380px_minmax(0,1fr)] xl:items-stretch">
+          <Card className="overflow-hidden rounded-[30px] border-slate-200 bg-white/95 shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:sticky xl:top-4 xl:flex xl:h-[95vh] xl:flex-col">
+            <CardContent className="flex h-full min-h-0 flex-col gap-4 p-3.5">
               {props.sidebarHeader ? props.sidebarHeader : null}
 
               <Button className="h-12 w-full justify-start rounded-[24px] bg-[linear-gradient(135deg,#315efb,#5675ff)] px-4 text-left text-white shadow-[0_18px_36px_-24px_rgba(49,94,251,0.7)] hover:bg-[linear-gradient(135deg,#2b52dc,#4b6ef2)]" onClick={() => setSimulatorOpen(true)}>
@@ -1735,6 +1717,112 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                 </span>
               </Button>
 
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+                <div className="rounded-[28px] border border-slate-200 bg-white p-3.5">
+                  <div className="flex flex-col gap-3 px-1">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-950">Panel operativo</p>
+                        <p className="mt-1 text-xs text-slate-500">Configura cola, actividad, canal y seguimiento.</p>
+                      </div>
+                      <div className="flex items-center gap-2 rounded-[20px] border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                        <div className="grid gap-0.5">
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tiempo real</span>
+                          <span>{liveMode ? 'Activo' : 'Pausado'}</span>
+                        </div>
+                        <Switch checked={liveMode} onCheckedChange={setLiveMode} />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" className="rounded-2xl border-slate-200 bg-white" onClick={() => void Promise.all([loadConversations(), loadMeta()])}>
+                        <RefreshCcw className="mr-2 h-4 w-4" />
+                        Refrescar
+                      </Button>
+                      <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white">
+                        <Link href="/dashboard/crm/agenda">Agenda</Link>
+                      </Button>
+                      <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white">
+                        <Link href="/dashboard/notificaciones">Notificaciones</Link>
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-1.5">
+                    <button type="button" onClick={() => setQueueScope('TEAM')} className={queueScope === 'TEAM' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
+                      <span className="inline-flex items-center gap-2 text-sm font-medium"><MessageCircle className="h-4 w-4" />Todos</span>
+                      <span className={queueScope === 'TEAM' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.teamCount}</span>
+                    </button>
+                    <button type="button" onClick={() => setQueueScope('MINE')} className={queueScope === 'MINE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
+                      <span className="inline-flex items-center gap-2 text-sm font-medium"><CheckCheck className="h-4 w-4" />Asignados a mí</span>
+                      <span className={queueScope === 'MINE' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.mineCount}</span>
+                    </button>
+                    <button type="button" onClick={() => setQueueScope('UNASSIGNED')} className={queueScope === 'UNASSIGNED' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
+                      <span className="inline-flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" />Sin asignar</span>
+                      <span className={queueScope === 'UNASSIGNED' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.unassignedCount}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-[28px] border border-slate-200 bg-white p-3.5">
+                <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Por actividad</p>
+                <div className="mt-3 space-y-1.5">
+                  <button type="button" onClick={() => setQueueFocus('ALL')} className={queueFocus === 'ALL' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><MessageCircle className="h-4 w-4" />Todos</span><span className={queueFocus === 'ALL' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.allCount}</span></button>
+                  <button type="button" onClick={() => setQueueFocus('IMMEDIATE')} className={queueFocus === 'IMMEDIATE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><AlertTriangle className="h-4 w-4" />No leídos / urgentes</span><span className={queueFocus === 'IMMEDIATE' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.immediateCount}</span></button>
+                  <button type="button" onClick={() => setQueueFocus('WAITING_CUSTOMER')} className={queueFocus === 'WAITING_CUSTOMER' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" />Sin respuestas</span><span className={queueFocus === 'WAITING_CUSTOMER' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.waitingCustomerCount}</span></button>
+                  <button type="button" onClick={() => setQueueFocus('BOT_HANDOFF')} className={queueFocus === 'BOT_HANDOFF' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><Bot className="h-4 w-4" />Asignadas a la IA</span><span className={queueFocus === 'BOT_HANDOFF' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.botHandoffCount}</span></button>
+                  <button type="button" onClick={() => setQueueFocus('HYBRID_PHONE_ACTIVITY')} className={queueFocus === 'HYBRID_PHONE_ACTIVITY' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><PhoneCall className="h-4 w-4" />Actividad celular</span><span className={queueFocus === 'HYBRID_PHONE_ACTIVITY' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.hybridPhoneActivityCount}</span></button>
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-3.5">
+                <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Canales</p>
+                <div className="mt-3 space-y-1.5">
+                  <button type="button" onClick={() => setProviderFilter('WHATSAPP_CLOUD')} className={(providerFilter === 'WHATSAPP_CLOUD' || providerFilter === 'WHATSAPP_SANDBOX') ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="WHATSAPP_CLOUD" />WhatsApp</span><span className="text-[11px] text-slate-400">Chat</span></button>
+                  <button type="button" onClick={() => setProviderFilter('MESSENGER')} className={providerFilter === 'MESSENGER' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="MESSENGER" />Messenger</span><span className="text-[11px] text-slate-400">Meta</span></button>
+                  <button type="button" onClick={() => setProviderFilter('INSTAGRAM_DM')} className={providerFilter === 'INSTAGRAM_DM' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="INSTAGRAM_DM" />Instagram</span><span className="text-[11px] text-slate-400">DM</span></button>
+                  <button type="button" onClick={() => setProviderFilter('FACEBOOK_PAGE')} className={providerFilter === 'FACEBOOK_PAGE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="FACEBOOK_PAGE" />Facebook</span><span className="text-[11px] text-slate-400">Page</span></button>
+                  <button type="button" onClick={() => setProviderFilter('ALL')} className={providerFilter === 'ALL' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><Mail className="h-4 w-4" />Todos</span><span className="text-[11px] text-slate-400">Inbox</span></button>
+                </div>
+              </div>
+
+                <details className="rounded-[28px] border border-slate-200 bg-white p-3.5">
+                <summary className="cursor-pointer list-none px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Filtros avanzados</summary>
+                <div className="mt-3 grid gap-2">
+                  <Select value={assignedFilter} onValueChange={setAssignedFilter}>
+                    <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue placeholder="Asesor" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Todos los asesores</SelectItem>
+                      {assignees.map((item) => <SelectItem key={item.id} value={item.id}>{formatAssigneeName(item)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={originFilter} onValueChange={(value) => setOriginFilter(value as OriginFilter)}>
+                    <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue placeholder="Origen" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Todos los orígenes</SelectItem>
+                      <SelectItem value="EMAIL">Correo</SelectItem>
+                      <SelectItem value="FORM">Formulario</SelectItem>
+                      <SelectItem value="CHATBOT">Chatbot</SelectItem>
+                      <SelectItem value="WHATSAPP">WhatsApp</SelectItem>
+                      <SelectItem value="SOCIAL">Social</SelectItem>
+                      <SelectItem value="PHONE">Llamada</SelectItem>
+                      <SelectItem value="REFERRAL">Referido</SelectItem>
+                      <SelectItem value="IMPORT">Importado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={channelFilter} onValueChange={setChannelFilter}>
+                    <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue placeholder="Canal" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Todos los canales</SelectItem>
+                      {channels.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                </details>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden rounded-[30px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:sticky xl:top-4 xl:flex xl:h-[95vh] xl:flex-col">
+            <CardContent className="flex h-full min-h-0 flex-col gap-4 p-3.5">
               <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#f8fbff,#ffffff)] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                 <div className="space-y-3">
                   <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar conversaciones..." className="h-11 rounded-2xl border-slate-200 bg-white" />
@@ -1769,110 +1857,20 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
               </div>
 
               <div className="rounded-[28px] border border-slate-200 bg-white p-3.5">
-                <div className="flex flex-col gap-3 px-1">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-950">Bandeja</p>
-                      <p className="mt-1 text-xs text-slate-500">{displayedConversations.length} conversaciones visibles</p>
-                    </div>
-                    <div className="flex items-center gap-2 rounded-[20px] border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                      <div className="grid gap-0.5">
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tiempo real</span>
-                        <span>{liveMode ? 'Activo' : 'Pausado'}</span>
-                      </div>
-                      <Switch checked={liveMode} onCheckedChange={setLiveMode} />
-                    </div>
+                <div className="flex flex-wrap items-start justify-between gap-3 px-1">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-950">Conversaciones</p>
+                    <p className="mt-1 text-xs text-slate-500">{displayedConversations.length} visibles en la cola actual.</p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" className="rounded-2xl border-slate-200 bg-white" onClick={() => void Promise.all([loadConversations(), loadMeta()])}>
-                      <RefreshCcw className="mr-2 h-4 w-4" />
-                      Refrescar
-                    </Button>
-                    <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white">
-                      <Link href="/dashboard/crm/agenda">Agenda</Link>
-                    </Button>
-                    <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white">
-                      <Link href="/dashboard/notificaciones">Notificaciones</Link>
-                    </Button>
-                  </div>
-                </div>
-                <div className="mt-3 space-y-1.5">
-                  <button type="button" onClick={() => setQueueScope('TEAM')} className={queueScope === 'TEAM' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
-                    <span className="inline-flex items-center gap-2 text-sm font-medium"><MessageCircle className="h-4 w-4" />Todos</span>
-                    <span className={queueScope === 'TEAM' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.teamCount}</span>
-                  </button>
-                  <button type="button" onClick={() => setQueueScope('MINE')} className={queueScope === 'MINE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
-                    <span className="inline-flex items-center gap-2 text-sm font-medium"><CheckCheck className="h-4 w-4" />Asignados a mí</span>
-                    <span className={queueScope === 'MINE' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.mineCount}</span>
-                  </button>
-                  <button type="button" onClick={() => setQueueScope('UNASSIGNED')} className={queueScope === 'UNASSIGNED' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
-                    <span className="inline-flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" />Sin asignar</span>
-                    <span className={queueScope === 'UNASSIGNED' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.unassignedCount}</span>
-                  </button>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{queueScope === 'TEAM' ? 'Equipo' : queueScope === 'MINE' ? 'Mías' : 'Sin asignar'}</span>
                 </div>
               </div>
 
-              <div className="rounded-[28px] border border-slate-200 bg-white p-3.5">
-                <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Por actividad</p>
-                <div className="mt-3 space-y-1.5">
-                  <button type="button" onClick={() => setQueueFocus('ALL')} className={queueFocus === 'ALL' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><MessageCircle className="h-4 w-4" />Todos</span><span className={queueFocus === 'ALL' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.allCount}</span></button>
-                  <button type="button" onClick={() => setQueueFocus('IMMEDIATE')} className={queueFocus === 'IMMEDIATE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><AlertTriangle className="h-4 w-4" />No leídos / urgentes</span><span className={queueFocus === 'IMMEDIATE' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.immediateCount}</span></button>
-                  <button type="button" onClick={() => setQueueFocus('WAITING_CUSTOMER')} className={queueFocus === 'WAITING_CUSTOMER' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" />Sin respuestas</span><span className={queueFocus === 'WAITING_CUSTOMER' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.waitingCustomerCount}</span></button>
-                  <button type="button" onClick={() => setQueueFocus('BOT_HANDOFF')} className={queueFocus === 'BOT_HANDOFF' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><Bot className="h-4 w-4" />Asignadas a la IA</span><span className={queueFocus === 'BOT_HANDOFF' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.botHandoffCount}</span></button>
-                  <button type="button" onClick={() => setQueueFocus('HYBRID_PHONE_ACTIVITY')} className={queueFocus === 'HYBRID_PHONE_ACTIVITY' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><PhoneCall className="h-4 w-4" />Actividad celular</span><span className={queueFocus === 'HYBRID_PHONE_ACTIVITY' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.hybridPhoneActivityCount}</span></button>
-                </div>
-              </div>
-
-              <div className="rounded-[28px] border border-slate-200 bg-white p-3.5">
-                <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Canales</p>
-                <div className="mt-3 space-y-1.5">
-                  <button type="button" onClick={() => setProviderFilter('WHATSAPP_CLOUD')} className={(providerFilter === 'WHATSAPP_CLOUD' || providerFilter === 'WHATSAPP_SANDBOX') ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="WHATSAPP_CLOUD" />WhatsApp</span><span className="text-[11px] text-slate-400">Chat</span></button>
-                  <button type="button" onClick={() => setProviderFilter('MESSENGER')} className={providerFilter === 'MESSENGER' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="MESSENGER" />Messenger</span><span className="text-[11px] text-slate-400">Meta</span></button>
-                  <button type="button" onClick={() => setProviderFilter('INSTAGRAM_DM')} className={providerFilter === 'INSTAGRAM_DM' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="INSTAGRAM_DM" />Instagram</span><span className="text-[11px] text-slate-400">DM</span></button>
-                  <button type="button" onClick={() => setProviderFilter('FACEBOOK_PAGE')} className={providerFilter === 'FACEBOOK_PAGE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="FACEBOOK_PAGE" />Facebook</span><span className="text-[11px] text-slate-400">Page</span></button>
-                  <button type="button" onClick={() => setProviderFilter('ALL')} className={providerFilter === 'ALL' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><Mail className="h-4 w-4" />Todos</span><span className="text-[11px] text-slate-400">Inbox</span></button>
-                </div>
-              </div>
-
-              <details className="rounded-[28px] border border-slate-200 bg-white p-3.5">
-                <summary className="cursor-pointer list-none px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Filtros avanzados</summary>
-                <div className="mt-3 grid gap-2">
-                  <Select value={assignedFilter} onValueChange={setAssignedFilter}>
-                    <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue placeholder="Asesor" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">Todos los asesores</SelectItem>
-                      {assignees.map((item) => <SelectItem key={item.id} value={item.id}>{formatAssigneeName(item)}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Select value={originFilter} onValueChange={(value) => setOriginFilter(value as OriginFilter)}>
-                    <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue placeholder="Origen" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">Todos los orígenes</SelectItem>
-                      <SelectItem value="EMAIL">Correo</SelectItem>
-                      <SelectItem value="FORM">Formulario</SelectItem>
-                      <SelectItem value="CHATBOT">Chatbot</SelectItem>
-                      <SelectItem value="WHATSAPP">WhatsApp</SelectItem>
-                      <SelectItem value="SOCIAL">Social</SelectItem>
-                      <SelectItem value="PHONE">Llamada</SelectItem>
-                      <SelectItem value="REFERRAL">Referido</SelectItem>
-                      <SelectItem value="IMPORT">Importado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={channelFilter} onValueChange={setChannelFilter}>
-                    <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue placeholder="Canal" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">Todos los canales</SelectItem>
-                      {channels.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </details>
-
-              <div className="rounded-[28px] border border-slate-200 bg-white">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white">
                 <div className="border-b border-slate-100 px-4 py-3">
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{queueScope === 'TEAM' ? 'Equipo' : queueScope === 'MINE' ? 'Mías' : 'Sin asignar'}</span>
                 </div>
-                <div className="max-h-[calc(100vh-320px)] space-y-1.5 overflow-y-auto p-3">
+                <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3">
                   {loading ? <p className="px-2 py-4 text-sm text-slate-500">Cargando conversaciones...</p> : null}
                   {!loading && displayedConversations.length === 0 ? <p className="px-2 py-4 text-sm text-slate-500">No hay conversaciones para mostrar.</p> : null}
                   {displayedConversations.map((item) => {
@@ -1920,7 +1918,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
             </CardContent>
           </Card>
 
-          <Card className="overflow-hidden rounded-[32px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:h-[calc(100vh-7rem)]">
+          <Card className="overflow-hidden rounded-[32px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:h-[95vh]">
             <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
               <div className="sticky top-0 z-20 border-b border-slate-100 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-3 lg:px-5">
                 {!selectedConversation ? (
@@ -2036,29 +2034,17 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           <div className="h-full space-y-3 overflow-y-auto pr-1">
                           {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
                           {selectedConversation.messages.map((message: ConversationMessage) => {
-                            const originMeta = getMessageOriginMeta(getMessageOrigin(message))
                             const hasCollision = hasMessageCollision(message)
-                            const statusLabel = getCrmMessageStatusLabel(message.status)
 
                             return (
                               <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[86%] rounded-[28px] border border-blue-200 bg-[linear-gradient(135deg,#eff6ff,#ffffff)] px-4 py-3 text-sm text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[86%] rounded-[26px] border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600' : 'mr-auto max-w-[86%] rounded-[28px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
-                                <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
-                                  <div className="flex items-center gap-2">
-                                    <span>{message.direction}</span>
-                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold normal-case ${originMeta.className}`}>{originMeta.label}</span>
-                                    {hasCollision ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold normal-case text-amber-800">Colisión</span> : null}
-                                  </div>
+                                <div className="flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                                  <span className="font-semibold text-slate-700">{getMessageDisplayName(message, selectedConversation)}</span>
                                   <span>{formatDate(message.occurredAt, locale, naText)}</span>
                                 </div>
                                 {hasCollision ? <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Se detectó una posible doble respuesta entre el celular y el CRM en esta conversación.</p> : null}
                                 <p className="mt-2 whitespace-pre-wrap leading-6">{renderHighlightedText(message.bodyText || 'Sin contenido textual', search)}</p>
                                 {renderConversationAttachments(message.attachmentsJson)}
-                                {message.direction === 'OUTBOUND' && statusLabel ? (
-                                  <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-slate-500">
-                                    {renderCrmMessageStatusIcon(message.status)}
-                                    <span>{statusLabel}</span>
-                                  </div>
-                                ) : null}
                               </div>
                             )
                           })}
@@ -3263,32 +3249,17 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                         <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
                           {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
                           {selectedConversation.messages.map((message: ConversationMessage) => {
-                            const originMeta = getMessageOriginMeta(getMessageOrigin(message))
                             const hasCollision = hasMessageCollision(message)
-                            const statusLabel = getCrmMessageStatusLabel(message.status)
 
                             return (
                             <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[88%] rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[88%] rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600' : 'mr-auto max-w-[88%] rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
-                              <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
-                                <div className="flex items-center gap-2">
-                                  <span>{message.direction}</span>
-                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold normal-case ${originMeta.className}`}>{originMeta.label}</span>
-                                  {hasCollision ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold normal-case text-amber-800">Colisión</span> : null}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span>{formatDate(message.occurredAt, locale, naText)}</span>
-                                </div>
+                              <div className="flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                                <span className="font-semibold text-slate-700">{getMessageDisplayName(message, selectedConversation)}</span>
+                                <span>{formatDate(message.occurredAt, locale, naText)}</span>
                               </div>
                               {hasCollision ? <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Se detectó una posible doble respuesta entre el celular y el CRM en esta conversación.</p> : null}
                               <p className="mt-2 whitespace-pre-wrap leading-6">{renderHighlightedText(message.bodyText || 'Sin contenido textual', search)}</p>
                               {renderConversationAttachments(message.attachmentsJson)}
-                              {message.direction === 'OUTBOUND' && statusLabel ? (
-                                <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-slate-500">
-                                  {renderCrmMessageStatusIcon(message.status)}
-                                  <span>{statusLabel}</span>
-                                </div>
-                              ) : null}
-                              {'sentByUser' in message && message.sentByUser ? <p className="mt-2 text-[11px] text-slate-500">{message.sentByUser.name || message.sentByUser.email}</p> : null}
                             </div>
                           )})}
                         </div>
