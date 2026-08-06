@@ -74,6 +74,26 @@ type ConversationMessage = {
   sentByUser?: Assignee | null
 }
 
+type LeadOption = {
+  id: string
+  nombre: string
+  empresaNombre?: string | null
+  email?: string | null
+  telefono?: string | null
+  celular?: string | null
+}
+
+type ClienteOption = {
+  id: string
+  nombre: string
+  documento: string
+  email?: string | null
+  telefono?: string | null
+  celular?: string | null
+}
+
+type NewConversationMode = 'CLIENTE' | 'LEAD' | 'MANUAL'
+
 type ConversationListItem = {
   id: string
   status: ConversationStatus
@@ -735,6 +755,17 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   })
   const [simulatorOpen, setSimulatorOpen] = useState(false)
   const [simulating, setSimulating] = useState(false)
+  const [newConversationOpen, setNewConversationOpen] = useState(false)
+  const [newConversationMode, setNewConversationMode] = useState<NewConversationMode>('CLIENTE')
+  const [openingConversation, setOpeningConversation] = useState(false)
+  const [leadSearch, setLeadSearch] = useState('')
+  const [clientSearch, setClientSearch] = useState('')
+  const [leadOptions, setLeadOptions] = useState<LeadOption[]>([])
+  const [clientOptions, setClientOptions] = useState<ClienteOption[]>([])
+  const [selectedLeadId, setSelectedLeadId] = useState('')
+  const [selectedClientId, setSelectedClientId] = useState('')
+  const [manualConversationName, setManualConversationName] = useState('')
+  const [manualConversationPhone, setManualConversationPhone] = useState('')
   const [liveMode, setLiveMode] = useState(true)
   const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null)
   const [materialSearch, setMaterialSearch] = useState('')
@@ -772,6 +803,67 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     sourceMedium: '',
     sourceContent: '',
   })
+
+  async function loadConversationStarterOptions() {
+    const [leadRes, clientRes] = await Promise.all([
+      requestJson<LeadOption[]>(`/api/crm/leads${leadSearch.trim() ? `?search=${encodeURIComponent(leadSearch.trim())}` : ''}`),
+      requestJson<ClienteOption[]>(`/api/clientes${clientSearch.trim() ? `?search=${encodeURIComponent(clientSearch.trim())}` : ''}`),
+    ])
+
+    setLeadOptions(Array.isArray(leadRes.data) ? leadRes.data.slice(0, 12) : [])
+    setClientOptions(Array.isArray(clientRes.data) ? clientRes.data.slice(0, 12) : [])
+  }
+
+  function resetNewConversationForm() {
+    setNewConversationMode('CLIENTE')
+    setLeadSearch('')
+    setClientSearch('')
+    setSelectedLeadId('')
+    setSelectedClientId('')
+    setManualConversationName('')
+    setManualConversationPhone('')
+  }
+
+  async function startNewConversation() {
+    const payload = newConversationMode === 'CLIENTE'
+      ? selectedClientId ? { clienteId: selectedClientId } : null
+      : newConversationMode === 'LEAD'
+        ? selectedLeadId ? { leadId: selectedLeadId } : null
+        : manualConversationPhone.trim()
+          ? { contactDisplayName: manualConversationName.trim() || null, contactPhone: manualConversationPhone.trim() }
+          : null
+
+    if (!payload) {
+      alert(newConversationMode === 'CLIENTE'
+        ? 'Selecciona un cliente para iniciar la conversación.'
+        : newConversationMode === 'LEAD'
+          ? 'Selecciona un prospecto para iniciar la conversación.'
+          : 'Debes ingresar un número de WhatsApp válido.')
+      return
+    }
+
+    setOpeningConversation(true)
+    try {
+      const json = await requestJson<{ conversationId: string; created: boolean }>('/api/crm/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!json.success || !json.data?.conversationId) {
+        alert(json.error || 'No se pudo iniciar la conversación.')
+        return
+      }
+
+      setInboxStatusTab('PENDING')
+      setSelectedConversationId(json.data.conversationId)
+      setNewConversationOpen(false)
+      resetNewConversationForm()
+      await loadConversations()
+    } finally {
+      setOpeningConversation(false)
+    }
+  }
 
   const loadConversations = useCallback(async () => {
     setLoading(true)
@@ -1019,6 +1111,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   useEffect(() => {
     setSelectedConversationId((current) => current && displayedConversations.some((item) => item.id === current) ? current : displayedConversations[0]?.id ?? null)
   }, [displayedConversations])
+
+  useEffect(() => {
+    if (!newConversationOpen) return
+    void loadConversationStarterOptions()
+  }, [clientSearch, leadSearch, newConversationOpen])
 
   function toggleMuteSelectedConversation() {
     if (!selectedConversationId) return
@@ -1709,11 +1806,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
             <CardContent className="flex h-full min-h-0 flex-col gap-4 p-3.5">
               {props.sidebarHeader ? props.sidebarHeader : null}
 
-              <Button className="h-12 w-full justify-start rounded-[24px] bg-[linear-gradient(135deg,#315efb,#5675ff)] px-4 text-left text-white shadow-[0_18px_36px_-24px_rgba(49,94,251,0.7)] hover:bg-[linear-gradient(135deg,#2b52dc,#4b6ef2)]" onClick={() => setSimulatorOpen(true)}>
+              <Button className="h-12 w-full justify-start rounded-[24px] bg-[linear-gradient(135deg,#315efb,#5675ff)] px-4 text-left text-white shadow-[0_18px_36px_-24px_rgba(49,94,251,0.7)] hover:bg-[linear-gradient(135deg,#2b52dc,#4b6ef2)]" onClick={() => setNewConversationOpen(true)}>
                 <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-white/18 text-base font-semibold">+</span>
                 <span className="ml-3 flex flex-col items-start">
-                  <span className="text-sm font-semibold">Nuevo chat</span>
-                  <span className="text-[11px] font-medium text-blue-100">Simular inbound o abrir un nuevo hilo</span>
+                  <span className="text-sm font-semibold">Iniciar conversación</span>
+                  <span className="text-[11px] font-medium text-blue-100">Cliente, prospecto o número de WhatsApp</span>
                 </span>
               </Button>
 
@@ -1723,7 +1820,6 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-slate-950">Panel operativo</p>
-                        <p className="mt-1 text-xs text-slate-500">Configura cola, actividad, canal y seguimiento.</p>
                       </div>
                       <div className="flex items-center gap-2 rounded-[20px] border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
                         <div className="grid gap-0.5">
@@ -1737,12 +1833,6 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                       <Button variant="outline" className="rounded-2xl border-slate-200 bg-white" onClick={() => void Promise.all([loadConversations(), loadMeta()])}>
                         <RefreshCcw className="mr-2 h-4 w-4" />
                         Refrescar
-                      </Button>
-                      <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white">
-                        <Link href="/dashboard/crm/agenda">Agenda</Link>
-                      </Button>
-                      <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white">
-                        <Link href="/dashboard/notificaciones">Notificaciones</Link>
                       </Button>
                     </div>
                   </div>
@@ -1822,56 +1912,45 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
           </Card>
 
           <Card className="overflow-hidden rounded-[30px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:sticky xl:top-4 xl:flex xl:h-[95vh] xl:flex-col">
-            <CardContent className="flex h-full min-h-0 flex-col gap-4 p-3.5">
-              <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#f8fbff,#ffffff)] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
-                <div className="space-y-3">
-                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar conversaciones..." className="h-11 rounded-2xl border-slate-200 bg-white" />
-                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                    <Select value={datePreset} onValueChange={(value) => setDatePreset(value as InboxDatePreset)}>
-                      <SelectTrigger className="h-10 rounded-2xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="7D">Últimos 7 días</SelectItem>
-                        <SelectItem value="30D">Últimos 30 días</SelectItem>
-                        <SelectItem value="ALL">Todo el historial</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button variant="outline" className="h-10 rounded-2xl border-slate-200 bg-white px-3" onClick={() => void loadConversations()}>
-                      Aplicar
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5 rounded-2xl bg-slate-100/90 p-1">
-                    <button type="button" onClick={() => setInboxStatusTab('PENDING')} className={inboxStatusTab === 'PENDING' ? 'rounded-xl bg-white px-2.5 py-2 text-sm font-semibold text-blue-700 shadow-sm' : 'rounded-xl px-2.5 py-2 text-sm font-semibold text-slate-500'}>
-                      <span className="block">Por resolver</span>
-                      <span className="mt-0.5 block text-[11px] text-slate-400">{inboxStatusCounts.pendingCount}</span>
-                    </button>
-                    <button type="button" onClick={() => setInboxStatusTab('RESOLVED')} className={inboxStatusTab === 'RESOLVED' ? 'rounded-xl bg-white px-2.5 py-2 text-sm font-semibold text-emerald-700 shadow-sm' : 'rounded-xl px-2.5 py-2 text-sm font-semibold text-slate-500'}>
-                      <span className="block">Resueltos</span>
-                      <span className="mt-0.5 block text-[11px] text-slate-400">{inboxStatusCounts.resolvedCount}</span>
-                    </button>
-                    <button type="button" onClick={() => setInboxStatusTab('ALL')} className={inboxStatusTab === 'ALL' ? 'rounded-xl bg-white px-2.5 py-2 text-sm font-semibold text-slate-800 shadow-sm' : 'rounded-xl px-2.5 py-2 text-sm font-semibold text-slate-500'}>
-                      <span className="block">Todos</span>
-                      <span className="mt-0.5 block text-[11px] text-slate-400">{inboxStatusCounts.allCount}</span>
-                    </button>
-                  </div>
+            <CardContent className="flex h-full min-h-0 flex-col p-3">
+              <div className="border-b border-slate-200 pb-2.5">
+                <div className="flex items-center gap-2.5">
+                  <p className="shrink-0 text-sm font-semibold text-slate-950">Conversaciones</p>
+                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar conversaciones..." className="h-9 rounded-2xl border-slate-200 bg-white" />
+                </div>
+                <p className="mt-1.5 text-[11px] text-slate-500">{displayedConversations.length} visibles en la cola actual.</p>
+                <div className="mt-2.5 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                  <Select value={datePreset} onValueChange={(value) => setDatePreset(value as InboxDatePreset)}>
+                    <SelectTrigger className="h-8.5 rounded-2xl border-slate-200 bg-white text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="7D">Últimos 7 días</SelectItem>
+                      <SelectItem value="30D">Últimos 30 días</SelectItem>
+                      <SelectItem value="ALL">Todo el historial</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" className="h-8.5 rounded-2xl border-slate-200 bg-white px-3 text-xs" onClick={() => void loadConversations()}>
+                    Aplicar
+                  </Button>
+                </div>
+                <div className="mt-2.5 grid grid-cols-3 gap-1 border-t border-slate-200 pt-2.5">
+                  <button type="button" onClick={() => setInboxStatusTab('PENDING')} className={inboxStatusTab === 'PENDING' ? 'rounded-lg bg-slate-100 px-2 py-1.5 text-xs font-semibold text-blue-700' : 'rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500'}>
+                    <span className="block">Por resolver</span>
+                    <span className="mt-0.5 block text-[10px] text-slate-400">{inboxStatusCounts.pendingCount}</span>
+                  </button>
+                  <button type="button" onClick={() => setInboxStatusTab('RESOLVED')} className={inboxStatusTab === 'RESOLVED' ? 'rounded-lg bg-slate-100 px-2 py-1.5 text-xs font-semibold text-emerald-700' : 'rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500'}>
+                    <span className="block">Resueltos</span>
+                    <span className="mt-0.5 block text-[10px] text-slate-400">{inboxStatusCounts.resolvedCount}</span>
+                  </button>
+                  <button type="button" onClick={() => setInboxStatusTab('ALL')} className={inboxStatusTab === 'ALL' ? 'rounded-lg bg-slate-100 px-2 py-1.5 text-xs font-semibold text-slate-800' : 'rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500'}>
+                    <span className="block">Todos</span>
+                    <span className="mt-0.5 block text-[10px] text-slate-400">{inboxStatusCounts.allCount}</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="rounded-[28px] border border-slate-200 bg-white p-3.5">
-                <div className="flex flex-wrap items-start justify-between gap-3 px-1">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-950">Conversaciones</p>
-                    <p className="mt-1 text-xs text-slate-500">{displayedConversations.length} visibles en la cola actual.</p>
-                  </div>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{queueScope === 'TEAM' ? 'Equipo' : queueScope === 'MINE' ? 'Mías' : 'Sin asignar'}</span>
-                </div>
-              </div>
-
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white">
-                <div className="border-b border-slate-100 px-4 py-3">
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{queueScope === 'TEAM' ? 'Equipo' : queueScope === 'MINE' ? 'Mías' : 'Sin asignar'}</span>
-                </div>
-                <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-3">
-                  {loading ? <p className="px-2 py-4 text-sm text-slate-500">Cargando conversaciones...</p> : null}
+              <div className="min-h-0 flex-1 overflow-y-auto pt-3">
+                <div className="space-y-1.5">
+                  {loading ? <span className="sr-only" aria-live="polite">Cargando conversaciones...</span> : null}
                   {!loading && displayedConversations.length === 0 ? <p className="px-2 py-4 text-sm text-slate-500">No hay conversaciones para mostrar.</p> : null}
                   {displayedConversations.map((item) => {
                     const isActive = item.id === selectedConversationId
@@ -1883,10 +1962,10 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                         key={item.id}
                         type="button"
                         onClick={() => setSelectedConversationId(item.id)}
-                        className={isActive ? 'w-full rounded-[22px] border border-blue-200 bg-[linear-gradient(135deg,rgba(239,246,255,0.95),rgba(255,255,255,1))] p-3 text-left shadow-[0_16px_32px_-28px_rgba(37,99,235,0.6)]' : 'w-full rounded-[22px] border border-transparent bg-white p-3 text-left transition hover:border-slate-200 hover:bg-slate-50/70'}
+                        className={isActive ? 'w-full rounded-[18px] border border-blue-200 bg-[linear-gradient(135deg,rgba(239,246,255,0.95),rgba(255,255,255,1))] px-3 py-2.5 text-left shadow-[0_16px_32px_-28px_rgba(37,99,235,0.6)]' : 'w-full rounded-[18px] border border-transparent bg-transparent px-3 py-2.5 text-left transition hover:border-slate-200 hover:bg-slate-50/70'}
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex min-w-0 items-start gap-3">
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="flex min-w-0 items-start gap-2.5">
                             <div className="relative shrink-0">
                               <IdentityAvatar label={item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || item.contactPhone || item.contactEmail || 'Contacto'} imageUrl={item.contactAvatarUrl} fallbackImageUrl="/crm-contact-avatar-default.svg" size="sm" />
                               <div className="absolute -bottom-1 -right-1">
@@ -1894,20 +1973,24 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                               </div>
                             </div>
                             <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-sm font-semibold text-slate-950">{renderHighlightedText(item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto', search)}</p>
-                                {item.unreadCount > 0 ? <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white">{item.unreadCount}</span> : null}
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <p className="truncate text-[13px] font-semibold leading-5 text-slate-950">{renderHighlightedText(item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto', search)}</p>
+                                    {item.unreadCount > 0 ? <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[9px] font-semibold text-white">{item.unreadCount}</span> : null}
+                                  </div>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <span className="block text-[10px] font-medium leading-4 text-slate-400">{formatConversationListTime(item.lastMessageAt, locale)}</span>
+                                  <span className={`mt-1 inline-flex rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${statusMeta.className}`}>{statusMeta.label}</span>
+                                </div>
                               </div>
-                              <p className="mt-0.5 line-clamp-1 text-[13px] leading-5 text-slate-500">{renderHighlightedText(preview, search)}</p>
-                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                              <p className="mt-0.5 line-clamp-1 text-[12px] leading-4.5 text-slate-500">{renderHighlightedText(preview, search)}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-slate-500">
                                 <span>{formatProviderDisplayName(item.channelConnection.provider)}</span>
-                                <span className={`rounded-full border px-2 py-0.5 ${slaMeta.className}`}>{slaMeta.label}</span>
+                                <span className={`rounded-full border px-1.5 py-0.5 ${slaMeta.className}`}>{slaMeta.label}</span>
                               </div>
                             </div>
-                          </div>
-                          <div className="shrink-0 space-y-1 text-right">
-                            <span className="block text-[11px] font-medium text-slate-400">{formatConversationListTime(item.lastMessageAt, locale)}</span>
-                            <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusMeta.className}`}>{statusMeta.label}</span>
                           </div>
                         </div>
                       </button>
@@ -1920,7 +2003,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
           <Card className="overflow-hidden rounded-[32px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:h-[95vh]">
             <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-              <div className="sticky top-0 z-20 border-b border-slate-100 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-3 lg:px-5">
+              <div className="sticky top-0 z-20 border-b border-slate-100 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-2.5 lg:px-5">
                 {!selectedConversation ? (
                   <div className="flex h-full min-h-[120px] items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-slate-50/70 px-6 text-center text-sm text-slate-500">
                     Selecciona una conversación en la columna izquierda para abrir el chat y su contexto comercial.
@@ -1932,35 +2015,35 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                     const selectedStatus = getConversationStatusMeta(selectedConversation.status)
                     const isMuted = mutedCrmConversationIds.includes(selectedConversation.id)
                     return (
-                      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                        <div className="min-w-0 space-y-2">
-                          <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex flex-col gap-2.5 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="min-w-0 space-y-1.5">
+                          <div className="flex min-w-0 items-start gap-2.5">
                             <div className="relative shrink-0">
                               <IdentityAvatar label={selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación'} imageUrl={selectedConversation.contactAvatarUrl} fallbackImageUrl="/crm-contact-avatar-default.svg" size="lg" />
                               <div className="absolute -bottom-1 -right-1">
                                 <ChannelProviderBadge provider={selectedConversation.channelConnection.provider} size="md" />
                               </div>
                             </div>
-                            <div className="min-w-0 space-y-1.5">
-                              <div className="flex flex-wrap items-center gap-2">
+                            <div className="min-w-0 space-y-1">
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-slate-950 sm:text-base">{renderHighlightedText(selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación sin alias', search)}</h2>
                                 {isMuted ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Silenciado</span> : null}
                               </div>
-                              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold uppercase tracking-[0.16em] text-slate-600">{selectedProvider}</span>
-                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-600">{selectedConversation.contactPhone || naText}</span>
-                                <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-600">{selectedConversation.contactEmail || naText}</span>
+                              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold uppercase tracking-[0.14em] text-slate-600">{selectedProvider}</span>
+                                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-600">{selectedConversation.contactPhone || naText}</span>
+                                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-600">{selectedConversation.contactEmail || naText}</span>
                               </div>
                             </div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedStatus.className}`}>{selectedStatus.label}</span>
-                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedPriority.className}`}>{selectedPriority.label}</span>
-                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedSla.className}`}>{selectedSla.label}</span>
-                            <span className="text-sm text-slate-500">{selectedSla.elapsedLabel}</span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${selectedStatus.className}`}>{selectedStatus.label}</span>
+                            <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${selectedPriority.className}`}>{selectedPriority.label}</span>
+                            <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${selectedSla.className}`}>{selectedSla.label}</span>
+                            <span className="text-xs text-slate-500">{selectedSla.elapsedLabel}</span>
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-2 rounded-[24px] border border-slate-200 bg-white/92 p-2 shadow-[0_14px_32px_-28px_rgba(15,23,42,0.35)]">
+                        <div className="flex flex-wrap gap-2 rounded-[20px] border border-slate-200 bg-white/92 p-1.5 shadow-[0_14px_32px_-28px_rgba(15,23,42,0.35)]">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="outline" size="icon" className="rounded-xl border-slate-200 bg-white" aria-label="Opciones de conversación">
@@ -2025,25 +2108,25 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                 )}
               </div>
 
-              <div className={detailPanelTab === 'CHAT' ? 'min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.07),transparent_32%),linear-gradient(180deg,#ffffff,#fbfdff)] p-3.5 lg:p-4' : 'min-h-0 overflow-y-auto bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.07),transparent_32%),linear-gradient(180deg,#ffffff,#fbfdff)] p-3.5 lg:p-4'}>
+              <div className={detailPanelTab === 'CHAT' ? 'min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.07),transparent_32%),linear-gradient(180deg,#ffffff,#fbfdff)] p-3 lg:p-3.5' : 'min-h-0 overflow-y-auto bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.07),transparent_32%),linear-gradient(180deg,#ffffff,#fbfdff)] p-3 lg:p-3.5'}>
                 {!selectedConversation ? null : detailPanelTab === 'CHAT' ? (
                   <div className="h-full">
-                    <Card className="flex h-full min-h-0 flex-col rounded-[28px] border border-slate-200 bg-white/98 shadow-none">
-                      <CardContent className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-4 p-4 lg:p-5">
-                        <div className="min-h-0 rounded-[24px] border border-slate-100 bg-slate-50/45 p-3">
-                          <div className="h-full space-y-3 overflow-y-auto pr-1">
+                    <Card className="flex h-full min-h-0 flex-col rounded-[24px] border border-slate-200 bg-white/98 shadow-none">
+                      <CardContent className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-3 p-3.5 lg:p-4">
+                        <div className="min-h-0 rounded-[20px] border border-slate-100 bg-slate-50/45 p-2.5">
+                          <div className="h-full space-y-2.5 overflow-y-auto pr-1">
                           {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
                           {selectedConversation.messages.map((message: ConversationMessage) => {
                             const hasCollision = hasMessageCollision(message)
 
                             return (
-                              <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[86%] rounded-[28px] border border-blue-200 bg-[linear-gradient(135deg,#eff6ff,#ffffff)] px-4 py-3 text-sm text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[86%] rounded-[26px] border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600' : 'mr-auto max-w-[86%] rounded-[28px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
-                                <div className="flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                              <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[86%] rounded-[24px] border border-blue-200 bg-[linear-gradient(135deg,#eff6ff,#ffffff)] px-3.5 py-2.5 text-[13px] text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[86%] rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[13px] text-slate-600' : 'mr-auto max-w-[86%] rounded-[24px] border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] text-slate-700'}>
+                                <div className="flex items-center justify-between gap-3 text-[10px] text-slate-500">
                                   <span className="font-semibold text-slate-700">{getMessageDisplayName(message, selectedConversation)}</span>
                                   <span>{formatDate(message.occurredAt, locale, naText)}</span>
                                 </div>
                                 {hasCollision ? <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Se detectó una posible doble respuesta entre el celular y el CRM en esta conversación.</p> : null}
-                                <p className="mt-2 whitespace-pre-wrap leading-6">{renderHighlightedText(message.bodyText || 'Sin contenido textual', search)}</p>
+                                <p className="mt-1.5 whitespace-pre-wrap leading-5">{renderHighlightedText(message.bodyText || 'Sin contenido textual', search)}</p>
                                 {renderConversationAttachments(message.attachmentsJson)}
                               </div>
                             )
@@ -2051,7 +2134,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           </div>
                         </div>
 
-                        <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] p-4">
+                        <div className="grid gap-2.5 rounded-[20px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] p-3">
                           {messagingWindowState ? (
                             <div className={messagingWindowState.open ? 'rounded-2xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs text-emerald-800' : 'rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-800'}>
                               <span className="font-semibold">{messagingWindowState.label}:</span> {messagingWindowState.hint}
@@ -2082,7 +2165,6 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           />
                           <input ref={attachmentInputRef} type="file" className="hidden" onChange={(event) => void handleAttachmentInputChange(event)} />
                           <div className="grid gap-2">
-                            <Label>{messageTypeDraft === 'TEXT' ? 'Mensaje' : 'Texto o caption opcional'}</Label>
                             <div className="flex items-end gap-2">
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -2182,8 +2264,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                               </div>
                             </div>
                           ) : null}
-                          <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
-                            <p>{recordingAudio ? 'Grabando nota de voz... al detenerla se subirá automáticamente al chat.' : uploadingAttachment && attachmentUploadProgress !== null ? `Subiendo adjunto... ${attachmentUploadProgress}%` : attachmentUrlDraft ? 'Adjunto listo para enviar por el canal.' : 'Puedes enviar texto, emojis, audios, imágenes y documentos.'}</p>
+                          <div className="flex items-center justify-end gap-3 text-xs text-slate-500">
+                            <p>{recordingAudio ? 'Grabando nota de voz... al detenerla se subirá automáticamente al chat.' : uploadingAttachment && attachmentUploadProgress !== null ? `Subiendo adjunto... ${attachmentUploadProgress}%` : attachmentUrlDraft ? 'Adjunto listo para enviar por el canal.' : ''}</p>
                             {sending ? <span className="font-medium text-blue-700">Enviando...</span> : null}
                           </div>
                         </div>
@@ -2762,7 +2844,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
             />
           </CardHeader>
           <CardContent className="space-y-2.5 p-3 md:p-4">
-            {loading ? <p className="text-sm text-muted-foreground">Cargando conversaciones...</p> : null}
+            {loading ? <span className="sr-only" aria-live="polite">Cargando conversaciones...</span> : null}
             {!loading && displayedConversations.length === 0 ? <p className="text-sm text-muted-foreground">No hay conversaciones para mostrar.</p> : null}
             {displayedConversations.map((item) => {
               const isActive = item.id === selectedConversationId
@@ -3472,6 +3554,94 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={newConversationOpen} onOpenChange={(open) => {
+        setNewConversationOpen(open)
+        if (!open) resetNewConversationForm()
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Iniciar conversación</DialogTitle>
+            <DialogDescription>Hoy puedes abrir hilos salientes por WhatsApp desde clientes, prospectos o un número manual. Facebook, Instagram, Messenger, TikTok y X siguen entrando por integraciones o inbound.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <div className="grid grid-cols-3 gap-2 rounded-2xl bg-slate-100 p-1">
+                <button type="button" onClick={() => setNewConversationMode('CLIENTE')} className={newConversationMode === 'CLIENTE' ? 'rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm' : 'rounded-xl px-3 py-2 text-sm font-semibold text-slate-500'}>Cliente ERP</button>
+                <button type="button" onClick={() => setNewConversationMode('LEAD')} className={newConversationMode === 'LEAD' ? 'rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm' : 'rounded-xl px-3 py-2 text-sm font-semibold text-slate-500'}>Prospecto CRM</button>
+                <button type="button" onClick={() => setNewConversationMode('MANUAL')} className={newConversationMode === 'MANUAL' ? 'rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm' : 'rounded-xl px-3 py-2 text-sm font-semibold text-slate-500'}>Número manual</button>
+              </div>
+            </div>
+
+            {newConversationMode === 'CLIENTE' ? (
+              <div className="grid gap-3">
+                <div className="grid gap-2">
+                  <Label>Buscar cliente</Label>
+                  <Input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Nombre, documento o correo" />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Cliente</Label>
+                  <Select value={selectedClientId || '__none__'} onValueChange={(value) => setSelectedClientId(value === '__none__' ? '' : value)}>
+                    <SelectTrigger><SelectValue placeholder="Selecciona un cliente" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sin selección</SelectItem>
+                      {clientOptions.map((item) => <SelectItem key={item.id} value={item.id}>{`${item.nombre} · ${item.celular || item.telefono || item.email || item.documento}`}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : null}
+
+            {newConversationMode === 'LEAD' ? (
+              <div className="grid gap-3">
+                <div className="grid gap-2">
+                  <Label>Buscar prospecto</Label>
+                  <Input value={leadSearch} onChange={(event) => setLeadSearch(event.target.value)} placeholder="Nombre, empresa o correo" />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Prospecto</Label>
+                  <Select value={selectedLeadId || '__none__'} onValueChange={(value) => setSelectedLeadId(value === '__none__' ? '' : value)}>
+                    <SelectTrigger><SelectValue placeholder="Selecciona un prospecto" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sin selección</SelectItem>
+                      {leadOptions.map((item) => <SelectItem key={item.id} value={item.id}>{`${item.nombre} · ${item.celular || item.telefono || item.email || item.empresaNombre || 'sin teléfono visible'}`}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : null}
+
+            {newConversationMode === 'MANUAL' ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label>Nombre visible</Label>
+                  <Input value={manualConversationName} onChange={(event) => setManualConversationName(event.target.value)} placeholder="Nombre del contacto o empresa" />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Número de WhatsApp</Label>
+                  <Input value={manualConversationPhone} onChange={(event) => setManualConversationPhone(event.target.value)} placeholder="573001234567" />
+                </div>
+              </div>
+            ) : null}
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3 text-xs leading-5 text-slate-600">
+              El sistema abrirá o reutilizará el hilo existente del número seleccionado y lo dejará listo en la bandeja del inbox. Si no hay ventana activa de 24 horas, WhatsApp puede exigir plantilla aprobada para el primer mensaje saliente.
+            </div>
+          </div>
+          <DialogFooter className="flex flex-wrap gap-2 sm:justify-between">
+            <Button variant="ghost" onClick={() => {
+              setNewConversationOpen(false)
+              setSimulatorOpen(true)
+            }}>
+              Simular inbound QA
+            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setNewConversationOpen(false)}>Cancelar</Button>
+              <Button onClick={() => void startNewConversation()} disabled={openingConversation}>{openingConversation ? 'Abriendo...' : 'Abrir conversación'}</Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={simulatorOpen} onOpenChange={setSimulatorOpen}>
         <DialogContent className="max-w-2xl">

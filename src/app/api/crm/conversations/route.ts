@@ -27,6 +27,21 @@ async function resolveClienteForConversation(args: { clienteId: string; empresaI
   })
 }
 
+async function resolveLeadForConversation(args: { leadId: string; empresaId: string }) {
+  return prisma.crmLead.findFirst({
+    where: { id: args.leadId, empresaId: args.empresaId },
+    select: {
+      id: true,
+      nombre: true,
+      email: true,
+      telefono: true,
+      celular: true,
+      sedeId: true,
+      convertedClienteId: true,
+    },
+  })
+}
+
 async function resolveOutboundWhatsAppChannel(args: { empresaId: string; sedeId: string | null }) {
   const channels = await prisma.crmChannelConnection.findMany({
     where: {
@@ -166,39 +181,62 @@ export async function POST(request: Request) {
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
     const clienteId = normalizeString(body?.clienteId)
+    const leadId = normalizeString(body?.leadId)
+    const contactPhone = normalizeString(body?.contactPhone)
+    const contactDisplayName = normalizeString(body?.contactDisplayName)
+    const contactEmail = normalizeString(body?.contactEmail).toLowerCase() || null
 
-    if (!clienteId) {
-      return NextResponse.json({ error: 'clienteId es requerido' }, { status: 400 })
+    if (!clienteId && !leadId && !contactPhone) {
+      return NextResponse.json({ error: 'clienteId, leadId o contactPhone es requerido' }, { status: 400 })
     }
 
-    const cliente = await resolveClienteForConversation({ clienteId, empresaId: access.empresaId })
-    if (!cliente) {
+    const cliente = clienteId ? await resolveClienteForConversation({ clienteId, empresaId: access.empresaId }) : null
+    const lead = !cliente && leadId ? await resolveLeadForConversation({ leadId, empresaId: access.empresaId }) : null
+
+    if (clienteId && !cliente) {
       return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
     }
 
-    if (cliente.sedeId) {
-      const denied = await assertCrmSedeAccess({ sedeId: cliente.sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+    if (leadId && !cliente && !lead) {
+      return NextResponse.json({ error: 'Prospecto no encontrado' }, { status: 404 })
+    }
+
+    const targetSedeId = cliente?.sedeId || lead?.sedeId || access.sedeId || null
+    if (targetSedeId) {
+      const denied = await assertCrmSedeAccess({ sedeId: targetSedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
       if (denied) return denied
     }
 
-    const recipientPhone = normalizeWhatsAppRecipient(cliente.celular || cliente.telefono)
+    const recipientPhone = normalizeWhatsAppRecipient(
+      cliente?.celular
+      || cliente?.telefono
+      || lead?.celular
+      || lead?.telefono
+      || contactPhone
+    )
     if (!recipientPhone) {
-      return NextResponse.json({ error: 'El cliente no tiene un celular o teléfono válido para WhatsApp.' }, { status: 400 })
+      return NextResponse.json({ error: cliente ? 'El cliente no tiene un celular o teléfono válido para WhatsApp.' : lead ? 'El prospecto no tiene un celular o teléfono válido para WhatsApp.' : 'Debes indicar un número de WhatsApp válido.' }, { status: 400 })
     }
 
-    const channel = await resolveOutboundWhatsAppChannel({ empresaId: access.empresaId, sedeId: cliente.sedeId || access.sedeId || null })
+    const channel = await resolveOutboundWhatsAppChannel({ empresaId: access.empresaId, sedeId: targetSedeId })
     if (!channel) {
       return NextResponse.json({ error: 'No hay un canal activo de WhatsApp listo para abrir la conversación.' }, { status: 409 })
     }
 
-    const externalThreadId = `manual-cliente-${cliente.id}-${recipientPhone}`
+    const externalThreadId = cliente
+      ? `manual-cliente-${cliente.id}-${recipientPhone}`
+      : lead
+        ? `manual-lead-${lead.id}-${recipientPhone}`
+        : `manual-phone-${recipientPhone}`
     const existing = await prisma.crmConversation.findFirst({
       where: {
         empresaId: access.empresaId,
         channelConnectionId: channel.id,
         OR: [
           { externalThreadId },
-          { clienteId: cliente.id, contactPhone: recipientPhone },
+          ...(cliente ? [{ clienteId: cliente.id, contactPhone: recipientPhone }] : []),
+          ...(lead ? [{ leadId: lead.id, contactPhone: recipientPhone }] : []),
+          { contactPhone: recipientPhone },
         ],
       },
       orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
@@ -216,13 +254,14 @@ export async function POST(request: Request) {
           empresaId: access.empresaId,
           sedeId: channel.sedeId,
           channelConnectionId: channel.id,
-          clienteId: cliente.id,
+          leadId: lead?.id || null,
+          clienteId: cliente?.id || lead?.convertedClienteId || null,
           status: 'OPEN',
           directionLastMessage: 'SYSTEM',
           externalThreadId,
-          contactDisplayName: cliente.nombre,
+          contactDisplayName: cliente?.nombre || lead?.nombre || contactDisplayName || recipientPhone,
           contactPhone: recipientPhone,
-          contactEmail: normalizeString(cliente.email).toLowerCase() || null,
+          contactEmail: (cliente ? normalizeString(cliente.email).toLowerCase() : lead ? normalizeString(lead.email).toLowerCase() : contactEmail) || null,
           assignedToUserId: access.userId,
           source: 'WHATSAPP',
           sourceMedium: 'crm-manual',
@@ -241,11 +280,16 @@ export async function POST(request: Request) {
           direction: 'SYSTEM',
           messageType: 'TEXT',
           status: 'SENT',
-          bodyText: `Conversación iniciada manualmente desde Clientes para el número ${recipientPhone}. Si el contacto no ha escrito en las últimas 24 horas, WhatsApp puede exigir una plantilla aprobada antes del primer mensaje saliente.`,
+          bodyText: cliente
+            ? `Conversación iniciada manualmente desde Clientes para el número ${recipientPhone}. Si el contacto no ha escrito en las últimas 24 horas, WhatsApp puede exigir una plantilla aprobada antes del primer mensaje saliente.`
+            : lead
+              ? `Conversación iniciada manualmente desde Prospectos para el número ${recipientPhone}. Si el contacto no ha escrito en las últimas 24 horas, WhatsApp puede exigir una plantilla aprobada antes del primer mensaje saliente.`
+              : `Conversación iniciada manualmente para el número ${recipientPhone}. Si el contacto no ha escrito en las últimas 24 horas, WhatsApp puede exigir una plantilla aprobada antes del primer mensaje saliente.`,
           payloadJson: {
-            source: 'crm-manual-client',
+            source: cliente ? 'crm-manual-client' : lead ? 'crm-manual-lead' : 'crm-manual-phone',
             messageOrigin: 'SYSTEM',
-            clienteId: cliente.id,
+            clienteId: cliente?.id || lead?.convertedClienteId || null,
+            leadId: lead?.id || null,
           } as Prisma.InputJsonValue,
           occurredAt: now,
         },
@@ -256,9 +300,18 @@ export async function POST(request: Request) {
           empresaId: access.empresaId,
           sedeId: channel.sedeId,
           type: 'WHATSAPP',
-          summary: 'Conversación WhatsApp creada manualmente desde clientes',
-          details: `Se abrió la conversación para ${recipientPhone} desde la base de clientes.`,
-          clienteId: cliente.id,
+          summary: cliente
+            ? 'Conversación WhatsApp creada manualmente desde clientes'
+            : lead
+              ? 'Conversación WhatsApp creada manualmente desde prospectos'
+              : 'Conversación WhatsApp creada manualmente desde inbox',
+          details: cliente
+            ? `Se abrió la conversación para ${recipientPhone} desde la base de clientes.`
+            : lead
+              ? `Se abrió la conversación para ${recipientPhone} desde la base de prospectos.`
+              : `Se abrió la conversación manualmente para ${recipientPhone} desde el inbox.`,
+          leadId: lead?.id || null,
+          clienteId: cliente?.id || lead?.convertedClienteId || null,
           occurredAt: now,
           createdById: access.userId,
         },
