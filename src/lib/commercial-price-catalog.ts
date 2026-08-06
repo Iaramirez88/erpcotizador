@@ -53,6 +53,13 @@ export const COMMERCIAL_PRICE_CATALOG: CommercialPriceCatalogItem[] = [
     description: HR_PLAN_PARENT.description,
     defaultPriceCOP: HR_PLAN_PARENT.monthlyPriceCOP,
   },
+  {
+    code: 'CRM-CALLS-DAILY',
+    title: 'Addon Daily Calls',
+    category: 'SUITE_SUBMODULE' as const,
+    description: 'Llamadas y videollamadas embebidas como addon comercial del bloque CRM.',
+    defaultPriceCOP: 189000,
+  },
   ...HR_PLAN_SUBMODULES.map((submodule) => ({
     code: submodule.code,
     title: submodule.title,

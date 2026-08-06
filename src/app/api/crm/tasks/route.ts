@@ -15,6 +15,7 @@ import {
   canUserAccessWorkspace,
   crmTaskInclude,
   ensureWorkspaceEditors,
+  getAccessibleTaskWorkspaceIds,
   getAccessibleTaskWorkspace,
   normalizeTaskAttachments,
   normalizeTaskColorHex,
@@ -93,6 +94,14 @@ export async function GET(request: Request) {
     const sedeId = normalizeString(searchParams.get('sedeId'))
     const status = parseTaskStatus(searchParams.get('status'))
     const includeArchived = searchParams.get('includeArchived') === 'true'
+    const accessibleWorkspacesOnly = searchParams.get('accessibleWorkspaces') === 'true'
+
+    const accessibleWorkspaceIds = accessibleWorkspacesOnly && !workspaceId
+      ? await getAccessibleTaskWorkspaceIds(prisma, {
+          empresaId: access.empresaId,
+          userId: access.userId,
+        })
+      : null
 
     if (sedeId) {
       const denied = await assertTaskCapabilitySedeAccess({
@@ -129,8 +138,16 @@ export async function GET(request: Request) {
         ...(opportunityId ? { opportunityId } : {}),
         ...(clienteId ? { clienteId } : {}),
         ...(workspaceId ? { workspaceId } : {}),
+        ...(accessibleWorkspaceIds ? { workspaceId: { in: accessibleWorkspaceIds.length ? accessibleWorkspaceIds : ['__none__'] } } : {}),
         ...(projectId ? { projectId } : {}),
-        ...(assignedToUserId ? { assignedToUserId } : {}),
+        ...(assignedToUserId
+          ? {
+              OR: [
+                { assignedToUserId },
+                { assignments: { some: { userId: assignedToUserId } } },
+              ],
+            }
+          : {}),
         ...(sedeId ? { sedeId } : {}),
         ...(status ? { status } : {}),
         ...(includeArchived ? {} : { archivedAt: null }),

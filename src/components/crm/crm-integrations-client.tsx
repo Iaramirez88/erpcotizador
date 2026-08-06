@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { Activity, Bot, Copy, Download, Eye, Facebook, Globe, Goal, Instagram, Target, TrendingUp, Upload } from 'lucide-react'
+import { CrmAddonsMarketplaceCard } from '@/components/crm/crm-addons-marketplace-card'
 import { CrmIntegrationsChatbotBuilderSections } from '@/components/crm/crm-integrations-chatbot-builder-sections'
 import { CrmIntegrationsChatbotFlowSection } from '@/components/crm/crm-integrations-chatbot-flow-section'
 import type { ChatbotCanvasConnection, ChatbotCanvasNode } from '@/components/crm/crm-integrations-chatbot-flow-types'
@@ -4412,6 +4413,8 @@ export function CrmIntegrationsClient() {
           { label: language === 'en' ? 'Linked conversations' : 'Conversaciones vinculadas', value: stats.conversations, hint: language === 'en' ? 'Threads created in the CRM inbox' : 'Hilos generados en el inbox CRM', tone: 'neutral' },
         ]}
       />
+
+      <CrmAddonsMarketplaceCard />
 
       <Tabs value={workspaceView} onValueChange={(value) => setWorkspaceView(value as CrmWorkspaceView)} className="space-y-4">
         <div className="flex flex-col gap-2.5 rounded-[24px] border border-slate-200 bg-white/90 p-2.5 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.28)] md:flex-row md:items-center md:justify-between">

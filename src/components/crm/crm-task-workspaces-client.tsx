@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Archive, ArrowDownUp, ChevronDown, Columns3, Eye, GripVertical, LayoutPanelLeft, MoreVertical, Plus, Rows3, Search as SearchIcon, Users } from 'lucide-react'
+import { Archive, ArrowDownUp, ChevronDown, Columns3, Eye, GripVertical, LayoutPanelLeft, MoreVertical, PencilLine, Plus, Rows3, Search as SearchIcon, Users } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -142,6 +142,7 @@ type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
 type QuickTaskPanelMode = 'attachments' | 'custom-fields' | 'history' | 'note'
 type ExtraTaskColumn = 'attachments' | 'custom-fields' | 'history' | 'note'
 type TaskSortDirection = 'asc' | 'desc'
+type TaskViewMode = 'SPACE' | 'MINE' | 'ALL_SPACES'
 type DragPayload = { type: 'project'; projectId: string } | { type: 'task'; taskId: string }
 
 const COLOR_PRESETS = ['#0F172A', '#1D4ED8', '#0F766E', '#BE185D', '#7C3AED', '#C2410C', '#DC2626', '#16A34A']
@@ -210,6 +211,12 @@ function getWorkspaceDescription(workspace: Workspace) {
     return names.length ? names.join(', ') : 'Espacio por sede'
   }
   return workspace.ownerUser?.name || workspace.ownerUser?.email || 'Espacio por usuario'
+}
+
+function truncateText(value: string, maxLength = 30) {
+  const normalized = value.trim()
+  if (normalized.length <= maxLength) return normalized
+  return `${normalized.slice(0, Math.max(0, maxLength)).trimEnd()}...`
 }
 
 function formatStatus(status: TaskStatus) {
@@ -389,7 +396,7 @@ export function CrmTaskWorkspacesClient() {
   const [quickNoteDraft, setQuickNoteDraft] = useState('')
   const [savingQuickNote, setSavingQuickNote] = useState(false)
   const [workspacePanelCollapsed, setWorkspacePanelCollapsed] = useState(false)
-  const [showAllTasks, setShowAllTasks] = useState(false)
+  const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>('SPACE')
   const [taskColumnWidth, setTaskColumnWidth] = useState(150)
   const [taskSortDirection, setTaskSortDirection] = useState<TaskSortDirection>('desc')
   const [showPriorityColumn, setShowPriorityColumn] = useState(true)
@@ -425,7 +432,8 @@ export function CrmTaskWorkspacesClient() {
   const editableWorkspaces = useMemo(() => workspaces.filter((workspace) => workspace.permissions?.canEditTasks), [workspaces])
   const selectedMoveWorkspace = useMemo(() => workspaces.find((workspace) => workspace.id === taskMoveForm.workspaceId) ?? null, [taskMoveForm.workspaceId, workspaces])
   const clampedTaskColumnWidth = useMemo(() => Math.min(220, Math.max(120, taskColumnWidth)), [taskColumnWidth])
-  const totalTaskColumnCount = useMemo(() => 7 + visibleExtraTaskColumns.length + (showAllTasks ? 1 : 0) + (showPriorityColumn ? 1 : 0) + (showCreatedAtColumn ? 1 : 0), [showAllTasks, showCreatedAtColumn, showPriorityColumn, visibleExtraTaskColumns.length])
+  const showCrossWorkspaceColumn = taskViewMode !== 'SPACE'
+  const totalTaskColumnCount = useMemo(() => 7 + visibleExtraTaskColumns.length + (showCrossWorkspaceColumn ? 1 : 0) + (showPriorityColumn ? 1 : 0) + (showCreatedAtColumn ? 1 : 0), [showCreatedAtColumn, showCrossWorkspaceColumn, showPriorityColumn, visibleExtraTaskColumns.length])
   const taskGridTemplate = useMemo(() => `repeat(${totalTaskColumnCount}, ${clampedTaskColumnWidth}px)`, [clampedTaskColumnWidth, totalTaskColumnCount])
   const taskTableMinWidth = useMemo(() => clampedTaskColumnWidth * totalTaskColumnCount + 32, [clampedTaskColumnWidth, totalTaskColumnCount])
   const quickTask = useMemo(() => quickTaskPanel ? tasks.find((task) => task.id === quickTaskPanel.taskId) ?? null : null, [quickTaskPanel, tasks])
@@ -461,21 +469,24 @@ export function CrmTaskWorkspacesClient() {
     }
   }
 
-  const loadTasks = useCallback(async (workspaceId = selectedWorkspaceId, allTasks = showAllTasks) => {
-    if ((allTasks && !currentUserId) || (!allTasks && !workspaceId)) {
+  const loadTasks = useCallback(async (workspaceId = selectedWorkspaceId, viewMode = taskViewMode) => {
+    if ((viewMode === 'MINE' && !currentUserId) || (viewMode === 'SPACE' && !workspaceId)) {
       setTasks([])
       return
     }
     const query = new URLSearchParams({ includeArchived: String(showArchived) })
-    if (!allTasks && workspaceId) {
+    if (viewMode === 'SPACE' && workspaceId) {
       query.set('workspaceId', workspaceId)
     }
-    if (allTasks && currentUserId) {
+    if (viewMode === 'MINE' && currentUserId) {
       query.set('assignedToUserId', currentUserId)
+    }
+    if (viewMode === 'MINE' || viewMode === 'ALL_SPACES') {
+      query.set('accessibleWorkspaces', 'true')
     }
     const taskRes = await requestJson<TaskItem[]>(`/api/crm/tasks?${query.toString()}`)
     setTasks(Array.isArray(taskRes.data) ? taskRes.data.map((row) => normalizeTask(row)) : [])
-  }, [currentUserId, selectedWorkspaceId, showAllTasks, showArchived])
+  }, [currentUserId, selectedWorkspaceId, showArchived, taskViewMode])
 
   async function loadTaskDetail(taskId: string) {
     const detailRes = await requestJson<TaskItem>(`/api/crm/tasks/${taskId}`)
@@ -511,7 +522,7 @@ export function CrmTaskWorkspacesClient() {
   }
 
   useEffect(() => { void loadBase() }, [])
-  useEffect(() => { void loadTasks(selectedWorkspaceId, showAllTasks) }, [loadTasks, selectedWorkspaceId, showAllTasks])
+  useEffect(() => { void loadTasks(selectedWorkspaceId, taskViewMode) }, [loadTasks, selectedWorkspaceId, taskViewMode])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -660,10 +671,7 @@ export function CrmTaskWorkspacesClient() {
 
   const filteredTasks = useMemo(() => {
     const term = search.trim().toLowerCase()
-    const assignedTasks = showAllTasks && currentUserId
-      ? tasks.filter((task) => task.assignments.some((assignment) => assignment.userId === currentUserId))
-      : tasks
-    const projectScopedTasks = !showAllTasks && selectedProjectId ? assignedTasks.filter((task) => task.project?.id === selectedProjectId) : assignedTasks
+    const projectScopedTasks = taskViewMode === 'SPACE' && selectedProjectId ? tasks.filter((task) => task.project?.id === selectedProjectId) : tasks
     const matchingTasks = !term ? projectScopedTasks : projectScopedTasks.filter((task) => {
       const haystack = [task.title, task.description, task.createdBy?.name, task.workspace?.name, task.lead?.nombre, task.opportunity?.title, task.cliente?.nombre, ...task.assignments.map((assignment) => assignment.user.name || assignment.user.email || ''), ...(task.customFieldsJson || []).map((field) => `${field.label} ${field.textValue || field.file?.name || ''}`)].filter(Boolean).join(' ').toLowerCase()
       return haystack.includes(term)
@@ -674,15 +682,20 @@ export function CrmTaskWorkspacesClient() {
       const rightTime = new Date(right.createdAt).getTime()
       return taskSortDirection === 'asc' ? leftTime - rightTime : rightTime - leftTime
     })
-  }, [currentUserId, search, selectedProjectId, showAllTasks, taskSortDirection, tasks])
+  }, [search, selectedProjectId, taskSortDirection, taskViewMode, tasks])
 
   function handleSelectWorkspace(workspaceId: string) {
-    setShowAllTasks(false)
+    setTaskViewMode('SPACE')
     setSelectedWorkspaceId(workspaceId)
   }
 
-  function handleToggleAllTasks() {
-    setShowAllTasks((current) => !current)
+  function handleShowMyTasks() {
+    setTaskViewMode('MINE')
+    setSelectedProjectId('')
+  }
+
+  function handleShowAllAccessibleTasks() {
+    setTaskViewMode('ALL_SPACES')
     setSelectedProjectId('')
   }
 
@@ -1381,8 +1394,10 @@ export function CrmTaskWorkspacesClient() {
               {!loading && workspaces.length === 0 ? <p className="text-sm text-muted-foreground">No tienes espacios de trabajo todavía.</p> : null}
               {!loading && workspaces.length > 0 && filteredWorkspaces.length === 0 ? <p className="text-sm text-muted-foreground">No encontré espacios con ese criterio.</p> : null}
               {filteredWorkspaces.map((workspace) => {
-                const isSelected = !showAllTasks && selectedWorkspaceId === workspace.id
+                const isSelected = taskViewMode === 'SPACE' && selectedWorkspaceId === workspace.id
                 const canManageCurrentWorkspace = Boolean(workspace.permissions?.canManage)
+                const fullDescription = getWorkspaceDescription(workspace)
+                const shortDescription = truncateText(fullDescription, 30)
 
                 return (
                   <div
@@ -1398,15 +1413,17 @@ export function CrmTaskWorkspacesClient() {
                       : `w-full rounded-3xl border bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-4 text-left shadow-sm transition-shadow hover:shadow-md ${dragOverWorkspaceId === workspace.id ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-slate-200'}`}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <button type="button" onClick={() => handleSelectWorkspace(workspace.id)} className="min-w-0 flex-1 text-left">
-                        <p className="font-semibold text-slate-950">{workspace.name}</p>
-                        <p className="mt-1 text-sm text-slate-600">{getWorkspaceDescription(workspace)}</p>
-                      </button>
-                      <div className="flex items-start gap-2">
-                        <div className="flex flex-col items-end gap-1">
+                      <div className="min-w-0 flex-1">
+                        <button type="button" onClick={() => handleSelectWorkspace(workspace.id)} className="block min-w-0 text-left">
+                          <p className="font-semibold uppercase leading-5 text-slate-950">{workspace.name}</p>
+                        </button>
+                        <p className="mt-2 text-sm leading-6 text-slate-600" title={fullDescription}>{shortDescription}</p>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{workspace.scope}</span>
                           <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">{formatRole(workspace.currentUserRole)}</span>
                         </div>
+                      </div>
+                      <div className="flex items-start gap-2">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label={`Opciones de ${workspace.name}`}>
@@ -1530,10 +1547,12 @@ export function CrmTaskWorkspacesClient() {
           <CardHeader className="border-b border-slate-100 pb-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <CardTitle className="text-xl">{showAllTasks ? 'Todas las tareas' : 'Tareas del espacio'}</CardTitle>
+                <CardTitle className="text-xl">{taskViewMode === 'MINE' ? 'Mis tareas' : taskViewMode === 'ALL_SPACES' ? 'Todas las tareas' : 'Tareas del espacio'}</CardTitle>
                 <CardDescription>
-                  {showAllTasks
-                    ? `Vista global con tareas de todos los espacios accesibles${selectedWorkspace ? ` · base actual ${selectedWorkspace.name}` : ''}`
+                  {taskViewMode === 'MINE'
+                    ? `Vista personal con todas las tareas donde apareces como responsable${selectedWorkspace ? ` · base actual ${selectedWorkspace.name}` : ''}`
+                    : taskViewMode === 'ALL_SPACES'
+                    ? `Vista global con tareas de todos los espacios asignados${selectedWorkspace ? ` · base actual ${selectedWorkspace.name}` : ''}`
                     : selectedWorkspace
                     ? `${selectedWorkspace.name}${selectedProject ? ` · Proyecto ${selectedProject.name}` : ' · Todos los proyectos'} · ${formatRole(selectedWorkspace.currentUserRole)}${selectedWorkspace.permissions?.canEditTasks ? ' con edición de tareas' : ' solo lectura'}`
                     : 'Tabla operativa con responsables, estado, color, evidencia y acceso a detalle completo.'}
@@ -1553,12 +1572,21 @@ export function CrmTaskWorkspacesClient() {
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button variant={showAllTasks ? 'default' : 'outline'} className="h-9 gap-2 rounded-xl px-3 sm:w-9 sm:px-0" onClick={handleToggleAllTasks} aria-label={showAllTasks ? 'Volver al espacio actual' : 'Ver todas las tareas'}>
+                        <Button variant={taskViewMode === 'MINE' ? 'default' : 'outline'} className="h-9 gap-2 rounded-xl px-3 sm:w-9 sm:px-0" onClick={handleShowMyTasks} aria-label="Ver mis tareas">
+                          <PencilLine className="h-4 w-4" />
+                          <span className="text-xs sm:hidden">Mías</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Todas mis tareas asignadas</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant={taskViewMode === 'ALL_SPACES' ? 'default' : 'outline'} className="h-9 gap-2 rounded-xl px-3 sm:w-9 sm:px-0" onClick={handleShowAllAccessibleTasks} aria-label="Ver todas las tareas de espacios asignados">
                           <Rows3 className="h-4 w-4" />
                           <span className="text-xs sm:hidden">Todas</span>
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>{showAllTasks ? 'Volver al espacio actual' : 'Ver todas las tareas'}</TooltipContent>
+                      <TooltipContent>Todas las tareas de espacios asignados</TooltipContent>
                     </Tooltip>
                     {canManageWorkspace ? <Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => openWorkspaceSettings()} aria-label="Miembros y roles"><Users className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Miembros y roles</TooltipContent></Tooltip> : null}
                     <Tooltip>
@@ -1635,7 +1663,7 @@ export function CrmTaskWorkspacesClient() {
               <div className="w-max" style={{ minWidth: `${taskTableMinWidth}px` }}>
                 <div className="grid gap-3 border-b border-slate-100 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500" style={{ gridTemplateColumns: taskGridTemplate }}>
                   <span>Tarea</span>
-                  {showAllTasks ? <span>Espacio</span> : null}
+                  {showCrossWorkspaceColumn ? <span>Espacio</span> : null}
                   {showPriorityColumn ? <span>Prioridad</span> : null}
                   <span>Descripción</span>
                   <span>Responsables</span>
@@ -1660,7 +1688,7 @@ export function CrmTaskWorkspacesClient() {
                       style={{ gridTemplateColumns: taskGridTemplate, borderLeft: `5px solid ${normalizeHex(task.colorHex)}`, borderBottomColor: 'rgba(226,232,240,0.9)' }}
                     >
                       <div className="flex min-w-0 items-center gap-2"><GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-400" /><p className="truncate font-semibold text-slate-950">{task.title}</p></div>
-                      {showAllTasks ? <div className="min-w-0"><p className="truncate font-medium text-slate-900">{task.workspace?.name || 'Sin espacio'}</p><p className="truncate text-[11px] text-slate-500">{task.project?.name || 'Sin proyecto'}</p></div> : null}
+                      {showCrossWorkspaceColumn ? <div className="min-w-0"><p className="truncate font-medium text-slate-900">{task.workspace?.name || 'Sin espacio'}</p><p className="truncate text-[11px] text-slate-500">{task.project?.name || 'Sin proyecto'}</p></div> : null}
                       {showPriorityColumn ? <div className="overflow-hidden">{renderTaskPriorityControl(task)}</div> : null}
                       <p className="truncate text-slate-600">{task.description || 'Sin descripción'}</p>
                       <div className="flex min-w-0 flex-wrap items-center gap-2 overflow-hidden">{renderTaskAssignments(task)}</div>
@@ -1697,7 +1725,7 @@ export function CrmTaskWorkspacesClient() {
                     </div>
                   )
                 })}
-                {!filteredTasks.length ? <div className="px-6 py-8 text-sm text-slate-500">{showAllTasks ? 'No hay tareas para mostrar en los espacios disponibles.' : selectedWorkspace ? (selectedProject ? 'No hay tareas para mostrar en este proyecto.' : selectedWorkspace.projects.length ? 'No hay tareas para mostrar en este espacio.' : 'Crea primero un proyecto dentro del espacio para empezar a registrar tareas.') : 'Selecciona un espacio de trabajo para ver tareas.'}</div> : null}
+                {!filteredTasks.length ? <div className="px-6 py-8 text-sm text-slate-500">{taskViewMode === 'MINE' ? 'No tienes tareas asignadas para mostrar.' : taskViewMode === 'ALL_SPACES' ? 'No hay tareas para mostrar en tus espacios asignados.' : selectedWorkspace ? (selectedProject ? 'No hay tareas para mostrar en este proyecto.' : selectedWorkspace.projects.length ? 'No hay tareas para mostrar en este espacio.' : 'Crea primero un proyecto dentro del espacio para empezar a registrar tareas.') : 'Selecciona un espacio de trabajo para ver tareas.'}</div> : null}
               </div>
             </div>
           </CardContent>

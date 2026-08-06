@@ -4,7 +4,8 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, Facebook, FileAudio, FileText, Image as ImageIcon, Instagram, Mail, MessageCircle, MoreVertical, PhoneCall, Plus, RefreshCcw, SendHorizontal, Smile } from 'lucide-react'
+import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, Facebook, FileAudio, FileText, Image as ImageIcon, Instagram, Mail, MessageCircle, MoreVertical, PhoneCall, Plus, RefreshCcw, SendHorizontal, Smile, Video } from 'lucide-react'
+import { CrmDailyCallEmbed } from '@/components/crm/crm-daily-call-embed'
 import { CrmFileLibraryPicker } from '@/components/crm/crm-file-library-picker'
 import type { CrmFileItem } from '@/components/crm/crm-files-types'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
@@ -183,6 +184,46 @@ type MaterialLookupItem = {
 
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
 
+type DailyCallsAddonState = {
+  code: 'DAILY_CALLS'
+  enabled: boolean
+  ready: boolean
+  status: 'INACTIVE' | 'CONFIGURING' | 'ACTIVE'
+  validation: {
+    checkedAt: string | null
+    ok: boolean
+    message: string
+    domainName: string | null
+  }
+  settings: {
+    connectionMode: 'SGDIGITAL_MANAGED' | 'CUSTOMER_DAILY'
+    dailyDomain: string
+    roomPrefix: string
+    enableRecording: boolean
+    defaultCallType: 'video' | 'audio'
+    hasApiKey: boolean
+  }
+}
+
+type PreparedCallSession = {
+  conversationId: string
+  roomName: string
+  callType: 'video' | 'audio'
+  launchMode: 'EMBED_MODAL'
+  connectionMode: 'SGDIGITAL_MANAGED' | 'CUSTOMER_DAILY'
+  domainHost: string | null
+  joinUrl: string
+  ownerToken: string
+  ownerDisplayName: string
+  ownerUserId: string
+  expiresAt: string
+  sessionKey: string
+  enableRecording: boolean
+  contactLabel: string
+  provider: ChannelProvider
+  readinessMessage: string
+}
+
 type UploadedConversationAttachment = {
   name: string
   url: string
@@ -236,6 +277,74 @@ function inferAudioExtension(mimeType: string) {
   if (mimeType.includes('mp4')) return '.m4a'
   if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return '.mp3'
   return '.webm'
+}
+
+function getBrowserPermissionPolicy() {
+  if (typeof document === 'undefined') return null
+
+  const browserDocument = document as Document & {
+    permissionsPolicy?: { allowsFeature?: (feature: string) => boolean }
+    featurePolicy?: { allowsFeature?: (feature: string) => boolean }
+  }
+
+  return browserDocument.permissionsPolicy ?? browserDocument.featurePolicy ?? null
+}
+
+async function getAudioRecordingBlocker() {
+  if (typeof window === 'undefined') {
+    return 'La grabación de audio solo está disponible en el navegador.'
+  }
+
+  if (!window.isSecureContext) {
+    return 'El navegador bloqueó el micrófono porque esta vista no corre en un contexto seguro. Abre la plataforma por HTTPS o desde localhost.'
+  }
+
+  if (!window.navigator.mediaDevices?.getUserMedia) {
+    return 'Este navegador no expone la API de micrófono requerida para grabar desde el CRM.'
+  }
+
+  if (typeof MediaRecorder === 'undefined') {
+    return 'Este navegador permite micrófono, pero no soporta MediaRecorder para grabar notas de voz.'
+  }
+
+  const permissionPolicy = getBrowserPermissionPolicy()
+  if (permissionPolicy?.allowsFeature && !permissionPolicy.allowsFeature('microphone')) {
+    return 'La página actual o el iframe host no autoriza el micrófono. Si está embebido, agrega allow="microphone; camera" al iframe.'
+  }
+
+  try {
+    const permissionStatus = await window.navigator.permissions?.query?.({ name: 'microphone' as PermissionName })
+    if (permissionStatus?.state === 'denied') {
+      return 'El permiso del micrófono está denegado para este sitio. Restablécelo en permisos del navegador para este dominio.'
+    }
+  } catch {
+    // Algunos navegadores no exponen navigator.permissions para micrófono.
+  }
+
+  return null
+}
+
+function formatAudioRecordingError(error: unknown) {
+  if (error instanceof DOMException) {
+    if (error.name === 'NotAllowedError' || error.name === 'SecurityError') {
+      return 'El navegador negó el acceso al micrófono. Verifica HTTPS, permisos del sitio y si el iframe permite microphone.'
+    }
+    if (error.name === 'NotFoundError') {
+      return 'No se encontró ningún micrófono disponible en este equipo para el navegador actual.'
+    }
+    if (error.name === 'NotReadableError') {
+      return 'El micrófono existe, pero otra aplicación o el sistema no permiten leerlo en este momento.'
+    }
+    if (error.name === 'AbortError') {
+      return 'La apertura del micrófono fue cancelada antes de iniciar la grabación.'
+    }
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+
+  return 'No se pudo iniciar la grabación de audio.'
 }
 
 function mapLibraryItemToConversationAttachment(item: CrmFileItem) {
@@ -774,6 +883,12 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [selectedMaterial, setSelectedMaterial] = useState<MaterialLookupItem | null>(null)
   const [interestNotes, setInterestNotes] = useState('')
   const [savingInterest, setSavingInterest] = useState(false)
+  const [dailyCallsAddon, setDailyCallsAddon] = useState<DailyCallsAddonState | null>(null)
+  const [callDialogOpen, setCallDialogOpen] = useState(false)
+  const [preparingCall, setPreparingCall] = useState(false)
+  const [callError, setCallError] = useState<string | null>(null)
+  const [preparedCallSession, setPreparedCallSession] = useState<PreparedCallSession | null>(null)
+  const [callState, setCallState] = useState<'BOOTING' | 'JOINING' | 'JOINED' | 'LEFT' | 'ERROR'>('BOOTING')
 
   const [assigneeDraft, setAssigneeDraft] = useState('__none__')
   const [statusDraft, setStatusDraft] = useState<ConversationStatus>('OPEN')
@@ -783,6 +898,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [attachmentNameDraft, setAttachmentNameDraft] = useState('')
   const [uploadingAttachment, setUploadingAttachment] = useState(false)
   const [attachmentUploadProgress, setAttachmentUploadProgress] = useState<number | null>(null)
+  const [audioRecordingIssue, setAudioRecordingIssue] = useState<string | null>(null)
   const [recordingAudio, setRecordingAudio] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
@@ -906,6 +1022,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     }))
   }, [])
 
+  const loadDailyCallsAddon = useCallback(async () => {
+    const json = await requestJson<DailyCallsAddonState>('/api/crm/addons/DAILY_CALLS')
+    setDailyCallsAddon(json.success && json.data ? json.data : null)
+  }, [])
+
   const loadDetail = useCallback(async (conversationId: string) => {
     setDetailLoading(true)
     try {
@@ -939,8 +1060,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   }, [])
 
   useEffect(() => {
-    void Promise.all([loadConversations(), loadMeta()])
-  }, [loadConversations, loadMeta])
+    void Promise.all([loadConversations(), loadMeta(), loadDailyCallsAddon()])
+  }, [loadConversations, loadDailyCallsAddon, loadMeta])
 
   useEffect(() => {
     selectedConversationIdRef.current = selectedConversationId
@@ -975,7 +1096,49 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     setSelectedMaterial(null)
     setInterestNotes('')
     setConversationAi(null)
+    setPreparedCallSession(null)
+    setCallError(null)
   }, [selectedConversationId])
+
+  async function openCallDialog(callType: 'video' | 'audio') {
+    setCallDialogOpen(true)
+    setPreparedCallSession(null)
+    setCallError(null)
+    setCallState('BOOTING')
+
+    if (!selectedConversation) {
+      setCallError('Selecciona una conversación antes de abrir la llamada.')
+      return
+    }
+
+    if (!dailyCallsAddon?.enabled) {
+      setCallError('El addon Daily está inactivo para esta empresa. Actívalo en Integraciones CRM.')
+      return
+    }
+
+    if (!dailyCallsAddon.ready) {
+      setCallError(dailyCallsAddon.validation.message || 'El addon Daily todavía no está listo para abrir llamadas.')
+      return
+    }
+
+    setPreparingCall(true)
+    try {
+      const json = await requestJson<PreparedCallSession>(`/api/crm/conversations/${selectedConversation.id}/call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callType }),
+      })
+
+      if (!json.success || !json.data) {
+        setCallError(json.error || 'No se pudo preparar la sesión de llamada.')
+        return
+      }
+
+      setPreparedCallSession(json.data)
+    } finally {
+      setPreparingCall(false)
+    }
+  }
 
   const stats = useMemo(() => {
     const openCount = conversations.filter((item) => item.status !== 'RESOLVED' && item.status !== 'SPAM').length
@@ -1278,8 +1441,10 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       return
     }
     if (recordingAudio || uploadingAttachment) return
-    if (typeof window === 'undefined' || !window.navigator.mediaDevices?.getUserMedia) {
-      alert('Este navegador no permite grabar audio desde el CRM.')
+    const blocker = await getAudioRecordingBlocker()
+    if (blocker) {
+      setAudioRecordingIssue(blocker)
+      alert(blocker)
       return
     }
 
@@ -1314,13 +1479,16 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
       recorder.start()
       setMessageTypeDraft('AUDIO')
+      setAudioRecordingIssue(null)
       setRecordingAudio(true)
     } catch (error) {
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
       mediaStreamRef.current = null
       mediaRecorderRef.current = null
       setRecordingAudio(false)
-      alert(error instanceof Error ? error.message : 'No se pudo iniciar la grabación de audio.')
+      const message = formatAudioRecordingError(error)
+      setAudioRecordingIssue(message)
+      alert(message)
     }
   }
 
@@ -2044,6 +2212,14 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2 rounded-[20px] border border-slate-200 bg-white/92 p-1.5 shadow-[0_14px_32px_-28px_rgba(15,23,42,0.35)]">
+                          <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void openCallDialog('audio')}>
+                            <PhoneCall className="mr-2 h-4 w-4" />
+                            Llamada
+                          </Button>
+                          <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void openCallDialog('video')}>
+                            <Video className="mr-2 h-4 w-4" />
+                            Videollamada
+                          </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="outline" size="icon" className="rounded-xl border-slate-200 bg-white" aria-label="Opciones de conversación">
@@ -2256,7 +2432,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                     </Button>
                                   ) : null}
                                 </div>
-                                <p className="text-xs text-slate-500">{recordingAudio ? 'Grabando nota de voz... al detenerla se subirá automáticamente al chat.' : uploadingAttachment && attachmentUploadProgress !== null ? `Subiendo adjunto... ${attachmentUploadProgress}%` : attachmentUrlDraft ? 'Adjunto listo para enviar por el canal.' : 'El archivo se sube primero al CRM para que WhatsApp pueda descargarlo desde una URL pública.'}</p>
+                                <p className="text-xs text-slate-500">{recordingAudio ? 'Grabando nota de voz... al detenerla se subirá automáticamente al chat.' : uploadingAttachment && attachmentUploadProgress !== null ? `Subiendo adjunto... ${attachmentUploadProgress}%` : attachmentUrlDraft ? 'Adjunto listo para enviar por el canal.' : audioRecordingIssue && messageTypeDraft === 'AUDIO' ? audioRecordingIssue : 'El archivo se sube primero al CRM para que WhatsApp pueda descargarlo desde una URL pública.'}</p>
                               </div>
                               <div className="grid gap-2 lg:col-span-2">
                                 <Label>Nombre visible</Label>
@@ -3435,7 +3611,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                       ? `Subiendo adjunto... ${attachmentUploadProgress}%`
                                       : attachmentUrlDraft
                                         ? 'Adjunto listo para enviar por el canal.'
-                                        : 'El archivo se sube primero al CRM para que WhatsApp pueda descargarlo desde una URL pública.'}
+                                        : audioRecordingIssue && messageTypeDraft === 'AUDIO'
+                                          ? audioRecordingIssue
+                                          : 'El archivo se sube primero al CRM para que WhatsApp pueda descargarlo desde una URL pública.'}
                                 </p>
                               </div>
                               <div className="grid gap-2 sm:col-span-2">
@@ -3639,6 +3817,75 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
               <Button variant="outline" onClick={() => setNewConversationOpen(false)}>Cancelar</Button>
               <Button onClick={() => void startNewConversation()} disabled={openingConversation}>{openingConversation ? 'Abriendo...' : 'Abrir conversación'}</Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={callDialogOpen} onOpenChange={setCallDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Llamada embebida CRM</DialogTitle>
+            <DialogDescription>
+              Esta fase deja lista la preparación de sala dentro del CRM. El siguiente paso es montar el SDK de Daily dentro de este mismo modal.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {dailyCallsAddon?.settings.connectionMode === 'CUSTOMER_DAILY' ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <div className="font-semibold">Cuenta autogestionada</div>
+                    <div className="mt-1 leading-6 text-amber-900">Daily puede pedir tarjeta y credito inicial para habilitar la API en cuentas nuevas.</div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {callError ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{callError}</div>
+            ) : null}
+
+            {preparingCall ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">Preparando sesión Daily para esta conversación...</div>
+            ) : null}
+
+            {preparedCallSession ? (
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900">
+                  <div className="font-semibold">Sala preparada</div>
+                  <div className="mt-1">{preparedCallSession.readinessMessage}</div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Contacto</div>
+                    <div className="mt-2 text-sm font-medium text-slate-950">{preparedCallSession.contactLabel}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Canal</div>
+                    <div className="mt-2 text-sm font-medium text-slate-950">{preparedCallSession.provider}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Room</div>
+                    <div className="mt-2 break-all text-sm font-medium text-slate-950">{preparedCallSession.roomName}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Dominio Daily</div>
+                    <div className="mt-2 text-sm font-medium text-slate-950">{preparedCallSession.domainHost || 'Resuelto por backend'}</div>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                  <div className="font-semibold text-slate-950">Estado de sesión</div>
+                  <div className="mt-1 leading-6">La llamada queda registrada en CRM cuando Daily notifica entrada, salida o error de sesión.</div>
+                  <div className="mt-2 text-xs text-slate-500">URL base calculada: {preparedCallSession.joinUrl}</div>
+                </div>
+                <CrmDailyCallEmbed session={preparedCallSession} onStateChange={setCallState} />
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="rounded-2xl" onClick={() => setCallDialogOpen(false)}>Cerrar</Button>
+            {preparedCallSession ? <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">{callState === 'JOINED' ? 'Sesión activa' : callState === 'LEFT' ? 'Sesión cerrada' : callState === 'ERROR' ? 'Revisar error' : 'Abriendo sesión'}</div> : <Button asChild className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800"><Link href="/dashboard/crm/integraciones">Configurar addon</Link></Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>

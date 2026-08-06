@@ -424,6 +424,7 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   src="${src}"
   title="Chatbot CRM SGDigital"
   loading="lazy"
+  allow="microphone; camera; autoplay; clipboard-write"
   style="${embedStyle}height:${collapsedHeight}px;border:0;border-radius:${widgetMode ? '0' : shellRadius};box-shadow:${widgetMode ? 'none' : '0 24px 60px rgba(15,23,42,.16)'};background:${iframeBackground};overflow:hidden;transition:height .28s ease, box-shadow .28s ease;"
   referrerpolicy="strict-origin-when-cross-origin"
 ></iframe>
