@@ -75,6 +75,11 @@ type ConversationMessage = {
   sentByUser?: Assignee | null
 }
 
+type CallInvitePreview = {
+  inviteUrl: string
+  callType: 'video' | 'audio'
+}
+
 type LeadOption = {
   id: string
   nombre: string
@@ -536,6 +541,54 @@ function getMessageDisplayName(message: ConversationMessage, conversation: Conve
   return getConversationContactLabel(conversation)
 }
 
+function getCallInviteMeta(message: ConversationMessage) {
+  const dispatch = typeof message.payloadJson?.dispatch === 'string' ? message.payloadJson.dispatch : ''
+  if (dispatch !== 'whatsapp-call-invite') return null
+
+  const inviteUrl = typeof message.payloadJson?.inviteUrl === 'string' ? message.payloadJson.inviteUrl.trim() : ''
+  if (!inviteUrl) return null
+
+  const callType: CallInvitePreview['callType'] = message.payloadJson?.callType === 'audio' ? 'audio' : 'video'
+
+  return {
+    inviteUrl,
+    callType,
+  }
+}
+
+function renderConversationMessageBody(args: {
+  message: ConversationMessage
+  search: string
+  onOpenInvitePreview: (preview: CallInvitePreview) => void
+}) {
+  const inviteMeta = getCallInviteMeta(args.message)
+
+  if (inviteMeta) {
+    const isVideo = inviteMeta.callType === 'video'
+    return (
+      <div className="mt-2 rounded-[20px] border border-sky-200 bg-[linear-gradient(180deg,#f7fbff,#eef6ff)] p-3 text-slate-800 shadow-[0_12px_28px_-20px_rgba(14,116,204,0.45)]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-sky-200 bg-white text-sky-700">
+              {isVideo ? <Video className="h-5 w-5" /> : <PhoneCall className="h-5 w-5" />}
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-slate-950">{isVideo ? 'Invitacion a videollamada' : 'Invitacion a llamada de audio'}</div>
+              <p className="mt-1 text-xs leading-5 text-slate-600">La URL completa queda oculta para no romper el chat. Abre la invitacion en un modal del CRM.</p>
+            </div>
+          </div>
+          <Button type="button" variant="outline" className="shrink-0 rounded-xl border-sky-200 bg-white text-sky-700 hover:bg-sky-50" onClick={() => args.onOpenInvitePreview(inviteMeta)}>
+            {isVideo ? <Video className="mr-2 h-4 w-4" /> : <PhoneCall className="mr-2 h-4 w-4" />}
+            Abrir
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return <p className="mt-1.5 whitespace-pre-wrap leading-5">{renderHighlightedText(args.message.bodyText || 'Sin contenido textual', args.search)}</p>
+}
+
 function renderConversationAttachments(attachments: ConversationMessage['attachmentsJson']) {
   if (!Array.isArray(attachments) || attachments.length === 0) return null
 
@@ -898,6 +951,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [callError, setCallError] = useState<string | null>(null)
   const [preparedCallSession, setPreparedCallSession] = useState<PreparedCallSession | null>(null)
   const [callState, setCallState] = useState<'BOOTING' | 'JOINING' | 'JOINED' | 'LEFT' | 'ERROR'>('BOOTING')
+  const [callInvitePreview, setCallInvitePreview] = useState<CallInvitePreview | null>(null)
 
   const [assigneeDraft, setAssigneeDraft] = useState('__none__')
   const [statusDraft, setStatusDraft] = useState<ConversationStatus>('OPEN')
@@ -1107,6 +1161,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     setConversationAi(null)
     setPreparedCallSession(null)
     setCallError(null)
+    setCallInvitePreview(null)
   }, [selectedConversationId])
 
   async function openCallDialog(callType: 'video' | 'audio') {
@@ -2311,7 +2366,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                   <span>{formatDate(message.occurredAt, locale, naText)}</span>
                                 </div>
                                 {hasCollision ? <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Se detectó una posible doble respuesta entre el celular y el CRM en esta conversación.</p> : null}
-                                <p className="mt-1.5 whitespace-pre-wrap leading-5">{renderHighlightedText(message.bodyText || 'Sin contenido textual', search)}</p>
+                                {renderConversationMessageBody({
+                                  message,
+                                  search,
+                                  onOpenInvitePreview: setCallInvitePreview,
+                                })}
                                 {renderConversationAttachments(message.attachmentsJson)}
                               </div>
                             )
@@ -3525,7 +3584,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                 <span>{formatDate(message.occurredAt, locale, naText)}</span>
                               </div>
                               {hasCollision ? <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Se detectó una posible doble respuesta entre el celular y el CRM en esta conversación.</p> : null}
-                              <p className="mt-2 whitespace-pre-wrap leading-6">{renderHighlightedText(message.bodyText || 'Sin contenido textual', search)}</p>
+                              {renderConversationMessageBody({
+                                message,
+                                search,
+                                onOpenInvitePreview: setCallInvitePreview,
+                              })}
                               {renderConversationAttachments(message.attachmentsJson)}
                             </div>
                           )})}
@@ -3906,6 +3969,30 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
           <DialogFooter>
             <Button variant="outline" className="rounded-2xl" onClick={() => setCallDialogOpen(false)}>Cerrar</Button>
             {preparedCallSession ? <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">{callState === 'JOINED' ? 'Sesión activa' : callState === 'LEFT' ? 'Sesión cerrada' : callState === 'ERROR' ? 'Revisar error' : 'Abriendo sesión'}</div> : <Button asChild className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800"><Link href="/dashboard/crm/integraciones">Configurar addon</Link></Button>}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(callInvitePreview)} onOpenChange={(open) => {
+        if (!open) setCallInvitePreview(null)
+      }}>
+        <DialogContent className="max-w-5xl overflow-hidden border border-slate-200 bg-white p-0">
+          <DialogHeader className="border-b border-slate-200 px-6 py-4">
+            <DialogTitle>{callInvitePreview?.callType === 'audio' ? 'Llamada de audio del cliente' : 'Videollamada del cliente'}</DialogTitle>
+            <DialogDescription>La invitacion se abre dentro del CRM para evitar nuevas ventanas y mantener el contexto del inbox.</DialogDescription>
+          </DialogHeader>
+          <div className="h-[78vh] bg-slate-50">
+            {callInvitePreview ? (
+              <iframe
+                src={callInvitePreview.inviteUrl}
+                title="Vista previa de invitacion Daily"
+                allow="microphone; camera; fullscreen; display-capture"
+                className="h-full w-full border-0"
+              />
+            ) : null}
+          </div>
+          <DialogFooter className="border-t border-slate-200 px-6 py-4">
+            <Button variant="outline" className="rounded-2xl" onClick={() => setCallInvitePreview(null)}>Cerrar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

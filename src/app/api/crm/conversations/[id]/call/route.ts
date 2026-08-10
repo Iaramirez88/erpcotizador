@@ -68,6 +68,10 @@ function buildGuestInviteMessage(args: {
   ].filter(Boolean).join('\n\n')
 }
 
+function buildCrmInviteSummary(callType: 'video' | 'audio') {
+  return callType === 'audio' ? 'Invitacion a llamada de audio' : 'Invitacion a videollamada'
+}
+
 async function dailyRequest<T>(args: {
   apiKey: string
   path: string
@@ -248,20 +252,21 @@ async function sendWhatsAppDailyInvite(args: {
     }
   }
 
-  const bodyText = buildGuestInviteMessage(args)
+  const providerBodyText = buildGuestInviteMessage(args)
+  const crmBodyText = buildCrmInviteSummary(args.callType)
   let providerMessageId: string | null = null
   let messageStatus: 'SENT' | 'FAILED' = 'SENT'
   let sendErrorMessage: string | null = null
-  let providerPayload: Prisma.InputJsonValue = withMessageOrigin({ provider: args.conversation.channelConnection.provider, dispatch: 'whatsapp-call-invite', inviteUrl: args.inviteUrl }, 'CRM_AGENT')
+  let providerPayload: Prisma.InputJsonValue = withMessageOrigin({ provider: args.conversation.channelConnection.provider, dispatch: 'whatsapp-call-invite', inviteUrl: args.inviteUrl, callType: args.callType }, 'CRM_AGENT')
 
   try {
-    const result = await sendWhatsAppTextMessage({ config: whatsappConfig, to: recipientPhone, bodyText })
+    const result = await sendWhatsAppTextMessage({ config: whatsappConfig, to: recipientPhone, bodyText: providerBodyText })
     providerMessageId = result.providerMessageId
-    providerPayload = withMessageOrigin({ ...(result.payloadJson as Record<string, unknown>), dispatch: 'whatsapp-call-invite', inviteUrl: args.inviteUrl }, 'CRM_AGENT')
+    providerPayload = withMessageOrigin({ ...(result.payloadJson as Record<string, unknown>), dispatch: 'whatsapp-call-invite', inviteUrl: args.inviteUrl, callType: args.callType }, 'CRM_AGENT')
   } catch (error) {
     messageStatus = 'FAILED'
     sendErrorMessage = error instanceof Error ? error.message : 'No se pudo enviar la invitación por WhatsApp.'
-    providerPayload = withMessageOrigin({ provider: args.conversation.channelConnection.provider, dispatch: 'whatsapp-call-invite', inviteUrl: args.inviteUrl, error: sendErrorMessage }, 'CRM_AGENT')
+    providerPayload = withMessageOrigin({ provider: args.conversation.channelConnection.provider, dispatch: 'whatsapp-call-invite', inviteUrl: args.inviteUrl, callType: args.callType, error: sendErrorMessage }, 'CRM_AGENT')
   }
 
   const occurredAt = new Date()
@@ -275,7 +280,7 @@ async function sendWhatsAppDailyInvite(args: {
         direction: 'OUTBOUND',
         messageType: 'TEXT',
         status: messageStatus,
-        bodyText,
+        bodyText: crmBodyText,
         payloadJson: providerPayload,
         attachmentsJson: [],
         sentByUserId: args.userId,
@@ -299,7 +304,7 @@ async function sendWhatsAppDailyInvite(args: {
         sedeId: args.conversation.sedeId,
         type: 'WHATSAPP',
         summary: messageStatus === 'FAILED' ? 'Falló el envío de invitación a videollamada' : 'Invitación a videollamada enviada por WhatsApp',
-        details: sendErrorMessage ? `${bodyText}\n\nError proveedor: ${sendErrorMessage}` : `${bodyText}\n\nInvitación enviada al contacto ${recipientPhone}.`,
+        details: sendErrorMessage ? `${providerBodyText}\n\nError proveedor: ${sendErrorMessage}` : `${providerBodyText}\n\nInvitación enviada al contacto ${recipientPhone}.`,
         leadId: args.conversation.leadId,
         opportunityId: args.conversation.opportunityId,
         clienteId: args.conversation.clienteId,

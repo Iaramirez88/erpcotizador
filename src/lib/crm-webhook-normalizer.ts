@@ -238,6 +238,11 @@ function normalizeMessengerMetaPayload(provider: CrmChannelProvider, body: Recor
         })
       }
 
+      // Eventos de delivery/read sin mensaje ni postback no deben generar un evento de conversación
+      if ((deliveryMids.length > 0 || Object.keys(read).length > 0) && !message.mid && !postback.payload) {
+        continue
+      }
+
       if (isEcho) {
         const normalizedEcho = normalizeMetaMessagingEvent(message, postback)
         const eventAt = parseMaybeDate(messaging.timestamp || entry.time)

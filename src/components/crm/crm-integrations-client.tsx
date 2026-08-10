@@ -324,7 +324,7 @@ type ImplementationAssetCard = {
 type WizardStep = 'template' | 'config' | 'review' | 'implementation'
 type ChatbotPreviewMode = 'floating' | 'compact' | 'expanded'
 type ChatbotPreviewViewport = 'desktop' | 'mobile'
-type CrmWorkspaceView = 'operations' | 'metrics'
+type CrmWorkspaceView = 'operations' | 'addons' | 'metrics'
 type CrmOperationsPanelView = 'preview' | 'readiness' | 'assets'
 type LauncherPosition = 'left' | 'center' | 'right'
 type LauncherSize = 'compact' | 'standard' | 'large'
@@ -4414,12 +4414,11 @@ export function CrmIntegrationsClient() {
         ]}
       />
 
-      <CrmAddonsMarketplaceCard />
-
       <Tabs value={workspaceView} onValueChange={(value) => setWorkspaceView(value as CrmWorkspaceView)} className="space-y-4">
         <div className="flex flex-col gap-2.5 rounded-[24px] border border-slate-200 bg-white/90 p-2.5 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.28)] md:flex-row md:items-center md:justify-between">
-          <TabsList className="grid h-auto grid-cols-2 rounded-[18px] border border-slate-200 bg-slate-50 p-1">
+          <TabsList className="grid h-auto grid-cols-3 rounded-[18px] border border-slate-200 bg-slate-50 p-1">
             <TabsTrigger value="operations" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">{language === 'en' ? 'Operations' : 'Operación'}</TabsTrigger>
+            <TabsTrigger value="addons" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">{language === 'en' ? 'Addons' : 'Addons'}</TabsTrigger>
             <TabsTrigger value="metrics" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">{language === 'en' ? 'Metrics and goals' : 'Métricas y metas'}</TabsTrigger>
           </TabsList>
           {workspaceView === 'metrics' ? (
@@ -4427,7 +4426,16 @@ export function CrmIntegrationsClient() {
               {language === 'en' ? 'Executive panel to review performance and define commercial goals by channel.' : 'Panel ejecutivo para revisar rendimiento y definir objetivos comerciales por canal.'}
             </p>
           ) : null}
+          {workspaceView === 'addons' ? (
+            <p className="px-2 text-[13px] text-slate-500">
+              {language === 'en' ? 'Activate extra CRM capabilities as cards and continue with the guided installation only when the company decides to use them.' : 'Activa capacidades extra del CRM como tarjetas y continúa con la instalación guiada solo cuando la empresa decida usarlas.'}
+            </p>
+          ) : null}
         </div>
+
+        <TabsContent value="addons" className="space-y-4">
+          <CrmAddonsMarketplaceCard />
+        </TabsContent>
 
         <CrmIntegrationsMetricsTab
           language={language}

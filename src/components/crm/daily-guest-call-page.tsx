@@ -13,6 +13,17 @@ type DailyCallLike = {
   on: (eventName: string, listener: (event?: Record<string, unknown>) => void) => void
 }
 
+function teardownDailyCall(call: DailyCallLike | null, container: HTMLDivElement | null) {
+  if (!call) return
+
+  Promise.resolve(call.leave()).catch(() => null)
+  call.destroy()
+
+  if (container) {
+    container.replaceChildren()
+  }
+}
+
 function parseHashParams(hash: string) {
   const raw = hash.startsWith('#') ? hash.slice(1) : hash
   const params = new URLSearchParams(raw)
@@ -64,6 +75,9 @@ export function DailyGuestCallPage() {
         const DailyIframeModule = await import('@daily-co/daily-js')
         if (!active || !containerRef.current) return
 
+        teardownDailyCall(callRef.current, containerRef.current)
+        callRef.current = null
+
         const DailyIframe = DailyIframeModule.default
         const frame = DailyIframe.createFrame(containerRef.current, {
           showLeaveButton: true,
@@ -107,8 +121,7 @@ export function DailyGuestCallPage() {
     return () => {
       active = false
       const current = callRef.current
-      if (!current) return
-      Promise.resolve(current.leave()).catch(() => null).finally(() => current.destroy())
+      teardownDailyCall(current, containerRef.current)
       callRef.current = null
     }
   }, [callType, session.name, session.token, session.url])

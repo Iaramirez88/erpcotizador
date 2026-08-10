@@ -26,6 +26,17 @@ type DailyCallLike = {
   on: (eventName: string, listener: (event?: Record<string, unknown>) => void) => void
 }
 
+function teardownDailyCall(call: DailyCallLike | null, container: HTMLDivElement | null) {
+  if (!call) return
+
+  Promise.resolve(call.leave()).catch(() => null)
+  call.destroy()
+
+  if (container) {
+    container.replaceChildren()
+  }
+}
+
 async function reportSessionEvent(args: {
   conversationId: string
   sessionKey: string
@@ -59,6 +70,8 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
 
   useEffect(() => {
     let active = true
+    leftReportedRef.current = false
+    startedAtRef.current = null
 
     async function boot() {
       if (!containerRef.current) return
@@ -69,6 +82,9 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
       try {
         const DailyIframeModule = await import('@daily-co/daily-js')
         if (!active || !containerRef.current) return
+
+        teardownDailyCall(callRef.current, containerRef.current)
+        callRef.current = null
 
         const DailyIframe = DailyIframeModule.default
         const frame = DailyIframe.createFrame(containerRef.current, {
@@ -171,10 +187,7 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
     return () => {
       active = false
       const current = callRef.current
-      if (!current) return
-      Promise.resolve(current.leave()).catch(() => null).finally(() => {
-        current.destroy()
-      })
+      teardownDailyCall(current, containerRef.current)
       callRef.current = null
     }
   }, [session])

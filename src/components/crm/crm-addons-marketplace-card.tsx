@@ -127,6 +127,10 @@ function formatCurrencyCOP(value: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value)
 }
 
+function getNextPendingChecklistItem(addon: CrmAddonState | null) {
+  return addon?.checklist.find((item) => !item.done) ?? null
+}
+
 export function CrmAddonsMarketplaceCard() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -219,6 +223,7 @@ export function CrmAddonsMarketplaceCard() {
 
   const checklistDone = addon?.checklist.filter((item) => item.done).length ?? 0
   const checklistTotal = addon?.checklist.length ?? 0
+  const nextPendingItem = getNextPendingChecklistItem(addon)
 
   return (
     <Card className="border-slate-200 bg-[linear-gradient(135deg,#f8fbff_0%,#ffffff_52%,#f7fff8_100%)] shadow-[0_22px_48px_-38px_rgba(15,23,42,0.28)]">
@@ -229,9 +234,9 @@ export function CrmAddonsMarketplaceCard() {
               <PhoneCall className="h-3.5 w-3.5" />
               Addons CRM
             </div>
-            <CardTitle className="text-slate-950">Daily como plugin activable</CardTitle>
+            <CardTitle className="text-slate-950">Marketplace de addons CRM</CardTitle>
             <CardDescription className="max-w-3xl text-slate-600">
-              El inbox base sigue igual. Este addon habilita llamada y videollamada como capacidad adicional que la empresa prende, configura y opera cuando le conviene.
+              Activa capacidades adicionales como tarjetas independientes. Primero habilitas el addon y luego completas su instalación guiada paso a paso.
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -255,33 +260,52 @@ export function CrmAddonsMarketplaceCard() {
           <div className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-5 text-sm text-slate-500">Cargando estado del addon Daily...</div>
         ) : addon ? (
           <>
-            <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-              <div className="rounded-[24px] border border-slate-200 bg-white/90 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+              <div className="rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-[0_24px_52px_-36px_rgba(15,23,42,0.22)]">
+                <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-base font-semibold text-slate-950">{addon.title}</h3>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="inline-flex h-12 w-12 items-center justify-center rounded-[18px] border border-sky-200 bg-sky-50 text-sky-700 shadow-sm">
+                        <Video className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-slate-950">{addon.title}</h3>
+                        <p className="mt-1 text-sm text-slate-500">Llamadas y videollamadas integradas al inbox CRM.</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
                       <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${getStatusClassName(addon.status)}`}>
                         {getStatusLabel(addon.status)}
+                      </span>
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                        {addon.commercial.label}
                       </span>
                     </div>
                     <p className="mt-2 text-sm leading-6 text-slate-600">{addon.description}</p>
                   </div>
-                  <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-                    <Label htmlFor="daily-addon-toggle" className="text-sm font-medium text-slate-700">Activar</Label>
-                    <Switch
-                      id="daily-addon-toggle"
-                      checked={draft.enabled}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800"
                       disabled={saving}
-                      onCheckedChange={(checked) => {
-                        setDraft((current) => ({ ...current, enabled: checked }))
-                        void saveDraft(checked)
+                      onClick={() => {
+                        if (!draft.enabled) {
+                          setDraft((current) => ({ ...current, enabled: true }))
+                          void saveDraft(true)
+                          return
+                        }
+                        setDialogOpen(true)
                       }}
-                    />
+                    >
+                      {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {draft.enabled ? 'Continuar instalación' : 'Activar addon'}
+                    </Button>
+                    <Button variant="outline" className="rounded-2xl bg-white" onClick={() => setDialogOpen(true)} disabled={saving || !addon.enabled}>
+                      Configurar
+                    </Button>
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Conexion</div>
                     <div className="mt-2 text-sm font-medium text-slate-950">{addon.settings.connectionMode === 'CUSTOMER_DAILY' ? 'Cuenta propia' : 'SGDigital administrado'}</div>
@@ -321,6 +345,20 @@ export function CrmAddonsMarketplaceCard() {
                   </div>
                 </div>
 
+                {!addon.enabled ? (
+                  <div className="mt-5 rounded-[24px] border border-dashed border-sky-200 bg-sky-50/80 p-4 text-sm text-sky-950">
+                    <div className="font-semibold">Paso 1: activar el addon</div>
+                    <div className="mt-1 leading-6">Actívalo desde esta tarjeta. Apenas quede activo podrás continuar con dominio, credenciales, validación y checklist operativo.</div>
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-[24px] border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-950">
+                    <div className="font-semibold">Addon activado para esta empresa</div>
+                    <div className="mt-1 leading-6">
+                      {nextPendingItem ? `Siguiente paso sugerido: ${nextPendingItem.label}.` : 'Todos los pasos base del addon ya quedaron cubiertos.'}
+                    </div>
+                  </div>
+                )}
+
                 {addon.settings.connectionMode === 'CUSTOMER_DAILY' ? <DailyBillingNotice /> : null}
 
                 {addon.commercial.notes ? <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-700">{addon.commercial.notes}</div> : null}
@@ -332,27 +370,40 @@ export function CrmAddonsMarketplaceCard() {
                 </div>
               </div>
 
-              <div className="rounded-[24px] border border-slate-200 bg-white/90 p-4">
+              <div className="rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-[0_24px_52px_-36px_rgba(15,23,42,0.18)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-950">Checklist de despliegue</h3>
-                    <p className="mt-1 text-xs text-slate-500">{checklistDone}/{checklistTotal} tareas cubiertas en el addon Daily.</p>
+                    <h3 className="text-sm font-semibold text-slate-950">Instalación paso a paso</h3>
+                    <p className="mt-1 text-xs text-slate-500">{checklistDone}/{checklistTotal} pasos cubiertos en el addon Daily.</p>
                   </div>
                   <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
                     {addon.ready ? 'Listo para siguiente fase' : 'Base en configuracion'}
                   </div>
                 </div>
-                <div className="mt-4 space-y-2">
-                  {addon.checklist.map((item) => (
-                    <div key={item.key} className={item.done ? 'rounded-2xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-sm text-emerald-900' : 'rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-700'}>
-                      {item.done ? 'Listo' : 'Pendiente'}: {item.label}
+                <div className="mt-4 space-y-3">
+                  {addon.checklist.map((item, index) => (
+                    <div key={item.key} className={item.done ? 'rounded-[22px] border border-emerald-200 bg-emerald-50/80 p-3 text-sm text-emerald-900' : 'rounded-[22px] border border-slate-200 bg-slate-50/90 p-3 text-sm text-slate-700'}>
+                      <div className="flex items-start gap-3">
+                        <div className={item.done ? 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-emerald-300 bg-white text-xs font-semibold text-emerald-700' : 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-xs font-semibold text-slate-600'}>
+                          {index + 1}
+                        </div>
+                        <div>
+                          <div className="font-semibold">{item.label}</div>
+                          <div className="mt-1 text-xs opacity-80">{item.done ? 'Paso completado' : 'Completa este punto para continuar con la habilitación total del addon.'}</div>
+                        </div>
+                      </div>
                     </div>
                   ))}
+                </div>
+                <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-700">
+                  <div className="font-semibold text-slate-950">Secuencia recomendada</div>
+                  <div className="mt-2 leading-6">1. Activa el addon. 2. Abre Configurar y define conexión, room prefix y credenciales. 3. Ejecuta Validar conexión. 4. Revisa permisos, métricas y estado comercial antes de salir a producción.</div>
                 </div>
               </div>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+            {addon.enabled ? (
+              <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
               <div className="rounded-[24px] border border-slate-200 bg-white/90 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -395,7 +446,8 @@ export function CrmAddonsMarketplaceCard() {
                   </div>
                 </div>
               </div>
-            </div>
+              </div>
+            ) : null}
 
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogContent className="max-w-2xl">
