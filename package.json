@@ -34,7 +34,8 @@
     "backfill:inventory-stock": "tsx scripts/backfill-inventory-stock-default-warehouse.ts",
     "billing:reminders": "tsx scripts/send-plan-expiration-reminders.ts",
     "website-services:reminders": "tsx scripts/send-website-service-expiration-reminders.ts",
-    "migrate:users-to-sgdigital": "tsx scripts/migrate-users-to-sgdigital.ts"
+    "migrate:users-to-sgdigital": "tsx scripts/migrate-users-to-sgdigital.ts",
+    "sync:messenger-metadata": "tsx scripts/sync-messenger-metadata.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
