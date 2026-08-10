@@ -1,6 +1,6 @@
-import { prisma } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
+import { getMetaMessagingDispatchConfig } from '@/lib/crm-meta'
 import { logger } from '@/lib/logger'
-import axios from 'axios'
 
 /**
  * Sincroniza nombres y mensajes faltantes de Messenger/Facebook
@@ -28,62 +28,120 @@ interface MetaMessage {
   attachments?: Array<{ type: string; url?: string }>
 }
 
+async function metaGet<T>(path: string, params: Record<string, string | number | undefined>) {
+  const searchParams = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      searchParams.set(key, String(value))
+    }
+  }
+
+  const response = await fetch(`https://graph.facebook.com/v23.0/${path}?${searchParams.toString()}`, {
+    signal: AbortSignal.timeout(5000),
+  })
+
+  if (!response.ok) {
+    const body = await response.text()
+    throw new Error(`Meta API ${response.status}: ${body}`)
+  }
+
+  return response.json() as Promise<T>
+}
+
+function resolveLeadNamePlaceholder(args: { nombre: string; telefono?: string | null; celular?: string | null; email?: string | null }) {
+  const placeholders = new Set([
+    'Lead sin nombre',
+    args.telefono || '',
+    args.celular || '',
+    args.email || '',
+  ])
+
+  return placeholders.has(args.nombre)
+}
+
+function resolveMessageType(message: MetaMessage) {
+  if (message.sticker) return 'DOCUMENT' as const
+
+  const attachmentType = message.attachments?.[0]?.type?.toUpperCase()
+  if (attachmentType === 'IMAGE' || attachmentType === 'AUDIO' || attachmentType === 'DOCUMENT') {
+    return attachmentType
+  }
+
+  return 'TEXT' as const
+}
+
 async function enrichLeadNames() {
   logger.info('🔄 Iniciando enriquecimiento de nombres de Messenger/Facebook...')
 
-  // Buscar leads sin nombre en canales Meta (MESSENGER, FACEBOOK_PAGE, INSTAGRAM_DM)
-  const leadsWithoutNames = await prisma.crmLead.findMany({
+  const conversations = await prisma.crmConversation.findMany({
     where: {
-      nombre: null,
       externalThreadId: { not: null },
-      conversation: {
-        channelConnection: {
-          provider: { in: ['MESSENGER', 'FACEBOOK_PAGE', 'INSTAGRAM_DM'] },
-        },
+      leadId: { not: null },
+      channelConnection: {
+        provider: { in: ['MESSENGER', 'FACEBOOK_PAGE', 'INSTAGRAM_DM'] },
       },
     },
     include: {
-      conversation: {
-        include: {
-          channelConnection: true,
+      lead: true,
+      channelConnection: {
+        select: {
+          id: true,
+          provider: true,
+          settingsJson: true,
         },
       },
     },
     take: 50, // Procesa 50 por ejecución para no sobrecargar
   })
 
-  logger.info(`📌 Encontrados ${leadsWithoutNames.length} leads sin nombre`)
+  logger.info(`📌 Encontradas ${conversations.length} conversaciones Meta para enriquecer`)
 
-  for (const lead of leadsWithoutNames) {
+  for (const conversation of conversations) {
     try {
-      const { externalThreadId, conversation } = lead
-      const { channelConnection } = conversation
+      if (!conversation.lead || !conversation.externalThreadId) continue
 
-      if (!channelConnection.accessToken || !externalThreadId) continue
+      const accessToken = getMetaMessagingDispatchConfig(conversation.channelConnection.settingsJson).accessToken
+      if (!accessToken) continue
+
+      const shouldUpdateConversationName = !conversation.contactDisplayName
+      const shouldUpdateLeadName = resolveLeadNamePlaceholder({
+        nombre: conversation.lead.nombre,
+        telefono: conversation.lead.telefono,
+        celular: conversation.lead.celular,
+        email: conversation.lead.email,
+      })
+
+      if (!shouldUpdateConversationName && !shouldUpdateLeadName) continue
 
       // Query Graph API para obtener el perfil del usuario
-      const response = await axios.get<MetaUserProfile>(
-        `https://graph.instagram.com/v23.0/${externalThreadId}`,
-        {
-          params: {
-            fields: 'id,name,first_name,last_name',
-            access_token: channelConnection.accessToken,
-          },
-          timeout: 5000,
-        }
-      )
+      const response = await metaGet<MetaUserProfile>(conversation.externalThreadId, {
+        fields: 'id,name,first_name,last_name',
+        access_token: accessToken,
+      })
 
-      const userName = response.data.name || `${response.data.first_name || ''} ${response.data.last_name || ''}`.trim()
+      const userName = response.name || `${response.first_name || ''} ${response.last_name || ''}`.trim()
 
       if (userName) {
-        await prisma.crmLead.update({
-          where: { id: lead.id },
-          data: { nombre: userName },
-        })
-        logger.info(`✅ Nombre enriquecido: ${lead.id} → ${userName}`)
+        await prisma.$transaction([
+          ...(shouldUpdateLeadName
+            ? [prisma.crmLead.update({
+                where: { id: conversation.lead.id },
+                data: { nombre: userName },
+              })]
+            : []),
+          ...(shouldUpdateConversationName
+            ? [prisma.crmConversation.update({
+                where: { id: conversation.id },
+                data: { contactDisplayName: userName },
+              })]
+            : []),
+        ])
+
+        logger.info(`✅ Nombre enriquecido: ${conversation.id} → ${userName}`)
       }
     } catch (error) {
-      logger.warn(`⚠️ No se pudo obtener nombre para lead ${lead.id}:`, error instanceof Error ? error.message : String(error))
+      logger.warn(`⚠️ No se pudo enriquecer la conversación ${conversation.id}:`, error instanceof Error ? error.message : String(error))
     }
   }
 
@@ -96,14 +154,14 @@ async function syncMessengerConversations() {
   // Busca todas las conexiones Meta activas
   const metaConnections = await prisma.crmChannelConnection.findMany({
     where: {
-      provider: { in: ['MESSENGER', 'FACEBOOK_PAGE'] },
-      isActive: true,
+      provider: { in: ['MESSENGER', 'FACEBOOK_PAGE', 'INSTAGRAM_DM'] },
+      status: { in: ['TESTING', 'ACTIVE'] },
     },
     include: {
       conversations: {
         include: {
           messages: {
-            orderBy: { createdAt: 'desc' },
+            orderBy: { occurredAt: 'desc' },
             take: 1,
           },
         },
@@ -114,34 +172,28 @@ async function syncMessengerConversations() {
   logger.info(`📌 Sincronizando ${metaConnections.length} conexiones Meta`)
 
   for (const connection of metaConnections) {
-    if (!connection.accessToken) continue
+    const accessToken = getMetaMessagingDispatchConfig(connection.settingsJson).accessToken
+    if (!accessToken) continue
 
     for (const conversation of connection.conversations) {
       try {
+        if (!conversation.externalThreadId) continue
+
         // Obtén el último timestamp sincronizado
         const lastMessage = conversation.messages[0]
-        const afterTimestamp = lastMessage ? Math.floor(lastMessage.createdAt.getTime() / 1000) : 0
+        const afterTimestamp = lastMessage ? Math.floor(lastMessage.occurredAt.getTime() / 1000) : 0
 
         logger.info(`📨 Sincronizando conversación ${conversation.id} (último timestamp: ${afterTimestamp})`)
 
         // Query Graph API para obtener mensajes recientes
-        const conversationId = conversation.externalThreadId
-        if (!conversationId) continue
+        const response = await metaGet<{ data: MetaMessage[] }>(`${conversation.externalThreadId}/messages`, {
+          fields: 'id,created_timestamp,from,message,sticker,attachments',
+          limit: 25,
+          after: afterTimestamp || undefined,
+          access_token: accessToken,
+        })
 
-        const response = await axios.get<{ data: MetaMessage[] }>(
-          `https://graph.instagram.com/v23.0/${conversationId}/messages`,
-          {
-            params: {
-              fields: 'id,created_timestamp,from,message,sticker,attachments',
-              limit: 25,
-              after: afterTimestamp ? Math.floor(afterTimestamp / 1000) : undefined,
-              access_token: connection.accessToken,
-            },
-            timeout: 5000,
-          }
-        )
-
-        const messages = response.data.data || []
+        const messages = [...(response.data || [])].sort((a, b) => a.created_timestamp - b.created_timestamp)
         logger.info(`   → Encontrados ${messages.length} mensajes nuevos`)
 
         // Procesa cada mensaje
@@ -157,37 +209,52 @@ async function syncMessengerConversations() {
           if (existing) continue
 
           // Determina dirección (INBOUND = del usuario, OUTBOUND = del CRM/página)
-          const isFromPage = metaMsg.from.id === connection.externalResourceId
+          const isFromPage = metaMsg.from.id === connection.externalPageId || metaMsg.from.id === connection.externalAccountId
           const direction = isFromPage ? 'OUTBOUND' : 'INBOUND'
 
           // Extrae texto/contenido
           let bodyText = metaMsg.message || null
-          let messageType = 'TEXT'
+          const messageType = resolveMessageType(metaMsg)
 
           if (metaMsg.sticker) {
-            messageType = 'STICKER'
             bodyText = '[Sticker]'
           } else if (metaMsg.attachments?.length) {
-            const attachment = metaMsg.attachments[0]
-            messageType = attachment.type.toUpperCase() || 'ATTACHMENT'
             bodyText = `[${messageType}]`
           }
 
           // Crea el mensaje
-          const createdMessage = await prisma.crmMessage.create({
+          await prisma.crmMessage.create({
             data: {
+              empresaId: conversation.empresaId,
+              sedeId: conversation.sedeId,
               conversationId: conversation.id,
               providerMessageId: metaMsg.id,
-              eventDirection: direction,
-              messageType: messageType as any,
+              direction,
+              messageType,
+              status: 'RECEIVED',
               bodyText,
-              bodyJson: {
-                from: metaMsg.from.name || metaMsg.from.id,
+              payloadJson: {
+                from: metaMsg.from,
+                to: metaMsg.to?.data ?? [],
                 timestamp: metaMsg.created_timestamp,
-                attachments: metaMsg.attachments,
+                attachments: metaMsg.attachments ?? [],
+                ingestionSource: 'SYNC_MESSENGER_METADATA',
               },
-              externalThreadId: metaMsg.from.id,
-              createdAt: new Date(metaMsg.created_timestamp * 1000),
+              attachmentsJson: metaMsg.attachments ?? [],
+              occurredAt: new Date(metaMsg.created_timestamp * 1000),
+            },
+          })
+
+          await prisma.crmConversation.update({
+            where: { id: conversation.id },
+            data: {
+              contactDisplayName: conversation.contactDisplayName || metaMsg.from.name || undefined,
+              directionLastMessage: direction,
+              lastMessageAt: new Date(metaMsg.created_timestamp * 1000),
+              unreadCount: direction === 'INBOUND' ? { increment: 1 } : undefined,
+              firstInboundAt: direction === 'INBOUND' && !conversation.firstInboundAt
+                ? new Date(metaMsg.created_timestamp * 1000)
+                : undefined,
             },
           })
 
@@ -196,15 +263,13 @@ async function syncMessengerConversations() {
           )
 
           // Si es INBOUND, enriquece el nombre del lead
-          if (direction === 'INBOUND' && !isFromPage) {
-            const lead = await prisma.crmLead.findFirst({
-              where: {
-                conversationId: conversation.id,
-                externalThreadId: metaMsg.from.id,
-              },
+          if (direction === 'INBOUND' && !isFromPage && conversation.leadId && metaMsg.from.name) {
+            const lead = await prisma.crmLead.findUnique({
+              where: { id: conversation.leadId },
+              select: { id: true, nombre: true, telefono: true, celular: true, email: true },
             })
 
-            if (lead && !lead.nombre && metaMsg.from.name) {
+            if (lead && resolveLeadNamePlaceholder(lead)) {
               await prisma.crmLead.update({
                 where: { id: lead.id },
                 data: { nombre: metaMsg.from.name },
