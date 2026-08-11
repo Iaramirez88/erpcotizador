@@ -2279,6 +2279,80 @@ function getMetaSelectionTarget(provider: CrmChannelProvider): MetaSelectionTarg
   return null
 }
 
+function getMetaConnectBrandIcon(provider: CrmChannelProvider): ComponentType<{ className?: string }> {
+  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') return WhatsAppLogo
+  if (provider === 'INSTAGRAM_DM') return Instagram
+  return Facebook
+}
+
+function getMetaConnectActionCopy(provider: CrmChannelProvider, hasConnection: boolean, language: string) {
+  const reconnect = language === 'en'
+	  ? 'Reconnect'
+	  : 'Reconectar'
+  const connect = language === 'en'
+	  ? 'Connect'
+	  : 'Conectar'
+
+  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') {
+    return hasConnection
+	    ? `${reconnect} con WhatsApp`
+	    : `${connect} con WhatsApp`
+  }
+
+  if (provider === 'INSTAGRAM_DM') {
+    return hasConnection
+	    ? `${reconnect} con Instagram`
+	    : `${connect} con Instagram`
+  }
+
+  return hasConnection
+	    ? `${reconnect} con Facebook`
+	    : `${connect} con Facebook`
+}
+
+function getMetaRedirectExpectationCopy(provider: CrmChannelProvider, language: string) {
+  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') {
+    return language === 'en'
+	      ? 'Meta will open the Facebook authorization flow because WhatsApp Cloud permissions are granted from the Meta account.'
+	      : 'Meta abrirá la autorización de Facebook porque los permisos de WhatsApp Cloud se conceden desde la cuenta Meta.'
+  }
+
+  if (provider === 'INSTAGRAM_DM') {
+    return language === 'en'
+	      ? 'Meta will open the Facebook authorization flow because Instagram DM permissions are granted from the linked Meta account.'
+	      : 'Meta abrirá la autorización de Facebook porque los permisos de Instagram DM se conceden desde la cuenta Meta vinculada.'
+  }
+
+  return language === 'en'
+	    ? 'Meta will open Facebook so you can authorize the page and its related assets.'
+	    : 'Meta abrirá Facebook para que autorices la página y sus activos relacionados.'
+}
+
+function getMetaWaitingCopy(provider: CrmChannelProvider, language: string) {
+  if (language === 'en') {
+    if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') return 'Waiting for Meta authorization for WhatsApp. Complete the popup flow and come back here.'
+    if (provider === 'INSTAGRAM_DM') return 'Waiting for Meta authorization for Instagram. Complete the popup flow and come back here.'
+    return 'Waiting for Meta authorization for Facebook. Complete the popup flow and come back here.'
+  }
+
+  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') {
+    return 'Esperando autorización de Meta para WhatsApp. Completa el flujo en la ventana emergente y vuelve aquí.'
+  }
+
+  if (provider === 'INSTAGRAM_DM') {
+    return 'Esperando autorización de Meta para Instagram. Completa el flujo en la ventana emergente y vuelve aquí.'
+  }
+
+  return 'Esperando autorización de Meta para Facebook. Completa el flujo en la ventana emergente y vuelve aquí.'
+}
+
+function getMetaPopupBlockedCopy(provider: CrmChannelProvider, language: string) {
+  const action = getMetaConnectActionCopy(provider, false, language)
+  return language === 'en'
+	    ? `The browser blocked the popup. Allow popups to continue with ${action.replace(/^Connect /, '').replace(/^Reconnect /, '')}.`
+	    : `El navegador bloqueó la ventana emergente. Permite popups para continuar con ${action.replace(/^Conectar /, '').replace(/^Reconectar /, '')}.`
+}
+
 function getChannelReadiness(channel: ChannelConnection, baseUrl: string) {
   const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
   const token = getTokenFromSettings(settings)
@@ -3582,15 +3656,17 @@ export function CrmIntegrationsClient() {
   async function launchMetaPopup(channel: ChannelConnection) {
     stopMetaPopupTracking()
     setMetaOnboardingState('waiting')
-    setMetaOnboardingMessage('Esperando autorización en Meta. Completa el flujo en la ventana emergente y vuelve aquí.')
+    setMetaOnboardingMessage(getMetaWaitingCopy(channel.provider, language))
 
     const popup = window.open(`/api/crm/channels/${channel.id}/meta/connect`, 'sgdigital-meta-connect', 'popup=yes,width=720,height=820,left=120,top=80')
     if (!popup) {
       setMetaOnboardingState('error')
-      setMetaOnboardingMessage('El navegador bloqueó la ventana emergente. Permite popups para continuar con Facebook.')
+      setMetaOnboardingMessage(getMetaPopupBlockedCopy(channel.provider, language))
       setMetaConnectionFeedback({
         status: 'error',
-        message: 'El navegador bloqueó la ventana emergente de Meta. Permite popups e intenta de nuevo.',
+        message: language === 'en'
+          ? 'The browser blocked the Meta popup. Allow popups and try again.'
+          : 'El navegador bloqueó la ventana emergente de Meta. Permite popups e intenta de nuevo.',
       })
       return
     }
@@ -4837,8 +4913,11 @@ export function CrmIntegrationsClient() {
                                 </Button>
                               ) : null}
                               <Button type="button" className="rounded-xl bg-[#1877f2] text-white hover:bg-[#166fe0]" onClick={() => openMetaOnboarding(selectedChannel)}>
-                                <Facebook className="mr-2 h-4 w-4" />
-                                {selectedMeta.hasConnection ? (language === 'en' ? 'Reconnect with Facebook' : 'Reconectar con Facebook') : (language === 'en' ? 'Continue with Facebook' : 'Continuar con Facebook')}
+                                {(() => {
+                                  const MetaConnectIcon = getMetaConnectBrandIcon(selectedChannel.provider)
+                                  return <MetaConnectIcon className="mr-2 h-4 w-4" />
+                                })()}
+                                {getMetaConnectActionCopy(selectedChannel.provider, selectedMeta.hasConnection, language)}
                               </Button>
                             </div>
                           </div>
@@ -6573,7 +6652,7 @@ export function CrmIntegrationsClient() {
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Ruta guiada</p>
                   <div className="mt-3 space-y-2 text-sm text-slate-700">
                     <p>1. Valida las condiciones previas del canal.</p>
-                    <p>2. Pulsa Continuar con Facebook para abrir Meta en una ventana controlada.</p>
+                    <p>2. Pulsa {getMetaConnectActionCopy(selectedChannel.provider, selectedMeta.hasConnection, language)}. {getMetaRedirectExpectationCopy(selectedChannel.provider, language)}</p>
                     <p>3. Autoriza el acceso y espera el regreso automático al CRM.</p>
                     <p>4. Si Meta devuelve varios activos, selecciónalos abajo en el bloque Conexión real con Meta.</p>
                   </div>
@@ -6590,8 +6669,13 @@ export function CrmIntegrationsClient() {
                     {metaOnboardingState === 'success' ? 'Cerrar' : 'Cancelar'}
                   </Button>
                   <Button type="button" className="rounded-xl bg-[#1877f2] text-white hover:bg-[#166fe0]" onClick={() => void launchMetaPopup(selectedChannel)} disabled={metaOnboardingState === 'waiting'}>
-                    <Facebook className="mr-2 h-4 w-4" />
-                    {metaOnboardingState === 'waiting' ? 'Esperando autorización...' : selectedMeta.hasConnection ? 'Reconectar con Facebook' : 'Continuar con Facebook'}
+                    {(() => {
+                      const MetaConnectIcon = getMetaConnectBrandIcon(selectedChannel.provider)
+                      return <MetaConnectIcon className="mr-2 h-4 w-4" />
+                    })()}
+                    {metaOnboardingState === 'waiting'
+                      ? (language === 'en' ? 'Waiting for authorization...' : 'Esperando autorización...')
+                      : getMetaConnectActionCopy(selectedChannel.provider, selectedMeta.hasConnection, language)}
                   </Button>
                 </DialogFooter>
               </>

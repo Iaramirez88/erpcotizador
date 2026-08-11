@@ -139,16 +139,39 @@ export function getMetaOAuthScopes(provider: CrmChannelProvider) {
   return META_OAUTH_SCOPES
 }
 
+function getMetaOAuthConfigId(provider: CrmChannelProvider) {
+  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') {
+    return process.env.META_WHATSAPP_CONFIG_ID || process.env.META_CONFIG_ID || ''
+  }
+
+  if (provider === 'INSTAGRAM_DM') {
+    return process.env.META_INSTAGRAM_CONFIG_ID || process.env.META_CONFIG_ID || ''
+  }
+
+  if (provider === 'FACEBOOK_PAGE' || provider === 'MESSENGER') {
+    return process.env.META_FACEBOOK_PAGE_CONFIG_ID || process.env.META_CONFIG_ID || ''
+  }
+
+  return process.env.META_CONFIG_ID || ''
+}
+
 export function buildMetaOAuthUrl(args: { state: string; provider: CrmChannelProvider }) {
   const { appId } = requireMetaEnv()
   const redirectUri = getMetaOAuthRedirectUri()
+  const configId = getMetaOAuthConfigId(args.provider)
   const search = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
     state: args.state,
     response_type: 'code',
-    scope: getMetaOAuthScopes(args.provider).join(','),
   })
+
+  if (configId) {
+    search.set('config_id', configId)
+  } else {
+    search.set('scope', getMetaOAuthScopes(args.provider).join(','))
+  }
+
   return `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?${search.toString()}`
 }
 
