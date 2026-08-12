@@ -133,27 +133,32 @@ export async function POST(request: Request, context: RouteContext) {
     const recipientThreadId = normalizeString(current.externalThreadId)
     const outboundLimits = getOutboundMessagingLimitConfig(current.channelConnection.settingsJson)
     const hasCostedProviderDispatch = (isWhatsApp && whatsappConfig.enabled) || (isMetaMessaging && metaConfig.enabled)
-    const recentPhoneOutbound = await prisma.crmMessage.findFirst({
+    const recentOutboundMessages = await prisma.crmMessage.findMany({
       where: {
         conversationId: current.id,
         direction: 'OUTBOUND',
         occurredAt: { gte: new Date(Date.now() - 5 * 60 * 1000) },
-        payloadJson: {
-          path: ['messageOrigin'],
-          equals: 'PHONE_APP',
-        },
       },
       orderBy: { occurredAt: 'desc' },
+      take: 5,
       select: {
         id: true,
         occurredAt: true,
         bodyText: true,
+        payloadJson: true,
       },
     })
 
+    const recentPhoneOutbound = recentOutboundMessages.find((message) => {
+      const payload = message.payloadJson && typeof message.payloadJson === 'object' && !Array.isArray(message.payloadJson)
+        ? message.payloadJson as Record<string, unknown>
+        : null
+      return payload?.messageOrigin === 'PHONE_APP' && payload?.collisionDetected === true
+    }) ?? null
+
     if (recentPhoneOutbound && !forceHybridOverride) {
       return NextResponse.json({
-        error: 'Se detectó actividad reciente desde el celular en esta conversación. Confirma si aún quieres responder desde el CRM.',
+        error: 'Parece que ya hubo respuestas cruzadas entre el CRM y otra fuente en esta conversación. Revisa el hilo antes de volver a responder.',
         code: 'HYBRID_RECENT_PHONE_ACTIVITY',
         recentPhoneActivity: {
           id: recentPhoneOutbound.id,

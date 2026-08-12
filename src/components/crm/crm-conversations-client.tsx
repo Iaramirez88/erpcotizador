@@ -785,6 +785,26 @@ function getConversationOperationalRank(conversation: ConversationListItem | Con
   return { score, timestamp, slaState: sla.state, priorityLabel: priority.label }
 }
 
+function getRecentPhoneOutboundGuard(messages: ConversationMessage[]) {
+  const recentOutboundMessages = [...messages]
+    .filter((message) => message.direction === 'OUTBOUND')
+    .sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())
+
+  const latestOutbound = recentOutboundMessages[0] ?? null
+  if (!latestOutbound || getMessageOrigin(latestOutbound) !== 'PHONE_APP') return null
+  if (!hasMessageCollision(latestOutbound)) return null
+
+  const elapsedMs = Date.now() - new Date(latestOutbound.occurredAt).getTime()
+  if (Number.isNaN(elapsedMs) || elapsedMs > 5 * 60 * 1000) return null
+
+  return {
+    messageId: latestOutbound.id,
+    occurredAt: latestOutbound.occurredAt,
+    bodyText: latestOutbound.bodyText,
+    hasCollision: hasMessageCollision(latestOutbound),
+  }
+}
+
 function OriginChip({ originKey, label }: { originKey: CrmOriginKey; label: string }) {
   const Icon = originKey === 'EMAIL_GMAIL' || originKey === 'EMAIL_OUTLOOK'
     ? Mail
@@ -1245,8 +1265,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     const sortByOperationalPriority = (items: ConversationListItem[]) => [...items].sort((left, right) => {
       const leftRank = getConversationOperationalRank(left, locale)
       const rightRank = getConversationOperationalRank(right, locale)
-      if (leftRank.score !== rightRank.score) return rightRank.score - leftRank.score
-      return rightRank.timestamp - leftRank.timestamp
+      if (leftRank.timestamp !== rightRank.timestamp) return rightRank.timestamp - leftRank.timestamp
+      return rightRank.score - leftRank.score
     })
 
     if (queueScope === 'MINE') {
@@ -1431,7 +1451,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
       let json = await sendMessageRequest(false)
       if (!json.success && json.code === 'HYBRID_RECENT_PHONE_ACTIVITY') {
-        const shouldOverride = window.confirm(`${json.error || 'Se detectó actividad reciente desde el celular.'}\n\n${json.recentPhoneActivity ? formatRecentPhoneActivityHint(json.recentPhoneActivity, locale, naText) : 'Revisa el hilo antes de responder.'}\n\nPulsa Aceptar para enviar de todas formas desde el CRM.`)
+        const shouldOverride = window.confirm(`${json.error || 'Parece que ya hubo respuestas cruzadas en esta conversación.'}\n\n${json.recentPhoneActivity ? formatRecentPhoneActivityHint(json.recentPhoneActivity, locale, naText) : 'Revisa el hilo antes de responder.'}\n\nPulsa Aceptar para enviar de todas formas desde el CRM.`)
         if (!shouldOverride) {
           return
         }
@@ -1841,21 +1861,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const hybridComposerGuard = useMemo(() => {
     if (!selectedConversation) return null
 
-    const recentPhoneOutbound = [...selectedConversation.messages]
-      .filter((message) => message.direction === 'OUTBOUND' && getMessageOrigin(message) === 'PHONE_APP')
-      .sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())[0] ?? null
-
-    if (!recentPhoneOutbound) return null
-
-    const elapsedMs = Date.now() - new Date(recentPhoneOutbound.occurredAt).getTime()
-    if (Number.isNaN(elapsedMs) || elapsedMs > 5 * 60 * 1000) return null
-
-    return {
-      messageId: recentPhoneOutbound.id,
-      occurredAt: recentPhoneOutbound.occurredAt,
-      bodyText: recentPhoneOutbound.bodyText,
-      hasCollision: hasMessageCollision(recentPhoneOutbound),
-    }
+    return getRecentPhoneOutboundGuard(selectedConversation.messages)
   }, [selectedConversation])
 
   useEffect(() => {
@@ -2365,7 +2371,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                   <span className="font-semibold text-slate-700">{getMessageDisplayName(message, selectedConversation)}</span>
                                   <span>{formatDate(message.occurredAt, locale, naText)}</span>
                                 </div>
-                                {hasCollision ? <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Se detectó una posible doble respuesta entre el celular y el CRM en esta conversación.</p> : null}
+                                {hasCollision ? <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Hubo respuestas casi al mismo tiempo desde el CRM y fuera del CRM.</p> : null}
                                 {renderConversationMessageBody({
                                   message,
                                   search,
@@ -2385,16 +2391,16 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                             </div>
                           ) : null}
                           {hybridComposerGuard ? (
-                            <div className={hybridComposerGuard.hasCollision ? 'rounded-2xl border border-rose-200 bg-rose-50/80 px-3 py-3 text-xs text-rose-800' : 'rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-xs text-amber-900'}>
+                            <div className="rounded-2xl border border-rose-200 bg-rose-50/80 px-3 py-3 text-xs text-rose-800">
                               <div className="flex items-start gap-2">
                                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                                 <div className="space-y-2">
-                                  <p className="font-semibold">{hybridComposerGuard.hasCollision ? 'Riesgo alto de doble respuesta' : 'Actividad reciente desde celular detectada'}</p>
-                                  <p>Se detectó un mensaje saliente desde celular el {formatDate(hybridComposerGuard.occurredAt, locale, naText)}. Revisa esa intervención antes de contestar desde el CRM.</p>
+                                  <p className="font-semibold">Posible cruce de respuestas</p>
+                                  <p>Detectamos una respuesta desde el CRM y otra fuera del CRM casi al mismo tiempo. Revisa el hilo antes de volver a responder.</p>
                                   {hybridComposerGuard.bodyText ? <p className="rounded-xl bg-white/70 px-2.5 py-2 text-[11px] leading-5 text-slate-700">"{hybridComposerGuard.bodyText}"</p> : null}
                                   <label className="flex items-start gap-2 text-[11px] text-slate-700">
                                     <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-slate-300" checked={hybridOverrideConfirmed} onChange={(event) => setHybridOverrideConfirmed(event.target.checked)} />
-                                    <span>Confirmo que revisé la actividad del celular y aun así quiero responder desde el CRM.</span>
+                                    <span>Ya revisé el cruce y aun así quiero responder desde el CRM.</span>
                                   </label>
                                 </div>
                               </div>
@@ -3583,7 +3589,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                 <span className="font-semibold text-slate-700">{getMessageDisplayName(message, selectedConversation)}</span>
                                 <span>{formatDate(message.occurredAt, locale, naText)}</span>
                               </div>
-                              {hasCollision ? <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Se detectó una posible doble respuesta entre el celular y el CRM en esta conversación.</p> : null}
+                              {hasCollision ? <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Hubo respuestas casi al mismo tiempo desde el CRM y fuera del CRM.</p> : null}
                               {renderConversationMessageBody({
                                 message,
                                 search,
@@ -3601,16 +3607,12 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                             </div>
                           ) : null}
                           {hybridComposerGuard ? (
-                            <div className={hybridComposerGuard.hasCollision ? 'rounded-2xl border border-rose-200 bg-rose-50/80 px-3 py-3 text-xs text-rose-800' : 'rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-xs text-amber-900'}>
+                            <div className="rounded-2xl border border-rose-200 bg-rose-50/80 px-3 py-3 text-xs text-rose-800">
                               <div className="flex items-start gap-2">
                                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                                 <div className="space-y-2">
-                                  <p className="font-semibold">
-                                    {hybridComposerGuard.hasCollision ? 'Riesgo alto de doble respuesta' : 'Actividad reciente desde celular detectada'}
-                                  </p>
-                                  <p>
-                                    Se detectó un mensaje saliente desde celular el {formatDate(hybridComposerGuard.occurredAt, locale, naText)}. Revisa esa intervención antes de contestar desde el CRM.
-                                  </p>
+                                  <p className="font-semibold">Posible cruce de respuestas</p>
+                                  <p>Detectamos una respuesta desde el CRM y otra fuera del CRM casi al mismo tiempo. Revisa el hilo antes de volver a responder.</p>
                                   {hybridComposerGuard.bodyText ? <p className="rounded-xl bg-white/70 px-2.5 py-2 text-[11px] leading-5 text-slate-700">"{hybridComposerGuard.bodyText}"</p> : null}
                                   <label className="flex items-start gap-2 text-[11px] text-slate-700">
                                     <input
@@ -3619,7 +3621,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                       checked={hybridOverrideConfirmed}
                                       onChange={(event) => setHybridOverrideConfirmed(event.target.checked)}
                                     />
-                                    <span>Confirmo que revisé la actividad del celular y aun así quiero responder desde el CRM.</span>
+                                    <span>Ya revisé el cruce y aun así quiero responder desde el CRM.</span>
                                   </label>
                                 </div>
                               </div>

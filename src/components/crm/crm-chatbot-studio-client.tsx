@@ -4902,7 +4902,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                           </div>
                           <span>{formatDate(message.occurredAt)}</span>
                         </div>
-                        {hasCollision ? <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Se detectó una posible doble respuesta entre el celular y el CRM.</div> : null}
+                        {hasCollision ? <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Hubo respuestas casi al mismo tiempo desde el CRM y fuera del CRM.</div> : null}
                         <div className="mt-2 whitespace-pre-wrap break-words leading-6">{message.bodyText || 'Sin texto'}</div>
                         {Array.isArray(message.payloadJson?.attachmentsJson) ? null : null}
                         {Array.isArray(message.attachmentsJson) && message.attachmentsJson.length ? (
