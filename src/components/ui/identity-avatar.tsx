@@ -18,12 +18,26 @@ const SIZE_CLASSES: Record<NonNullable<Props['size']>, string> = {
   lg: 'h-14 w-14 text-sm',
 }
 
+function isRenderableImageUrl(value: string | null | undefined) {
+  const url = String(value || '').trim()
+  if (!url) return false
+
+  if (/^(https?:|blob:|data:)/i.test(url)) return true
+  if (url.startsWith('/uploads/') || url.startsWith('/scans/') || url.startsWith('/docs/') || url.startsWith('/')) return true
+
+  return false
+}
+
 export function IdentityAvatar({ label, imageUrl, size = 'md', fallbackImageUrl, className }: Props) {
   const initials = getAvatarInitials(label)
-  const [resolvedImageUrl, setResolvedImageUrl] = useState<string | null>(imageUrl || fallbackImageUrl || null)
+  const [resolvedImageUrl, setResolvedImageUrl] = useState<string | null>(
+    isRenderableImageUrl(imageUrl) ? imageUrl!.trim() : isRenderableImageUrl(fallbackImageUrl) ? fallbackImageUrl!.trim() : null,
+  )
 
   useEffect(() => {
-    setResolvedImageUrl(imageUrl || fallbackImageUrl || null)
+    setResolvedImageUrl(
+      isRenderableImageUrl(imageUrl) ? imageUrl!.trim() : isRenderableImageUrl(fallbackImageUrl) ? fallbackImageUrl!.trim() : null,
+    )
   }, [fallbackImageUrl, imageUrl])
 
   return (

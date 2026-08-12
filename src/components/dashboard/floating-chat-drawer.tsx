@@ -242,15 +242,25 @@ function buildCrmOpportunityTitle(conversation: ConversationDetail) {
   return `Oportunidad · ${contactLabel}`
 }
 
+function isRenderableAttachmentUrl(value: string | null | undefined) {
+  const url = String(value || '').trim()
+  if (!url) return false
+
+  if (/^(https?:|blob:|data:)/i.test(url)) return true
+  if (url.startsWith('/uploads/') || url.startsWith('/scans/') || url.startsWith('/docs/')) return true
+
+  return false
+}
+
 function renderAttachments(attachments: ChatAttachment[] | undefined, onImageLoad?: () => void) {
   if (!attachments?.length) return null
   return (
     <div className="mt-3 space-y-2">
-      {attachments.map((attachment) => (
+      {attachments.filter((attachment) => isRenderableAttachmentUrl(attachment.url)).map((attachment) => (
         attachment.type === 'image' ? (
           <ChatImagePreview key={`${attachment.url}-${attachment.name}`} src={attachment.url} alt={attachment.name} title={attachment.name}>
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-              <img src={attachment.url} alt={attachment.name} className="max-h-60 w-full object-cover" onLoad={onImageLoad} />
+              <img src={attachment.url} alt={attachment.name} loading="lazy" decoding="async" className="max-h-60 w-full object-cover" onLoad={onImageLoad} />
               <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">{attachment.name}</div>
             </div>
           </ChatImagePreview>
@@ -309,6 +319,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   const previousThreadKeyRef = useRef<string | null>(null)
   const unreadAlertsSnapshotRef = useRef<Record<string, number>>({})
   const unreadAlertsHydratedRef = useRef(false)
+  const liveRefreshInFlightRef = useRef(false)
   const [open, setOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<ChatTab>('updates')
   const [teamView, setTeamView] = useState<'direct' | 'groups'>('direct')
@@ -543,7 +554,6 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     try {
       const json = await requestJson<ConversationDetail>(`/api/crm/conversations/${conversationId}`)
       setSelectedConversation(json.success && json.data ? json.data : null)
-      await loadBase()
     } finally {
       setCrmLoading(false)
     }
@@ -554,7 +564,6 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     try {
       const json = await requestJson<InternalThreadDetail>(`/api/crm/internal-chat/threads/${threadId}`)
       setSelectedThread(json.success && json.data ? json.data : null)
-      await loadBase()
     } finally {
       setTeamLoading(false)
     }
@@ -566,13 +575,24 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      void loadBase()
-      if (selectedConversationId && open && activeTab === 'crm') {
-        void loadConversationDetail(selectedConversationId)
-      }
-      if (selectedThreadId && open && activeTab === 'team') {
-        void loadThreadDetail(selectedThreadId)
-      }
+      if (!open) return
+      if (typeof document !== 'undefined' && document.hidden) return
+      if (liveRefreshInFlightRef.current) return
+
+      liveRefreshInFlightRef.current = true
+      void (async () => {
+        try {
+          await loadBase()
+          if (selectedConversationId && activeTab === 'crm') {
+            await loadConversationDetail(selectedConversationId)
+          }
+          if (selectedThreadId && activeTab === 'team') {
+            await loadThreadDetail(selectedThreadId)
+          }
+        } finally {
+          liveRefreshInFlightRef.current = false
+        }
+      })()
     }, 6000)
     return () => window.clearInterval(interval)
   }, [activeTab, open, selectedConversationId, selectedThreadId])
@@ -799,7 +819,9 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     if (!selectedThread) return [] as Array<ChatAttachment & { messageId: string; occurredAt: string; senderLabel: string }>
 
     return selectedThread.messages
-      .flatMap((message) => (message.attachments ?? []).map((attachment) => ({
+      .flatMap((message) => (message.attachments ?? [])
+        .filter((attachment) => isRenderableAttachmentUrl(attachment.url))
+        .map((attachment) => ({
         ...attachment,
         messageId: message.id,
         occurredAt: message.occurredAt,

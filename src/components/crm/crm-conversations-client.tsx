@@ -1371,11 +1371,6 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   }, [loadDetail, selectedConversationId])
 
   useEffect(() => {
-    if (!selectedConversationId) return
-    void loadConversationAi(selectedConversationId, { silent: true })
-  }, [loadConversationAi, selectedConversationId])
-
-  useEffect(() => {
     if (!liveMode) return
 
     const runLiveRefresh = async () => {
@@ -2213,6 +2208,13 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   useEffect(() => {
     setDetailPanelTab('CHAT')
   }, [selectedConversationId])
+
+  useEffect(() => {
+    if (detailPanelTab !== 'AI') return
+    if (!selectedConversationId) return
+    if (conversationAi) return
+    void loadConversationAi(selectedConversationId, { silent: true })
+  }, [conversationAi, detailPanelTab, loadConversationAi, selectedConversationId])
 
   const compactToolbarLayout = (
     <div className="space-y-3">
