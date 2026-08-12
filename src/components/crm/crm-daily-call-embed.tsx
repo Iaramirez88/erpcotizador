@@ -26,6 +26,34 @@ type DailyCallLike = {
   on: (eventName: string, listener: (event?: Record<string, unknown>) => void) => void
 }
 
+function ensureDailyIframePermissions(container: HTMLDivElement) {
+  let attempts = 0
+
+  const applyPermissions = () => {
+    const iframe = container.querySelector('iframe')
+    if (iframe) {
+      iframe.setAttribute('allow', 'camera; microphone; autoplay; display-capture; fullscreen; clipboard-read; clipboard-write')
+      iframe.setAttribute('allowfullscreen', 'true')
+      return
+    }
+
+    if (attempts < 12) {
+      attempts += 1
+      window.requestAnimationFrame(applyPermissions)
+    }
+  }
+
+  applyPermissions()
+}
+
+function formatDailyErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : 'No se pudo cargar Daily.'
+  if (/notallowederror|permission denied|permissions-policy/i.test(message)) {
+    return 'El navegador bloqueó micrófono o cámara para esta llamada. Permítelos en el sitio y vuelve a intentar.'
+  }
+  return message
+}
+
 function teardownDailyCall(call: DailyCallLike | null, container: HTMLDivElement | null) {
   if (!call) return
 
@@ -103,6 +131,7 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
         }) as DailyCallLike
 
         callRef.current = frame
+        ensureDailyIframePermissions(containerRef.current)
 
         frame.on('joined-meeting', () => {
           const occurredAt = new Date().toISOString()
@@ -141,11 +170,12 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
         })
 
         frame.on('error', (event) => {
-          const message = typeof event?.errorMsg === 'string'
+          const rawMessage = typeof event?.errorMsg === 'string'
             ? event.errorMsg
             : typeof event?.error === 'string'
               ? event.error
               : 'Daily no pudo abrir la sesión.'
+          const message = formatDailyErrorMessage(rawMessage)
           setError(message)
           setState('ERROR')
           void reportSessionEvent({
@@ -167,7 +197,7 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
           startAudioOff: false,
         })
       } catch (bootError) {
-        const message = bootError instanceof Error ? bootError.message : 'No se pudo cargar Daily.'
+        const message = formatDailyErrorMessage(bootError)
         setError(message)
         setState('ERROR')
         void reportSessionEvent({

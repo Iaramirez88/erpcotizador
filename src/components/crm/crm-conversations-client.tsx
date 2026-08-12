@@ -609,12 +609,33 @@ function buildCallSetupItems(args: {
   }
 
   if (args.callType === 'audio') {
+    if (isWhatsApp) {
+      if (!hasPhone) {
+        items.push({
+          tone: 'blocked',
+          title: 'Falta número del prospecto',
+          detail: 'La conversación necesita un teléfono válido para poder enviar la invitación de llamada por WhatsApp.',
+        })
+      } else if (!args.messagingWindowState?.open) {
+        items.push({
+          tone: 'attention',
+          title: 'Ventana de WhatsApp cerrada',
+          detail: 'La sala sí puede prepararse, pero WhatsApp no podrá enviar la invitación automática hasta que el prospecto vuelva a escribir o se implementen plantillas aprobadas.',
+        })
+      } else {
+        items.push({
+          tone: 'ready',
+          title: 'Canal listo para invitar',
+          detail: 'WhatsApp tiene número de contacto y ventana abierta, así que el CRM puede intentar enviar la invitación automática de llamada al prospecto.',
+        })
+      }
+      return items
+    }
+
     items.push({
       tone: 'attention',
-      title: 'Invitación automática al prospecto',
-      detail: isWhatsApp
-        ? 'La llamada de audio abre la sala para el asesor, pero hoy la invitación automática al prospecto está implementada solo para videollamadas por WhatsApp.'
-        : `El canal ${providerLabel} todavía no envía invitaciones automáticas de llamada. Usa videollamada por WhatsApp o comparte el enlace manualmente con el prospecto.`,
+      title: `Invitación por ${providerLabel}`,
+      detail: `El canal ${providerLabel} todavía no envía invitaciones automáticas de llamada. La sala sí se abre en el CRM, pero el enlace al prospecto debe compartirse manualmente.`,
     })
     return items
   }
@@ -1458,7 +1479,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       const json = await requestJson<PreparedCallSession>(`/api/crm/conversations/${selectedConversation.id}/call`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callType, sendWhatsappInvite: callType === 'video' }),
+        body: JSON.stringify({ callType, sendWhatsappInvite: true }),
       })
 
       if (!json.success || !json.data) {
@@ -4366,7 +4387,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                   <div className="mt-1 leading-6">La llamada queda registrada en CRM cuando Daily notifica entrada, salida o error de sesión.</div>
                   <div className="mt-2 text-xs text-slate-500">URL base calculada: {preparedCallSession.joinUrl}</div>
                 </div>
-                {preparedCallSession.callType === 'video' ? (
+                {preparedCallSession.guestInviteUrl ? (
                   <div className={preparedCallSession.inviteDispatch.sent ? 'rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900' : 'rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900'}>
                     <div className="font-semibold">Invitación al cliente</div>
                     <div className="mt-1 leading-6">

@@ -10,6 +10,12 @@ type PosInvoiceSharePayload = {
   exp: number
 }
 
+type DailyCallInvitePayload = {
+  conversationId: string
+  callType: 'audio' | 'video'
+  exp: number
+}
+
 function base64UrlEncode(input: Buffer | string) {
   const buf = Buffer.isBuffer(input) ? input : Buffer.from(input)
   return buf
@@ -107,4 +113,47 @@ export function verifyPosInvoiceShareToken(token: string, secret: string): { pos
   if (Math.floor(Date.now() / 1000) > payload.exp) return null
 
   return { posInvoiceId: payload.posInvoiceId }
+}
+
+export function createDailyCallInviteToken(params: {
+  conversationId: string
+  callType: 'audio' | 'video'
+  ttlSeconds: number
+  secret: string
+}) {
+  const payload: DailyCallInvitePayload = {
+    conversationId: params.conversationId,
+    callType: params.callType,
+    exp: Math.floor(Date.now() / 1000) + params.ttlSeconds,
+  }
+
+  const payloadB64 = base64UrlEncode(JSON.stringify(payload))
+  const sig = sign(params.secret, payloadB64)
+  return `${payloadB64}.${sig}`
+}
+
+export function verifyDailyCallInviteToken(token: string, secret: string): { conversationId: string; callType: 'audio' | 'video' } | null {
+  const parts = token.split('.')
+  if (parts.length !== 2) return null
+
+  const [payloadB64, sig] = parts
+  const expected = sign(secret, payloadB64)
+
+  const a = Buffer.from(sig)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return null
+  if (!crypto.timingSafeEqual(a, b)) return null
+
+  let payload: DailyCallInvitePayload
+  try {
+    payload = JSON.parse(base64UrlDecode(payloadB64).toString('utf8')) as DailyCallInvitePayload
+  } catch {
+    return null
+  }
+
+  if (!payload?.conversationId || typeof payload.exp !== 'number') return null
+  if (payload.callType !== 'audio' && payload.callType !== 'video') return null
+  if (Math.floor(Date.now() / 1000) > payload.exp) return null
+
+  return { conversationId: payload.conversationId, callType: payload.callType }
 }

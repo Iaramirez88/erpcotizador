@@ -1431,54 +1431,28 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
     <div className="space-y-4.5 pb-4">
       {isFocusedOpportunities ? (
         <>
-          <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.18),_transparent_32%),linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] shadow-[0_22px_52px_-36px_rgba(15,23,42,0.3)]">
-            <div className="grid gap-3 p-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)] xl:items-start lg:p-5">
-              <div className="space-y-2">
-                <ErpBreadcrumbs
-                  items={[
-                    { label: 'Dashboard', href: '/dashboard' },
-                    { label: 'CRM', href: '/dashboard/crm' },
-                    { label: 'Negociaciones' },
-                  ]}
-                />
-                <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-sky-700 backdrop-blur">
-                  Pipeline CRM
-                </div>
-                <div className="space-y-1">
-                  <h1 className="max-w-2xl text-xl font-semibold tracking-tight text-slate-950 lg:text-[28px]">Oportunidades y pipeline comercial</h1>
-                  <p className="max-w-2xl text-xs leading-5 text-slate-600">El pipeline queda primero y siempre visible. El resto del contexto se consulta por tabs sin perder de vista el embudo.</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button asChild variant="outline" className="h-8 rounded-lg border-slate-200 bg-white/85 px-3 text-xs">
-                    <Link href="/dashboard/crm/negociaciones">Volver a Negociaciones</Link>
-                  </Button>
-                  <Button className="h-8 rounded-lg bg-slate-950 px-3 text-xs text-white hover:bg-slate-800" onClick={() => openCreateOpportunityDialog()}>
-                    Nuevo deal
-                  </Button>
-                </div>
+          <section className="space-y-3 px-1 pt-1">
+            <ErpBreadcrumbs
+              items={[
+                { label: 'Dashboard', href: '/dashboard' },
+                { label: 'CRM', href: '/dashboard/crm' },
+                { label: 'Negociaciones' },
+              ]}
+            />
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">
+                Pipeline CRM
               </div>
-              <div className="grid gap-2 sm:grid-cols-2 xl:self-start">
-                <div className="min-w-0 rounded-lg border border-slate-200/80 bg-white/85 p-3 shadow-sm backdrop-blur">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Deals abiertos</p>
-                  <p className="mt-1.5 text-xl font-semibold text-slate-950">{pipelineSummary.openCount}</p>
-                  <p className="mt-0.5 text-[11px] leading-4 text-slate-500">Negocios activos dentro del pipeline.</p>
-                </div>
-                <div className="min-w-0 rounded-lg border border-emerald-200/80 bg-[linear-gradient(180deg,_rgba(236,253,245,0.95),_rgba(255,255,255,0.9))] p-3 shadow-sm">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">Valor ponderado</p>
-                  <p className="mt-1.5 text-xl font-semibold text-emerald-950">{formatMoney(pipelineSummary.weightedValue, locale)}</p>
-                  <p className="mt-0.5 text-[11px] leading-4 text-emerald-700/80">Proyección priorizada por probabilidad.</p>
-                </div>
-                <div className="min-w-0 rounded-lg border border-amber-200/80 bg-[linear-gradient(180deg,_rgba(255,251,235,0.96),_rgba(255,255,255,0.9))] p-3 shadow-sm">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">Cierres vencidos</p>
-                  <p className="mt-1.5 text-xl font-semibold text-amber-950">{pipelineSummary.overdueCount}</p>
-                  <p className="mt-0.5 text-[11px] leading-4 text-amber-700/80">Deals que necesitan reacción inmediata.</p>
-                </div>
-                <div className="min-w-0 rounded-lg border border-sky-200/80 bg-[linear-gradient(180deg,_rgba(239,246,255,0.98),_rgba(255,255,255,0.9))] p-3 shadow-sm">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-700">Con cotización</p>
-                  <p className="mt-1.5 text-xl font-semibold text-sky-950">{pipelineSummary.quotedCount}</p>
-                  <p className="mt-0.5 text-[11px] leading-4 text-sky-700/80">Oportunidades ya conectadas con propuesta.</p>
-                </div>
-              </div>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">Oportunidades y pipeline comercial</h1>
+              <p className="max-w-3xl text-sm leading-6 text-slate-600">El pipeline queda primero y siempre visible. El resto del contexto se consulta por tabs sin perder de vista el embudo.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
+                <Link href="/dashboard/crm/negociaciones">Volver a Negociaciones</Link>
+              </Button>
+              <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => openCreateOpportunityDialog()}>
+                Nuevo deal
+              </Button>
             </div>
           </section>
 
