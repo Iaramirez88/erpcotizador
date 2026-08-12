@@ -58,7 +58,7 @@ export async function POST(request: Request, context: RouteContext) {
       }
     }
 
-    const nextStatus = parsedStatus ?? (assignedToUserId ? 'HUMAN_ACTIVE' : current.status === 'RESOLVED' ? 'RESOLVED' : 'PENDING')
+    const nextStatus = parsedStatus ?? (assignedToUserId ? 'HUMAN_ACTIVE' : current.status === 'RESOLVED' || current.status === 'DISABLED' ? current.status : 'PENDING')
     const resolvedAt = nextStatus === 'RESOLVED' ? new Date() : null
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -67,7 +67,7 @@ export async function POST(request: Request, context: RouteContext) {
         data: {
           assignedToUserId: assignedToUserId || null,
           status: nextStatus,
-          unreadCount: nextStatus === 'RESOLVED' ? 0 : current.unreadCount,
+          unreadCount: nextStatus === 'RESOLVED' || nextStatus === 'DISABLED' ? 0 : current.unreadCount,
           resolvedAt,
         },
         include: {

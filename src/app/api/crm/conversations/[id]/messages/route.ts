@@ -406,12 +406,12 @@ export async function POST(request: Request, context: RouteContext) {
           directionLastMessage: 'OUTBOUND',
           status: messageStatus === 'FAILED'
             ? current.status
-            : current.status === 'RESOLVED'
+            : current.status === 'RESOLVED' || current.status === 'DISABLED'
               ? 'HUMAN_ACTIVE'
               : 'PENDING',
           resolvedAt: messageStatus === 'FAILED'
             ? current.resolvedAt
-            : current.status === 'RESOLVED'
+            : current.status === 'RESOLVED' || current.status === 'DISABLED'
               ? null
               : current.resolvedAt,
         },

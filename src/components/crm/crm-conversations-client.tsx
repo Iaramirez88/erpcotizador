@@ -4,7 +4,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, Facebook, FileAudio, FileText, Image as ImageIcon, Instagram, Mail, MessageCircle, MoreVertical, PhoneCall, Plus, RefreshCcw, SendHorizontal, Smile, Video, X } from 'lucide-react'
+import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, Facebook, FileAudio, FileText, Image as ImageIcon, Instagram, Mail, MessageCircle, MoreVertical, Pencil, PhoneCall, Plus, RefreshCcw, SendHorizontal, Smile, Video, X } from 'lucide-react'
 import { CrmDailyCallEmbed } from '@/components/crm/crm-daily-call-embed'
 import { CrmFileLibraryPicker } from '@/components/crm/crm-file-library-picker'
 import type { CrmFileItem } from '@/components/crm/crm-files-types'
@@ -26,7 +26,7 @@ import { useChatMutePreferences } from '@/hooks/use-chat-mute-preferences'
 import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
 import { uploadFileWithProgress } from '@/lib/upload-file-with-progress'
 
-type ConversationStatus = 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM'
+type ConversationStatus = 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'DISABLED' | 'RESOLVED' | 'SPAM'
 type MessageDirection = 'INBOUND' | 'OUTBOUND' | 'SYSTEM'
 type MessageOrigin = 'CUSTOMER' | 'PHONE_APP' | 'CRM_AGENT' | 'BOT' | 'SYSTEM'
 type ChannelProvider = 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM'
@@ -263,8 +263,8 @@ type CrmConversationsClientProps = {
   sidebarHeader?: ReactNode
 }
 
-const STATUS_OPTIONS: Array<'ALL' | ConversationStatus> = ['ALL', 'OPEN', 'PENDING', 'BOT_ACTIVE', 'HUMAN_ACTIVE', 'RESOLVED', 'SPAM']
-const ATTENTION_STATUS_OPTIONS: ConversationStatus[] = ['OPEN', 'BOT_ACTIVE', 'HUMAN_ACTIVE', 'PENDING', 'RESOLVED', 'SPAM']
+const STATUS_OPTIONS: Array<'ALL' | ConversationStatus> = ['ALL', 'OPEN', 'PENDING', 'BOT_ACTIVE', 'HUMAN_ACTIVE', 'DISABLED', 'RESOLVED', 'SPAM']
+const ATTENTION_STATUS_OPTIONS: ConversationStatus[] = ['OPEN', 'BOT_ACTIVE', 'HUMAN_ACTIVE', 'PENDING', 'DISABLED', 'RESOLVED', 'SPAM']
 const EMOJI_CHOICES = ['😀', '😂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀']
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
@@ -778,7 +778,7 @@ function getOriginFilterGroup(originKey: CrmOriginKey): OriginFilter {
 }
 
 function getConversationSlaMeta(conversation: ConversationListItem | ConversationDetail, locale: string) {
-  if (conversation.status === 'RESOLVED' || conversation.status === 'SPAM') {
+  if (conversation.status === 'RESOLVED' || conversation.status === 'DISABLED' || conversation.status === 'SPAM') {
     return {
       state: 'paused' as const,
       label: 'SLA pausado',
@@ -813,7 +813,7 @@ function getConversationSlaMeta(conversation: ConversationListItem | Conversatio
 
 function getConversationPriorityMeta(conversation: ConversationListItem | ConversationDetail, locale: string) {
   const sla = getConversationSlaMeta(conversation, locale)
-  if (sla.state === 'breached' || conversation.unreadCount >= 3 || (!conversation.assignedTo && conversation.status !== 'RESOLVED' && conversation.status !== 'SPAM')) {
+  if (sla.state === 'breached' || conversation.unreadCount >= 3 || (!conversation.assignedTo && conversation.status !== 'RESOLVED' && conversation.status !== 'DISABLED' && conversation.status !== 'SPAM')) {
     return { label: 'Prioridad alta', className: 'border-rose-200 bg-rose-50 text-rose-700' }
   }
   if (sla.state === 'warning' || conversation.unreadCount > 0 || conversation.status === 'PENDING' || conversation.status === 'BOT_ACTIVE') {
@@ -832,6 +832,8 @@ function getConversationStatusMeta(status: ConversationStatus) {
       return { label: 'En gestión', className: 'border-indigo-200 bg-indigo-50 text-indigo-700' }
     case 'PENDING':
       return { label: 'Esperando cliente', className: 'border-amber-200 bg-amber-50 text-amber-700' }
+    case 'DISABLED':
+      return { label: 'Pausada', className: 'border-slate-300 bg-slate-50 text-slate-600' }
     case 'RESOLVED':
       return { label: 'Resuelto', className: 'border-slate-200 bg-slate-100 text-slate-700' }
     case 'SPAM':
@@ -852,7 +854,7 @@ function getConversationOperationalRank(conversation: ConversationListItem | Con
   if (priority.label === 'Prioridad alta') score += 40
   else if (priority.label === 'Prioridad media') score += 20
 
-  if (!conversation.assignedTo && conversation.status !== 'RESOLVED' && conversation.status !== 'SPAM') score += 35
+  if (!conversation.assignedTo && conversation.status !== 'RESOLVED' && conversation.status !== 'DISABLED' && conversation.status !== 'SPAM') score += 35
   if (conversation.unreadCount > 0) score += Math.min(conversation.unreadCount, 5) * 5
   if (conversation.status === 'BOT_ACTIVE') score += 18
   if (conversation.status === 'OPEN') score += 12
@@ -1067,6 +1069,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
   const [hybridOverrideConfirmed, setHybridOverrideConfirmed] = useState(false)
+  const [editingConversationName, setEditingConversationName] = useState(false)
+  const [conversationNameDraft, setConversationNameDraft] = useState('')
+  const [savingConversationName, setSavingConversationName] = useState(false)
   const attachmentInputRef = useRef<HTMLInputElement | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
@@ -1275,7 +1280,14 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     setPreparedCallSession(null)
     setCallError(null)
     setCallInvitePreview(null)
+    setEditingConversationName(false)
+    setConversationNameDraft('')
   }, [selectedConversationId])
+
+  useEffect(() => {
+    if (!selectedConversation) return
+    setConversationNameDraft(selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || '')
+  }, [selectedConversation])
 
   useEffect(() => {
     if (!selectedConversation) return
@@ -1336,7 +1348,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   }
 
   const stats = useMemo(() => {
-    const openCount = conversations.filter((item) => item.status !== 'RESOLVED' && item.status !== 'SPAM').length
+    const openCount = conversations.filter((item) => item.status !== 'RESOLVED' && item.status !== 'DISABLED' && item.status !== 'SPAM').length
     const unassignedCount = conversations.filter((item) => !item.assignedTo).length
     const unreadCount = conversations.reduce((sum, item) => sum + (item.unreadCount || 0), 0)
     const slaBreachedCount = conversations.filter((item) => getConversationSlaMeta(item, locale).state === 'breached').length
@@ -1355,7 +1367,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   }, [conversations, currentUserId])
 
   const configuredSidebarProviders = useMemo(() => {
-    const supportedProviders: ChannelProvider[] = ['WHATSAPP_CLOUD', 'MESSENGER', 'INSTAGRAM_DM', 'FACEBOOK_PAGE']
+    const supportedProviders: ChannelProvider[] = ['WHATSAPP_CLOUD', 'MESSENGER', 'INSTAGRAM_DM', 'FACEBOOK_PAGE', 'WEB_CHATBOT', 'WEB_FORM']
     const activeProviderSet = new Set<ChannelProvider>()
 
     channels.forEach((channel) => {
@@ -1454,8 +1466,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   }, [datePreset, visibleConversations])
 
   const inboxStatusCounts = useMemo(() => {
-    const pendingCount = dateScopedConversations.filter((item) => item.status !== 'RESOLVED' && item.status !== 'SPAM').length
-    const resolvedCount = dateScopedConversations.filter((item) => item.status === 'RESOLVED').length
+    const pendingCount = dateScopedConversations.filter((item) => item.status !== 'RESOLVED' && item.status !== 'DISABLED' && item.status !== 'SPAM').length
+    const resolvedCount = dateScopedConversations.filter((item) => item.status === 'RESOLVED' || item.status === 'DISABLED').length
     return {
       pendingCount,
       resolvedCount,
@@ -1465,8 +1477,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
   const displayedConversations = useMemo(() => {
     if (inboxStatusTab === 'ALL') return dateScopedConversations
-    if (inboxStatusTab === 'RESOLVED') return dateScopedConversations.filter((item) => item.status === 'RESOLVED')
-    return dateScopedConversations.filter((item) => item.status !== 'RESOLVED' && item.status !== 'SPAM')
+    if (inboxStatusTab === 'RESOLVED') return dateScopedConversations.filter((item) => item.status === 'RESOLVED' || item.status === 'DISABLED')
+    return dateScopedConversations.filter((item) => item.status !== 'RESOLVED' && item.status !== 'DISABLED' && item.status !== 'SPAM')
   }, [dateScopedConversations, inboxStatusTab])
 
   useEffect(() => {
@@ -1732,6 +1744,73 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
     } finally {
       setResolving(false)
+    }
+  }
+
+  async function updateConversationAction(action: 'report' | 'disable') {
+    if (!selectedConversation) return
+
+    const confirmMessage = action === 'report'
+      ? 'Esta conversación se marcará como reportada y pasará a SPAM. ¿Deseas continuar?'
+      : 'Esta conversación se deshabilitará temporalmente y quedará resuelta. ¿Deseas continuar?'
+
+    if (!window.confirm(confirmMessage)) return
+
+    const json = await requestJson(`/api/crm/conversations/${selectedConversation.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    })
+
+    if (!json.success) {
+      alert(json.error || 'No se pudo actualizar la conversación.')
+      return
+    }
+
+    await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
+  }
+
+  async function deleteConversationPermanently() {
+    if (!selectedConversation) return
+    if (!window.confirm('Esta acción eliminará la conversación definitivamente. No se puede deshacer. ¿Deseas continuar?')) return
+
+    const deletedConversationId = selectedConversation.id
+    const json = await requestJson(`/api/crm/conversations/${deletedConversationId}`, { method: 'DELETE' })
+    if (!json.success) {
+      alert(json.error || 'No se pudo eliminar la conversación.')
+      return
+    }
+
+    setSelectedConversation(null)
+    setSelectedConversationId(null)
+    await loadConversations()
+  }
+
+  async function saveConversationName() {
+    if (!selectedConversation) return
+    const trimmed = conversationNameDraft.trim()
+    if (!trimmed) {
+      alert('Escribe un nombre antes de guardar.')
+      return
+    }
+
+    setSavingConversationName(true)
+    try {
+      const json = await requestJson(`/api/crm/conversations/${selectedConversation.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'rename', name: trimmed }),
+      })
+
+      if (!json.success) {
+        alert(json.error || 'No se pudo actualizar el nombre.')
+        return
+      }
+
+      setEditingConversationName(false)
+      await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
+    } finally {
+      setSavingConversationName(false)
     }
   }
 
@@ -2059,7 +2138,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                 onClick={() => setInboxStatusTab('RESOLVED')}
                 className={inboxStatusTab === 'RESOLVED' ? 'rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800' : 'rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600'}
               >
-                Resueltos {inboxStatusCounts.resolvedCount}
+                Resueltos y pausados {inboxStatusCounts.resolvedCount}
               </button>
               <button
                 type="button"
@@ -2189,9 +2268,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                     </div>
                   </div>
                   <div className="mt-3 space-y-1.5">
-                    <button type="button" onClick={() => { setQueueScope('TEAM'); setQueueFocus('ALL'); }} className={queueScope === 'TEAM' && queueFocus === 'ALL' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
+                    <button type="button" onClick={() => { setQueueScope('TEAM'); setQueueFocus('ALL'); setProviderFilter('ALL'); setChannelFilter('ALL'); }} className={queueScope === 'TEAM' && queueFocus === 'ALL' && providerFilter === 'ALL' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
                       <span className="inline-flex items-center gap-2 text-sm font-medium"><MessageCircle className="h-4 w-4" />Todos</span>
-                      <span className={queueScope === 'TEAM' && queueFocus === 'ALL' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.teamCount}</span>
+                      <span className={queueScope === 'TEAM' && queueFocus === 'ALL' && providerFilter === 'ALL' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.teamCount}</span>
                     </button>
                     <button type="button" onClick={() => setQueueScope('MINE')} className={queueScope === 'MINE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
                       <span className="inline-flex items-center gap-2 text-sm font-medium"><CheckCheck className="h-4 w-4" />Asignados a mí</span>
@@ -2217,6 +2296,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                       <span className="inline-flex items-center gap-2 text-sm font-medium"><PhoneCall className="h-4 w-4" />Actividad celular</span>
                       <span className={queueFocus === 'HYBRID_PHONE_ACTIVITY' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.hybridPhoneActivityCount}</span>
                     </button>
+                    {configuredSidebarProviders.length > 0 ? <p className="px-3.5 pt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Canales activos</p> : null}
                     {configuredSidebarProviders.map((provider) => (
                       <button key={provider} type="button" onClick={() => setProviderFilter(provider)} className={providerFilter === provider || (provider === 'WHATSAPP_CLOUD' && providerFilter === 'WHATSAPP_SANDBOX') ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
                         <span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider={provider} />{formatProviderDisplayName(provider)}</span>
@@ -2289,7 +2369,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                     <span className="mt-0.5 block text-[10px] text-slate-400">{inboxStatusCounts.pendingCount}</span>
                   </button>
                   <button type="button" onClick={() => setInboxStatusTab('RESOLVED')} className={inboxStatusTab === 'RESOLVED' ? 'rounded-lg bg-slate-100 px-2 py-1.5 text-xs font-semibold text-emerald-700' : 'rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500'}>
-                    <span className="block">Resueltos</span>
+                    <span className="block">Resueltos y pausados</span>
                     <span className="mt-0.5 block text-[10px] text-slate-400">{inboxStatusCounts.resolvedCount}</span>
                   </button>
                   <button type="button" onClick={() => setInboxStatusTab('ALL')} className={inboxStatusTab === 'ALL' ? 'rounded-lg bg-slate-100 px-2 py-1.5 text-xs font-semibold text-slate-800' : 'rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500'}>
@@ -2320,7 +2400,6 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                             ? 'w-full rounded-[18px] border-2 border-blue-400 bg-[linear-gradient(135deg,rgba(219,234,254,0.98),rgba(239,246,255,0.94))] px-3 py-2.5 text-left shadow-[0_18px_34px_-26px rgba(37,99,235,0.55)] transition hover:border-blue-500 hover:bg-blue-100/80'
                             : 'w-full rounded-[18px] border border-transparent bg-transparent px-3 py-2.5 text-left transition hover:border-slate-200 hover:bg-slate-50/70'}
                       >
-                                                            {item.unreadCount > 0 ? <span className="rounded-full bg-blue-700 px-1.5 py-0.5 text-[9px] font-semibold text-white shadow-sm">{item.unreadCount}</span> : null}
                         <div className="flex items-start justify-between gap-2.5">
                           <div className="flex min-w-0 items-start gap-2.5">
                             <div className="relative shrink-0">
@@ -2383,7 +2462,22 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                             </div>
                             <div className="min-w-0 space-y-1">
                               <div className="flex flex-wrap items-center gap-1.5">
-                                <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-slate-950 sm:text-base">{renderHighlightedText(selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación sin alias', search)}</h2>
+                                {editingConversationName ? (
+                                  <div className="flex items-center gap-2">
+                                    <Input value={conversationNameDraft} onChange={(event) => setConversationNameDraft(event.target.value)} className="h-9 w-[220px] rounded-xl border-slate-200 bg-white" placeholder="Nombre del lead o contacto" />
+                                    <Button type="button" size="sm" className="rounded-xl" onClick={() => void saveConversationName()} disabled={savingConversationName}>{savingConversationName ? 'Guardando...' : 'Guardar'}</Button>
+                                    <Button type="button" variant="ghost" size="icon" className="rounded-xl" onClick={() => { setEditingConversationName(false); setConversationNameDraft(selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || '') }}>
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-slate-950 sm:text-base">{renderHighlightedText(selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación sin alias', search)}</h2>
+                                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-xl text-slate-500" onClick={() => setEditingConversationName(true)} aria-label="Editar nombre de la conversación">
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                )}
                                 {isMuted ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Silenciado</span> : null}
                               </div>
                               <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
@@ -2443,9 +2537,21 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                   {assigning ? 'Tomando...' : 'Tomar conversación'}
                                 </DropdownMenuItem>
                               ) : null}
-                              <DropdownMenuItem onSelect={() => void resolveConversation()} disabled={resolving || selectedConversation.status === 'RESOLVED'}>
+                              <DropdownMenuItem onSelect={() => void resolveConversation()} disabled={resolving || selectedConversation.status === 'RESOLVED' || selectedConversation.status === 'DISABLED'}>
                                 <Clock3 className="mr-2 h-4 w-4" />
                                 {resolving ? 'Resolviendo...' : 'Resolver'}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => void updateConversationAction('disable')}>
+                                <Clock3 className="mr-2 h-4 w-4" />
+                                Deshabilitar temporalmente
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => void updateConversationAction('report')}>
+                                <AlertTriangle className="mr-2 h-4 w-4" />
+                                Reportar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => void deleteConversationPermanently()} className="text-rose-700 focus:text-rose-700">
+                                <X className="mr-2 h-4 w-4" />
+                                Eliminar definitivamente
                               </DropdownMenuItem>
                               <DropdownMenuLabel>Vista del panel</DropdownMenuLabel>
                               <DropdownMenuItem onSelect={() => setDetailPanelTab('CHAT')}>
@@ -3326,7 +3432,22 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                     </div>
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-xl font-semibold text-slate-950">{renderHighlightedText(selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación sin alias', search)}</h2>
+                        {editingConversationName ? (
+                          <div className="flex items-center gap-2">
+                            <Input value={conversationNameDraft} onChange={(event) => setConversationNameDraft(event.target.value)} className="h-10 w-[260px] rounded-xl border-slate-200 bg-white" placeholder="Nombre del lead o contacto" />
+                            <Button type="button" size="sm" className="rounded-xl" onClick={() => void saveConversationName()} disabled={savingConversationName}>{savingConversationName ? 'Guardando...' : 'Guardar'}</Button>
+                            <Button type="button" variant="ghost" size="icon" className="rounded-xl" onClick={() => { setEditingConversationName(false); setConversationNameDraft(selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || '') }}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <h2 className="text-xl font-semibold text-slate-950">{renderHighlightedText(selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación sin alias', search)}</h2>
+                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-xl text-slate-500" onClick={() => setEditingConversationName(true)} aria-label="Editar nombre de la conversación">
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
                         <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedStatus.className}`}>{selectedStatus.label}</span>
                         <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedPriority.className}`}>{selectedPriority.label}</span>
                         <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedSla.className}`}>{selectedSla.label}</span>
@@ -3364,6 +3485,18 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           <BellOff className="mr-2 h-4 w-4" />
                           {isMuted ? 'Activar notificaciones' : 'Silenciar notificaciones'}
                         </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => void updateConversationAction('disable')}>
+                          <Clock3 className="mr-2 h-4 w-4" />
+                          Deshabilitar temporalmente
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => void updateConversationAction('report')}>
+                          <AlertTriangle className="mr-2 h-4 w-4" />
+                          Reportar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => void deleteConversationPermanently()} className="text-rose-700 focus:text-rose-700">
+                          <X className="mr-2 h-4 w-4" />
+                          Eliminar definitivamente
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                     {selectedConversation.lead ? (
@@ -3381,7 +3514,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                         {assigning ? 'Tomando...' : 'Tomar conversación'}
                       </Button>
                     ) : null}
-                    <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void resolveConversation()} disabled={resolving || selectedConversation.status === 'RESOLVED'}>
+                    <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void resolveConversation()} disabled={resolving || selectedConversation.status === 'RESOLVED' || selectedConversation.status === 'DISABLED'}>
                       {resolving ? 'Resolviendo...' : 'Resolver'}
                     </Button>
                   </div>

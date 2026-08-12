@@ -11,12 +11,12 @@ import type { CrmConversationAiContext } from '@/lib/crm-conversation-ai'
 export const runtime = 'nodejs'
 
 function getConversationOperationalContext(args: {
-  status: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM'
+  status: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'DISABLED' | 'RESOLVED' | 'SPAM'
   unreadCount: number
   lastMessageAt: string | Date
   hasAssignedTo: boolean
 }): Pick<CrmConversationAiContext, 'slaState' | 'priorityLabel'> {
-  if (args.status === 'RESOLVED' || args.status === 'SPAM') {
+  if (args.status === 'RESOLVED' || args.status === 'DISABLED' || args.status === 'SPAM') {
     return {
       slaState: 'paused' as const,
       priorityLabel: 'Prioridad baja' as const,

@@ -87,8 +87,8 @@ export async function POST(request: Request, context: RouteContext) {
         where: { id: conversation.id },
         data: {
           opportunityId: opportunity.id,
-          status: conversation.status === 'RESOLVED' ? 'HUMAN_ACTIVE' : conversation.status,
-          resolvedAt: conversation.status === 'RESOLVED' ? null : conversation.resolvedAt,
+          status: conversation.status === 'RESOLVED' || conversation.status === 'DISABLED' ? 'HUMAN_ACTIVE' : conversation.status,
+          resolvedAt: conversation.status === 'RESOLVED' || conversation.status === 'DISABLED' ? null : conversation.resolvedAt,
         },
       })
 

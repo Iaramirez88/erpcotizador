@@ -86,3 +86,163 @@ export async function GET(_: Request, context: RouteContext) {
     return NextResponse.json({ error: 'Error obteniendo conversación CRM' }, { status: 500 })
   }
 }
+
+export async function PATCH(request: Request, context: RouteContext) {
+  try {
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'INBOX',
+      action: 'UPDATE',
+      scope: 'SEDE',
+    })
+    if (!access.ok) return access.response
+
+    const { id } = await context.params
+    const current = await getConversation(id, access.empresaId)
+    if (!current) return NextResponse.json({ error: 'Conversación no encontrada' }, { status: 404 })
+
+    if (current.sedeId) {
+      const denied = await assertCrmSedeAccess({ sedeId: current.sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+      if (denied) return denied
+    }
+
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
+    const action = normalizeString(body?.action).toLowerCase()
+
+    if (action === 'rename') {
+      const name = normalizeString(body?.name)
+      if (!name) {
+        return NextResponse.json({ error: 'Debes indicar el nombre.' }, { status: 400 })
+      }
+
+      const updated = await prisma.$transaction(async (tx) => {
+        if (current.leadId) {
+          await tx.crmLead.updateMany({
+            where: { id: current.leadId, empresaId: access.empresaId },
+            data: { nombre: name },
+          })
+        }
+
+        const conversation = await tx.crmConversation.update({
+          where: { id: current.id },
+          data: { contactDisplayName: name },
+        })
+
+        await tx.crmActivity.create({
+          data: {
+            empresaId: access.empresaId,
+            sedeId: current.sedeId,
+            type: 'OTHER',
+            summary: 'Nombre de conversación actualizado',
+            details: `Se actualizó el nombre visible a "${name}".`,
+            leadId: current.leadId,
+            opportunityId: current.opportunityId,
+            clienteId: current.clienteId,
+            occurredAt: new Date(),
+            createdById: access.userId,
+          },
+        })
+
+        return conversation
+      })
+
+      return NextResponse.json({ success: true, data: updated })
+    }
+
+    if (action === 'report') {
+      const updated = await prisma.$transaction(async (tx) => {
+        const conversation = await tx.crmConversation.update({
+          where: { id: current.id },
+          data: {
+            status: 'SPAM',
+            unreadCount: 0,
+            resolvedAt: new Date(),
+          },
+        })
+
+        await tx.crmActivity.create({
+          data: {
+            empresaId: access.empresaId,
+            sedeId: current.sedeId,
+            type: 'OTHER',
+            summary: 'Conversación reportada',
+            details: 'La conversación fue marcada como reportada y movida a SPAM.',
+            leadId: current.leadId,
+            opportunityId: current.opportunityId,
+            clienteId: current.clienteId,
+            occurredAt: new Date(),
+            createdById: access.userId,
+          },
+        })
+
+        return conversation
+      })
+
+      return NextResponse.json({ success: true, data: updated })
+    }
+
+    if (action === 'disable') {
+      const updated = await prisma.$transaction(async (tx) => {
+        const conversation = await tx.crmConversation.update({
+          where: { id: current.id },
+          data: {
+            status: 'DISABLED',
+            unreadCount: 0,
+            resolvedAt: null,
+          },
+        })
+
+        await tx.crmActivity.create({
+          data: {
+            empresaId: access.empresaId,
+            sedeId: current.sedeId,
+            type: 'OTHER',
+            summary: 'Conversación deshabilitada temporalmente',
+            details: 'La conversación se pausó temporalmente desde el inbox.',
+            leadId: current.leadId,
+            opportunityId: current.opportunityId,
+            clienteId: current.clienteId,
+            occurredAt: new Date(),
+            createdById: access.userId,
+          },
+        })
+
+        return conversation
+      })
+
+      return NextResponse.json({ success: true, data: updated })
+    }
+
+    return NextResponse.json({ error: 'Acción no soportada.' }, { status: 400 })
+  } catch (error) {
+    console.error('Error actualizando conversación CRM:', error)
+    return NextResponse.json({ error: 'Error actualizando conversación CRM' }, { status: 500 })
+  }
+}
+
+export async function DELETE(_: Request, context: RouteContext) {
+  try {
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'INBOX',
+      action: 'UPDATE',
+      scope: 'SEDE',
+    })
+    if (!access.ok) return access.response
+
+    const { id } = await context.params
+    const current = await getConversation(id, access.empresaId)
+    if (!current) return NextResponse.json({ error: 'Conversación no encontrada' }, { status: 404 })
+
+    if (current.sedeId) {
+      const denied = await assertCrmSedeAccess({ sedeId: current.sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+      if (denied) return denied
+    }
+
+    await prisma.crmConversation.delete({ where: { id: current.id } })
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error eliminando conversación CRM:', error)
+    return NextResponse.json({ error: 'Error eliminando conversación CRM' }, { status: 500 })
+  }
+}

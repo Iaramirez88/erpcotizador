@@ -8,7 +8,7 @@ export type CrmConversationAiMessage = {
 }
 
 export type CrmConversationAiContext = {
-  conversationStatus?: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM' | null
+  conversationStatus?: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'DISABLED' | 'RESOLVED' | 'SPAM' | null
   assignedToName?: string | null
   assignedToUserId?: string | null
   unreadCount?: number

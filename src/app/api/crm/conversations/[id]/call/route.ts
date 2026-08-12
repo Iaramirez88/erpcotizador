@@ -206,7 +206,7 @@ async function sendWhatsAppDailyInvite(args: {
     leadId: string | null
     opportunityId: string | null
     clienteId: string | null
-    status: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM'
+    status: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'DISABLED' | 'RESOLVED' | 'SPAM'
     resolvedAt: Date | null
     contactPhone: string | null
     channelConnection: {
@@ -293,8 +293,8 @@ async function sendWhatsAppDailyInvite(args: {
       data: {
         lastMessageAt: occurredAt,
         directionLastMessage: 'OUTBOUND',
-        status: messageStatus === 'FAILED' ? args.conversation.status : args.conversation.status === 'RESOLVED' ? 'HUMAN_ACTIVE' : 'PENDING',
-        resolvedAt: messageStatus === 'FAILED' ? args.conversation.resolvedAt : args.conversation.status === 'RESOLVED' ? null : args.conversation.resolvedAt,
+        status: messageStatus === 'FAILED' ? args.conversation.status : args.conversation.status === 'RESOLVED' || args.conversation.status === 'DISABLED' ? 'HUMAN_ACTIVE' : 'PENDING',
+        resolvedAt: messageStatus === 'FAILED' ? args.conversation.resolvedAt : args.conversation.status === 'RESOLVED' || args.conversation.status === 'DISABLED' ? null : args.conversation.resolvedAt,
       },
     })
 

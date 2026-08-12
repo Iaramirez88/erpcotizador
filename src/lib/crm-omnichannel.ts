@@ -231,7 +231,7 @@ function buildPhoneWhereClauses(field: 'telefono' | 'celular' | 'contactPhone', 
 }
 
 function getNextInboundConversationStatus(args: {
-  currentStatus?: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM' | null
+  currentStatus?: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'DISABLED' | 'RESOLVED' | 'SPAM' | null
   assignedToUserId?: string | null
 }) {
   const hasAssignee = Boolean(normalizeString(args.assignedToUserId))
