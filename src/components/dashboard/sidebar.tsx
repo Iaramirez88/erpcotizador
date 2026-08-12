@@ -318,16 +318,6 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Inbox omnicanal',
-    href: "/dashboard/crm/conversations",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16v9H4V6z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 15l4-3h8l4 3" />
-      </svg>
-    ),
-  },
-  {
     name: "DRIVE",
     href: "/dashboard/crm/archivos",
     icon: (

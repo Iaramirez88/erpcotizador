@@ -60,7 +60,6 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
 
   { href: '/dashboard/crm', label: 'Frente comercial', section: 'Captación', layer: 'Captación', domain: 'CRM', moduleKey: 'CRM' },
   { href: '/dashboard/crm/negociaciones', label: 'Negociaciones', section: 'Captación', layer: 'Captación', domain: 'Negociaciones', moduleKey: 'CRM' },
-  { href: '/dashboard/crm/conversations', label: 'Inbox omnicanal', section: 'Captación', layer: 'Captación', domain: 'Inbox omnicanal', moduleKey: 'CRM' },
   { href: '/dashboard/crm/agenda', label: 'Calendario', section: 'Captación', layer: 'Captación', domain: 'Agenda', moduleKey: 'CRM' },
   { href: '/dashboard/crm/chatbot', label: 'Chatbot', section: 'Captación', layer: 'Captación', domain: 'Automatización conversacional', moduleKey: 'CRM' },
   { href: '/dashboard/crm/archivos', label: 'DRIVE', section: 'Captación', layer: 'Captación', domain: 'Drive comercial', moduleKey: 'CRM' },
@@ -69,7 +68,6 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/crm/oportunidades', label: 'Pipeline', section: 'Captación', layer: 'Captación', domain: 'Oportunidades', moduleKey: 'CRM' },
   { href: '/dashboard/crm/tareas', label: 'Actividades', section: 'Captación', layer: 'Captación', domain: 'Tareas comerciales', moduleKey: 'CRM' },
   { href: '/dashboard/crm/negociaciones/pipeline', label: 'Pipeline', section: 'Captación', layer: 'Captación', domain: 'Negociaciones', moduleKey: 'CRM' },
-  { href: '/dashboard/crm/negociaciones/oportunidades', label: 'Oportunidades', section: 'Captación', layer: 'Captación', domain: 'Negociaciones', moduleKey: 'CRM' },
   { href: '/dashboard/crm/negociaciones/calendario', label: 'Calendario', section: 'Captación', layer: 'Captación', domain: 'Negociaciones', moduleKey: 'CRM' },
   { href: '/dashboard/crm/negociaciones/actividades', label: 'Actividades', section: 'Captación', layer: 'Captación', domain: 'Negociaciones', moduleKey: 'CRM' },
 

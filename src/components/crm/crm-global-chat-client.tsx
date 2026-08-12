@@ -28,15 +28,17 @@ export function CrmGlobalChatClient({ canAccessTeamChat, canAccessCrmChat }: Pro
     <div className="pb-4">
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'team' | 'crm')} className="space-y-0">
         {canAccessTeamChat ? <TabsContent value="team" className="space-y-4">
-          <CrmTeamChatClient sidebarHeader={sidebarHeader} />
+          {activeTab === 'team' ? <CrmTeamChatClient sidebarHeader={sidebarHeader} /> : null}
         </TabsContent> : null}
         {canAccessCrmChat ? <TabsContent value="crm" className="space-y-4">
-          <CrmConversationsClient
-            hideHero
-            sidebarHeader={sidebarHeader}
-            title="Conversaciones con prospectos y clientes"
-            description="Responde hilos CRM, asigna conversaciones y sigue oportunidades comerciales desde este panel unificado."
-          />
+          {activeTab === 'crm' ? (
+            <CrmConversationsClient
+              hideHero
+              sidebarHeader={sidebarHeader}
+              title="Conversaciones con prospectos y clientes"
+              description="Responde hilos CRM, asigna conversaciones y sigue oportunidades comerciales desde este panel unificado."
+            />
+          ) : null}
         </TabsContent> : null}
       </Tabs>
     </div>

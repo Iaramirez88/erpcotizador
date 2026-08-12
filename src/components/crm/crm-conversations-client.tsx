@@ -665,6 +665,16 @@ function getPrimaryAttachment(message: ConversationMessage) {
   return message.attachmentsJson.find((attachment) => typeof attachment?.url === 'string' && attachment.url.trim().length > 0) || null
 }
 
+function isRenderableAttachmentUrl(value: string | null | undefined) {
+  const url = String(value || '').trim()
+  if (!url) return false
+
+  if (/^(https?:|blob:|data:)/i.test(url)) return true
+  if (url.startsWith('/uploads/') || url.startsWith('/scans/') || url.startsWith('/docs/')) return true
+
+  return false
+}
+
 function inferAttachmentKind(attachment: NonNullable<ConversationMessage['attachmentsJson']>[number]) {
   const declaredType = String(attachment.type || '').trim().toLowerCase()
   const mimeType = String(attachment.mimeType || '').trim().toLowerCase()
@@ -706,6 +716,7 @@ function shouldHideMessageBodyText(message: ConversationMessage) {
 
   const attachment = getPrimaryAttachment(message)
   if (!attachment?.url) return false
+  if (!isRenderableAttachmentUrl(attachment.url)) return false
 
   const attachmentUrl = attachment.url.trim()
   const bodyLooksLikeUrl = /^https?:\/\/\S+$/i.test(bodyText)
@@ -780,7 +791,7 @@ function renderConversationAttachments(attachments: ConversationMessage['attachm
       {uniqueAttachments.map((attachment, index) => {
         const attachmentType = inferAttachmentKind(attachment)
         const attachmentUrl = String(attachment.url || '').trim()
-        if (!attachmentUrl) return null
+        if (!isRenderableAttachmentUrl(attachmentUrl)) return null
 
         const attachmentLabel = getAttachmentDisplayName(attachment)
 
@@ -793,7 +804,7 @@ function renderConversationAttachments(attachments: ConversationMessage['attachm
               title={attachmentLabel}
             >
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white/90">
-                <img src={attachmentUrl} alt={attachment.alt || attachmentLabel} className="max-h-80 w-full object-cover" />
+                <img src={attachmentUrl} alt={attachment.alt || attachmentLabel} loading="lazy" decoding="async" className="max-h-80 w-full object-cover" />
                 <div className="flex items-center gap-2 border-t border-slate-100 px-3 py-2 text-xs text-slate-600">
                   <ImageIcon className="h-3.5 w-3.5" />
                   <span className="truncate">{attachmentLabel}</span>
@@ -1095,6 +1106,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const selectedConversationIdRef = useRef<string | null>(null)
   const conversationThreadViewportRef = useRef<HTMLDivElement | null>(null)
   const lastConversationMessageRef = useRef<HTMLDivElement | null>(null)
+  const liveRefreshInFlightRef = useRef(false)
 
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -1366,15 +1378,27 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   useEffect(() => {
     if (!liveMode) return
 
-    const interval = window.setInterval(() => {
-      void loadConversations()
-      if (selectedConversationId) {
-        void loadDetail(selectedConversationId)
+    const runLiveRefresh = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      if (liveRefreshInFlightRef.current) return
+
+      liveRefreshInFlightRef.current = true
+      try {
+        await loadConversations()
+        if (selectedConversationIdRef.current) {
+          await loadDetail(selectedConversationIdRef.current)
+        }
+      } finally {
+        liveRefreshInFlightRef.current = false
       }
-    }, 4000)
+    }
+
+    const interval = window.setInterval(() => {
+      void runLiveRefresh()
+    }, 8000)
 
     return () => window.clearInterval(interval)
-  }, [liveMode, loadConversations, loadDetail, selectedConversationId])
+  }, [liveMode, loadConversations, loadDetail])
 
   useEffect(() => {
     setMaterialSearch('')

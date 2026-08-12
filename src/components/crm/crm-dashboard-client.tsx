@@ -1452,9 +1452,6 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                   <Button asChild variant="outline" className="h-8 rounded-lg border-slate-200 bg-white/85 px-3 text-xs">
                     <Link href="/dashboard/crm/negociaciones">Volver a Negociaciones</Link>
                   </Button>
-                  {props?.canAccessCrmChat ? <Button asChild variant="outline" className="h-8 rounded-lg border-slate-200 bg-white/85 px-3 text-xs">
-                    <Link href="/dashboard/crm/conversations">Inbox omnicanal</Link>
-                  </Button> : null}
                   <Button className="h-8 rounded-lg bg-slate-950 px-3 text-xs text-white hover:bg-slate-800" onClick={() => openCreateOpportunityDialog()}>
                     Nuevo deal
                   </Button>
@@ -1551,9 +1548,6 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                     <Button asChild variant="outline" className="h-9 rounded-xl border-emerald-200 bg-emerald-50/80 px-4 text-emerald-800 hover:bg-emerald-100">
                       <Link href="/dashboard/crm/chatbot">Panel chatbot</Link>
                     </Button>
-                    {props?.canAccessCrmChat ? <Button asChild variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/80 px-4">
-                      <Link href="/dashboard/crm/conversations">Bandeja omnicanal</Link>
-                    </Button> : null}
                     <Button asChild variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/80 px-4">
                       <Link href="/dashboard/crm/integraciones">Integraciones</Link>
                     </Button>
@@ -1696,9 +1690,6 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
             <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
               <Link href="/dashboard/crm/integraciones">Canales e integraciones</Link>
             </Button>
-            {props?.canAccessCrmChat ? <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
-              <Link href="/dashboard/crm/conversations">Inbox omnicanal</Link>
-            </Button> : null}
             <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={openCreateLeadDialog}>Nuevo prospecto</Button>
             <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={openCreateTaskDialog}>Nuevo seguimiento</Button>
           </div>

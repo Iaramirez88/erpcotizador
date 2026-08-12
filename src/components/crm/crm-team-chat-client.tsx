@@ -137,15 +137,25 @@ function getDirectThreadAvatar(thread: ThreadSummary | ThreadDetail | null, curr
   return 'counterpart' in thread ? thread.counterpart?.image ?? null : null
 }
 
+function isRenderableAttachmentUrl(value: string | null | undefined) {
+  const url = String(value || '').trim()
+  if (!url) return false
+
+  if (/^(https?:|blob:|data:)/i.test(url)) return true
+  if (url.startsWith('/uploads/') || url.startsWith('/scans/') || url.startsWith('/docs/')) return true
+
+  return false
+}
+
 function renderAttachments(attachments: ChatAttachment[] | undefined, onImageLoad?: () => void) {
   if (!attachments?.length) return null
   return (
     <div className="mt-3 space-y-2">
-      {attachments.map((attachment) => (
+      {attachments.filter((attachment) => isRenderableAttachmentUrl(attachment.url)).map((attachment) => (
         attachment.type === 'image' ? (
           <ChatImagePreview key={`${attachment.url}-${attachment.name}`} src={attachment.url} alt={attachment.name} title={attachment.name}>
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-              <img src={attachment.url} alt={attachment.name} className="max-h-72 w-full object-cover" onLoad={onImageLoad} />
+              <img src={attachment.url} alt={attachment.name} loading="lazy" decoding="async" className="max-h-72 w-full object-cover" onLoad={onImageLoad} />
               <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">{attachment.name}</div>
             </div>
           </ChatImagePreview>
@@ -177,6 +187,7 @@ export function CrmTeamChatClient({ sidebarHeader }: CrmTeamChatClientProps) {
   const previousThreadKeyRef = useRef<string | null>(null)
   const unreadSnapshotRef = useRef<Record<string, number>>({})
   const unreadHydratedRef = useRef(false)
+  const liveRefreshInFlightRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [creatingThread, setCreatingThread] = useState(false)
@@ -340,12 +351,24 @@ export function CrmTeamChatClient({ sidebarHeader }: CrmTeamChatClientProps) {
   }, [selectedThreadId])
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      void loadBase()
-      if (selectedThreadId) {
-        void loadDetail(selectedThreadId)
+    const runLiveRefresh = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      if (liveRefreshInFlightRef.current) return
+
+      liveRefreshInFlightRef.current = true
+      try {
+        await loadBase()
+        if (selectedThreadId) {
+          await loadDetail(selectedThreadId)
+        }
+      } finally {
+        liveRefreshInFlightRef.current = false
       }
-    }, 4000)
+    }
+
+    const interval = window.setInterval(() => {
+      void runLiveRefresh()
+    }, 8000)
 
     return () => window.clearInterval(interval)
   }, [selectedThreadId])
@@ -417,7 +440,9 @@ export function CrmTeamChatClient({ sidebarHeader }: CrmTeamChatClientProps) {
   const selectedThreadSharedFiles = useMemo(() => {
     if (!selectedThread) return [] as Array<ChatAttachment & { messageId: string; occurredAt: string; senderLabel: string }>
     return selectedThread.messages
-      .flatMap((message) => (message.attachments ?? []).map((attachment) => ({
+      .flatMap((message) => (message.attachments ?? [])
+        .filter((attachment) => isRenderableAttachmentUrl(attachment.url))
+        .map((attachment) => ({
         ...attachment,
         messageId: message.id,
         occurredAt: message.occurredAt,

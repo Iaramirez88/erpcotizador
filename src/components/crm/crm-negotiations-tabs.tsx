@@ -10,7 +10,6 @@ type Props = {
 
 const NEGOTIATION_TABS = [
   { href: '/dashboard/crm/negociaciones/pipeline', label: 'Pipeline' },
-  { href: '/dashboard/crm/negociaciones/oportunidades', label: 'Oportunidades' },
   { href: '/dashboard/crm/negociaciones/calendario', label: 'Calendario' },
   { href: '/dashboard/crm/negociaciones/actividades', label: 'Actividades' },
 ] as const
