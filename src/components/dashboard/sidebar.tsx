@@ -976,23 +976,6 @@ export default function Sidebar({ user }: SidebarProps) {
 
   return (
     <>
-      {!mobileNavOpen ? (
-        <button
-          type="button"
-          className={cn(
-            "fixed left-3 top-3 z-40 inline-flex h-10 w-10 items-center justify-center rounded-xl border shadow-sm md:hidden",
-            softButton,
-            isDark ? "bg-slate-900/95 backdrop-blur" : "bg-white/95 backdrop-blur"
-          )}
-          onClick={() => setMobileNavOpen(true)}
-          aria-label="Abrir menú"
-        >
-          <svg className="h-4.5 w-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-      ) : null}
-
       {/* Backdrop (mobile) */}
       <div
         className={cn(

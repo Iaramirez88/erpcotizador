@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import { uploadFileWithProgress } from '@/lib/upload-file-with-progress'
 
 const CHAT_DRAWER_TOGGLE_EVENT = 'dashboard:toggle-conversations-drawer'
+const CHAT_DRAWER_VISIBILITY_EVENT = 'dashboard:conversations-drawer-visibility'
 
 type TeamUser = {
   id: string
@@ -361,6 +362,10 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     window.addEventListener(CHAT_DRAWER_TOGGLE_EVENT, handleToggleDrawer)
     return () => window.removeEventListener(CHAT_DRAWER_TOGGLE_EVENT, handleToggleDrawer)
   }, [currentUserRole])
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(CHAT_DRAWER_VISIBILITY_EVENT, { detail: { open } }))
+  }, [open])
   const [crmAttachmentUpload, setCrmAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [crmLibraryPickerOpen, setCrmLibraryPickerOpen] = useState(false)
   const [crmConvertDialogOpen, setCrmConvertDialogOpen] = useState(false)
@@ -1412,7 +1417,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   }
 
   return (
-    <div className="pointer-events-none fixed bottom-0 right-0 z-[70] flex flex-col items-end sm:right-6">
+    <div className="pointer-events-none fixed bottom-0 right-0 z-[95] flex flex-col items-end sm:right-6 md:z-[70]">
       <CrmFileLibraryPicker
         open={crmLibraryPickerOpen}
         onOpenChange={setCrmLibraryPickerOpen}
