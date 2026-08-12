@@ -326,6 +326,7 @@ type WizardStep = 'template' | 'config' | 'review' | 'implementation'
 type ChatbotPreviewMode = 'floating' | 'compact' | 'expanded'
 type ChatbotPreviewViewport = 'desktop' | 'mobile'
 type CrmWorkspaceView = 'operations' | 'chatbots' | 'addons' | 'metrics'
+type ChatbotsPanelView = 'channels' | 'studio'
 type CrmOperationsPanelView = 'preview' | 'readiness' | 'assets'
 type LauncherPosition = 'left' | 'center' | 'right'
 type LauncherSize = 'compact' | 'standard' | 'large'
@@ -2620,6 +2621,7 @@ export function CrmIntegrationsClient() {
   const [createOpen, setCreateOpen] = useState(false)
   const [wizardStep, setWizardStep] = useState<WizardStep>('template')
   const [workspaceView, setWorkspaceView] = useState<CrmWorkspaceView>('operations')
+  const [chatbotsPanelView, setChatbotsPanelView] = useState<ChatbotsPanelView>('channels')
   const [operationsPanelView, setOperationsPanelView] = useState<CrmOperationsPanelView>('preview')
   const [metricsExpanded, setMetricsExpanded] = useState(false)
   const [baseUrl, setBaseUrl] = useState('')
@@ -4427,6 +4429,21 @@ export function CrmIntegrationsClient() {
     }
   }), [chatbotCapableChannels])
 
+  const webChatbotStudioChannel = useMemo(() => {
+    if (selectedChannel?.provider === 'WEB_CHATBOT') return selectedChannel
+    return chatbotCapableChannels.find((channel) => channel.provider === 'WEB_CHATBOT') ?? null
+  }, [chatbotCapableChannels, selectedChannel])
+
+  const selectedChatbotSummary = useMemo(
+    () => selectedChannel ? chatbotChannelSummaries.find((item) => item.channel.id === selectedChannel.id) ?? null : null,
+    [chatbotChannelSummaries, selectedChannel],
+  )
+
+  const selectedChatbotSettings = (selectedChannel?.settingsJson as Record<string, unknown> | null | undefined) ?? null
+  const selectedChatbotBridge = getBridgeKind(selectedChatbotSettings)
+  const selectedIsWebChatbot = selectedChannel?.provider === 'WEB_CHATBOT'
+  const selectedIsChatbotCapable = Boolean(selectedChatbotSummary)
+
   useEffect(() => {
     if (!selectedAssetTabs.includes(activeAssetTab)) {
       setActiveAssetTab(selectedAssetTabs[0] || 'overview')
@@ -4491,96 +4508,127 @@ export function CrmIntegrationsClient() {
         </div>
 
         <TabsContent value="chatbots" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
-            <Card className="rounded-[24px] border-slate-200 bg-white/95 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.3)]">
-              <CardHeader className="border-b border-slate-100 pb-4">
-                <CardTitle>Chatbots por canal</CardTitle>
-                <CardDescription>Este panel separa lo que ya está operativo hoy de lo que todavía requiere desarrollo backend para redes sociales.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3 p-4">
-                {chatbotChannelSummaries.length === 0 ? <p className="text-sm text-slate-500">Aún no hay canales compatibles para chatbot.</p> : null}
-                {chatbotChannelSummaries.map(({ channel, enabledFlowsCount, runtimeReady, supportLabel, supportDescription }) => {
-                  const isSelected = channel.id === selectedChannelId
-                  const channelSettings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
-                  const bridgeKind = getBridgeKind(channelSettings)
+          <Tabs value={chatbotsPanelView} onValueChange={(value) => setChatbotsPanelView(value as ChatbotsPanelView)} className="space-y-4">
+            <div className="rounded-[24px] border border-slate-200 bg-white/95 p-2 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.3)]">
+              <TabsList className="grid h-auto grid-cols-2 rounded-[18px] border border-slate-200 bg-slate-50 p-1">
+                <TabsTrigger value="channels" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">Canales y asociación</TabsTrigger>
+                <TabsTrigger value="studio" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">Chatbot Studio</TabsTrigger>
+              </TabsList>
+            </div>
 
-                  return (
-                    <button
-                      key={channel.id}
-                      type="button"
-                      onClick={() => setSelectedChannelId(channel.id)}
-                      className={isSelected ? 'w-full rounded-[24px] border-2 border-sky-300 bg-sky-50/70 p-4 text-left shadow-sm' : 'w-full rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md'}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{getChannelProviderLabel(channel.provider, bridgeKind)}</p>
-                          <p className="mt-1 text-base font-semibold text-slate-950">{channel.name}</p>
-                          <p className="mt-1 text-sm leading-6 text-slate-600">{supportDescription}</p>
+            <TabsContent value="channels" className="space-y-4">
+              <div className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
+                <Card className="rounded-[24px] border-slate-200 bg-white/95 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.3)]">
+                  <CardHeader className="border-b border-slate-100 pb-4">
+                    <CardTitle>Chatbots por canal</CardTitle>
+                    <CardDescription>Selecciona un canal y revisa cómo se relaciona hoy con el chatbot y el inbox CRM.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3 p-4">
+                    {chatbotChannelSummaries.length === 0 ? <p className="text-sm text-slate-500">Aún no hay canales compatibles para chatbot.</p> : null}
+                    {chatbotChannelSummaries.map(({ channel, enabledFlowsCount, runtimeReady, supportLabel, supportDescription }) => {
+                      const isSelected = channel.id === selectedChannelId
+                      const channelSettings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
+                      const bridgeKind = getBridgeKind(channelSettings)
+
+                      return (
+                        <button
+                          key={channel.id}
+                          type="button"
+                          onClick={() => setSelectedChannelId(channel.id)}
+                          className={isSelected ? 'w-full rounded-[24px] border-2 border-sky-300 bg-sky-50/70 p-4 text-left shadow-sm' : 'w-full rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md'}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{getChannelProviderLabel(channel.provider, bridgeKind)}</p>
+                              <p className="mt-1 text-base font-semibold text-slate-950">{channel.name}</p>
+                              <p className="mt-1 text-sm leading-6 text-slate-600">{supportDescription}</p>
+                            </div>
+                            <span className={runtimeReady ? 'rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700' : 'rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700'}>{supportLabel}</span>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">Estado {channel.status}</span>
+                            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">Flujos activos: {enabledFlowsCount}</span>
+                            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">Conversaciones: {channel._count?.conversations ?? 0}</span>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-[24px] border-slate-200 bg-white/95 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.3)]">
+                  <CardHeader className="border-b border-slate-100 pb-4">
+                    <CardTitle>Asociación del canal</CardTitle>
+                    <CardDescription>Diagnóstico operativo del canal seleccionado y su cruce real con el chatbot.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4 p-4">
+                    {!selectedChannel ? <p className="text-sm text-slate-500">Selecciona un canal para revisar su estado de chatbot.</p> : null}
+                    {selectedChannel ? (
+                      <>
+                        <div className={selectedIsWebChatbot ? 'rounded-[24px] border border-emerald-200 bg-emerald-50/70 p-4' : selectedIsChatbotCapable ? 'rounded-[24px] border border-amber-200 bg-amber-50/70 p-4' : 'rounded-[24px] border border-slate-200 bg-slate-50 p-4'}>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{getChannelProviderLabel(selectedChannel.provider, selectedChatbotBridge)}</p>
+                          <p className="mt-1 text-xl font-semibold text-slate-950">{selectedChannel.name}</p>
+                          <p className="mt-2 text-sm leading-6 text-slate-600">{selectedChatbotSummary?.supportDescription || 'Este canal no participa en el modelo actual de chatbot; úsalo desde Operación para webhooks, formularios o bridges.'}</p>
                         </div>
-                        <span className={runtimeReady ? 'rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700' : 'rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700'}>{supportLabel}</span>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">Estado {channel.status}</span>
-                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">Flujos activos: {enabledFlowsCount}</span>
-                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">Conversaciones: {channel._count?.conversations ?? 0}</span>
-                      </div>
-                    </button>
-                  )
-                })}
-              </CardContent>
-            </Card>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Asociación actual</p>
+                            <p className="mt-2 text-sm text-slate-700">{selectedIsWebChatbot ? 'El canal usa su propia configuración de Chatbot Studio y ya puede operar como embed web con inbox CRM.' : selectedIsChatbotCapable ? `Este canal se cruza operativamente con el chatbot, pero la edición del flujo se hace desde ${webChatbotStudioChannel?.name ?? 'un canal WEB_CHATBOT'} y la ejecución automática inbound social en producción todavía no está completa.` : 'Este canal no depende de Chatbot Studio para operar.'}</p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Siguiente paso</p>
+                            <p className="mt-2 text-sm text-slate-700">{selectedIsWebChatbot ? 'Puedes abrir Chatbot Studio para editar branding, flujo y handoff del canal web.' : selectedIsChatbotCapable ? 'Puedes mantener este canal capturando y enroutando conversaciones, pero la automatización social productiva aún depende del runtime omnicanal.' : 'Gestiona este canal desde la pestaña Operación.'}</p>
+                          </div>
+                        </div>
+                      </>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
 
-            <Card className="rounded-[24px] border-slate-200 bg-white/95 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.3)]">
-              <CardHeader className="border-b border-slate-100 pb-4">
-                <CardTitle>Studio y asociación</CardTitle>
-                <CardDescription>Diagnóstico operativo del canal seleccionado y ruta clara para el siguiente paso.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4 p-4">
-                {!selectedChannel ? <p className="text-sm text-slate-500">Selecciona un canal para revisar su estado de chatbot.</p> : null}
-                {selectedChannel ? (() => {
-                  const selectedSummary = chatbotChannelSummaries.find((item) => item.channel.id === selectedChannel.id) ?? null
-                  const selectedChannelSettings = (selectedChannel.settingsJson as Record<string, unknown> | null | undefined) ?? null
-                  const selectedBridge = getBridgeKind(selectedChannelSettings)
-                  const isWebChatbot = selectedChannel.provider === 'WEB_CHATBOT'
-                  const isCapable = Boolean(selectedSummary)
-
-                  return (
+            <TabsContent value="studio" className="space-y-4">
+              <Card className="rounded-[24px] border-slate-200 bg-white/95 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.3)]">
+                <CardHeader className="border-b border-slate-100 pb-4">
+                  <CardTitle>Chatbot Studio</CardTitle>
+                  <CardDescription>Acceso central al flujo maestro del chatbot web y claridad de qué canal lo publica hoy.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 p-4">
+                  {webChatbotStudioChannel ? (
                     <>
-                      <div className={isWebChatbot ? 'rounded-[24px] border border-emerald-200 bg-emerald-50/70 p-4' : isCapable ? 'rounded-[24px] border border-amber-200 bg-amber-50/70 p-4' : 'rounded-[24px] border border-slate-200 bg-slate-50 p-4'}>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{getChannelProviderLabel(selectedChannel.provider, selectedBridge)}</p>
-                        <p className="mt-1 text-xl font-semibold text-slate-950">{selectedChannel.name}</p>
-                        <p className="mt-2 text-sm leading-6 text-slate-600">{selectedSummary?.supportDescription || 'Este canal no participa en el modelo actual de chatbot; úsalo desde Operación para webhooks, formularios o bridges.'}</p>
+                      <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/70 p-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Canal que publica el studio</p>
+                        <p className="mt-1 text-xl font-semibold text-slate-950">{webChatbotStudioChannel.name}</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">Este es el canal WEB_CHATBOT desde donde hoy se diseña y ejecuta el flujo maestro del chatbot en producción.</p>
                       </div>
                       <div className="grid gap-3 md:grid-cols-2">
                         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Asociación actual</p>
-                          <p className="mt-2 text-sm text-slate-700">{isWebChatbot ? 'El canal usa su propia configuración de Chatbot Studio y ya puede operar como embed web con inbox CRM.' : isCapable ? 'Este canal ya puede centralizar conversaciones, pero todavía no tiene ejecución automática del bot en inbound social productivo.' : 'Este canal no depende de Chatbot Studio para operar.'}</p>
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Qué controlas aquí</p>
+                          <p className="mt-2 text-sm text-slate-700">Flujo, branding, handoff, disparadores, pausas, launcher y comportamiento del chatbot web embebido.</p>
                         </div>
                         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Siguiente paso</p>
-                          <p className="mt-2 text-sm text-slate-700">{isWebChatbot ? 'Abrir el Studio avanzado para editar el flujo, handoff, disparadores, pausas y branding.' : isCapable ? 'Mantenerlo como canal omnicanal operativo. Para responder automáticamente por Instagram, Facebook, Messenger o WhatsApp aún falta ampliar runtime inbound y resolución de flujo por canal.' : 'Gestiona este canal desde la pestaña Operación.'}</p>
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Relación con redes sociales</p>
+                          <p className="mt-2 text-sm text-slate-700">Instagram, Facebook, Messenger y WhatsApp pueden cruzarse con el modelo conversacional, pero hoy no ejecutan ese flujo con la misma paridad productiva del canal web.</p>
                         </div>
                       </div>
-                      {isWebChatbot ? (
-                        <div className="flex flex-wrap gap-2">
-                          <Button asChild className="rounded-xl">
-                            <Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>Abrir Chatbot Studio</Link>
-                          </Button>
-                          <Button asChild variant="outline" className="rounded-xl">
-                            <Link href={`/dashboard/crm/integraciones?channelId=${selectedChannel.id}`}>Ver canal en Operación</Link>
-                          </Button>
-                        </div>
-                      ) : isCapable ? (
-                        <div className="rounded-2xl border border-dashed border-amber-300 bg-white p-4 text-sm leading-6 text-slate-600">
-                          El Studio ya permite diseñar flujos pensando en proveedores como WhatsApp, Instagram, Facebook y Messenger, pero hoy eso no equivale a automatización real en esos canales. El runtime productivo que ejecuta el chatbot automático sigue conectado únicamente al proveedor WEB_CHATBOT.
-                        </div>
-                      ) : null}
+                      <div className="flex flex-wrap gap-2">
+                        <Button asChild className="rounded-xl">
+                          <Link href={`/dashboard/crm/chatbot?channelId=${webChatbotStudioChannel.id}`}>Abrir Chatbot Studio</Link>
+                        </Button>
+                        <Button asChild variant="outline" className="rounded-xl">
+                          <Link href={`/dashboard/crm/integraciones?channelId=${webChatbotStudioChannel.id}`}>Ver canal del Studio</Link>
+                        </Button>
+                      </div>
                     </>
-                  )
-                })() : null}
-              </CardContent>
-            </Card>
-          </div>
+                  ) : (
+                    <div className="rounded-[24px] border border-dashed border-amber-300 bg-white p-5 text-sm leading-6 text-slate-600">
+                      Todavía no existe un canal WEB_CHATBOT creado para esta empresa. Por eso no aparece un Studio funcional aquí. Primero crea el canal web y luego vuelve a esta subpestaña.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="addons" className="space-y-4">
