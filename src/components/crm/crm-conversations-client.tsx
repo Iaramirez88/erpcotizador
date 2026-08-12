@@ -561,6 +561,41 @@ function getPrimaryAttachment(message: ConversationMessage) {
   return message.attachmentsJson.find((attachment) => typeof attachment?.url === 'string' && attachment.url.trim().length > 0) || null
 }
 
+function inferAttachmentKind(attachment: NonNullable<ConversationMessage['attachmentsJson']>[number]) {
+  const declaredType = String(attachment.type || '').trim().toLowerCase()
+  const mimeType = String(attachment.mimeType || '').trim().toLowerCase()
+  const attachmentUrl = String(attachment.url || '').trim().toLowerCase()
+
+  if (declaredType === 'image' || declaredType === 'audio' || declaredType === 'document') return declaredType
+  if (mimeType.startsWith('image/')) return 'image'
+  if (mimeType.startsWith('audio/')) return 'audio'
+  if (/\.(png|jpe?g|gif|webp|bmp|svg)(?:$|[?#])/i.test(attachmentUrl) || attachmentUrl.includes('ig_messaging_cdn')) return 'image'
+  if (/\.(mp3|m4a|wav|ogg|aac|webm)(?:$|[?#])/i.test(attachmentUrl)) return 'audio'
+  return 'document'
+}
+
+function getAttachmentDisplayName(attachment: NonNullable<ConversationMessage['attachmentsJson']>[number]) {
+  const rawName = String(attachment.name || attachment.alt || '').trim()
+  if (rawName && !/^https?:\/\//i.test(rawName)) return rawName
+
+  const inferredKind = inferAttachmentKind(attachment)
+  if (inferredKind === 'image') return 'Imagen recibida'
+  if (inferredKind === 'audio') return 'Audio recibido'
+  return 'Archivo adjunto'
+}
+
+function getUniqueAttachments(attachments: ConversationMessage['attachmentsJson']) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return []
+
+  const seen = new Set<string>()
+  return attachments.filter((attachment) => {
+    const attachmentUrl = String(attachment?.url || '').trim()
+    if (!attachmentUrl || seen.has(attachmentUrl)) return false
+    seen.add(attachmentUrl)
+    return true
+  })
+}
+
 function shouldHideMessageBodyText(message: ConversationMessage) {
   const bodyText = message.bodyText?.trim() || ''
   if (!bodyText) return false
@@ -583,10 +618,7 @@ function getAttachmentPreviewLabel(message: ConversationMessage) {
   const attachment = getPrimaryAttachment(message)
   if (!attachment) return null
 
-  const attachmentType = String(attachment.type || '').trim().toLowerCase()
-  if (attachmentType === 'image') return 'Imagen recibida'
-  if (attachmentType === 'audio') return 'Audio recibido'
-  return 'Archivo adjunto'
+  return getAttachmentDisplayName(attachment)
 }
 
 function getConversationPreviewText(message: ConversationMessage | undefined, fallback: string) {
@@ -636,16 +668,17 @@ function renderConversationMessageBody(args: {
 }
 
 function renderConversationAttachments(attachments: ConversationMessage['attachmentsJson']) {
-  if (!Array.isArray(attachments) || attachments.length === 0) return null
+  const uniqueAttachments = getUniqueAttachments(attachments)
+  if (uniqueAttachments.length === 0) return null
 
   return (
     <div className="mt-3 space-y-2">
-      {attachments.map((attachment, index) => {
-        const attachmentType = String(attachment.type || '').trim().toLowerCase()
+      {uniqueAttachments.map((attachment, index) => {
+        const attachmentType = inferAttachmentKind(attachment)
         const attachmentUrl = String(attachment.url || '').trim()
         if (!attachmentUrl) return null
 
-        const attachmentLabel = attachment.name || attachment.alt || attachmentUrl || 'Adjunto'
+        const attachmentLabel = getAttachmentDisplayName(attachment)
 
         if (attachmentType === 'image') {
           return (
@@ -1320,6 +1353,20 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       unassignedCount,
     }
   }, [conversations, currentUserId])
+
+  const configuredSidebarProviders = useMemo(() => {
+    const supportedProviders: ChannelProvider[] = ['WHATSAPP_CLOUD', 'MESSENGER', 'INSTAGRAM_DM', 'FACEBOOK_PAGE']
+    const activeProviderSet = new Set<ChannelProvider>()
+
+    channels.forEach((channel) => {
+      if (channel.status === 'DRAFT') return
+      if (supportedProviders.includes(channel.provider)) {
+        activeProviderSet.add(channel.provider)
+      }
+    })
+
+    return supportedProviders.filter((provider) => activeProviderSet.has(provider))
+  }, [channels])
 
   const advisorSummary = useMemo(() => {
     return [...assignees].sort((left, right) => {
@@ -2129,32 +2176,22 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                 </span>
               </Button>
 
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                 <div className="rounded-[28px] border border-slate-200 bg-white p-3.5">
-                  <div className="flex flex-col gap-3 px-1">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-950">Panel operativo</p>
-                      </div>
-                      <div className="flex items-center gap-2 rounded-[20px] border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                        <div className="grid gap-0.5">
-                          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tiempo real</span>
-                          <span>{liveMode ? 'Activo' : 'Pausado'}</span>
-                        </div>
-                        <Switch checked={liveMode} onCheckedChange={setLiveMode} />
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" className="rounded-2xl border-slate-200 bg-white" onClick={() => void Promise.all([loadConversations(), loadMeta()])}>
-                        <RefreshCcw className="mr-2 h-4 w-4" />
-                        Refrescar
-                      </Button>
+                  <div className="flex items-center justify-between gap-3 px-1">
+                    <Button variant="outline" className="rounded-2xl border-slate-200 bg-white" onClick={() => void Promise.all([loadConversations(), loadMeta()])}>
+                      <RefreshCcw className="mr-2 h-4 w-4" />
+                      Refrescar
+                    </Button>
+                    <div className="flex items-center gap-2 rounded-[20px] border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      <span>{liveMode ? 'Tiempo real activo' : 'Tiempo real pausado'}</span>
+                      <Switch checked={liveMode} onCheckedChange={setLiveMode} />
                     </div>
                   </div>
                   <div className="mt-3 space-y-1.5">
-                    <button type="button" onClick={() => setQueueScope('TEAM')} className={queueScope === 'TEAM' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
+                    <button type="button" onClick={() => { setQueueScope('TEAM'); setQueueFocus('ALL'); }} className={queueScope === 'TEAM' && queueFocus === 'ALL' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
                       <span className="inline-flex items-center gap-2 text-sm font-medium"><MessageCircle className="h-4 w-4" />Todos</span>
-                      <span className={queueScope === 'TEAM' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.teamCount}</span>
+                      <span className={queueScope === 'TEAM' && queueFocus === 'ALL' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.teamCount}</span>
                     </button>
                     <button type="button" onClick={() => setQueueScope('MINE')} className={queueScope === 'MINE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
                       <span className="inline-flex items-center gap-2 text-sm font-medium"><CheckCheck className="h-4 w-4" />Asignados a mí</span>
@@ -2164,30 +2201,29 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                       <span className="inline-flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" />Sin asignar</span>
                       <span className={queueScope === 'UNASSIGNED' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueSummary.unassignedCount}</span>
                     </button>
+                    <button type="button" onClick={() => setQueueFocus('IMMEDIATE')} className={queueFocus === 'IMMEDIATE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
+                      <span className="inline-flex items-center gap-2 text-sm font-medium"><AlertTriangle className="h-4 w-4" />No leídos / urgentes</span>
+                      <span className={queueFocus === 'IMMEDIATE' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.immediateCount}</span>
+                    </button>
+                    <button type="button" onClick={() => setQueueFocus('WAITING_CUSTOMER')} className={queueFocus === 'WAITING_CUSTOMER' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
+                      <span className="inline-flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" />Sin respuestas</span>
+                      <span className={queueFocus === 'WAITING_CUSTOMER' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.waitingCustomerCount}</span>
+                    </button>
+                    <button type="button" onClick={() => setQueueFocus('BOT_HANDOFF')} className={queueFocus === 'BOT_HANDOFF' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
+                      <span className="inline-flex items-center gap-2 text-sm font-medium"><Bot className="h-4 w-4" />Asignadas a la IA</span>
+                      <span className={queueFocus === 'BOT_HANDOFF' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.botHandoffCount}</span>
+                    </button>
+                    <button type="button" onClick={() => setQueueFocus('HYBRID_PHONE_ACTIVITY')} className={queueFocus === 'HYBRID_PHONE_ACTIVITY' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
+                      <span className="inline-flex items-center gap-2 text-sm font-medium"><PhoneCall className="h-4 w-4" />Actividad celular</span>
+                      <span className={queueFocus === 'HYBRID_PHONE_ACTIVITY' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.hybridPhoneActivityCount}</span>
+                    </button>
+                    {configuredSidebarProviders.map((provider) => (
+                      <button key={provider} type="button" onClick={() => setProviderFilter(provider)} className={providerFilter === provider || (provider === 'WHATSAPP_CLOUD' && providerFilter === 'WHATSAPP_SANDBOX') ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}>
+                        <span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider={provider} />{formatProviderDisplayName(provider)}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
-
-                <div className="rounded-[28px] border border-slate-200 bg-white p-3.5">
-                <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Por actividad</p>
-                <div className="mt-3 space-y-1.5">
-                  <button type="button" onClick={() => setQueueFocus('ALL')} className={queueFocus === 'ALL' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><MessageCircle className="h-4 w-4" />Todos</span><span className={queueFocus === 'ALL' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.allCount}</span></button>
-                  <button type="button" onClick={() => setQueueFocus('IMMEDIATE')} className={queueFocus === 'IMMEDIATE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><AlertTriangle className="h-4 w-4" />No leídos / urgentes</span><span className={queueFocus === 'IMMEDIATE' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.immediateCount}</span></button>
-                  <button type="button" onClick={() => setQueueFocus('WAITING_CUSTOMER')} className={queueFocus === 'WAITING_CUSTOMER' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><Clock3 className="h-4 w-4" />Sin respuestas</span><span className={queueFocus === 'WAITING_CUSTOMER' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.waitingCustomerCount}</span></button>
-                  <button type="button" onClick={() => setQueueFocus('BOT_HANDOFF')} className={queueFocus === 'BOT_HANDOFF' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><Bot className="h-4 w-4" />Asignadas a la IA</span><span className={queueFocus === 'BOT_HANDOFF' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.botHandoffCount}</span></button>
-                  <button type="button" onClick={() => setQueueFocus('HYBRID_PHONE_ACTIVITY')} className={queueFocus === 'HYBRID_PHONE_ACTIVITY' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><PhoneCall className="h-4 w-4" />Actividad celular</span><span className={queueFocus === 'HYBRID_PHONE_ACTIVITY' ? 'rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-700' : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600'}>{queueFocusSummary.hybridPhoneActivityCount}</span></button>
-                </div>
-              </div>
-
-              <div className="rounded-[28px] border border-slate-200 bg-white p-3.5">
-                <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Canales</p>
-                <div className="mt-3 space-y-1.5">
-                  <button type="button" onClick={() => setProviderFilter('WHATSAPP_CLOUD')} className={(providerFilter === 'WHATSAPP_CLOUD' || providerFilter === 'WHATSAPP_SANDBOX') ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="WHATSAPP_CLOUD" />WhatsApp</span><span className="text-[11px] text-slate-400">Chat</span></button>
-                  <button type="button" onClick={() => setProviderFilter('MESSENGER')} className={providerFilter === 'MESSENGER' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="MESSENGER" />Messenger</span><span className="text-[11px] text-slate-400">Meta</span></button>
-                  <button type="button" onClick={() => setProviderFilter('INSTAGRAM_DM')} className={providerFilter === 'INSTAGRAM_DM' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="INSTAGRAM_DM" />Instagram</span><span className="text-[11px] text-slate-400">DM</span></button>
-                  <button type="button" onClick={() => setProviderFilter('FACEBOOK_PAGE')} className={providerFilter === 'FACEBOOK_PAGE' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><ChannelProviderBadge provider="FACEBOOK_PAGE" />Facebook</span><span className="text-[11px] text-slate-400">Page</span></button>
-                  <button type="button" onClick={() => setProviderFilter('ALL')} className={providerFilter === 'ALL' ? 'flex w-full items-center justify-between rounded-2xl bg-blue-50 px-3.5 py-2.5 text-left text-blue-800' : 'flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-left text-slate-700 hover:bg-slate-50'}><span className="inline-flex items-center gap-2 text-sm font-medium"><Mail className="h-4 w-4" />Todos</span><span className="text-[11px] text-slate-400">Inbox</span></button>
-                </div>
-              </div>
 
                 <details className="rounded-[28px] border border-slate-200 bg-white p-3.5">
                 <summary className="cursor-pointer list-none px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Filtros avanzados</summary>
