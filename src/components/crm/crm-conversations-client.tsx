@@ -769,6 +769,7 @@ function getConversationPreviewText(message: ConversationMessage | undefined, fa
 function renderConversationMessageBody(args: {
   message: ConversationMessage
   search: string
+  onOpenAdvisorCall: (callType: 'video' | 'audio') => void
   onOpenInvitePreview: (preview: CallInvitePreview) => void
 }) {
   const inviteMeta = getCallInviteMeta(args.message)
@@ -787,10 +788,15 @@ function renderConversationMessageBody(args: {
               <p className="mt-1 text-xs leading-5 text-slate-600">La URL completa queda oculta para no romper el chat. Abre la invitacion en un modal del CRM.</p>
             </div>
           </div>
-          <Button type="button" variant="outline" className="shrink-0 rounded-xl border-sky-200 bg-white text-sky-700 hover:bg-sky-50" onClick={() => args.onOpenInvitePreview(inviteMeta)}>
-            {isVideo ? <Video className="mr-2 h-4 w-4" /> : <PhoneCall className="mr-2 h-4 w-4" />}
-            Abrir
-          </Button>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button type="button" className="rounded-xl bg-sky-600 text-white hover:bg-sky-700" onClick={() => args.onOpenAdvisorCall(inviteMeta.callType)}>
+              {isVideo ? <Video className="mr-2 h-4 w-4" /> : <PhoneCall className="mr-2 h-4 w-4" />}
+              Abrir en CRM
+            </Button>
+            <Button type="button" variant="outline" className="rounded-xl border-sky-200 bg-white text-sky-700 hover:bg-sky-50" onClick={() => args.onOpenInvitePreview(inviteMeta)}>
+              Ver invitacion
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -2655,11 +2661,13 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2 rounded-[20px] border border-slate-200 bg-white/92 p-1.5 shadow-[0_14px_32px_-28px_rgba(15,23,42,0.35)]">
-                          <Button type="button" variant="outline" size="icon" className="h-10 w-10 rounded-xl border-slate-200 bg-white" onClick={() => void openCallDialog('audio')} aria-label="Abrir modal de llamada" title="Llamada de audio">
+                          <Button type="button" variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void openCallDialog('audio')} aria-label="Abrir modal de llamada" title="Llamada de audio">
                             <PhoneCall className="h-4 w-4" />
+                            <span className="ml-2 hidden sm:inline">Llamada</span>
                           </Button>
-                          <Button type="button" variant="outline" size="icon" className="h-10 w-10 rounded-xl border-slate-200 bg-white" onClick={() => void openCallDialog('video')} aria-label="Abrir modal de videollamada" title="Videollamada">
+                          <Button type="button" variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void openCallDialog('video')} aria-label="Abrir modal de videollamada" title="Videollamada">
                             <Video className="h-4 w-4" />
+                            <span className="ml-2 hidden sm:inline">Videollamada</span>
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -2758,6 +2766,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                 {renderConversationMessageBody({
                                   message,
                                   search,
+                                  onOpenAdvisorCall: (callType) => void openCallDialog(callType),
                                   onOpenInvitePreview: setCallInvitePreview,
                                 })}
                                 {renderConversationAttachments(message.attachmentsJson)}
@@ -4009,6 +4018,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                               {renderConversationMessageBody({
                                 message,
                                 search,
+                                onOpenAdvisorCall: (callType) => void openCallDialog(callType),
                                 onOpenInvitePreview: setCallInvitePreview,
                               })}
                               {renderConversationAttachments(message.attachmentsJson)}
@@ -4319,7 +4329,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       </Dialog>
 
       <Dialog open={callDialogOpen} onOpenChange={setCallDialogOpen}>
-        <DialogContent className="z-[181] max-w-3xl rounded-[28px] border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-34px_rgba(15,23,42,0.42)]" overlayClassName="z-[180] bg-slate-950/75 backdrop-blur-[2px]">
+        <DialogContent className="z-[320] max-w-3xl rounded-[28px] border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-34px_rgba(15,23,42,0.42)]" overlayClassName="z-[319] bg-slate-950/75 backdrop-blur-[2px]">
           <div className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,.14),transparent_38%),linear-gradient(180deg,#f8fbff,#ffffff)] px-6 py-5">
           <DialogHeader>
             <DialogTitle>{callDialogType === 'audio' ? 'Llamada embebida CRM' : 'Videollamada embebida CRM'}</DialogTitle>
