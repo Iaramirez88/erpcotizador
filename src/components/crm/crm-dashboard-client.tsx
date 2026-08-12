@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { MoreHorizontal } from 'lucide-react'
 import { ErpBreadcrumbs } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -27,6 +36,7 @@ import {
 } from '@/components/ui/select'
 import { ArrowUpRight, Bot, CalendarClock, CircleDot, FileText, GripVertical, Mail, MessageCircle, PhoneCall, Plus, Sparkles, UserRound } from 'lucide-react'
 import { CrmLinkedFilesPanel } from '@/components/crm/crm-linked-files-panel'
+import { CrmNegotiationsPageHeader } from '@/components/crm/crm-negotiations-page-header'
 import { CrmNegotiationsTabs } from '@/components/crm/crm-negotiations-tabs'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
@@ -356,6 +366,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
   const [opportunityDialogOpen, setOpportunityDialogOpen] = useState(false)
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
   const [stageDialogOpen, setStageDialogOpen] = useState(false)
+  const [taskUtilityPanels, setTaskUtilityPanels] = useState({ filters: false, priorities: false })
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null)
   const [editingOpportunityId, setEditingOpportunityId] = useState<string | null>(null)
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
@@ -1427,34 +1438,180 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
     </div>
   )
 
+  const activityFiltersCard = (
+    <Card className="rounded-[26px] border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.35)]">
+      <CardContent className="grid gap-2.5 p-3 md:grid-cols-4 md:p-4">
+        <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
+          <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado lead</Label>
+          <Select value={leadStatusFilter} onValueChange={(value) => setLeadStatusFilter(value as 'ALL' | LeadStatus)}>
+            <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todos</SelectItem>
+              {LEAD_STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
+          <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Etapa oportunidad</Label>
+          <Select value={opportunityStageFilter} onValueChange={(value) => setOpportunityStageFilter(value as 'ALL' | OpportunityStage)}>
+            <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todas</SelectItem>
+              {stageSettings.map((item) => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
+          <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado tarea</Label>
+          <Select value={taskStatusFilter} onValueChange={(value) => setTaskStatusFilter(value as 'ALL' | TaskStatus)}>
+            <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todas</SelectItem>
+              {TASK_STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-end rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-2.5">
+          <Button variant="outline" className="h-9 w-full rounded-lg border-slate-200 bg-white" onClick={clearFilters}>Limpiar filtros</Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  const prioritiesCard = (
+    <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-[0_20px_44px_-34px_rgba(15,23,42,0.3)]">
+      <CardHeader className="border-b border-slate-100 pb-4">
+        <CardTitle className="text-base">Prioridades de hoy</CardTitle>
+        <CardDescription>Vista rápida para que el equipo comercial sepa dónde actuar primero sin recorrer todas las vistas del embudo.</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+        {priorities.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={item.action}
+            className={`grid gap-2 rounded-2xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${item.tone}`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-70">{item.title}</p>
+                <p className="mt-2 text-2xl font-semibold">{item.count}</p>
+              </div>
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-current/10 bg-white/70 text-xs font-semibold">
+                <ArrowUpRight className="h-4 w-4" />
+              </span>
+            </div>
+            <p className="text-sm leading-5 opacity-80">{item.hint}</p>
+          </button>
+        ))}
+      </CardContent>
+    </Card>
+  )
+
+  const taskOptionsMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="icon" className="rounded-2xl border-slate-200 bg-white/85 text-slate-700">
+          <MoreHorizontal className="h-4 w-4" />
+          <span className="sr-only">Mostrar opciones de actividades</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56 rounded-2xl p-1.5">
+        <DropdownMenuLabel className="px-2 py-1 text-xs uppercase tracking-[0.16em] text-slate-500">Vista rápida</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuCheckboxItem
+          checked={taskUtilityPanels.filters}
+          onCheckedChange={(checked) => setTaskUtilityPanels((current) => ({ ...current, filters: Boolean(checked) }))}
+          className="rounded-xl px-3 py-2 text-sm"
+        >
+          Mostrar filtros
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={taskUtilityPanels.priorities}
+          onCheckedChange={(checked) => setTaskUtilityPanels((current) => ({ ...current, priorities: Boolean(checked) }))}
+          className="rounded-xl px-3 py-2 text-sm"
+        >
+          Mostrar prioridades
+        </DropdownMenuCheckboxItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
+  const tasksBoard = (
+    <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+      <CardHeader className="border-b border-slate-100 pb-5">
+        <CardTitle className="text-xl">Actividades ({tasks.length})</CardTitle>
+        <CardDescription>Actividades comerciales que empujan captación y pipeline sin mezclar ambas lógicas.</CardDescription>
+      </CardHeader>
+      <CardContent className="p-4 md:p-5">
+        <div className="space-y-3">
+          {loading ? <p className="text-sm text-muted-foreground">Cargando...</p> : null}
+          {!loading && tasks.length === 0 ? <p className="text-sm text-muted-foreground">No hay actividades para mostrar.</p> : null}
+          {tasks.map((task) => {
+            const origin = task.originKey && task.originLabel
+              ? { key: task.originKey, label: task.originLabel }
+              : task.lead?.originKey && task.lead?.originLabel
+                ? { key: task.lead.originKey, label: task.lead.originLabel }
+                : task.lead?.source
+                  ? getLeadSourceFallbackMeta(task.lead.source)
+                  : null
+            return (
+              <div key={task.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-lg font-semibold text-slate-900">{task.title}</span>
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">{task.status}</span>
+                      <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-violet-700">{task.priority}</span>
+                      {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
+                    </div>
+                    <p className="text-sm text-slate-600">{task.opportunity?.title || task.lead?.nombre || 'Sin relación'} · vence {formatDate(task.dueAt, locale, 'Sin fecha')}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {task.status !== 'DONE' ? (
+                      <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void completeTask(task.id)}>Marcar hecha</Button>
+                    ) : null}
+                    {task.status === 'DONE' ? (
+                      <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void updateTaskStatus(task.id, 'OPEN')}>Reabrir</Button>
+                    ) : null}
+                    {task.status !== 'CANCELED' ? (
+                      <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void updateTaskStatus(task.id, 'CANCELED')}>Cancelar</Button>
+                    ) : null}
+                    <Button variant="ghost" className="rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEditTaskDialog(task)}>Editar</Button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+
   return (
     <div className="space-y-4.5 pb-4">
       {isFocusedOpportunities ? (
         <>
-          <section className="space-y-3 px-1 pt-1">
-            <ErpBreadcrumbs
-              items={[
-                { label: 'Dashboard', href: '/dashboard' },
-                { label: 'CRM', href: '/dashboard/crm' },
-                { label: 'Negociaciones' },
-              ]}
-            />
-            <div className="space-y-1.5">
-              <div className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">
-                Pipeline CRM
-              </div>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">Oportunidades y pipeline comercial</h1>
-              <p className="max-w-3xl text-sm leading-6 text-slate-600">El pipeline queda primero y siempre visible. El resto del contexto se consulta por tabs sin perder de vista el embudo.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
-                <Link href="/dashboard/crm/negociaciones">Volver a Negociaciones</Link>
-              </Button>
-              <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => openCreateOpportunityDialog()}>
-                Nuevo deal
-              </Button>
-            </div>
-          </section>
+          <CrmNegotiationsPageHeader
+            breadcrumbs={[
+              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'CRM', href: '/dashboard/crm' },
+              { label: 'Negociaciones' },
+            ]}
+            eyebrow="Pipeline CRM"
+            title="Oportunidades y pipeline comercial"
+            description="El pipeline queda primero y siempre visible. El resto del contexto se consulta por tabs sin perder de vista el embudo."
+            actions={
+              <>
+                <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
+                  <Link href="/dashboard/crm/negociaciones">Volver a Negociaciones</Link>
+                </Button>
+                <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => openCreateOpportunityDialog()}>
+                  Nuevo deal
+                </Button>
+              </>
+            }
+          />
 
           <CrmNegotiationsTabs />
 
@@ -1495,6 +1652,37 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
 
             {focusedOpportunityTab === 'list' ? opportunityListBoard : null}
           </section>
+        </>
+      ) : isFocusedTasks ? (
+        <>
+          <CrmNegotiationsPageHeader
+            breadcrumbs={[
+              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'CRM', href: '/dashboard/crm' },
+              { label: 'Negociaciones' },
+            ]}
+            eyebrow="Seguimiento CRM"
+            title="Actividades y seguimiento comercial"
+            description="Gestiona pendientes comerciales sin cargar el dashboard general. Si necesitas apoyo extra, abre filtros o prioridades desde el menú de opciones."
+            actions={
+              <>
+                <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
+                  <Link href="/dashboard/crm/negociaciones">Volver a Negociaciones</Link>
+                </Button>
+                <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={openCreateTaskDialog}>
+                  Nueva actividad
+                </Button>
+                {taskOptionsMenu}
+              </>
+            }
+          />
+
+          <CrmNegotiationsTabs />
+
+          {taskUtilityPanels.filters ? activityFiltersCard : null}
+          {taskUtilityPanels.priorities ? prioritiesCard : null}
+
+          {tasksBoard}
         </>
       ) : (
         <>
@@ -1557,71 +1745,9 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
             </div>
           </section>
 
-          <Card className="rounded-[26px] border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.35)]">
-            <CardContent className="grid gap-2.5 p-3 md:grid-cols-4 md:p-4">
-              <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
-                <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado lead</Label>
-                <Select value={leadStatusFilter} onValueChange={(value) => setLeadStatusFilter(value as 'ALL' | LeadStatus)}>
-                  <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Todos</SelectItem>
-                    {LEAD_STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
-                <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Etapa oportunidad</Label>
-                <Select value={opportunityStageFilter} onValueChange={(value) => setOpportunityStageFilter(value as 'ALL' | OpportunityStage)}>
-                  <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Todas</SelectItem>
-                    {stageSettings.map((item) => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
-                <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado tarea</Label>
-                <Select value={taskStatusFilter} onValueChange={(value) => setTaskStatusFilter(value as 'ALL' | TaskStatus)}>
-                  <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Todas</SelectItem>
-                    {TASK_STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-end rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-2.5">
-                <Button variant="outline" className="h-9 w-full rounded-lg border-slate-200 bg-white" onClick={clearFilters}>Limpiar filtros</Button>
-              </div>
-            </CardContent>
-          </Card>
+          {activityFiltersCard}
 
-          <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-[0_20px_44px_-34px_rgba(15,23,42,0.3)]">
-            <CardHeader className="border-b border-slate-100 pb-4">
-              <CardTitle className="text-base">Prioridades de hoy</CardTitle>
-              <CardDescription>Vista rápida para que el equipo comercial sepa dónde actuar primero sin recorrer todas las vistas del embudo.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
-              {priorities.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={item.action}
-                  className={`grid gap-2 rounded-2xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${item.tone}`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-70">{item.title}</p>
-                      <p className="mt-2 text-2xl font-semibold">{item.count}</p>
-                    </div>
-                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-current/10 bg-white/70 text-xs font-semibold">
-                      <ArrowUpRight className="h-4 w-4" />
-                    </span>
-                  </div>
-                  <p className="text-sm leading-5 opacity-80">{item.hint}</p>
-                </button>
-              ))}
-            </CardContent>
-          </Card>
+          {prioritiesCard}
         </>
       )}
 
@@ -1793,108 +1919,9 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
 
         <TabsContent value="tasks" className="space-y-4 pt-4">
           <CrmNegotiationsTabs className="mb-1" />
-          <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
-            <CardHeader className="border-b border-slate-100 pb-5">
-              <CardTitle className="text-xl">Actividades ({tasks.length})</CardTitle>
-              <CardDescription>Actividades comerciales que empujan captación y pipeline sin mezclar ambas lógicas.</CardDescription>
-            </CardHeader>
-            <CardContent className="p-4 md:p-5">
-              <div className="space-y-3">
-                {loading ? <p className="text-sm text-muted-foreground">Cargando...</p> : null}
-                {!loading && tasks.length === 0 ? <p className="text-sm text-muted-foreground">No hay tareas para mostrar.</p> : null}
-                {tasks.map((task) => {
-                  const origin = task.originKey && task.originLabel
-                    ? { key: task.originKey, label: task.originLabel }
-                    : task.lead?.originKey && task.lead?.originLabel
-                      ? { key: task.lead.originKey, label: task.lead.originLabel }
-                      : task.lead?.source
-                        ? getLeadSourceFallbackMeta(task.lead.source)
-                        : null
-                  return (
-                    <div key={task.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-lg font-semibold text-slate-900">{task.title}</span>
-                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">{task.status}</span>
-                            <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-violet-700">{task.priority}</span>
-                            {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
-                          </div>
-                          <p className="text-sm text-slate-600">{task.opportunity?.title || task.lead?.nombre || 'Sin relación'} · vence {formatDate(task.dueAt, locale, 'Sin fecha')}</p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {task.status !== 'DONE' ? (
-                            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void completeTask(task.id)}>Marcar hecha</Button>
-                          ) : null}
-                          {task.status === 'DONE' ? (
-                            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void updateTaskStatus(task.id, 'OPEN')}>Reabrir</Button>
-                          ) : null}
-                          {task.status !== 'CANCELED' ? (
-                            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void updateTaskStatus(task.id, 'CANCELED')}>Cancelar</Button>
-                          ) : null}
-                          <Button variant="ghost" className="rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEditTaskDialog(task)}>Editar</Button>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
+          {tasksBoard}
         </TabsContent>
       </Tabs>
-      ) : isFocusedTasks ? (
-        <div className="space-y-4 pt-1">
-          <CrmNegotiationsTabs />
-          <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
-            <CardHeader className="border-b border-slate-100 pb-5">
-              <CardTitle className="text-xl">Actividades ({tasks.length})</CardTitle>
-              <CardDescription>Actividades comerciales que empujan captación y pipeline sin mezclar ambas lógicas.</CardDescription>
-            </CardHeader>
-            <CardContent className="p-4 md:p-5">
-              <div className="space-y-3">
-                {loading ? <p className="text-sm text-muted-foreground">Cargando...</p> : null}
-                {!loading && tasks.length === 0 ? <p className="text-sm text-muted-foreground">No hay actividades para mostrar.</p> : null}
-                {tasks.map((task) => {
-                  const origin = task.originKey && task.originLabel
-                    ? { key: task.originKey, label: task.originLabel }
-                    : task.lead?.originKey && task.lead?.originLabel
-                      ? { key: task.lead.originKey, label: task.lead.originLabel }
-                      : task.lead?.source
-                        ? getLeadSourceFallbackMeta(task.lead.source)
-                        : null
-                  return (
-                    <div key={task.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-lg font-semibold text-slate-900">{task.title}</span>
-                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">{task.status}</span>
-                            <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-violet-700">{task.priority}</span>
-                            {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
-                          </div>
-                          <p className="text-sm text-slate-600">{task.opportunity?.title || task.lead?.nombre || 'Sin relación'} · vence {formatDate(task.dueAt, locale, 'Sin fecha')}</p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {task.status !== 'DONE' ? (
-                            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void completeTask(task.id)}>Marcar hecha</Button>
-                          ) : null}
-                          {task.status === 'DONE' ? (
-                            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void updateTaskStatus(task.id, 'OPEN')}>Reabrir</Button>
-                          ) : null}
-                          {task.status !== 'CANCELED' ? (
-                            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void updateTaskStatus(task.id, 'CANCELED')}>Cancelar</Button>
-                          ) : null}
-                          <Button variant="ghost" className="rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEditTaskDialog(task)}>Editar</Button>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       ) : null}
 
       <Dialog open={opportunityDealOpen} onOpenChange={setOpportunityDealOpen}>

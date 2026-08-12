@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Bot, FileText, Mail, MessageCircle, PhoneCall } from 'lucide-react'
-import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { CrmNegotiationsPageHeader } from '@/components/crm/crm-negotiations-page-header'
+import { CrmNegotiationsTabs } from '@/components/crm/crm-negotiations-tabs'
 import { CardInfoHeader } from '@/components/ui/card-info-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -364,13 +365,13 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
 
   return (
     <div className="space-y-4.5 pb-4">
-      <ErpPageHero
+      <CrmNegotiationsPageHeader
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'CRM', href: '/dashboard/crm' },
-          { label: 'Calendario' },
+          { label: 'Negociaciones' },
         ]}
-        eyebrow="CRM Calendario"
+        eyebrow="Calendario CRM"
         title="Calendario comercial y agendamiento"
         description="Agenda prospectos y clientes, consulta compromisos por día y gestiona el seguimiento comercial desde una sola vista."
         actions={
@@ -383,12 +384,9 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
             </Button> : null}
           </>
         }
-        stats={[
-          { label: 'Abiertas', value: openTasks, hint: 'Acciones pendientes', tone: 'sky' },
-          { label: 'Vencidas', value: overdueTasks, hint: 'Requieren atención', tone: 'amber' },
-          { label: 'Hoy', value: scheduledToday, hint: 'Compromisos del día', tone: 'teal' },
-        ]}
       />
+
+      <CrmNegotiationsTabs />
 
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
