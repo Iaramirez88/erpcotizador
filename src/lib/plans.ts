@@ -13,7 +13,7 @@ export const PLANES: PlanInfo[] = [
   {
     tier: 'CRM',
     nombre: 'CRM',
-    descripcion: 'Plan especializado solo para CRM omnicanal, agenda comercial, leads, oportunidades, tareas y chat global del equipo.',
+    descripcion: 'Plan especializado solo para CRM omnicanal, agenda comercial, leads, oportunidades, tareas y conversaciones del equipo.',
     precioMensualCOP: 150000,
   },
   {

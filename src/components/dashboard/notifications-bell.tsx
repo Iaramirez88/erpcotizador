@@ -8,7 +8,7 @@ import NotificationsPanel from '@/components/dashboard/notifications-panel'
 
 type Props = {
   onUnreadCountChange?: (count: number) => void
-  placement?: 'header' | 'sidebar-footer'
+  placement?: 'header' | 'sidebar-footer' | 'mobile-footer'
 }
 
 export default function NotificationsBell({ onUnreadCountChange, placement = 'header' }: Props) {
@@ -83,7 +83,7 @@ export default function NotificationsBell({ onUnreadCountChange, placement = 'he
         type="button"
         variant="ghost"
         size="icon"
-        className="relative h-9 w-9 rounded-full"
+        className={placement === 'mobile-footer' ? 'relative h-11 w-11 rounded-2xl text-slate-700 hover:bg-slate-100' : 'relative h-9 w-9 rounded-full'}
         aria-label="Notificaciones"
         onClick={() => setOpen((v) => !v)}
       >
@@ -108,7 +108,9 @@ export default function NotificationsBell({ onUnreadCountChange, placement = 'he
           ref={panelRef}
           className={placement === 'sidebar-footer'
             ? 'absolute bottom-0 left-full z-50 ml-4 h-[70vh] w-[360px] max-w-[calc(100vw-6rem)] overflow-hidden rounded-[28px] border bg-background shadow-[0_24px_60px_-28px_rgba(15,23,42,0.38)]'
-            : 'fixed right-4 top-[72px] z-50 h-[70vh] w-[360px] max-w-[calc(100vw-2rem)] overflow-hidden border bg-background'}
+            : placement === 'mobile-footer'
+              ? 'absolute bottom-full right-0 z-50 mb-3 h-[70vh] w-[min(360px,calc(100vw-1.5rem))] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[28px] border bg-background shadow-[0_24px_60px_-28px_rgba(15,23,42,0.38)]'
+              : 'fixed right-4 top-[72px] z-50 h-[70vh] w-[360px] max-w-[calc(100vw-2rem)] overflow-hidden border bg-background'}
         >
           <NotificationsPanel onUnreadCountChange={setUnreadCount} />
         </div>

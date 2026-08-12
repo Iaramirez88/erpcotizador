@@ -44,7 +44,7 @@ interface HeaderProps {
     canManageBilling?: boolean
     canAccessWebsiteServices?: boolean
   }
-  variant?: 'sticky' | 'inline' | 'sidebar-footer'
+  variant?: 'sticky' | 'inline' | 'sidebar-footer' | 'mobile-footer'
 }
 
 const DEFAULT_SIDEBAR_TOOLTIP_PREFS: SidebarTooltipPrefs = { desktop: true, mobile: true }
@@ -469,12 +469,13 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
     )
 
   const isSidebarFooter = variant === 'sidebar-footer'
+  const isMobileFooter = variant === 'mobile-footer'
 
   const actions = (
     <>
       {/* Actions */}
       <div className={isSidebarFooter ? 'flex shrink-0 flex-col items-center gap-2' : 'flex shrink-0 items-center gap-1.5 sm:gap-2'}>
-          <NotificationsBell placement={isSidebarFooter ? 'sidebar-footer' : 'header'} />
+          <NotificationsBell placement={isSidebarFooter ? 'sidebar-footer' : isMobileFooter ? 'mobile-footer' : 'header'} />
 
           {navPrefs ? (
             <NavSettingsDialog
@@ -496,12 +497,12 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
                 variant="ghost"
                 size="icon"
                 type="button"
-                className="h-9 w-9 rounded-full p-0 hover:bg-accent/60"
+                className={isMobileFooter ? 'h-11 w-11 rounded-2xl p-0 hover:bg-slate-100' : 'h-9 w-9 rounded-full p-0 hover:bg-accent/60'}
                 aria-label={t('header.profile')}
               >
-                <div className="relative h-8 w-8 overflow-hidden rounded-full bg-muted">
+                <div className={isMobileFooter ? 'relative h-9 w-9 overflow-hidden rounded-2xl bg-muted' : 'relative h-8 w-8 overflow-hidden rounded-full bg-muted'}>
                   {user.image ? (
-                    <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes="32px" unoptimized />
+                    <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes={isMobileFooter ? '36px' : '32px'} unoptimized />
                   ) : (
                     <div className="grid h-full w-full place-items-center bg-muted text-[11px] font-semibold text-foreground">
                       {initials}
@@ -512,8 +513,8 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align={isSidebarFooter ? 'start' : 'end'}
-              side={isSidebarFooter ? 'right' : 'bottom'}
-              sideOffset={isSidebarFooter ? 16 : 8}
+              side={isSidebarFooter ? 'right' : isMobileFooter ? 'top' : 'bottom'}
+              sideOffset={isSidebarFooter ? 16 : isMobileFooter ? 12 : 8}
               className="w-80 rounded-3xl border-slate-200 p-3 shadow-[0_22px_45px_-28px_rgba(15,23,42,0.35)]"
             >
 
@@ -606,7 +607,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
     </>
   )
 
-  if (variant === 'inline' || variant === 'sidebar-footer') {
+  if (variant === 'inline' || variant === 'sidebar-footer' || variant === 'mobile-footer') {
     return actions
   }
 

@@ -38,6 +38,7 @@ import {
   getChatbotStudioSettings,
   getDefaultChatbotAutomationFlowFromSettings,
   mergeChatbotDefaultFlowSettings,
+  type ChatbotAutomationProvider,
 } from '@/lib/crm-chatbot-studio'
 import {
   getPublicChatbotPreChatFormPreset,
@@ -324,7 +325,7 @@ type ImplementationAssetCard = {
 type WizardStep = 'template' | 'config' | 'review' | 'implementation'
 type ChatbotPreviewMode = 'floating' | 'compact' | 'expanded'
 type ChatbotPreviewViewport = 'desktop' | 'mobile'
-type CrmWorkspaceView = 'operations' | 'addons' | 'metrics'
+type CrmWorkspaceView = 'operations' | 'chatbots' | 'addons' | 'metrics'
 type CrmOperationsPanelView = 'preview' | 'readiness' | 'assets'
 type LauncherPosition = 'left' | 'center' | 'right'
 type LauncherSize = 'compact' | 'standard' | 'large'
@@ -521,7 +522,7 @@ const WEB_FORM_CUSTOM_FIELD_TYPE_OPTIONS: Array<{ value: WebFormCustomFieldType;
 
 const CHATBOT_WIZARD_SECTION_OPTIONS: Array<{ id: ChatbotWizardSection; label: string }> = [
   { id: 'base', label: 'Base del canal' },
-  { id: 'brand', label: 'Marca y panel' },
+  { id: 'brand', label: 'Apariencia del Widget' },
   { id: 'launcher', label: 'Launcher' },
   { id: 'copy', label: 'Captura y copy' },
 ]
@@ -828,46 +829,6 @@ function getDetailedIntegrationGuide(args: {
     visualNodes,
   })
 
-  if (key === 'web-form') {
-    return buildBridgeGuide(
-      tx('Integración detallada de Formulario Web', 'Detailed Web Form integration'),
-      tx('Publica el formulario del CRM como iframe o incrústalo sobre un formulario existente del cliente.', 'Publish the CRM form as an iframe or embed it on the client\'s existing form.'),
-      'sky',
-      tx('Marketing, desarrollo web o implementador del sitio.', 'Marketing, web development, or site implementer.'),
-      [tx('Canal creado y activo en el studio.', 'Channel created and active in the studio.'), tx('Definir si se usará URL pública, iframe o snippet sobre un DOM existente.', 'Define whether to use a public URL, iframe, or snippet on an existing DOM.'), tx('Tener identificado el dominio final donde se publicará.', 'Identify the final domain where it will be published.')],
-      [
-        { title: tx('1. Ajusta el formulario en el CRM', '1. Adjust the form in the CRM'), detail: tx('Configura textos, campos, CTA, términos y apariencia visual.', 'Configure copy, fields, CTA, legal terms, and visual appearance.'), bullets: [tx('Verifica labels y placeholders comerciales.', 'Verify commercial labels and placeholders.'), tx('Si el cliente no tiene frontend propio, prioriza iframe.', 'If the client has no custom frontend, prioritize the iframe.'), tx('Si ya existe un formulario en la landing, deja listo el selector.', 'If a form already exists on the landing page, leave the selector ready.')] },
-        { title: tx('2. Publica la versión embebible', '2. Publish the embeddable version'), detail: tx('Copia la URL pública o el iframe listo para pegar.', 'Copy the public URL or the iframe ready to paste.'), bullets: [`${tx('URL pública', 'Public URL')}: ${snippets?.webFormEmbedUrl || tx('Disponible al seleccionar el canal.', 'Available when selecting the channel.')}`, tx('Usa iframe para CMS o builder visual.', 'Use the iframe for a CMS or visual builder.'), tx('Valida que el sitio no bloquee el embebido por CSP o dominio.', 'Validate that the site does not block the embed because of CSP or domain rules.')] },
-        { title: tx('3. Si el cliente ya tiene formulario, usa el snippet bridge', '3. If the client already has a form, use the bridge snippet'), detail: tx('Pega el snippet sobre el DOM existente y ajusta el selector.', 'Paste the snippet into the existing DOM and adjust the selector.'), bullets: [tx('Revisa que el selector exista realmente al cargar la página.', 'Check that the selector actually exists when the page loads.'), `${tx('Token de referencia', 'Reference token')}: ${tokenLabel}`, tx('Mapea nombre, correo, teléfono y mensaje con los names correctos.', 'Map name, email, phone, and message using the correct field names.')] },
-        { title: tx('4. Ejecuta la prueba punta a punta', '4. Run the end-to-end test'), detail: tx('Envía una captura real desde la página y revisa lead, actividad y fuente dentro del CRM.', 'Send a real capture from the page and review the lead, activity, and source inside the CRM.'), bullets: [tx('Revisa el endpoint y el estado del canal.', 'Review the endpoint and the channel status.'), tx('Haz una prueba repetida para validar deduplicación.', 'Run a repeated test to validate deduplication.'), tx('Pasa a ACTIVE solo cuando cierre la prueba real.', 'Move to ACTIVE only when the real test is closed.')] },
-      ],
-      [tx('El formulario abre correctamente.', 'The form opens correctly.'), tx('La captura crea lead y actividad.', 'The capture creates a lead and activity.'), tx('El sitio no bloquea el iframe ni el script.', 'The site does not block the iframe or the script.')],
-      [tx('Si el iframe no carga, revisa dominio permitido y políticas del sitio.', 'If the iframe does not load, check allowed domains and site policies.'), tx('Si el snippet no captura, revisa selector y timing de carga.', 'If the snippet does not capture, review the selector and load timing.'), tx('Si no entra al CRM, recopia endpoint y token del canal.', 'If it does not reach the CRM, recopy the channel endpoint and token.')],
-      [{ label: 'Endpoint', value: args.endpoint }, { label: tx('URL pública', 'Public URL'), value: snippets?.webFormEmbedUrl || tx('Disponible al seleccionar el canal.', 'Available when selecting the channel.') }, { label: 'Iframe', value: snippets?.webFormIframe || tx('Disponible en la pestaña Formulario.', 'Available in the Form tab.') }],
-      [{ label: 'CRM', caption: tx('Configuras el formulario', 'You configure the form') }, { label: tx('Asset web', 'Web asset'), caption: tx('Copias URL, iframe o script', 'You copy the URL, iframe, or script') }, { label: 'Landing', caption: tx('El prospecto envía sus datos', 'The prospect submits their data') }, { label: 'Pipeline', caption: tx('El lead queda trazado', 'The lead is tracked') }],
-    )
-  }
-
-  if (key === 'web-booking') {
-    return buildBridgeGuide(
-      tx('Integración detallada de Agenda Web', 'Detailed Web Booking integration'),
-      tx('Publica una agenda tipo booking desde el CRM para que el usuario reserve una cita y la operación quede trazada.', 'Publish a booking-style scheduler from the CRM so the user can reserve an appointment and the operation stays tracked.'),
-      'sky',
-      tx('Implementador web, equipo comercial y responsable de agenda.', 'Web implementer, sales team, and scheduling owner.'),
-      [tx('Canal de Agenda Web configurado.', 'Web Booking channel configured.'), tx('Definir si enviará confirmación por correo, WhatsApp o ambos.', 'Define whether it will send confirmation by email, WhatsApp, or both.'), tx('Validar responsable y horario comercial.', 'Validate the owner and business hours.')],
-      [
-        { title: tx('1. Configura la agenda en el CRM', '1. Configure the booking flow in the CRM'), detail: tx('Ajusta textos, servicio, estados y notificaciones de reserva.', 'Adjust copy, service, states, and booking notifications.'), bullets: [tx('Comprueba que la vista pública muestre la experiencia tipo booking.', 'Check that the public view shows the booking-style experience.'), tx('Activa correo o WhatsApp según la operación.', 'Enable email or WhatsApp according to the operation.'), tx('Verifica el estado TESTING antes de publicar.', 'Verify TESTING status before publishing.')] },
-        { title: tx('2. Embebe la agenda en la web', '2. Embed the booking flow on the website'), detail: tx('Inserta la URL pública o el iframe del canal en la booking page.', 'Insert the public URL or the channel iframe into the scheduling page.'), bullets: [`${tx('URL de agenda', 'Booking URL')}: ${snippets?.webFormEmbedUrl || tx('Disponible al seleccionar el canal.', 'Available when selecting the channel.')}`, tx('Ideal para CTA de contacto o campañas.', 'Ideal for contact CTAs or campaigns.'), tx('Prueba la agenda en desktop y mobile.', 'Test the booking flow on desktop and mobile.')] },
-        { title: tx('3. Ejecuta una reserva real', '3. Run a real booking'), detail: tx('Selecciona fecha y hora y revisa el resultado dentro del CRM.', 'Select date and time and review the result inside the CRM.'), bullets: [tx('Debe crearse lead y cita asociada.', 'A lead and linked appointment should be created.'), tx('Valida trazabilidad del canal.', 'Validate channel traceability.'), tx('Confirma que salga la notificación configurada.', 'Confirm that the configured notification is sent.')] },
-        { title: tx('4. Operativiza la agenda', '4. Operationalize the booking flow'), detail: tx('Comparte el enlace final y deja listo el ownership operativo.', 'Share the final link and leave operational ownership ready.'), bullets: [tx('Revisa readiness antes de salir a producción.', 'Review readiness before going to production.'), tx('Documenta la landing donde quedó publicada.', 'Document the landing page where it was published.'), tx('Haz una segunda prueba con el mismo contacto para revisar deduplicación.', 'Run a second test with the same contact to review deduplication.')] },
-      ],
-      [tx('La agenda carga correctamente.', 'The booking flow loads correctly.'), tx('La cita aparece en CRM con fecha y hora.', 'The appointment appears in the CRM with date and time.'), tx('Las notificaciones configuradas sí se envían.', 'Configured notifications are sent.')],
-      [tx('Si no ves el calendario, revisa el embed o el dominio.', 'If you do not see the calendar, check the embed or the domain.'), tx('Si la confirmación no sale, revisa las credenciales del canal.', 'If confirmation is not sent, review the channel credentials.'), tx('Si se duplican citas, revisa el payload y los datos de contacto.', 'If appointments are duplicated, review the payload and contact data.')],
-      [{ label: 'Endpoint', value: args.endpoint }, { label: tx('URL pública', 'Public URL'), value: snippets?.webFormEmbedUrl || tx('Disponible al seleccionar el canal.', 'Available when selecting the channel.') }, { label: tx('Iframe agenda', 'Booking iframe'), value: snippets?.webFormIframe || tx('Disponible en la pestaña Formulario.', 'Available in the Form tab.') }],
-      [{ label: tx('Agenda CRM', 'CRM booking'), caption: tx('Canal y reglas listos', 'Channel and rules ready') }, { label: 'Landing', caption: tx('Usuario agenda fecha y hora', 'User books date and time') }, { label: 'CRM', caption: tx('Se crea lead y cita', 'Lead and appointment are created') }, { label: tx('Confirmación', 'Confirmation'), caption: tx('Correo o WhatsApp al usuario', 'Email or WhatsApp to the user') }],
-    )
-  }
-
   if (key === 'web-chatbot') {
     return buildBridgeGuide(
       tx('Integración detallada de Chatbot Web', 'Detailed Web Chatbot integration'),
@@ -882,7 +843,7 @@ function getDetailedIntegrationGuide(args: {
         { title: tx('4. Activa monitoreo y go-live', '4. Activate monitoring and go live'), detail: tx('Documenta dominios, owner y canal de seguimiento.', 'Document domains, owner, and follow-up channel.'), bullets: [tx('Prueba mobile y desktop.', 'Test mobile and desktop.'), tx('Revisa que el launcher no tape elementos críticos.', 'Make sure the launcher does not cover critical elements.'), tx('Pasa a ACTIVE tras una prueba funcional real.', 'Move to ACTIVE after a real functional test.')] },
       ],
       [tx('El iframe abre con el layout esperado.', 'The iframe opens with the expected layout.'), tx('Las conversaciones llegan al inbox.', 'Conversations reach the inbox.'), tx('El widget no rompe la experiencia del sitio.', 'The widget does not break the site experience.')],
-      [tx('Si no aparece el widget, revisa floatingLauncherEnabled.', 'If the widget does not appear, check floatingLauncherEnabled.'), tx('Si no entra al inbox, recopia endpoint y token.', 'If it does not reach the inbox, recopy the endpoint and token.'), tx('Si responde mal, revisa el flujo y quick actions configuradas.', 'If it responds poorly, review the configured flow and quick actions.')],
+      [tx('Si no aparece el widget, revisa floatingLauncherEnabled.', 'If the widget does not appear, check floatingLauncherEnabled.'), tx('Si no entra al inbox, recopia endpoint y token.', 'If it does not reach the inbox, recopy endpoint and token.'), tx('Si responde mal, revisa el flujo y quick actions configuradas.', 'If it responds poorly, review the configured flow and quick actions.')],
       [{ label: tx('URL pública', 'Public URL'), value: snippets?.chatbotEmbedUrl || tx('Disponible al seleccionar el canal.', 'Available when selecting the channel.') }, { label: 'Iframe', value: snippets?.chatbotIframe || tx('Disponible en la pestaña Chatbot.', 'Available in the Chatbot tab.') }, { label: 'Widget', value: snippets?.chatbot || tx('Disponible en la pestaña Chatbot.', 'Available in the Chatbot tab.') }],
       [{ label: tx('Constructor', 'Builder'), caption: tx('Marca y flujo del bot', 'Bot brand and flow') }, { label: tx('Sitio web', 'Website'), caption: tx('Iframe o widget publicado', 'Published iframe or widget') }, { label: 'Inbox CRM', caption: tx('Conversación centralizada', 'Centralized conversation') }, { label: tx('Ventas', 'Sales'), caption: tx('Handoff y seguimiento', 'Handoff and follow-up') }],
     )
@@ -2904,8 +2865,13 @@ export function CrmIntegrationsClient() {
     const search = new URLSearchParams(window.location.search)
     const channelId = search.get('channelId')
     const open = search.get('open')
+    const tab = search.get('tab')
     const metaStatus = search.get('meta')
     const message = search.get('message')
+
+    if (tab === 'chatbots') {
+      setWorkspaceView('chatbots')
+    }
 
     if (channelId) {
       setSelectedChannelId(channelId)
@@ -3133,28 +3099,11 @@ export function CrmIntegrationsClient() {
     if (createForm.provider === 'WEB_CHATBOT') {
       cards.push(
         {
-          id: 'wizard-chatbot-url',
-          title: 'URL pública',
-          description: 'Úsala para demo directa o como ruta base del embebido.',
-          value: wizardImplementationSnippets.chatbotEmbedUrl,
-          copyLabel: 'Copiar URL',
-        },
-        {
-          id: 'wizard-chatbot-iframe',
-          title: 'Iframe fijo',
-          description: 'Este bloque publica el panel del chat abierto. Para respetar launcher flotante, usa el widget.',
-          value: wizardImplementationSnippets.chatbotIframe,
-          copyLabel: 'Copiar iframe',
-        },
-        {
           id: 'wizard-chatbot-widget',
-          title: 'Widget flotante',
-          description: createForm.floatingLauncherEnabled
-            ? 'Este snippet sí refleja la configuración actual del launcher flotante.'
-            : 'El launcher flotante está desactivado en la configuración actual.',
-          value: createForm.floatingLauncherEnabled ? wizardImplementationSnippets.chatbot : 'Launcher flotante desactivado en la configuración actual.',
-          copyLabel: 'Copiar widget',
-          disabled: !createForm.floatingLauncherEnabled,
+          title: 'Código del Widget',
+          description: 'Copia y pega este código en tu sitio web para mostrar el widget de chat.',
+          value: wizardImplementationSnippets.chatbot,
+          copyLabel: 'Copiar Código',
         },
       )
       return cards
@@ -3517,6 +3466,7 @@ export function CrmIntegrationsClient() {
       templateKey,
       name: preset.name,
       provider: preset.provider,
+      status: preset.provider === 'WEB_CHATBOT' ? 'ACTIVE' : prev.status,
       bridgeKind: preset.bridgeKind ?? 'GENERIC',
       testingToken: prev.testingToken || makeDemoToken(),
       publicEmbedEnabled: preset.provider === 'WEB_CHATBOT' || (preset.provider === 'WEB_FORM' && (!preset.bridgeKind || preset.bridgeKind === 'BOOKING')),
@@ -4297,8 +4247,6 @@ export function CrmIntegrationsClient() {
         form={createForm}
         setForm={setCreateForm}
         sectionOptions={CHATBOT_WIZARD_SECTION_OPTIONS}
-        channelStatusOptions={CHANNEL_STATUS_OPTIONS}
-        makeDemoToken={makeDemoToken}
         normalizePixelValue={normalizePixelValue}
         normalizeZIndexValue={normalizeZIndexValue}
       />
@@ -4452,6 +4400,33 @@ export function CrmIntegrationsClient() {
     return ['overview', 'guide', 'webhook', 'bridge']
   }, [selectedBridgeKind, selectedChannel])
 
+  const chatbotCapableChannels = useMemo(() => channels.filter((channel) => (
+    channel.provider === 'WEB_CHATBOT'
+    || channel.provider === 'WHATSAPP_CLOUD'
+    || channel.provider === 'WHATSAPP_SANDBOX'
+    || channel.provider === 'INSTAGRAM_DM'
+    || channel.provider === 'FACEBOOK_PAGE'
+    || channel.provider === 'MESSENGER'
+  )), [channels])
+
+  const chatbotChannelSummaries = useMemo(() => chatbotCapableChannels.map((channel) => {
+    const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
+    const studioSettings = getChatbotStudioSettings(settings)
+    const providerKey: ChatbotAutomationProvider = channel.provider === 'WHATSAPP_SANDBOX' ? 'WHATSAPP_CLOUD' : channel.provider as ChatbotAutomationProvider
+    const enabledFlows = studioSettings.automationFlows.filter((flow) => flow.enabled && flow.providers.includes(providerKey))
+    const runtimeReady = channel.provider === 'WEB_CHATBOT'
+
+    return {
+      channel,
+      enabledFlowsCount: enabledFlows.length,
+      runtimeReady,
+      supportLabel: runtimeReady ? 'Operativo hoy' : 'Preparación parcial',
+      supportDescription: runtimeReady
+        ? 'Este canal ya puede ejecutar el chatbot embebido y enviar conversaciones al inbox CRM.'
+        : 'El canal sí puede capturar y enrutar conversaciones al inbox, pero el bot automático aún no responde en inbound social desde producción.',
+    }
+  }), [chatbotCapableChannels])
+
   useEffect(() => {
     if (!selectedAssetTabs.includes(activeAssetTab)) {
       setActiveAssetTab(selectedAssetTabs[0] || 'overview')
@@ -4492,8 +4467,9 @@ export function CrmIntegrationsClient() {
 
       <Tabs value={workspaceView} onValueChange={(value) => setWorkspaceView(value as CrmWorkspaceView)} className="space-y-4">
         <div className="flex flex-col gap-2.5 rounded-[24px] border border-slate-200 bg-white/90 p-2.5 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.28)] md:flex-row md:items-center md:justify-between">
-          <TabsList className="grid h-auto grid-cols-3 rounded-[18px] border border-slate-200 bg-slate-50 p-1">
+          <TabsList className="grid h-auto grid-cols-4 rounded-[18px] border border-slate-200 bg-slate-50 p-1">
             <TabsTrigger value="operations" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">{language === 'en' ? 'Operations' : 'Operación'}</TabsTrigger>
+            <TabsTrigger value="chatbots" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">Chatbots</TabsTrigger>
             <TabsTrigger value="addons" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">{language === 'en' ? 'Addons' : 'Addons'}</TabsTrigger>
             <TabsTrigger value="metrics" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">{language === 'en' ? 'Metrics and goals' : 'Métricas y metas'}</TabsTrigger>
           </TabsList>
@@ -4507,7 +4483,105 @@ export function CrmIntegrationsClient() {
               {language === 'en' ? 'Activate extra CRM capabilities as cards and continue with the guided installation only when the company decides to use them.' : 'Activa capacidades extra del CRM como tarjetas y continúa con la instalación guiada solo cuando la empresa decida usarlas.'}
             </p>
           ) : null}
+          {workspaceView === 'chatbots' ? (
+            <p className="px-2 text-[13px] text-slate-500">
+              {language === 'en' ? 'Review which channels can run chatbot automation today and where the advanced studio is configured.' : 'Revisa qué canales pueden ejecutar automatización con chatbot hoy y dónde se configura el studio avanzado.'}
+            </p>
+          ) : null}
         </div>
+
+        <TabsContent value="chatbots" className="space-y-4">
+          <div className="grid gap-4 xl:grid-cols-[0.92fr_1.08fr]">
+            <Card className="rounded-[24px] border-slate-200 bg-white/95 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.3)]">
+              <CardHeader className="border-b border-slate-100 pb-4">
+                <CardTitle>Chatbots por canal</CardTitle>
+                <CardDescription>Este panel separa lo que ya está operativo hoy de lo que todavía requiere desarrollo backend para redes sociales.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 p-4">
+                {chatbotChannelSummaries.length === 0 ? <p className="text-sm text-slate-500">Aún no hay canales compatibles para chatbot.</p> : null}
+                {chatbotChannelSummaries.map(({ channel, enabledFlowsCount, runtimeReady, supportLabel, supportDescription }) => {
+                  const isSelected = channel.id === selectedChannelId
+                  const channelSettings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
+                  const bridgeKind = getBridgeKind(channelSettings)
+
+                  return (
+                    <button
+                      key={channel.id}
+                      type="button"
+                      onClick={() => setSelectedChannelId(channel.id)}
+                      className={isSelected ? 'w-full rounded-[24px] border-2 border-sky-300 bg-sky-50/70 p-4 text-left shadow-sm' : 'w-full rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md'}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{getChannelProviderLabel(channel.provider, bridgeKind)}</p>
+                          <p className="mt-1 text-base font-semibold text-slate-950">{channel.name}</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-600">{supportDescription}</p>
+                        </div>
+                        <span className={runtimeReady ? 'rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700' : 'rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700'}>{supportLabel}</span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">Estado {channel.status}</span>
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">Flujos activos: {enabledFlowsCount}</span>
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">Conversaciones: {channel._count?.conversations ?? 0}</span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-[24px] border-slate-200 bg-white/95 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.3)]">
+              <CardHeader className="border-b border-slate-100 pb-4">
+                <CardTitle>Studio y asociación</CardTitle>
+                <CardDescription>Diagnóstico operativo del canal seleccionado y ruta clara para el siguiente paso.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 p-4">
+                {!selectedChannel ? <p className="text-sm text-slate-500">Selecciona un canal para revisar su estado de chatbot.</p> : null}
+                {selectedChannel ? (() => {
+                  const selectedSummary = chatbotChannelSummaries.find((item) => item.channel.id === selectedChannel.id) ?? null
+                  const selectedChannelSettings = (selectedChannel.settingsJson as Record<string, unknown> | null | undefined) ?? null
+                  const selectedBridge = getBridgeKind(selectedChannelSettings)
+                  const isWebChatbot = selectedChannel.provider === 'WEB_CHATBOT'
+                  const isCapable = Boolean(selectedSummary)
+
+                  return (
+                    <>
+                      <div className={isWebChatbot ? 'rounded-[24px] border border-emerald-200 bg-emerald-50/70 p-4' : isCapable ? 'rounded-[24px] border border-amber-200 bg-amber-50/70 p-4' : 'rounded-[24px] border border-slate-200 bg-slate-50 p-4'}>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{getChannelProviderLabel(selectedChannel.provider, selectedBridge)}</p>
+                        <p className="mt-1 text-xl font-semibold text-slate-950">{selectedChannel.name}</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">{selectedSummary?.supportDescription || 'Este canal no participa en el modelo actual de chatbot; úsalo desde Operación para webhooks, formularios o bridges.'}</p>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Asociación actual</p>
+                          <p className="mt-2 text-sm text-slate-700">{isWebChatbot ? 'El canal usa su propia configuración de Chatbot Studio y ya puede operar como embed web con inbox CRM.' : isCapable ? 'Este canal ya puede centralizar conversaciones, pero todavía no tiene ejecución automática del bot en inbound social productivo.' : 'Este canal no depende de Chatbot Studio para operar.'}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Siguiente paso</p>
+                          <p className="mt-2 text-sm text-slate-700">{isWebChatbot ? 'Abrir el Studio avanzado para editar el flujo, handoff, disparadores, pausas y branding.' : isCapable ? 'Mantenerlo como canal omnicanal operativo. Para responder automáticamente por Instagram, Facebook, Messenger o WhatsApp aún falta ampliar runtime inbound y resolución de flujo por canal.' : 'Gestiona este canal desde la pestaña Operación.'}</p>
+                        </div>
+                      </div>
+                      {isWebChatbot ? (
+                        <div className="flex flex-wrap gap-2">
+                          <Button asChild className="rounded-xl">
+                            <Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>Abrir Chatbot Studio</Link>
+                          </Button>
+                          <Button asChild variant="outline" className="rounded-xl">
+                            <Link href={`/dashboard/crm/integraciones?channelId=${selectedChannel.id}`}>Ver canal en Operación</Link>
+                          </Button>
+                        </div>
+                      ) : isCapable ? (
+                        <div className="rounded-2xl border border-dashed border-amber-300 bg-white p-4 text-sm leading-6 text-slate-600">
+                          El Studio ya permite diseñar flujos pensando en proveedores como WhatsApp, Instagram, Facebook y Messenger, pero hoy eso no equivale a automatización real en esos canales. El runtime productivo que ejecuta el chatbot automático sigue conectado únicamente al proveedor WEB_CHATBOT.
+                        </div>
+                      ) : null}
+                    </>
+                  )
+                })() : null}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
 
         <TabsContent value="addons" className="space-y-4">
           <CrmAddonsMarketplaceCard />
@@ -6052,22 +6126,6 @@ export function CrmIntegrationsClient() {
                         </div>
                       </div>
                     ) : null}
-                    {[{ title: 'Configurado', items: wizardPreview.configured }, { title: 'Demo', items: wizardPreview.demo }, { title: 'Producción', items: wizardPreview.production }].map((group) => (
-                      <div key={group.title}>
-                        <p className="text-sm font-semibold text-slate-900">{group.title}</p>
-                        <div className="mt-2 space-y-2">
-                          {group.items.map((item) => (
-                            <div key={item.label} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                              <span className={item.done ? 'mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700' : 'mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-700'}>{item.done ? 'OK' : '!'}</span>
-                              <div>
-                                <p className="text-sm font-medium text-slate-900">{item.label}</p>
-                                <p className="text-xs text-slate-500">{item.hint}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
                   </div>
                 </div>
               )}
@@ -6498,99 +6556,116 @@ export function CrmIntegrationsClient() {
                     </div>
                   </div>
                 ) : wizardStep === 'implementation' ? (
-                  <div className="space-y-4">
-                    <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Implementación paso a paso</p>
-                      <h3 className="mt-2 text-xl font-semibold text-slate-950">{wizardImplementationGuide.title}</h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">{wizardImplementationGuide.summary}</p>
-                      {createForm.provider === 'WEB_CHATBOT' ? (
-                        <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-900">
-                          <p className="font-semibold">Criterio de publicación para chatbot web</p>
-                          <p className="mt-2 leading-6">El iframe fijo publica el panel abierto del chat. La configuración del launcher flotante se refleja en el widget, por eso aquí se entregan ambos códigos de forma separada y actualizada.</p>
-                        </div>
-                      ) : null}
-                      <div className="mt-4 grid gap-3 md:grid-cols-2">
-                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Implementador</p>
-                          <p className="mt-2 text-sm font-medium text-slate-900">{wizardImplementationGuide.audience}</p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tiempo estimado</p>
-                          <p className="mt-2 text-sm font-medium text-slate-900">{wizardImplementationGuide.estimatedTime}</p>
-                        </div>
-                      </div>
-                      {wizardImplementationGuide.prerequisites.length ? (
-                        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                          <p className="text-sm font-semibold text-slate-900">Prerrequisitos</p>
-                          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-600">
-                            {wizardImplementationGuide.prerequisites.map((item) => <li key={item}>{item}</li>)}
-                          </ul>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-                      <div className="space-y-4">
-                        {wizardImplementationGuide.steps.map((step, index) => (
-                          <div key={`${step.title}-${index}`} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-                            <p className="text-sm font-semibold text-slate-900">{step.title}</p>
-                            <p className="mt-2 text-sm leading-6 text-slate-600">{step.detail}</p>
-                            {step.bullets.length ? (
-                              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-600">
-                                {step.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
-                              </ul>
-                            ) : null}
+                  createForm.provider === 'WEB_CHATBOT' ? (
+                    <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
+                      <h3 className="text-xl font-semibold text-slate-950">Código del Widget</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">Copia y pega este código en tu sitio web para mostrar el widget de chat.</p>
+                      <div className="mt-4 space-y-4">
+                        {wizardImplementationCards.map((asset) => (
+                          <div key={asset.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">{asset.title}</p>
+                              </div>
+                              <Button type="button" variant="outline" className="rounded-xl" onClick={() => void copyText(asset.id, asset.value)}>
+                                <Copy className="mr-2 h-4 w-4" />
+                                {copiedKey === asset.id ? 'Copiado' : asset.copyLabel}
+                              </Button>
+                            </div>
+                            <Textarea value={asset.value} readOnly rows={Math.min(18, Math.max(3, asset.value.split('\n').length + 1))} className="mt-3 font-mono text-xs" />
                           </div>
                         ))}
                       </div>
-
-                      <div className="space-y-4">
-                        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-                          <p className="text-sm font-semibold text-slate-900">Referencias rápidas</p>
-                          <div className="mt-3 space-y-3">
-                            {wizardImplementationGuide.assets.map((asset) => (
-                              <div key={`${asset.label}-${asset.value}`} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{asset.label}</p>
-                                <p className="mt-2 break-all text-sm font-medium text-slate-900">{asset.value}</p>
-                              </div>
-                            ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-5">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Implementación paso a paso</p>
+                        <h3 className="mt-2 text-xl font-semibold text-slate-950">{wizardImplementationGuide.title}</h3>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">{wizardImplementationGuide.summary}</p>
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Implementador</p>
+                            <p className="mt-2 text-sm font-medium text-slate-900">{wizardImplementationGuide.audience}</p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tiempo estimado</p>
+                            <p className="mt-2 text-sm font-medium text-slate-900">{wizardImplementationGuide.estimatedTime}</p>
                           </div>
                         </div>
+                        {wizardImplementationGuide.prerequisites.length ? (
+                          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                            <p className="text-sm font-semibold text-slate-900">Prerrequisitos</p>
+                            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-600">
+                              {wizardImplementationGuide.prerequisites.map((item) => <li key={item}>{item}</li>)}
+                            </ul>
+                          </div>
+                        ) : null}
+                      </div>
 
-                        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-                          <p className="text-sm font-semibold text-slate-900">Código y activos para copiar</p>
-                          <div className="mt-3 space-y-4">
-                            {wizardImplementationCards.map((asset) => (
-                              <div key={asset.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <p className="text-sm font-semibold text-slate-900">{asset.title}</p>
-                                    <p className="mt-1 text-xs leading-5 text-slate-500">{asset.description}</p>
-                                  </div>
-                                  <Button type="button" variant="outline" className="rounded-xl" onClick={() => void copyText(asset.id, asset.value)} disabled={asset.disabled}>
-                                    <Copy className="mr-2 h-4 w-4" />
-                                    {copiedKey === asset.id ? 'Copiado' : asset.copyLabel}
-                                  </Button>
+                      <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+                        <div className="space-y-4">
+                          {wizardImplementationGuide.steps.map((step, index) => (
+                            <div key={`${step.title}-${index}`} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+                              <p className="text-sm font-semibold text-slate-900">{step.title}</p>
+                              <p className="mt-2 text-sm leading-6 text-slate-600">{step.detail}</p>
+                              {step.bullets.length ? (
+                                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-600">
+                                  {step.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
+                                </ul>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+                            <p className="text-sm font-semibold text-slate-900">Referencias rápidas</p>
+                            <div className="mt-3 space-y-3">
+                              {wizardImplementationGuide.assets.map((asset) => (
+                                <div key={`${asset.label}-${asset.value}`} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{asset.label}</p>
+                                  <p className="mt-2 break-all text-sm font-medium text-slate-900">{asset.value}</p>
                                 </div>
-                                <Textarea value={asset.value} readOnly rows={Math.min(18, Math.max(3, asset.value.split('\n').length + 1))} className="mt-3 font-mono text-xs" />
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/60 p-4 shadow-sm">
-                          <p className="text-sm font-semibold text-emerald-900">Validación final</p>
-                          <div className="mt-3 space-y-2">
-                            {wizardImplementationGuide.validations.map((item) => (
-                              <div key={item} className="rounded-2xl border border-emerald-200 bg-white/90 px-3 py-2 text-sm text-emerald-900">
-                                {item}
-                              </div>
-                            ))}
+                          <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+                            <p className="text-sm font-semibold text-slate-900">Código y activos para copiar</p>
+                            <div className="mt-3 space-y-4">
+                              {wizardImplementationCards.map((asset) => (
+                                <div key={asset.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <p className="text-sm font-semibold text-slate-900">{asset.title}</p>
+                                      <p className="mt-1 text-xs leading-5 text-slate-500">{asset.description}</p>
+                                    </div>
+                                    <Button type="button" variant="outline" className="rounded-xl" onClick={() => void copyText(asset.id, asset.value)} disabled={asset.disabled}>
+                                      <Copy className="mr-2 h-4 w-4" />
+                                      {copiedKey === asset.id ? 'Copiado' : asset.copyLabel}
+                                    </Button>
+                                  </div>
+                                  <Textarea value={asset.value} readOnly rows={Math.min(18, Math.max(3, asset.value.split('\n').length + 1))} className="mt-3 font-mono text-xs" />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/60 p-4 shadow-sm">
+                            <p className="text-sm font-semibold text-emerald-900">Validación final</p>
+                            <div className="mt-3 space-y-2">
+                              {wizardImplementationGuide.validations.map((item) => (
+                                <div key={item} className="rounded-2xl border border-emerald-200 bg-white/90 px-3 py-2 text-sm text-emerald-900">
+                                  {item}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )
                 ) : (
                   <div className="rounded-[26px] border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">
                     Elige una plantilla a la izquierda para continuar con la configuración.

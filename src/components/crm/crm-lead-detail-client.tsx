@@ -418,7 +418,7 @@ export function CrmLeadDetailClient(props: Props) {
             <Link href={`/dashboard/crm/agenda?leadId=${lead.id}`}>Agendar prospecto</Link>
           </Button>
           {props.canAccessAnyChat ? <Button asChild variant="outline">
-            <Link href="/dashboard/chat">Chat global</Link>
+            <Link href="/dashboard/chat">Conversaciones</Link>
           </Button> : null}
           <Button variant="outline" onClick={openCreateContactDialog}>Nuevo contacto</Button>
           <Button variant="outline" onClick={() => setActivityDialogOpen(true)}>Agregar nota</Button>

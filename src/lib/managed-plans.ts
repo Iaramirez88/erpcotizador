@@ -31,15 +31,15 @@ export const DEFAULT_MANAGED_PLANS: DefaultManagedPlan[] = [
   {
     tier: 'CRM',
     nombre: 'CRM',
-    descripcion: 'Plan especializado solo para CRM omnicanal, agenda comercial, leads, oportunidades, tareas y chat global del equipo.',
+    descripcion: 'Plan especializado solo para CRM omnicanal, agenda comercial, leads, oportunidades, tareas y conversaciones del equipo.',
     precioMensualCOP: 150000,
     tagline: 'CRM comercial dedicado',
     forWho: 'Para equipos que solo necesitan CRM y chat omnicanal.',
     incluye: [
-      { title: 'CRM comercial', items: ['Leads', 'Oportunidades', 'Agenda', 'Tareas', 'Inbox omnicanal', 'Chat global interno'] },
+      { title: 'CRM comercial', items: ['Leads', 'Oportunidades', 'Agenda', 'Tareas', 'Inbox omnicanal', 'Conversaciones internas'] },
       { title: 'Operación mínima', items: ['Dashboard', 'Configuración básica', 'Notificaciones'] },
     ],
-    alcance: ['CRM y chat global', 'Sin ERP operativo', 'Mensual fijo'],
+    alcance: ['CRM y conversaciones', 'Sin ERP operativo', 'Mensual fijo'],
     storageLimitGb: DEFAULT_STORAGE_LIMIT_GB.CRM,
     active: true,
     displayOrder: 0,
@@ -111,7 +111,7 @@ export const DEFAULT_MANAGED_PLANS: DefaultManagedPlan[] = [
     incluye: [
       { title: 'Incluye todo +', items: [] },
       { title: 'Gestión', items: ['Permisos', 'Empresa', 'Plan', 'Usuarios ilimitados', 'Sedes ilimitadas'] },
-      { title: 'CRM', items: ['CRM omnicanal completo', 'Agenda', 'Tareas', 'Integraciones', 'Chat global'] },
+      { title: 'CRM', items: ['CRM omnicanal completo', 'Agenda', 'Tareas', 'Integraciones', 'Conversaciones'] },
       { title: 'Preferencias', items: ['Personalizar menú', 'Configuración', 'Ayuda'] },
       { title: 'Centro de control', items: ['KPIs por sede', 'Reportes avanzados'] },
       { title: 'Comercial', items: ['Todo ilimitado'] },

@@ -46,7 +46,7 @@ const domains: Domain[] = [
     description: 'Ejecucion interna, seguimiento operativo, produccion y trabajo coordinado.',
     href: '/dashboard/ordenes',
     tone: 'amber',
-    items: ['Ordenes de trabajo', 'Espacios de trabajo', 'Chat global', 'Escaneos', 'Plantillas', 'Litografia'],
+    items: ['Ordenes de trabajo', 'Espacios de trabajo', 'Conversaciones', 'Escaneos', 'Plantillas', 'Litografia'],
   },
   {
     id: 'inventario',

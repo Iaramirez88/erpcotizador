@@ -1,12 +1,5 @@
-import { auth } from '@/lib/auth'
-import { resolveUserIdFromSession } from '@/lib/session-user'
-import { resolveDashboardChatAccessForUser } from '@/lib/dashboard-chat-access'
-import { CrmDashboardClient } from '@/components/crm/crm-dashboard-client'
+import { redirect } from 'next/navigation'
 
-export default async function CrmLeadsPage() {
-  const session = await auth()
-  const userId = session?.user ? await resolveUserIdFromSession(session) : null
-  const chatAccess = userId ? await resolveDashboardChatAccessForUser(userId) : { canAccessTeamChat: false, canAccessCrmChat: false }
-
-  return <CrmDashboardClient initialTab="leads" {...chatAccess} />
+export default function CrmLeadsPage() {
+  redirect('/dashboard/crm/negociaciones/oportunidades')
 }

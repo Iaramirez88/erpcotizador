@@ -59,14 +59,19 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/ayuda', label: 'Ayuda', section: 'Inicio', layer: 'Inicio', domain: 'Ayuda y documentación', moduleKey: null },
 
   { href: '/dashboard/crm', label: 'Frente comercial', section: 'Captación', layer: 'Captación', domain: 'CRM', moduleKey: 'CRM' },
+  { href: '/dashboard/crm/negociaciones', label: 'Negociaciones', section: 'Captación', layer: 'Captación', domain: 'Negociaciones', moduleKey: 'CRM' },
   { href: '/dashboard/crm/conversations', label: 'Inbox omnicanal', section: 'Captación', layer: 'Captación', domain: 'Inbox omnicanal', moduleKey: 'CRM' },
-  { href: '/dashboard/crm/agenda', label: 'Agenda CRM', section: 'Captación', layer: 'Captación', domain: 'Agenda', moduleKey: 'CRM' },
+  { href: '/dashboard/crm/agenda', label: 'Calendario', section: 'Captación', layer: 'Captación', domain: 'Agenda', moduleKey: 'CRM' },
   { href: '/dashboard/crm/chatbot', label: 'Chatbot', section: 'Captación', layer: 'Captación', domain: 'Automatización conversacional', moduleKey: 'CRM' },
-  { href: '/dashboard/crm/archivos', label: 'Administrador de archivos', section: 'Captación', layer: 'Captación', domain: 'Documentos comerciales', moduleKey: 'CRM' },
+  { href: '/dashboard/crm/archivos', label: 'DRIVE', section: 'Captación', layer: 'Captación', domain: 'Drive comercial', moduleKey: 'CRM' },
   { href: '/dashboard/crm/integraciones', label: 'Canales e integraciones', section: 'Captación', layer: 'Captación', domain: 'Canales', moduleKey: 'CRM' },
   { href: '/dashboard/crm/leads', label: 'Captación', section: 'Captación', layer: 'Captación', domain: 'Leads', moduleKey: 'CRM' },
   { href: '/dashboard/crm/oportunidades', label: 'Pipeline', section: 'Captación', layer: 'Captación', domain: 'Oportunidades', moduleKey: 'CRM' },
-  { href: '/dashboard/crm/tareas', label: 'Tareas', section: 'Captación', layer: 'Captación', domain: 'Tareas comerciales', moduleKey: 'CRM' },
+  { href: '/dashboard/crm/tareas', label: 'Actividades', section: 'Captación', layer: 'Captación', domain: 'Tareas comerciales', moduleKey: 'CRM' },
+  { href: '/dashboard/crm/negociaciones/pipeline', label: 'Pipeline', section: 'Captación', layer: 'Captación', domain: 'Negociaciones', moduleKey: 'CRM' },
+  { href: '/dashboard/crm/negociaciones/oportunidades', label: 'Oportunidades', section: 'Captación', layer: 'Captación', domain: 'Negociaciones', moduleKey: 'CRM' },
+  { href: '/dashboard/crm/negociaciones/calendario', label: 'Calendario', section: 'Captación', layer: 'Captación', domain: 'Negociaciones', moduleKey: 'CRM' },
+  { href: '/dashboard/crm/negociaciones/actividades', label: 'Actividades', section: 'Captación', layer: 'Captación', domain: 'Negociaciones', moduleKey: 'CRM' },
 
   { href: '/dashboard/clientes', label: 'Clientes', labelKey: 'nav.clients', section: 'Ventas', layer: 'Ventas', domain: 'Clientes', moduleKey: 'CLIENTES' },
   { href: '/dashboard/cotizador', label: 'Cotizador', labelKey: 'nav.quote', section: 'Ventas', layer: 'Ventas', domain: 'Cotizador', moduleKey: 'COTIZADOR' },
@@ -76,7 +81,7 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
 
   { href: '/dashboard/ordenes', label: 'Órdenes', labelKey: 'nav.orders', section: 'Operaciones', layer: 'Operaciones', domain: 'Órdenes de trabajo', moduleKey: 'ORDENES' },
   { href: '/dashboard/espacios-trabajo', label: 'Espacios de trabajo', section: 'Operaciones', layer: 'Operaciones', domain: 'Proyectos y trabajo', moduleKey: 'ORDENES' },
-  { href: '/dashboard/chat', label: 'Chat global', section: 'Operaciones', layer: 'Operaciones', domain: 'Coordinación interna', moduleKey: 'ORDENES' },
+  { href: '/dashboard/chat', label: 'Conversaciones', section: 'Operaciones', layer: 'Operaciones', domain: 'Coordinación interna', moduleKey: 'ORDENES' },
   { href: '/dashboard/litografia', label: 'Litografía', labelKey: 'nav.printshop', section: 'Operaciones', layer: 'Operaciones', domain: 'Producción especializada', moduleKey: 'COTIZADOR' },
   { href: '/dashboard/escaneos', label: 'Escaneos', labelKey: 'nav.scans', section: 'Operaciones', layer: 'Operaciones', domain: 'Captura documental', moduleKey: 'ESCANEOS' },
 

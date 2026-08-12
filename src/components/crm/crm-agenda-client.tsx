@@ -368,18 +368,18 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'CRM', href: '/dashboard/crm' },
-          { label: 'Agenda' },
+          { label: 'Calendario' },
         ]}
-        eyebrow="CRM Agenda"
+        eyebrow="CRM Calendario"
         title="Calendario comercial y agendamiento"
         description="Agenda prospectos y clientes, consulta compromisos por día y gestiona el seguimiento comercial desde una sola vista."
         actions={
           <>
             <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
-              <Link href="/dashboard/crm">Volver al CRM</Link>
+              <Link href="/dashboard/crm/negociaciones">Volver a Negociaciones</Link>
             </Button>
             {canAccessAnyChat ? <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
-              <Link href="/dashboard/chat">Ir al chat global</Link>
+              <Link href="/dashboard/chat">Ir a Conversaciones</Link>
             </Button> : null}
           </>
         }

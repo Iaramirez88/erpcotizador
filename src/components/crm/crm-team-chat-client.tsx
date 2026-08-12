@@ -1,6 +1,6 @@
 "use client"
 
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BellOff, Check, CheckCheck, ChevronDown, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, Smile, Trash2, Users, X } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -92,6 +92,13 @@ type OptimisticThreadMessage = ThreadMessage & {
 }
 
 const EMOJI_CHOICES = ['😀', '😂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀']
+const CONVERSATION_WALLPAPER_STYLE: CSSProperties = {
+  backgroundImage: "linear-gradient(rgba(255,255,255,0.76), rgba(255,255,255,0.76)), url('/fondo-conversaciones.jpg')",
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+  backgroundRepeat: 'repeat',
+}
+
 function formatDate(value: string | null | undefined, fallback: string) {
   if (!value) return fallback
   try {
@@ -911,7 +918,8 @@ export function CrmTeamChatClient({ sidebarHeader }: CrmTeamChatClientProps) {
                 <div
                   ref={messagesViewportRef}
                   onScroll={handleViewportScroll}
-                  className="max-h-[520px] space-y-3 overflow-y-auto pr-1"
+                  className="max-h-[520px] space-y-3 overflow-y-auto rounded-[28px] border border-slate-200/80 bg-white/55 px-3 py-3 pr-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] sm:px-4 lg:px-6 xl:px-8"
+                  style={CONVERSATION_WALLPAPER_STYLE}
                 >
                   {visibleThreadMessages.length === 0 ? <p className="text-sm text-muted-foreground">{threadSearch.trim() ? 'No hay coincidencias para esta búsqueda.' : 'No hay mensajes en este chat.'}</p> : null}
                   {visibleThreadMessages.map((message) => {
@@ -924,7 +932,7 @@ export function CrmTeamChatClient({ sidebarHeader }: CrmTeamChatClientProps) {
                           event.preventDefault()
                           setMessageContextMenu({ messageId: message.id, x: event.clientX, y: event.clientY })
                         }}
-                        className={isOwn ? 'ml-auto max-w-[88%] rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700' : 'mr-auto max-w-[88%] rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}
+                        className={isOwn ? 'ml-auto max-w-[78%] rounded-3xl border border-sky-200 bg-white/96 px-4 py-3 text-sm text-slate-700 shadow-[0_18px_42px_-30px_rgba(14,116,144,0.42)]' : 'mr-auto max-w-[78%] rounded-3xl border border-slate-200 bg-white/96 px-4 py-3 text-sm text-slate-700 shadow-[0_18px_42px_-30px_rgba(15,23,42,0.22)]'}
                       >
                         <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
                           <span>{message.sentByUser?.name || message.sentByUser?.email || 'Usuario'}</span>

@@ -1,7 +1,6 @@
 "use client"
 
 import type { Dispatch, SetStateAction } from 'react'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -62,8 +61,6 @@ type Props<TForm extends WizardChatbotForm> = {
   form: TForm
   setForm: Dispatch<SetStateAction<TForm>>
   sectionOptions: Array<{ id: ChatbotWizardSection; label: string }>
-  channelStatusOptions: string[]
-  makeDemoToken: () => string
   normalizePixelValue: (value: string, fallback: string) => string
   normalizeZIndexValue: (value: string, fallback: string) => string
 }
@@ -88,25 +85,12 @@ export function CrmIntegrationsChatbotWizardSections<TForm extends WizardChatbot
           <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
             <div className="mb-4">
               <p className="text-sm font-semibold text-slate-900">Identidad del canal</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">Define cómo aparecerá el chatbot dentro del CRM y con qué estado arranca.</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Define cómo aparecerá el chatbot dentro del CRM.</p>
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="grid gap-2 md:col-span-2">
+            <div className="grid gap-4">
+              <div className="grid gap-2">
                 <Label>Nombre del canal</Label>
                 <Input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} className="h-11 rounded-xl bg-white" />
-              </div>
-              <div className="grid gap-2">
-                <Label>Proveedor técnico</Label>
-                <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700">{form.provider}</div>
-              </div>
-              <div className="grid gap-2">
-                <Label>Estado inicial</Label>
-                <Select value={form.status} onValueChange={(value) => setForm((prev) => ({ ...prev, status: value }))}>
-                  <SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {props.channelStatusOptions.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-                  </SelectContent>
-                </Select>
               </div>
             </div>
           </div>
@@ -114,27 +98,12 @@ export function CrmIntegrationsChatbotWizardSections<TForm extends WizardChatbot
           <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
             <div className="mb-4">
               <p className="text-sm font-semibold text-slate-900">Conexión y acceso</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">Controla el token de pruebas, la URL pública del iframe y las restricciones por dominio.</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Define en qué dominios se podrá publicar el widget.</p>
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="grid gap-2 md:col-span-2">
-                <Label>Token de prueba / verificación</Label>
-                <div className="flex gap-2">
-                  <Input value={form.testingToken} onChange={(e) => setForm((prev) => ({ ...prev, testingToken: e.target.value }))} className="h-11 rounded-xl bg-white" />
-                  <Button type="button" variant="outline" className="rounded-xl bg-white" onClick={() => setForm((prev) => ({ ...prev, testingToken: props.makeDemoToken() }))}>Regenerar</Button>
-                </div>
-                <p className="text-xs leading-5 text-slate-500">Se usa para pruebas seguras, verificación y bridges demo.</p>
-              </div>
-              <div className="grid gap-2 md:col-span-2">
+            <div className="grid gap-4">
+              <div className="grid gap-2">
                 <Label>Dominios permitidos</Label>
                 <Textarea value={form.allowedDomains} onChange={(e) => setForm((prev) => ({ ...prev, allowedDomains: e.target.value }))} rows={3} className="rounded-2xl bg-white" placeholder="cliente.com, demo.cliente.com" />
-              </div>
-              <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Publicar iframe sin token</p>
-                  <p className="text-xs text-slate-500">Recomendado para la demo controlada del cliente.</p>
-                </div>
-                <Switch checked={form.publicEmbedEnabled} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, publicEmbedEnabled: checked }))} />
               </div>
             </div>
           </div>

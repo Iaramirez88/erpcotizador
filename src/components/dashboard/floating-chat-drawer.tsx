@@ -17,6 +17,8 @@ import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { uploadFileWithProgress } from '@/lib/upload-file-with-progress'
 
+const CHAT_DRAWER_TOGGLE_EVENT = 'dashboard:toggle-conversations-drawer'
+
 type TeamUser = {
   id: string
   name?: string | null
@@ -279,6 +281,16 @@ function renderAttachments(attachments: ChatAttachment[] | undefined, onImageLoa
 export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat }: Props) {
   const storageTabKey = 'sg_floating_chat_last_tab'
   const hasStoredTabPreferenceRef = useRef(false)
+    function toggleDrawer() {
+      setOpen((current) => {
+        const nextOpen = !current
+        if (nextOpen && !hasStoredTabPreferenceRef.current && shouldDefaultToSupport(currentUserRole)) {
+          setActiveTab('support')
+        }
+        return nextOpen
+      })
+    }
+
   const hasHydratedTabPersistenceRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const crmFileInputRef = useRef<HTMLInputElement | null>(null)
@@ -329,6 +341,15 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   const [crmMessageDraft, setCrmMessageDraft] = useState('')
   const [teamMessageDraft, setTeamMessageDraft] = useState('')
   const [pendingCrmAttachments, setPendingCrmAttachments] = useState<ChatAttachment[]>([])
+
+  useEffect(() => {
+    function handleToggleDrawer() {
+      toggleDrawer()
+    }
+
+    window.addEventListener(CHAT_DRAWER_TOGGLE_EVENT, handleToggleDrawer)
+    return () => window.removeEventListener(CHAT_DRAWER_TOGGLE_EVENT, handleToggleDrawer)
+  }, [currentUserRole])
   const [crmAttachmentUpload, setCrmAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [crmLibraryPickerOpen, setCrmLibraryPickerOpen] = useState(false)
   const [crmConvertDialogOpen, setCrmConvertDialogOpen] = useState(false)
@@ -1448,7 +1469,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
           <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] px-4 py-2 sm:px-4.5">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">Chat global</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">Conversaciones</p>
             <CrmFileLibraryPicker
               open={teamLibraryPickerOpen}
               onOpenChange={setTeamLibraryPickerOpen}
@@ -1514,7 +1535,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
                   <div className="space-y-2.5">
-                    {unreadAlerts.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-500">Todo está al día. Cuando llegue un mensaje nuevo te saldrá aquí y en el badge del botón flotante.</div> : null}
+                    {unreadAlerts.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-500">Todo está al día. Cuando llegue un mensaje nuevo te saldrá aquí y en el badge de Conversaciones.</div> : null}
                     {unreadAlerts.map((alert) => (
                       <button key={`${alert.kind}-${alert.id}`} type="button" onClick={() => void handleOpenAlert(alert)} className="w-full rounded-[22px] border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] px-3 py-2.5 text-left shadow-sm transition-shadow hover:shadow-md">
                         <div className="flex items-start justify-between gap-2">
@@ -2206,16 +2227,10 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
           </div>
         </div>
 
-        <div className={cn('pointer-events-auto mb-4 mr-4 flex flex-col items-end gap-2 transition-all duration-300 sm:mb-6 sm:mr-0', open ? 'pointer-events-none translate-y-4 opacity-0' : 'translate-y-0 opacity-100')}>
+        <div className={cn('pointer-events-auto mb-4 mr-4 hidden flex-col items-end gap-2 transition-all duration-300 md:flex sm:mb-6 sm:mr-0', open ? 'pointer-events-none translate-y-4 opacity-0' : 'translate-y-0 opacity-100')}>
           <Button
             type="button"
-            onClick={() => setOpen((current) => {
-              const nextOpen = !current
-              if (nextOpen && !hasStoredTabPreferenceRef.current && shouldDefaultToSupport(currentUserRole)) {
-                setActiveTab('support')
-              }
-              return nextOpen
-            })}
+            onClick={toggleDrawer}
             className="relative h-14 w-14 rounded-full bg-blue-600 px-0 text-white shadow-[0_20px_40px_-20px_rgba(37,99,235,0.65)] hover:bg-blue-700"
           >
             <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h8M8 14h5M5 5h14a2 2 0 012 2v8a2 2 0 01-2 2H9l-4 4v-4H5a2 2 0 01-2-2V7a2 2 0 012-2z" /></svg>

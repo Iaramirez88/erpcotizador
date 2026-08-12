@@ -6,7 +6,8 @@ import { escapeHtml, renderEmail } from '@/lib/email-template'
 import { createInboundArtifacts, getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
 import { fetchGoogleSheetsRows } from '@/lib/crm-google-sheets'
-import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
+import { getMetaMessagingDispatchConfig, sendMetaMediaMessage, sendMetaTextMessage } from '@/lib/crm-meta'
+import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppMediaMessage, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
 import { sendTelegramMessage } from '@/lib/telegram'
 import { ensureInvoiceFromQuote } from '@/lib/quote-invoicing'
 import { ensureWorkOrderFromQuote } from '@/lib/work-orders'
@@ -31,6 +32,7 @@ import {
   interpolateChatbotVariables,
   resolveChatbotAutomationFlowByTrigger,
   resolveChatbotAssignmentUserId,
+  type ChatbotAutomationProvider,
   type ChatbotFlowTrigger,
   type ChatbotFlowTriggerCondition,
   type ChatbotStudioPauseNode,
@@ -92,11 +94,1038 @@ type ChatbotWebhookJob = {
 
 type ChatbotNotificationChannel = 'email' | 'whatsapp' | 'telegram'
 
+type SupportedChatbotRuntimeProvider = 'WEB_CHATBOT' | 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'INSTAGRAM_DM' | 'FACEBOOK_PAGE' | 'MESSENGER'
+
+const SUPPORTED_CHATBOT_RUNTIME_PROVIDERS = ['WEB_CHATBOT', 'WHATSAPP_CLOUD', 'WHATSAPP_SANDBOX', 'INSTAGRAM_DM', 'FACEBOOK_PAGE', 'MESSENGER'] as const
+
+type ChatbotRuntimeChannel = {
+  id: string
+  name: string
+  provider: SupportedChatbotRuntimeProvider
+  status: string
+  empresaId: string
+  sedeId: string | null
+  verifyToken: string | null
+  settingsJson: Prisma.JsonValue | null
+  externalPageId: string | null
+  externalPhoneNumberId: string | null
+  createdBy: { id: string }
+}
+
+type ChatbotRuntimeArtifacts = Awaited<ReturnType<typeof createInboundArtifacts>>
+
+type ChatbotAutomationExecutionArgs = {
+  tx?: Prisma.TransactionClient
+  channel: ChatbotRuntimeChannel
+  eventAt: Date
+  provider: ChatbotAutomationProvider
+  artifacts: ChatbotRuntimeArtifacts
+  nombre: string
+  email: string
+  phone: string
+  whatsapp: string
+  requestedProduct: string
+  empresaNombre: string
+  ciudad: string
+  document: string
+  address: string
+  messageText: string
+  expectedField: string
+  requestHuman: boolean
+  quickActionId: string
+  responseOptionId: string
+  currentStageId: string
+  currentFlowId: string
+  landingPageUrl: string
+  referrerUrl: string
+  inboundAttachments: ChatbotInboundAttachment[]
+}
+
+type ChatbotDispatchResult = {
+  dispatch: string
+  messageStatus: 'SENT' | 'FAILED'
+  providerMessageId: string | null
+  payloadJson: Prisma.InputJsonValue
+  errorMessage: string | null
+}
+
 type ResolvedChatbotNotificationRecipients = {
   internalUserIds: string[]
   emails: string[]
   whatsapp: string[]
   telegram: string[]
+}
+
+export function resolveChatbotAutomationProvider(provider: SupportedChatbotRuntimeProvider): ChatbotAutomationProvider {
+  return provider === 'WHATSAPP_SANDBOX' ? 'WHATSAPP_CLOUD' : provider
+}
+
+export function isSupportedChatbotRuntimeProvider(provider: string): provider is SupportedChatbotRuntimeProvider {
+  return (SUPPORTED_CHATBOT_RUNTIME_PROVIDERS as readonly string[]).includes(provider)
+}
+
+function withChatbotMessageOrigin(payload: Prisma.InputJsonValue, messageOrigin: 'BOT' | 'SYSTEM') {
+  const base = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : {}
+
+  return {
+    ...base,
+    messageOrigin,
+  } as Prisma.InputJsonValue
+}
+
+async function dispatchChatbotAutoReply(args: {
+  channel: ChatbotRuntimeChannel
+  conversation: { contactPhone: string | null; externalThreadId: string | null }
+  assistantBody: string
+  attachments: Array<{ type: 'image'; url: string; alt: string | null } | { type: 'document'; url: string; alt?: string | null; name: string | null }>
+}): Promise<ChatbotDispatchResult> {
+  if (args.channel.provider === 'WEB_CHATBOT') {
+    return {
+      dispatch: 'guided-chatbot-autoreply',
+      messageStatus: 'SENT',
+      providerMessageId: `chatbot-assistant-${Date.now()}`,
+      payloadJson: { provider: 'WEB_CHATBOT', dispatch: 'guided-chatbot-autoreply' },
+      errorMessage: null,
+    }
+  }
+
+  const firstAttachment = args.attachments[0] ?? null
+  const isWhatsApp = args.channel.provider === 'WHATSAPP_CLOUD' || args.channel.provider === 'WHATSAPP_SANDBOX'
+  const isMetaMessaging = args.channel.provider === 'FACEBOOK_PAGE' || args.channel.provider === 'MESSENGER' || args.channel.provider === 'INSTAGRAM_DM'
+
+  if (isWhatsApp) {
+    const config = getWhatsAppDispatchConfig(args.channel)
+    const recipientPhone = normalizeWhatsAppRecipient(args.conversation.contactPhone)
+
+    if (!recipientPhone) {
+      return {
+        dispatch: 'whatsapp-cloud',
+        messageStatus: 'FAILED',
+        providerMessageId: null,
+        payloadJson: { provider: args.channel.provider, dispatch: 'whatsapp-cloud', error: 'La conversación no tiene teléfono válido para responder por WhatsApp.' },
+        errorMessage: 'La conversación no tiene teléfono válido para responder por WhatsApp.',
+      }
+    }
+
+    if (!config.enabled) {
+      return {
+        dispatch: 'local-demo',
+        messageStatus: 'SENT',
+        providerMessageId: null,
+        payloadJson: { testing: true, provider: args.channel.provider, dispatch: 'local-demo', reason: 'El canal no tiene access token y phone number id configurados.' },
+        errorMessage: null,
+      }
+    }
+
+    try {
+      const result = firstAttachment
+        ? await sendWhatsAppMediaMessage({
+            config,
+            to: recipientPhone,
+            attachment: {
+              type: firstAttachment.type === 'image' ? 'IMAGE' : 'DOCUMENT',
+              url: firstAttachment.url,
+              filename: firstAttachment.type === 'document' ? firstAttachment.name : null,
+              caption: args.assistantBody || null,
+            },
+          })
+        : await sendWhatsAppTextMessage({
+            config,
+            to: recipientPhone,
+            bodyText: args.assistantBody,
+          })
+
+      return {
+        dispatch: 'whatsapp-cloud',
+        messageStatus: 'SENT',
+        providerMessageId: result.providerMessageId,
+        payloadJson: result.payloadJson,
+        errorMessage: null,
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'No se pudo enviar la respuesta automática por WhatsApp.'
+      return {
+        dispatch: 'whatsapp-cloud',
+        messageStatus: 'FAILED',
+        providerMessageId: null,
+        payloadJson: { provider: args.channel.provider, dispatch: 'whatsapp-cloud', error: errorMessage },
+        errorMessage,
+      }
+    }
+  }
+
+  if (isMetaMessaging) {
+    const config = getMetaMessagingDispatchConfig(args.channel.settingsJson)
+    const recipientThreadId = normalizeString(args.conversation.externalThreadId)
+
+    if (!recipientThreadId) {
+      return {
+        dispatch: 'meta-send-api',
+        messageStatus: 'FAILED',
+        providerMessageId: null,
+        payloadJson: { provider: args.channel.provider, dispatch: 'meta-send-api', error: 'La conversación no tiene externalThreadId para responder por Meta.' },
+        errorMessage: 'La conversación no tiene externalThreadId para responder por Meta.',
+      }
+    }
+
+    if (!config.enabled) {
+      return {
+        dispatch: 'local-demo',
+        messageStatus: 'SENT',
+        providerMessageId: null,
+        payloadJson: { testing: true, provider: args.channel.provider, dispatch: 'local-demo', reason: 'El canal no tiene page access token sincronizado desde Meta.' },
+        errorMessage: null,
+      }
+    }
+
+    try {
+      const result = firstAttachment
+        ? await sendMetaMediaMessage({
+            config,
+            recipientId: recipientThreadId,
+            provider: args.channel.provider,
+            attachment: {
+              type: firstAttachment.type === 'image' ? 'IMAGE' : 'DOCUMENT',
+              url: firstAttachment.url,
+              filename: firstAttachment.type === 'document' ? firstAttachment.name : null,
+              caption: args.assistantBody || null,
+            },
+          })
+        : await sendMetaTextMessage({
+            config,
+            recipientId: recipientThreadId,
+            bodyText: args.assistantBody,
+            provider: args.channel.provider,
+          })
+
+      return {
+        dispatch: 'meta-send-api',
+        messageStatus: 'SENT',
+        providerMessageId: result.providerMessageId,
+        payloadJson: result.payloadJson,
+        errorMessage: null,
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'No se pudo enviar la respuesta automática por Meta.'
+      return {
+        dispatch: 'meta-send-api',
+        messageStatus: 'FAILED',
+        providerMessageId: null,
+        payloadJson: { provider: args.channel.provider, dispatch: 'meta-send-api', error: errorMessage },
+        errorMessage,
+      }
+    }
+  }
+
+  return {
+    dispatch: 'unsupported-provider',
+    messageStatus: 'FAILED',
+    providerMessageId: null,
+    payloadJson: { provider: args.channel.provider, dispatch: 'unsupported-provider', error: 'El proveedor no soporta respuesta automática del chatbot.' },
+    errorMessage: 'El proveedor no soporta respuesta automática del chatbot.',
+  }
+}
+
+export async function processChatbotInboundAutomation(args: ChatbotAutomationExecutionArgs) {
+  const execute = async (tx: Prisma.TransactionClient) => {
+    const settings = getPublicChatbotSettings(args.channel.settingsJson)
+    const studioSettings = getChatbotStudioSettings(args.channel.settingsJson)
+    const conversationSnapshot = await tx.crmConversation.findUnique({
+      where: { id: args.artifacts.conversation.id },
+      select: {
+        id: true,
+        status: true,
+        assignedToUserId: true,
+        opportunityId: true,
+        externalThreadId: true,
+        contactPhone: true,
+        captures: {
+          orderBy: [{ createdAt: 'desc' }],
+          take: 2,
+          select: { id: true, normalizedDataJson: true },
+        },
+      },
+    })
+
+    const previousCapture = conversationSnapshot?.captures.find((item) => item.id !== args.artifacts.capture.id) ?? null
+    const priorRuntimeState = parseRuntimeState(previousCapture?.normalizedDataJson)
+    const defaultFlow = getDefaultChatbotAutomationFlowFromSettings(studioSettings)
+    const conversationFlow = getChatbotAutomationFlowById(studioSettings.automationFlows, args.currentFlowId) ?? defaultFlow
+    const flowVariables = studioSettings.flowVariables.filter((item: { enabled: boolean }) => item.enabled)
+    const resolvedIdentity = resolveChatIdentity({
+      nombre: args.nombre,
+      email: args.email,
+      phone: args.phone,
+      whatsapp: args.whatsapp,
+      requestedProduct: args.requestedProduct,
+      companyName: args.empresaNombre,
+      document: args.document,
+      city: args.ciudad,
+      address: args.address,
+      messageText: args.messageText,
+      expectedField: args.expectedField,
+    })
+    const effectiveProduct = resolvedIdentity.requestedProduct
+    const previewFlowStages = conversationFlow.flowStages.length ? conversationFlow.flowStages : settings.flowStages
+    const previewQuickActions = conversationFlow.quickActions.length ? conversationFlow.quickActions : settings.quickActions
+    const previewCurrentStage = findChatbotFlowStage(previewFlowStages, args.currentStageId) ?? resolveInitialFlowStage(previewFlowStages, conversationFlow.startStageId) ?? null
+    const previewMatchedResponseOption = findChatbotFlowResponseOption(previewCurrentStage, args.responseOptionId)
+      ?? matchChatbotFlowResponseOption(previewCurrentStage, args.messageText)
+    const previewSelectedQuickAction = findChatbotQuickAction(previewQuickActions, args.quickActionId)
+    const previewSelectedOptionsList = previewMatchedResponseOption?.label
+      ? mergeRuntimeList(priorRuntimeState.variables.selected_options_list, [previewMatchedResponseOption.label])
+      : (priorRuntimeState.variables.selected_options_list || '')
+    const leadQualified = Boolean((resolvedIdentity.email || resolvedIdentity.phone || resolvedIdentity.whatsapp) && effectiveProduct && resolvedIdentity.quantity)
+    const triggerMatchContext = {
+      contact_name: resolvedIdentity.nombre,
+      contact_email: resolvedIdentity.email,
+      contact_phone: resolvedIdentity.phone || resolvedIdentity.whatsapp,
+      contact_whatsapp: resolvedIdentity.whatsapp,
+      product_name: effectiveProduct,
+      quantity: resolvedIdentity.quantity,
+      company_name: resolvedIdentity.companyName,
+      document: resolvedIdentity.document,
+      city: resolvedIdentity.city,
+      address: resolvedIdentity.address,
+      channel_name: args.channel.name,
+      assistant_name: settings.assistantName,
+      lead_tags: args.artifacts.lead.tags.join(', '),
+      last_response_option_id: previewMatchedResponseOption?.id || args.responseOptionId,
+      last_response_option_label: previewMatchedResponseOption?.label || '',
+      last_response_option_message: previewMatchedResponseOption?.userMessage || '',
+      selected_options_list: previewSelectedOptionsList,
+      last_quick_action_id: previewSelectedQuickAction?.id || args.quickActionId,
+      last_quick_action_label: previewSelectedQuickAction?.label || '',
+      ...priorRuntimeState.variables,
+    }
+
+    let activeFlow = conversationFlow
+    const matchedTrigger = args.requestHuman
+      ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: args.provider, event: 'human_request', value: 'human_request', context: triggerMatchContext })
+      : leadQualified
+        ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: args.provider, event: 'lead_qualified', value: 'lead_qualified', context: triggerMatchContext })
+        : args.responseOptionId
+          ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: args.provider, event: 'response_option', value: args.responseOptionId, context: triggerMatchContext })
+          : args.quickActionId
+            ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: args.provider, event: 'quick_action', value: args.quickActionId, context: triggerMatchContext })
+            : resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: args.provider, event: 'message', value: args.messageText, context: triggerMatchContext })
+
+    if (matchedTrigger.flow?.id) {
+      activeFlow = matchedTrigger.flow
+    }
+
+    const flowStages = activeFlow.flowStages.length ? activeFlow.flowStages : settings.flowStages
+    const quickActions = activeFlow.quickActions.length ? activeFlow.quickActions : settings.quickActions
+    const flowTriggers = activeFlow.flowTriggers.length ? activeFlow.flowTriggers : studioSettings.flowTriggers
+    const pauseNodes = activeFlow.pauseNodes
+    const matchedTriggerCondition = matchedTrigger.matchedTrigger?.matchedCondition ?? null
+    const currentStage = findChatbotFlowStage(flowStages, args.currentStageId) ?? resolveInitialFlowStage(flowStages, activeFlow.startStageId) ?? null
+    const matchedResponseOption = findChatbotFlowResponseOption(currentStage, args.responseOptionId)
+      ?? matchChatbotFlowResponseOption(currentStage, args.messageText)
+    const matchedTriggerDestination = resolveFlowDestination({
+      targetStageId: matchedTriggerCondition?.targetStageId || matchedTrigger.matchedTrigger?.targetStageId,
+      targetActionId: matchedTriggerCondition?.targetActionId || matchedTrigger.matchedTrigger?.targetActionId,
+      targetTriggerId: matchedTriggerCondition?.targetTriggerId || matchedTrigger.matchedTrigger?.targetTriggerId,
+      flowTriggers,
+      flowStages,
+      quickActions,
+      messageText: args.messageText,
+      context: triggerMatchContext,
+    })
+    const matchedResponseDestination = matchedResponseOption
+      ? resolveFlowDestination({
+          targetStageId: matchedResponseOption.targetStageId,
+          targetActionId: matchedResponseOption.targetActionId,
+          targetTriggerId: matchedResponseOption.targetTriggerId,
+          flowTriggers,
+          flowStages,
+          quickActions,
+          messageText: args.messageText,
+          context: triggerMatchContext,
+        })
+      : { stageId: '', quickActionId: '' }
+    const effectiveQuickActionId = matchedTriggerDestination.quickActionId || matchedResponseDestination.quickActionId || args.quickActionId
+    const selectedQuickAction = findChatbotQuickAction(quickActions, effectiveQuickActionId)
+    const selectedQuickActionDestination = selectedQuickAction
+      ? resolveFlowDestination({
+          targetStageId: selectedQuickAction.targetStageId,
+          targetTriggerId: selectedQuickAction.targetTriggerId,
+          flowTriggers,
+          flowStages,
+          quickActions,
+          messageText: args.messageText,
+          context: triggerMatchContext,
+        })
+      : { stageId: '', quickActionId: '' }
+    const selectedAutomation = selectedQuickAction?.automation || null
+
+    const interactionRuntimeVariables = { ...priorRuntimeState.variables }
+    if (matchedResponseOption) {
+      interactionRuntimeVariables.last_response_option_id = matchedResponseOption.id
+      interactionRuntimeVariables.last_response_option_label = matchedResponseOption.label
+      interactionRuntimeVariables.last_response_option_message = matchedResponseOption.userMessage
+      interactionRuntimeVariables.selected_options_list = mergeRuntimeList(interactionRuntimeVariables.selected_options_list, [matchedResponseOption.label])
+    }
+    if (selectedQuickAction) {
+      interactionRuntimeVariables.last_quick_action_id = selectedQuickAction.id
+      interactionRuntimeVariables.last_quick_action_label = selectedQuickAction.label
+    }
+
+    if (!selectedAutomation?.chat.openChat && (priorRuntimeState.botSubscriptionActive === false || hasFuturePause(priorRuntimeState.pauseUntil))) {
+      const blockedConversationStatus = priorRuntimeState.botSubscriptionActive === false
+        ? (conversationSnapshot?.status === 'HUMAN_ACTIVE' || conversationSnapshot?.status === 'PENDING'
+            ? conversationSnapshot.status
+            : 'RESOLVED')
+        : 'PENDING'
+
+      await tx.crmLeadCapture.update({
+        where: { id: args.artifacts.capture.id },
+        data: {
+          normalizedDataJson: buildNormalizedCaptureData(args.artifacts.capture.normalizedDataJson, {
+            ...priorRuntimeState,
+            variables: interactionRuntimeVariables,
+          }),
+        },
+      })
+
+      await tx.crmConversation.update({
+        where: { id: args.artifacts.conversation.id },
+        data: {
+          status: blockedConversationStatus,
+          directionLastMessage: 'INBOUND',
+          lastMessageAt: new Date(),
+          resolvedAt: blockedConversationStatus === 'RESOLVED' ? new Date() : null,
+        },
+      })
+
+      await tx.crmChannelConnection.update({
+        where: { id: args.channel.id },
+        data: { lastWebhookAt: args.eventAt, lastErrorAt: null, lastErrorMessage: null },
+      })
+
+      return { artifacts: args.artifacts, autoReply: false, webhookJobs: [] as ChatbotWebhookJob[] }
+    }
+
+    const catalogInsight = await resolveCatalogInsight({
+      tx,
+      empresaId: args.channel.empresaId,
+      requestedProduct: effectiveProduct,
+      messageText: args.messageText,
+      lookupKind: resolveMaterialLookupKind({ messageText: args.messageText, requestedProduct: effectiveProduct, quickAction: selectedQuickAction }),
+    })
+
+    const businessActionResult = selectedQuickAction && (
+      selectedQuickAction.kind === 'create_quote'
+      || selectedQuickAction.kind === 'create_invoice'
+      || selectedQuickAction.kind === 'create_work_order'
+    )
+      ? await createBusinessEntityFromChatbot(tx, {
+          kind: selectedQuickAction.kind,
+          empresaId: args.channel.empresaId,
+          sedeId: args.channel.sedeId,
+          createdById: args.channel.createdBy.id,
+          nombre: resolvedIdentity.nombre,
+          email: resolvedIdentity.email,
+          phone: resolvedIdentity.phone,
+          whatsapp: resolvedIdentity.whatsapp,
+          requestedProduct: effectiveProduct,
+          quantity: resolvedIdentity.quantity,
+          companyName: resolvedIdentity.companyName,
+          document: resolvedIdentity.document,
+          city: resolvedIdentity.city,
+          address: resolvedIdentity.address,
+          material: catalogInsight.primary,
+        })
+      : null
+
+    const assistantReply = buildAssistantReply({
+      insight: catalogInsight,
+      messageText: args.messageText,
+      requestedProduct: effectiveProduct,
+      requestHuman: args.requestHuman,
+      leadQualified,
+      nombre: resolvedIdentity.nombre,
+      email: resolvedIdentity.email,
+      phone: resolvedIdentity.phone,
+      whatsapp: resolvedIdentity.whatsapp,
+      companyName: resolvedIdentity.companyName,
+      document: resolvedIdentity.document,
+      city: resolvedIdentity.city,
+      address: resolvedIdentity.address,
+      quantity: resolvedIdentity.quantity,
+      expectedField: args.expectedField,
+      businessActionResult,
+      showProductField: settings.showProductField,
+      currentStageId: args.currentStageId,
+      startStageId: activeFlow.startStageId,
+      quickActionId: effectiveQuickActionId,
+      responseOptionId: args.responseOptionId,
+      flowStages,
+      flowTriggers,
+      quickActions,
+      triggerContext: triggerMatchContext,
+    })
+
+    const resolvedStageId = matchedTriggerDestination.stageId || selectedQuickActionDestination.stageId || matchedResponseDestination.stageId || ''
+    const resolvedStage = resolvedStageId
+      ? findChatbotFlowStage(flowStages, resolvedStageId) ?? assistantReply.stage
+      : assistantReply.stage
+    const resolvedPauseNode = resolveChatPauseNode({
+      currentStageId: args.currentStageId,
+      resolvedStage,
+      pauseNodes,
+    })
+
+    let runtimeState: ChatbotRuntimeState = {
+      ...priorRuntimeState,
+      variables: interactionRuntimeVariables,
+    }
+    let assistantContext = {
+      contact_name: resolvedIdentity.nombre,
+      contact_email: resolvedIdentity.email,
+      contact_phone: resolvedIdentity.phone || resolvedIdentity.whatsapp,
+      contact_whatsapp: resolvedIdentity.whatsapp,
+      product_name: effectiveProduct,
+      quantity: resolvedIdentity.quantity,
+      company_name: resolvedIdentity.companyName,
+      document: resolvedIdentity.document,
+      city: resolvedIdentity.city,
+      address: resolvedIdentity.address,
+      channel_name: args.channel.name,
+      assistant_name: settings.assistantName,
+      lead_tags: args.artifacts.lead.tags.join(', '),
+      ...runtimeState.variables,
+    }
+
+    let automationPauseDescription: string | null = null
+    let automationPauseDurationMinutes: number | null = null
+    const webhookJobs: ChatbotWebhookJob[] = []
+
+    const assignedToUserIdCandidate = resolveChatbotAssignmentUserId({
+      rules: studioSettings.assignmentRules,
+      requestHuman: args.requestHuman,
+      leadQualified,
+      channelOwnerUserId: args.channel.createdBy.id,
+    })
+
+    const assignedToUser = assignedToUserIdCandidate === args.channel.createdBy.id
+      ? { id: args.channel.createdBy.id }
+      : await tx.user.findFirst({ where: { id: assignedToUserIdCandidate, empresaId: args.channel.empresaId }, select: { id: true } })
+
+    let conversationAssignedToUserId: string | null = assignedToUser?.id || conversationSnapshot?.assignedToUserId || args.channel.createdBy.id
+    let conversationStatus: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM' = args.requestHuman ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE'
+    let conversationResolvedAt: Date | null = null
+
+    if (selectedAutomation) {
+      if (selectedAutomation.chat.openChat) {
+        runtimeState = {
+          ...runtimeState,
+          botSubscriptionActive: true,
+          pauseUntil: null,
+        }
+        conversationStatus = args.requestHuman ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE'
+      }
+
+      if (selectedAutomation.chat.changeAssignee && selectedAutomation.chat.assigneeUserId) {
+        const nextAssignee = await tx.user.findFirst({
+          where: { id: selectedAutomation.chat.assigneeUserId, empresaId: args.channel.empresaId },
+          select: { id: true },
+        })
+        if (nextAssignee) {
+          conversationAssignedToUserId = nextAssignee.id
+        }
+      }
+
+      if (selectedAutomation.chat.unassignOperator) {
+        conversationAssignedToUserId = null
+      }
+
+      if (selectedAutomation.chat.pauseAutomation) {
+        const durationMinutes = parsePauseDurationMinutes(selectedAutomation.chat.pauseDuration)
+        if (durationMinutes) {
+          runtimeState = {
+            ...runtimeState,
+            pauseUntil: new Date(Date.now() + (durationMinutes * 60 * 1000)).toISOString(),
+          }
+          automationPauseDescription = `Pausa automática desde la acción ${selectedQuickAction?.label || 'chatbot'}`
+          automationPauseDurationMinutes = durationMinutes
+          conversationStatus = 'PENDING'
+        }
+      }
+
+      if (selectedAutomation.chat.closeChat) {
+        conversationStatus = 'RESOLVED'
+        conversationResolvedAt = new Date()
+      }
+
+      if (selectedAutomation.chat.cancelBotSubscription) {
+        runtimeState = {
+          ...runtimeState,
+          botSubscriptionActive: false,
+          pauseUntil: null,
+        }
+        conversationStatus = 'RESOLVED'
+        conversationResolvedAt = new Date()
+      }
+
+      const nextLeadTags = new Set(args.artifacts.lead.tags)
+      if (selectedAutomation.variables.addTagEnabled) {
+        for (const tag of selectedAutomation.variables.addTags) {
+          if (normalizeString(tag)) nextLeadTags.add(tag.trim())
+        }
+      }
+      if (selectedAutomation.variables.removeTagEnabled) {
+        for (const tag of selectedAutomation.variables.removeTags) {
+          nextLeadTags.delete(tag)
+        }
+      }
+      if (selectedAutomation.variables.addTagEnabled || selectedAutomation.variables.removeTagEnabled) {
+        await tx.crmLead.update({
+          where: { id: args.artifacts.lead.id },
+          data: { tags: Array.from(nextLeadTags) },
+        })
+      }
+
+      const nextRuntimeVariables = { ...runtimeState.variables }
+      if (selectedAutomation.variables.setVariableEnabled && selectedAutomation.variables.variableKey) {
+        nextRuntimeVariables[selectedAutomation.variables.variableKey] = interpolateChatbotVariables({
+          template: selectedAutomation.variables.variableValue,
+          variables: flowVariables,
+          context: assistantContext,
+        })
+      }
+      if (selectedAutomation.variables.deleteVariableEnabled && selectedAutomation.variables.deleteVariableKey) {
+        delete nextRuntimeVariables[selectedAutomation.variables.deleteVariableKey]
+      }
+      runtimeState = {
+        ...runtimeState,
+        variables: nextRuntimeVariables,
+      }
+      assistantContext = {
+        ...assistantContext,
+        ...runtimeState.variables,
+      }
+
+      let opportunityId = conversationSnapshot?.opportunityId || args.artifacts.conversation.opportunityId || null
+      if (selectedAutomation.crm.createDeal && !opportunityId) {
+        const opportunity = await tx.crmOpportunity.create({
+          data: {
+            empresaId: args.channel.empresaId,
+            sedeId: args.channel.sedeId,
+            title: effectiveProduct ? `Oportunidad · ${effectiveProduct}` : `Oportunidad · ${resolvedIdentity.nombre || 'Chatbot omnicanal'}`,
+            description: [
+              selectedAutomation.crm.pipelineName ? `Pipeline: ${selectedAutomation.crm.pipelineName}` : '',
+              args.messageText ? `Mensaje: ${args.messageText}` : '',
+            ].filter(Boolean).join('\n'),
+            stage: normalizeOpportunityStage(selectedAutomation.crm.dealStage),
+            leadId: args.artifacts.lead.id,
+            assignedToUserId: conversationAssignedToUserId,
+            createdById: args.channel.createdBy.id,
+          },
+          select: { id: true },
+        })
+        opportunityId = opportunity.id
+        await tx.crmConversation.update({
+          where: { id: args.artifacts.conversation.id },
+          data: { opportunityId },
+        })
+      }
+
+      if (selectedAutomation.crm.editDeal && opportunityId) {
+        await tx.crmOpportunity.update({
+          where: { id: opportunityId },
+          data: {
+            stage: normalizeOpportunityStage(selectedAutomation.crm.dealStage),
+            assignedToUserId: conversationAssignedToUserId,
+            description: selectedAutomation.crm.pipelineName
+              ? { set: `Pipeline: ${selectedAutomation.crm.pipelineName}` }
+              : undefined,
+          },
+        })
+      }
+
+      if (selectedAutomation.googleSheets.fetchRow && selectedAutomation.googleSheets.spreadsheetId) {
+        const lookupColumn = normalizeString(selectedAutomation.googleSheets.lookupColumn)
+        const lookupValue = interpolateChatbotVariables({
+          template: selectedAutomation.googleSheets.lookupValue,
+          variables: flowVariables,
+          context: assistantContext,
+        })
+        if (lookupColumn && lookupValue) {
+          try {
+            const sheetResult = await fetchGoogleSheetsRows({
+              googleSheetsSpreadsheetId: selectedAutomation.googleSheets.spreadsheetId,
+              googleSheetsSheetName: selectedAutomation.googleSheets.sheetName,
+            })
+            const matchedRow = sheetResult.rows.find((row) => normalizeString(row.raw[lookupColumn]).toLowerCase() === normalizeString(lookupValue).toLowerCase())
+            if (matchedRow) {
+              runtimeState = {
+                ...runtimeState,
+                googleSheetsRow: matchedRow.raw,
+              }
+            }
+          } catch (error) {
+            console.error('Error leyendo Google Sheets desde chatbot:', error)
+          }
+        }
+      }
+
+      const notificationRecipients = selectedAutomation.notifications.notifyMe
+        ? buildNotificationRecipientsFromConfig(selectedAutomation.notifications)
+        : []
+
+      const externalWhatsAppTargets = resolveExternalWhatsAppNotificationTargets({
+        notifyOtherContact: selectedAutomation.notifications.notifyOtherContact,
+        targetContact: selectedAutomation.notifications.targetContact,
+        fallbackWhatsapp: resolvedIdentity.whatsapp,
+        fallbackPhone: resolvedIdentity.phone,
+      })
+
+      if (selectedAutomation.notifications.notifyMe) {
+        const resolvedRecipients = await resolveChatbotNotificationRecipients(tx, {
+          empresaId: args.channel.empresaId,
+          rawRecipients: notificationRecipients,
+        })
+        const targetUserIds = uniqueStrings([
+          ...resolvedRecipients.internalUserIds,
+          notificationRecipients.length ? null : conversationAssignedToUserId,
+          notificationRecipients.length ? null : args.channel.createdBy.id,
+        ])
+        if (!notificationRecipients.length && targetUserIds.length) {
+          const fallbackUsers = await tx.user.findMany({
+            where: {
+              empresaId: args.channel.empresaId,
+              id: { in: targetUserIds },
+            },
+            select: { email: true, telefono: true },
+          })
+          resolvedRecipients.emails = uniqueStrings([
+            ...resolvedRecipients.emails,
+            ...fallbackUsers.map((user) => user.email),
+          ])
+          resolvedRecipients.whatsapp = uniqueStrings([
+            ...resolvedRecipients.whatsapp,
+            ...fallbackUsers.map((user) => normalizeWhatsAppRecipient(user.telefono)),
+          ])
+        }
+        const notificationBodyText = buildChatbotNotificationText({
+          actionLabel: selectedQuickAction?.label || 'Acción del chatbot',
+          contactName: resolvedIdentity.nombre,
+          companyName: resolvedIdentity.companyName,
+          requestedProduct: effectiveProduct,
+          quantity: resolvedIdentity.quantity,
+          whatsapp: resolvedIdentity.whatsapp,
+          email: resolvedIdentity.email,
+          summary: richTextToPlainText(assistantReply.body),
+        })
+
+        if (targetUserIds.length) {
+          await tx.notification.createMany({
+            data: targetUserIds.map((userId) => ({
+              type: 'INFO',
+              title: selectedQuickAction?.label ? `Automatización del chatbot: ${selectedQuickAction.label}` : 'Automatización del chatbot',
+              body: [
+                resolvedIdentity.nombre ? `Contacto: ${resolvedIdentity.nombre}` : '',
+                effectiveProduct ? `Interés: ${effectiveProduct}` : '',
+                selectedAutomation.notifications.notifyChannels.length ? `Canales: ${selectedAutomation.notifications.notifyChannels.join(', ')}` : '',
+              ].filter(Boolean).join(' · ') || 'Se ejecutó una acción avanzada desde el chatbot.',
+              empresaId: args.channel.empresaId,
+              sedeId: args.channel.sedeId,
+              userId,
+              actionUrl: '/dashboard/crm',
+              actionLabel: 'Abrir CRM',
+            })),
+          })
+        }
+
+        const normalizedChannels = normalizeNotificationChannels(selectedAutomation.notifications.notifyChannels)
+        if (normalizedChannels.has('email')) {
+          await sendChatbotNotificationEmail({
+            to: resolvedRecipients.emails,
+            actionLabel: selectedQuickAction?.label || 'Acción del chatbot',
+            companyName: resolvedIdentity.companyName,
+            bodyText: notificationBodyText,
+          })
+        }
+
+        if (normalizedChannels.has('whatsapp')) {
+          await sendChatbotNotificationWhatsApp(tx, {
+            empresaId: args.channel.empresaId,
+            sedeId: args.channel.sedeId,
+            channelId: normalizeString(selectedAutomation.notifications.whatsappChannelId) || undefined,
+            to: uniqueStrings([...resolvedRecipients.whatsapp, ...externalWhatsAppTargets]),
+            bodyText: notificationBodyText,
+          })
+        }
+
+        if (normalizedChannels.has('telegram')) {
+          await sendChatbotNotificationTelegram({
+            to: resolvedRecipients.telegram,
+            bodyText: notificationBodyText,
+          })
+        }
+      }
+
+      if (externalWhatsAppTargets.length && !selectedAutomation.notifications.notifyMe) {
+        await sendChatbotNotificationWhatsApp(tx, {
+          empresaId: args.channel.empresaId,
+          sedeId: args.channel.sedeId,
+          channelId: normalizeString(selectedAutomation.notifications.whatsappChannelId) || undefined,
+          to: externalWhatsAppTargets,
+          bodyText: buildChatbotNotificationText({
+            actionLabel: selectedQuickAction?.label || 'Acción del chatbot',
+            contactName: resolvedIdentity.nombre,
+            companyName: resolvedIdentity.companyName,
+            requestedProduct: effectiveProduct,
+            quantity: resolvedIdentity.quantity,
+            whatsapp: resolvedIdentity.whatsapp,
+            email: resolvedIdentity.email,
+            summary: richTextToPlainText(assistantReply.body),
+          }),
+        })
+      }
+
+      if (selectedAutomation.notifications.addNote && selectedAutomation.notifications.noteText) {
+        await tx.crmActivity.create({
+          data: {
+            empresaId: args.channel.empresaId,
+            sedeId: args.channel.sedeId,
+            type: 'NOTE',
+            summary: 'Nota privada agregada por acción del chatbot',
+            details: interpolateChatbotVariables({
+              template: selectedAutomation.notifications.noteText,
+              variables: flowVariables,
+              context: assistantContext,
+            }),
+            leadId: args.artifacts.lead.id,
+            opportunityId: conversationSnapshot?.opportunityId || args.artifacts.conversation.opportunityId || null,
+            occurredAt: new Date(),
+            createdById: args.channel.createdBy.id,
+          },
+        })
+      }
+
+      if (selectedAutomation.notifications.startA360Event && selectedAutomation.notifications.a360EventName) {
+        runtimeState = {
+          ...runtimeState,
+          lastA360EventName: selectedAutomation.notifications.a360EventName,
+        }
+        await tx.crmActivity.create({
+          data: {
+            empresaId: args.channel.empresaId,
+            sedeId: args.channel.sedeId,
+            type: 'OTHER',
+            summary: 'Evento A360 solicitado por chatbot',
+            details: selectedAutomation.notifications.a360EventName,
+            leadId: args.artifacts.lead.id,
+            opportunityId: conversationSnapshot?.opportunityId || args.artifacts.conversation.opportunityId || null,
+            occurredAt: new Date(),
+            createdById: args.channel.createdBy.id,
+          },
+        })
+      }
+
+      if (selectedAutomation.notifications.sendWebhook && selectedAutomation.notifications.webhookUrl) {
+        webhookJobs.push({
+          url: selectedAutomation.notifications.webhookUrl,
+          payload: {
+            source: 'crm-chatbot',
+            channelId: args.channel.id,
+            quickActionId: selectedQuickAction?.id || null,
+            quickActionLabel: selectedQuickAction?.label || null,
+            leadId: args.artifacts.lead.id,
+            conversationId: args.artifacts.conversation.id,
+            contact: {
+              name: resolvedIdentity.nombre,
+              email: resolvedIdentity.email,
+              phone: resolvedIdentity.phone,
+              whatsapp: resolvedIdentity.whatsapp,
+            },
+            product: effectiveProduct,
+            quantity: resolvedIdentity.quantity,
+            runtime: runtimeState,
+            targetContact: selectedAutomation.notifications.notifyOtherContact ? selectedAutomation.notifications.targetContact : null,
+            a360EventName: selectedAutomation.notifications.startA360Event ? selectedAutomation.notifications.a360EventName : null,
+            requestedAt: new Date().toISOString(),
+          },
+        })
+      }
+    }
+
+    const shouldHandoffToHuman = args.requestHuman
+      || selectedQuickAction?.kind === 'human'
+      || matchedTrigger.matchedTrigger?.event === 'human_request'
+
+    if (shouldHandoffToHuman || isHumanHandoffStage(resolvedStage)) {
+      runtimeState = {
+        ...runtimeState,
+        botSubscriptionActive: false,
+        pauseUntil: null,
+      }
+      conversationStatus = 'HUMAN_ACTIVE'
+      conversationResolvedAt = null
+    }
+
+    const assistantBodyTemplate = matchedTrigger.matchedTrigger?.assistantReply || assistantReply.body
+    const assistantBodyHtml = normalizeRichTextHtml(interpolateChatbotVariables({
+      template: resolvedPauseNode
+        ? appendPauseCopy(assistantBodyTemplate, resolvedPauseNode)
+        : decorateAssistantReply(assistantBodyTemplate),
+      variables: flowVariables,
+      context: assistantContext,
+    }))
+    const assistantBody = richTextToPlainText(assistantBodyHtml)
+
+    const stageQuickActions = getStageQuickActions(resolvedStage, quickActions)
+    const stageResponseOptions = getStageResponseOptions(resolvedStage)
+
+    let pauseUntil = resolvedPauseNode
+      ? new Date(Date.now() + (resolvedPauseNode.durationMinutes * 60 * 1000)).toISOString()
+      : null
+    let pauseDescription = resolvedPauseNode?.description || null
+    let pauseDurationMinutes = resolvedPauseNode?.durationMinutes || null
+
+    if (runtimeState.pauseUntil && (!pauseUntil || Date.parse(runtimeState.pauseUntil) > Date.parse(pauseUntil))) {
+      pauseUntil = runtimeState.pauseUntil
+      pauseDescription = automationPauseDescription || pauseDescription
+      pauseDurationMinutes = automationPauseDurationMinutes || pauseDurationMinutes
+    }
+
+    const activeInactivityRule = resolveActiveInactivityRule({
+      stage: resolvedStage,
+      quickAction: selectedQuickAction,
+      trigger: matchedTrigger.matchedTrigger ?? null,
+    })
+
+    const quickActionAttachments = buildQuickActionAttachments(selectedQuickAction)
+    const catalogAttachments = [catalogInsight.primary, ...catalogInsight.alternatives]
+      .filter((item): item is MaterialMatch => Boolean(item?.imagenUrl))
+      .slice(0, 3)
+      .map((item) => ({ type: 'image' as const, url: item.imagenUrl!, alt: item.nombre }))
+    const outboundAttachments = [...quickActionAttachments, ...catalogAttachments]
+    const dispatchResult = await dispatchChatbotAutoReply({
+      channel: args.channel,
+      conversation: {
+        contactPhone: args.artifacts.conversation.contactPhone,
+        externalThreadId: args.artifacts.conversation.externalThreadId,
+      },
+      assistantBody,
+      attachments: outboundAttachments,
+    })
+
+    const providerPayload = dispatchResult.payloadJson && typeof dispatchResult.payloadJson === 'object' && !Array.isArray(dispatchResult.payloadJson)
+      ? dispatchResult.payloadJson as Record<string, unknown>
+      : {}
+
+    await tx.crmMessage.create({
+      data: {
+        empresaId: args.channel.empresaId,
+        sedeId: args.channel.sedeId,
+        conversationId: args.artifacts.conversation.id,
+        providerMessageId: dispatchResult.providerMessageId,
+        direction: 'OUTBOUND',
+        messageType: 'TEXT',
+        status: dispatchResult.messageStatus,
+        bodyText: assistantBody,
+        payloadJson: withChatbotMessageOrigin({
+          ...providerPayload,
+          provider: args.channel.provider,
+          dispatch: dispatchResult.dispatch,
+          chatRenderedHtml: assistantBodyHtml,
+          matchedMaterialId: catalogInsight.primary?.id || null,
+          alternativeMaterialIds: catalogInsight.alternatives.map((item) => item.id),
+          catalogIntent: catalogInsight.catalogIntent,
+          requestedProduct: effectiveProduct,
+          chatFlowNextField: resolvedStage?.nextField === 'none' ? null : (assistantReply.nextField ?? resolvedStage?.nextField ?? null),
+          chatFlowStageId: resolvedStage?.id || null,
+          chatFlowId: activeFlow.id,
+          chatFlowName: activeFlow.name,
+          chatQuickActionIds: stageQuickActions.map((item) => item.id),
+          chatFlowResponseOptionIds: stageResponseOptions.map((item) => item.id),
+          chatPauseNodeId: resolvedPauseNode?.id || null,
+          chatPauseDurationMinutes: pauseDurationMinutes,
+          chatPauseDescription: pauseDescription,
+          chatPauseUntil: pauseUntil,
+          chatInactivityRule: activeInactivityRule as ChatbotInactivityRule | null,
+          chatbotRuntime: runtimeState,
+          quantity: resolvedIdentity.quantity,
+          whatsapp: resolvedIdentity.whatsapp,
+          address: resolvedIdentity.address,
+          businessActionKind: businessActionResult?.kind || null,
+          businessQuoteId: businessActionResult?.quoteId || null,
+          businessQuoteNumber: businessActionResult?.quoteNumber || null,
+          businessInvoiceNumber: businessActionResult?.invoiceNumber || null,
+          businessWorkOrderNumber: businessActionResult?.workOrderNumber || null,
+          matchedTriggerId: matchedTrigger.matchedTrigger?.id || null,
+          error: dispatchResult.errorMessage,
+        }, 'BOT'),
+        attachmentsJson: outboundAttachments,
+        occurredAt: new Date(),
+      },
+    })
+
+    if (dispatchResult.messageStatus === 'FAILED') {
+      conversationStatus = 'PENDING'
+    }
+
+    await tx.crmConversation.update({
+      where: { id: args.artifacts.conversation.id },
+      data: {
+        assignedToUserId: conversationAssignedToUserId,
+        status: conversationStatus,
+        directionLastMessage: 'OUTBOUND',
+        lastMessageAt: new Date(),
+        resolvedAt: conversationResolvedAt,
+      },
+    })
+
+    await tx.crmLeadCapture.update({
+      where: { id: args.artifacts.capture.id },
+      data: {
+        normalizedDataJson: buildNormalizedCaptureData(args.artifacts.capture.normalizedDataJson, runtimeState),
+      },
+    })
+
+    if (leadQualified && args.artifacts.lead.status === 'NEW') {
+      await tx.crmLead.update({
+        where: { id: args.artifacts.lead.id },
+        data: {
+          status: 'QUALIFIED',
+          notes: [args.artifacts.lead.notes, `Producto consultado: ${effectiveProduct}`, resolvedIdentity.quantity ? `Cantidad solicitada: ${resolvedIdentity.quantity}` : '', resolvedIdentity.whatsapp ? `WhatsApp: ${resolvedIdentity.whatsapp}` : '', resolvedIdentity.address ? `Dirección: ${resolvedIdentity.address}` : ''].filter(Boolean).join('\n\n'),
+        },
+      })
+    }
+
+    await tx.crmActivity.create({
+      data: {
+        empresaId: args.channel.empresaId,
+        sedeId: args.channel.sedeId,
+        type: 'OTHER',
+        summary: dispatchResult.messageStatus === 'FAILED'
+          ? 'El chatbot generó respuesta pero falló el envío al canal'
+          : catalogInsight.primary || catalogInsight.catalogIntent
+            ? 'Respuesta automática del chatbot con catálogo e inventario'
+            : 'Respuesta automática del chatbot',
+        details: dispatchResult.messageStatus === 'FAILED' && dispatchResult.errorMessage
+          ? `${assistantBody}\n\nError de envío: ${dispatchResult.errorMessage}`
+          : assistantBody,
+        leadId: args.artifacts.lead.id,
+        occurredAt: new Date(),
+        createdById: args.channel.createdBy.id,
+      },
+    })
+
+    await tx.crmChannelConnection.update({
+      where: { id: args.channel.id },
+      data: { lastWebhookAt: args.eventAt, lastErrorAt: null, lastErrorMessage: null },
+    })
+
+    return { artifacts: args.artifacts, autoReply: true, webhookJobs }
+  }
+
+  return args.tx ? execute(args.tx) : prisma.$transaction(execute)
 }
 
 const SERVICE_HINT_TERMS = [
@@ -826,9 +1855,21 @@ function appendPauseCopy(baseBody: string, pauseNode: ChatbotStudioPauseNode | n
 }
 
 function buildQuickActionAttachments(action: ChatbotQuickAction | null) {
-  if (!action?.responseAttachmentType || !action.responseAttachmentUrl) return [] as Array<{ type: 'image' | 'document'; url: string; alt: string | null }>
+  if (!action?.responseAttachmentType || !action.responseAttachmentUrl) {
+    return [] as Array<{ type: 'image'; url: string; alt: string | null } | { type: 'document'; url: string; alt?: string | null; name: string | null }>
+  }
+
+  if (action.responseAttachmentType === 'document') {
+    return [{
+      type: 'document' as const,
+      url: action.responseAttachmentUrl,
+      alt: action.responseAttachmentName || action.label || null,
+      name: action.responseAttachmentName || null,
+    }]
+  }
+
   return [{
-    type: action.responseAttachmentType,
+    type: 'image' as const,
     url: action.responseAttachmentUrl,
     alt: action.responseAttachmentName || action.label || null,
   }]
@@ -1471,40 +2512,8 @@ export async function POST(request: Request) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const existingConversation = await tx.crmConversation.findFirst({
-        where: {
-          channelConnectionId: channel.id,
-          externalThreadId,
-        },
-        select: {
-          id: true,
-          status: true,
-          assignedToUserId: true,
-          opportunityId: true,
-          captures: {
-            orderBy: [{ createdAt: 'desc' }],
-            take: 1,
-            select: { normalizedDataJson: true },
-          },
-        },
-      })
-
-      const priorRuntimeState = parseRuntimeState(existingConversation?.captures[0]?.normalizedDataJson)
-      const defaultFlow = getDefaultChatbotAutomationFlowFromSettings(studioSettings)
-      const conversationFlow = getChatbotAutomationFlowById(studioSettings.automationFlows, currentFlowId) ?? defaultFlow
-      const flowVariables = studioSettings.flowVariables.filter((item: { enabled: boolean }) => item.enabled)
       const resolvedIdentity = resolveChatIdentity({ nombre, email, phone, whatsapp, requestedProduct, companyName: empresaNombre, document, city: ciudad, address, messageText, expectedField })
       const effectiveProduct = resolvedIdentity.requestedProduct
-      const previewFlowStages = conversationFlow.flowStages.length ? conversationFlow.flowStages : settings.flowStages
-      const previewQuickActions = conversationFlow.quickActions.length ? conversationFlow.quickActions : settings.quickActions
-      const previewCurrentStage = findChatbotFlowStage(previewFlowStages, currentStageId) ?? resolveInitialFlowStage(previewFlowStages, conversationFlow.startStageId) ?? null
-      const previewMatchedResponseOption = findChatbotFlowResponseOption(previewCurrentStage, responseOptionId)
-        ?? matchChatbotFlowResponseOption(previewCurrentStage, messageText)
-      const previewSelectedQuickAction = findChatbotQuickAction(previewQuickActions, quickActionId)
-      const previewSelectedOptionsList = previewMatchedResponseOption?.label
-        ? mergeRuntimeList(priorRuntimeState.variables.selected_options_list, [previewMatchedResponseOption.label])
-        : (priorRuntimeState.variables.selected_options_list || '')
-
       const artifacts = await createInboundArtifacts({
         client: tx,
         empresaId: channel.empresaId,
@@ -1559,726 +2568,44 @@ export async function POST(request: Request) {
         attachmentsJson: inboundAttachments,
       })
 
-      const leadQualified = Boolean((resolvedIdentity.email || resolvedIdentity.phone || resolvedIdentity.whatsapp) && effectiveProduct && resolvedIdentity.quantity)
-      const triggerMatchContext = {
-        contact_name: resolvedIdentity.nombre,
-        contact_email: resolvedIdentity.email,
-        contact_phone: resolvedIdentity.phone || resolvedIdentity.whatsapp,
-        contact_whatsapp: resolvedIdentity.whatsapp,
-        product_name: effectiveProduct,
-        quantity: resolvedIdentity.quantity,
-        company_name: resolvedIdentity.companyName,
-        document: resolvedIdentity.document,
-        city: resolvedIdentity.city,
-        address: resolvedIdentity.address,
-        channel_name: channel.name,
-        assistant_name: settings.assistantName,
-        lead_tags: artifacts.lead.tags.join(', '),
-        last_response_option_id: previewMatchedResponseOption?.id || responseOptionId,
-        last_response_option_label: previewMatchedResponseOption?.label || '',
-        last_response_option_message: previewMatchedResponseOption?.userMessage || '',
-        selected_options_list: previewSelectedOptionsList,
-        last_quick_action_id: previewSelectedQuickAction?.id || quickActionId,
-        last_quick_action_label: previewSelectedQuickAction?.label || '',
-        ...priorRuntimeState.variables,
-      }
-
-      let activeFlow = conversationFlow
-      let matchedTrigger = requestHuman
-        ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'human_request', value: 'human_request', context: triggerMatchContext })
-        : leadQualified
-          ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'lead_qualified', value: 'lead_qualified', context: triggerMatchContext })
-          : responseOptionId
-            ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'response_option', value: responseOptionId, context: triggerMatchContext })
-            : quickActionId
-              ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'quick_action', value: quickActionId, context: triggerMatchContext })
-              : resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'message', value: messageText, context: triggerMatchContext })
-
-      if (matchedTrigger.flow?.id) {
-        activeFlow = matchedTrigger.flow
-      }
-
-      const flowStages = activeFlow.flowStages.length ? activeFlow.flowStages : settings.flowStages
-      const quickActions = activeFlow.quickActions.length ? activeFlow.quickActions : settings.quickActions
-      const flowTriggers = activeFlow.flowTriggers.length ? activeFlow.flowTriggers : studioSettings.flowTriggers
-      const pauseNodes = activeFlow.pauseNodes
-      const matchedTriggerCondition = matchedTrigger.matchedTrigger?.matchedCondition ?? null
-      const currentStage = findChatbotFlowStage(flowStages, currentStageId) ?? resolveInitialFlowStage(flowStages, activeFlow.startStageId) ?? null
-      const matchedResponseOption = findChatbotFlowResponseOption(currentStage, responseOptionId)
-        ?? matchChatbotFlowResponseOption(currentStage, messageText)
-      const matchedTriggerDestination = resolveFlowDestination({
-        targetStageId: matchedTriggerCondition?.targetStageId || matchedTrigger.matchedTrigger?.targetStageId,
-        targetActionId: matchedTriggerCondition?.targetActionId || matchedTrigger.matchedTrigger?.targetActionId,
-        targetTriggerId: matchedTriggerCondition?.targetTriggerId || matchedTrigger.matchedTrigger?.targetTriggerId,
-        flowTriggers,
-        flowStages,
-        quickActions,
-        messageText,
-        context: triggerMatchContext,
-      })
-      const matchedResponseDestination = matchedResponseOption
-        ? resolveFlowDestination({
-            targetStageId: matchedResponseOption.targetStageId,
-            targetActionId: matchedResponseOption.targetActionId,
-            targetTriggerId: matchedResponseOption.targetTriggerId,
-            flowTriggers,
-            flowStages,
-            quickActions,
-            messageText,
-            context: triggerMatchContext,
-          })
-        : { stageId: '', quickActionId: '' }
-      const effectiveQuickActionId = matchedTriggerDestination.quickActionId || matchedResponseDestination.quickActionId || quickActionId
-      const selectedQuickAction = findChatbotQuickAction(quickActions, effectiveQuickActionId)
-      const selectedQuickActionDestination = selectedQuickAction
-        ? resolveFlowDestination({
-            targetStageId: selectedQuickAction.targetStageId,
-            targetTriggerId: selectedQuickAction.targetTriggerId,
-            flowTriggers,
-            flowStages,
-            quickActions,
-            messageText,
-            context: triggerMatchContext,
-          })
-        : { stageId: '', quickActionId: '' }
-      const selectedAutomation = selectedQuickAction?.automation || null
-
-      const interactionRuntimeVariables = { ...priorRuntimeState.variables }
-      if (matchedResponseOption) {
-        interactionRuntimeVariables.last_response_option_id = matchedResponseOption.id
-        interactionRuntimeVariables.last_response_option_label = matchedResponseOption.label
-        interactionRuntimeVariables.last_response_option_message = matchedResponseOption.userMessage
-        interactionRuntimeVariables.selected_options_list = mergeRuntimeList(interactionRuntimeVariables.selected_options_list, [matchedResponseOption.label])
-      }
-      if (selectedQuickAction) {
-        interactionRuntimeVariables.last_quick_action_id = selectedQuickAction.id
-        interactionRuntimeVariables.last_quick_action_label = selectedQuickAction.label
-      }
-
-      if (!selectedAutomation?.chat.openChat && (priorRuntimeState.botSubscriptionActive === false || hasFuturePause(priorRuntimeState.pauseUntil))) {
-        const blockedConversationStatus = priorRuntimeState.botSubscriptionActive === false
-          ? (existingConversation?.status === 'HUMAN_ACTIVE' || existingConversation?.status === 'PENDING'
-              ? existingConversation.status
-              : 'RESOLVED')
-          : 'PENDING'
-
-        await tx.crmLeadCapture.update({
-          where: { id: artifacts.capture.id },
-          data: {
-            normalizedDataJson: buildNormalizedCaptureData(artifacts.capture.normalizedDataJson, {
-              ...priorRuntimeState,
-              variables: interactionRuntimeVariables,
-            }),
-          },
-        })
-
-        await tx.crmConversation.update({
-          where: { id: artifacts.conversation.id },
-          data: {
-            status: blockedConversationStatus,
-            directionLastMessage: 'INBOUND',
-            lastMessageAt: new Date(),
-            resolvedAt: blockedConversationStatus === 'RESOLVED' ? new Date() : null,
-          },
-        })
-
-        await tx.crmChannelConnection.update({
-          where: { id: channel.id },
-          data: { lastWebhookAt: eventAt, lastErrorAt: null, lastErrorMessage: null },
-        })
-
-        return { artifacts, autoReply: false, webhookJobs: [] as ChatbotWebhookJob[] }
-      }
-
-      const catalogInsight = await resolveCatalogInsight({
+      return processChatbotInboundAutomation({
         tx,
-        empresaId: channel.empresaId,
-        requestedProduct: effectiveProduct,
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          provider: 'WEB_CHATBOT',
+          status: channel.status,
+          empresaId: channel.empresaId,
+          sedeId: channel.sedeId,
+          verifyToken: channel.verifyToken,
+          settingsJson: channel.settingsJson,
+          externalPageId: channel.externalPageId,
+          externalPhoneNumberId: channel.externalPhoneNumberId,
+          createdBy: channel.createdBy,
+        },
+        eventAt,
+        provider: 'WEB_CHATBOT',
+        artifacts,
+        nombre,
+        email,
+        phone,
+        whatsapp,
+        requestedProduct,
+        empresaNombre,
+        ciudad,
+        document,
+        address,
         messageText,
-        lookupKind: resolveMaterialLookupKind({ messageText, requestedProduct: effectiveProduct, quickAction: selectedQuickAction }),
-      })
-
-      const businessActionResult = selectedQuickAction && (
-        selectedQuickAction.kind === 'create_quote'
-        || selectedQuickAction.kind === 'create_invoice'
-        || selectedQuickAction.kind === 'create_work_order'
-      )
-        ? await createBusinessEntityFromChatbot(tx, {
-            kind: selectedQuickAction.kind,
-            empresaId: channel.empresaId,
-            sedeId: channel.sedeId,
-            createdById: channel.createdBy.id,
-            nombre: resolvedIdentity.nombre,
-            email: resolvedIdentity.email,
-            phone: resolvedIdentity.phone,
-            whatsapp: resolvedIdentity.whatsapp,
-            requestedProduct: effectiveProduct,
-            quantity: resolvedIdentity.quantity,
-            companyName: resolvedIdentity.companyName,
-            document: resolvedIdentity.document,
-            city: resolvedIdentity.city,
-            address: resolvedIdentity.address,
-            material: catalogInsight.primary,
-          })
-        : null
-
-      const assistantReply = buildAssistantReply({
-        insight: catalogInsight,
-        messageText,
-        requestedProduct: effectiveProduct,
-        requestHuman,
-        leadQualified,
-        nombre: resolvedIdentity.nombre,
-        email: resolvedIdentity.email,
-        phone: resolvedIdentity.phone,
-        whatsapp: resolvedIdentity.whatsapp,
-        companyName: resolvedIdentity.companyName,
-        document: resolvedIdentity.document,
-        city: resolvedIdentity.city,
-        address: resolvedIdentity.address,
-        quantity: resolvedIdentity.quantity,
         expectedField,
-        businessActionResult,
-        showProductField: settings.showProductField,
-        currentStageId,
-        startStageId: activeFlow.startStageId,
-        quickActionId: effectiveQuickActionId,
-        responseOptionId,
-        flowStages,
-        flowTriggers,
-        quickActions,
-        triggerContext: triggerMatchContext,
-      })
-
-      const resolvedStageId = matchedTriggerDestination.stageId || selectedQuickActionDestination.stageId || matchedResponseDestination.stageId || ''
-      const resolvedStage = resolvedStageId
-        ? findChatbotFlowStage(flowStages, resolvedStageId) ?? assistantReply.stage
-        : assistantReply.stage
-      const resolvedPauseNode = resolveChatPauseNode({
-        currentStageId,
-        resolvedStage,
-        pauseNodes,
-      })
-
-      let runtimeState: ChatbotRuntimeState = {
-        ...priorRuntimeState,
-        variables: interactionRuntimeVariables,
-      }
-      let assistantContext = {
-        contact_name: resolvedIdentity.nombre,
-        contact_email: resolvedIdentity.email,
-        contact_phone: resolvedIdentity.phone || resolvedIdentity.whatsapp,
-        contact_whatsapp: resolvedIdentity.whatsapp,
-        product_name: effectiveProduct,
-        quantity: resolvedIdentity.quantity,
-        company_name: resolvedIdentity.companyName,
-        document: resolvedIdentity.document,
-        city: resolvedIdentity.city,
-        address: resolvedIdentity.address,
-        channel_name: channel.name,
-        assistant_name: settings.assistantName,
-        lead_tags: artifacts.lead.tags.join(', '),
-        ...runtimeState.variables,
-      }
-
-      let automationPauseDescription: string | null = null
-      let automationPauseDurationMinutes: number | null = null
-      const webhookJobs: ChatbotWebhookJob[] = []
-
-      const assignedToUserIdCandidate = resolveChatbotAssignmentUserId({
-        rules: studioSettings.assignmentRules,
         requestHuman,
-        leadQualified,
-        channelOwnerUserId: channel.createdBy.id,
+        quickActionId,
+        responseOptionId,
+        currentStageId,
+        currentFlowId,
+        landingPageUrl,
+        referrerUrl,
+        inboundAttachments,
       })
-
-      const assignedToUser = assignedToUserIdCandidate === channel.createdBy.id
-        ? { id: channel.createdBy.id }
-        : await tx.user.findFirst({ where: { id: assignedToUserIdCandidate, empresaId: channel.empresaId }, select: { id: true } })
-
-      let conversationAssignedToUserId: string | null = assignedToUser?.id || existingConversation?.assignedToUserId || channel.createdBy.id
-      let conversationStatus: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM' = requestHuman ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE'
-      let conversationResolvedAt: Date | null = null
-
-      if (selectedAutomation) {
-        if (selectedAutomation.chat.openChat) {
-          runtimeState = {
-            ...runtimeState,
-            botSubscriptionActive: true,
-            pauseUntil: null,
-          }
-          conversationStatus = requestHuman ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE'
-        }
-
-        if (selectedAutomation.chat.changeAssignee && selectedAutomation.chat.assigneeUserId) {
-          const nextAssignee = await tx.user.findFirst({
-            where: { id: selectedAutomation.chat.assigneeUserId, empresaId: channel.empresaId },
-            select: { id: true },
-          })
-          if (nextAssignee) {
-            conversationAssignedToUserId = nextAssignee.id
-          }
-        }
-
-        if (selectedAutomation.chat.unassignOperator) {
-          conversationAssignedToUserId = null
-        }
-
-        if (selectedAutomation.chat.pauseAutomation) {
-          const durationMinutes = parsePauseDurationMinutes(selectedAutomation.chat.pauseDuration)
-          if (durationMinutes) {
-            runtimeState = {
-              ...runtimeState,
-              pauseUntil: new Date(Date.now() + (durationMinutes * 60 * 1000)).toISOString(),
-            }
-            automationPauseDescription = `Pausa automática desde la acción ${selectedQuickAction?.label || 'chatbot'}`
-            automationPauseDurationMinutes = durationMinutes
-            conversationStatus = 'PENDING'
-          }
-        }
-
-        if (selectedAutomation.chat.closeChat) {
-          conversationStatus = 'RESOLVED'
-          conversationResolvedAt = new Date()
-        }
-
-        if (selectedAutomation.chat.cancelBotSubscription) {
-          runtimeState = {
-            ...runtimeState,
-            botSubscriptionActive: false,
-            pauseUntil: null,
-          }
-          conversationStatus = 'RESOLVED'
-          conversationResolvedAt = new Date()
-        }
-
-        const nextLeadTags = new Set(artifacts.lead.tags)
-        if (selectedAutomation.variables.addTagEnabled) {
-          for (const tag of selectedAutomation.variables.addTags) {
-            if (normalizeString(tag)) nextLeadTags.add(tag.trim())
-          }
-        }
-        if (selectedAutomation.variables.removeTagEnabled) {
-          for (const tag of selectedAutomation.variables.removeTags) {
-            nextLeadTags.delete(tag)
-          }
-        }
-        if (selectedAutomation.variables.addTagEnabled || selectedAutomation.variables.removeTagEnabled) {
-          await tx.crmLead.update({
-            where: { id: artifacts.lead.id },
-            data: { tags: Array.from(nextLeadTags) },
-          })
-        }
-
-        const nextRuntimeVariables = { ...runtimeState.variables }
-        if (selectedAutomation.variables.setVariableEnabled && selectedAutomation.variables.variableKey) {
-          nextRuntimeVariables[selectedAutomation.variables.variableKey] = interpolateChatbotVariables({
-            template: selectedAutomation.variables.variableValue,
-            variables: flowVariables,
-            context: assistantContext,
-          })
-        }
-        if (selectedAutomation.variables.deleteVariableEnabled && selectedAutomation.variables.deleteVariableKey) {
-          delete nextRuntimeVariables[selectedAutomation.variables.deleteVariableKey]
-        }
-        runtimeState = {
-          ...runtimeState,
-          variables: nextRuntimeVariables,
-        }
-        assistantContext = {
-          ...assistantContext,
-          ...runtimeState.variables,
-        }
-
-        let opportunityId = existingConversation?.opportunityId || artifacts.conversation.opportunityId || null
-        if (selectedAutomation.crm.createDeal && !opportunityId) {
-          const opportunity = await tx.crmOpportunity.create({
-            data: {
-              empresaId: channel.empresaId,
-              sedeId: channel.sedeId,
-              title: effectiveProduct ? `Oportunidad · ${effectiveProduct}` : `Oportunidad · ${resolvedIdentity.nombre || 'Chatbot web'}`,
-              description: [
-                selectedAutomation.crm.pipelineName ? `Pipeline: ${selectedAutomation.crm.pipelineName}` : '',
-                messageText ? `Mensaje: ${messageText}` : '',
-              ].filter(Boolean).join('\n'),
-              stage: normalizeOpportunityStage(selectedAutomation.crm.dealStage),
-              leadId: artifacts.lead.id,
-              assignedToUserId: conversationAssignedToUserId,
-              createdById: channel.createdBy.id,
-            },
-            select: { id: true },
-          })
-          opportunityId = opportunity.id
-          await tx.crmConversation.update({
-            where: { id: artifacts.conversation.id },
-            data: { opportunityId },
-          })
-        }
-
-        if (selectedAutomation.crm.editDeal && opportunityId) {
-          await tx.crmOpportunity.update({
-            where: { id: opportunityId },
-            data: {
-              stage: normalizeOpportunityStage(selectedAutomation.crm.dealStage),
-              assignedToUserId: conversationAssignedToUserId,
-              description: selectedAutomation.crm.pipelineName
-                ? { set: `Pipeline: ${selectedAutomation.crm.pipelineName}` }
-                : undefined,
-            },
-          })
-        }
-
-        if (selectedAutomation.googleSheets.fetchRow && selectedAutomation.googleSheets.spreadsheetId) {
-          const lookupColumn = normalizeString(selectedAutomation.googleSheets.lookupColumn)
-          const lookupValue = interpolateChatbotVariables({
-            template: selectedAutomation.googleSheets.lookupValue,
-            variables: flowVariables,
-            context: assistantContext,
-          })
-          if (lookupColumn && lookupValue) {
-            try {
-              const sheetResult = await fetchGoogleSheetsRows({
-                googleSheetsSpreadsheetId: selectedAutomation.googleSheets.spreadsheetId,
-                googleSheetsSheetName: selectedAutomation.googleSheets.sheetName,
-              })
-              const matchedRow = sheetResult.rows.find((row) => normalizeString(row.raw[lookupColumn]).toLowerCase() === normalizeString(lookupValue).toLowerCase())
-              if (matchedRow) {
-                runtimeState = {
-                  ...runtimeState,
-                  googleSheetsRow: matchedRow.raw,
-                }
-              }
-            } catch (error) {
-              console.error('Error leyendo Google Sheets desde chatbot:', error)
-            }
-          }
-        }
-
-        const notificationRecipients = selectedAutomation.notifications.notifyMe
-          ? buildNotificationRecipientsFromConfig(selectedAutomation.notifications)
-          : []
-
-        const externalWhatsAppTargets = resolveExternalWhatsAppNotificationTargets({
-          notifyOtherContact: selectedAutomation.notifications.notifyOtherContact,
-          targetContact: selectedAutomation.notifications.targetContact,
-          fallbackWhatsapp: resolvedIdentity.whatsapp,
-          fallbackPhone: resolvedIdentity.phone,
-        })
-
-        if (selectedAutomation.notifications.notifyMe) {
-          const resolvedRecipients = await resolveChatbotNotificationRecipients(tx, {
-            empresaId: channel.empresaId,
-            rawRecipients: notificationRecipients,
-          })
-          const targetUserIds = uniqueStrings([
-            ...resolvedRecipients.internalUserIds,
-            notificationRecipients.length ? null : conversationAssignedToUserId,
-            notificationRecipients.length ? null : channel.createdBy.id,
-          ])
-          if (!notificationRecipients.length && targetUserIds.length) {
-            const fallbackUsers = await tx.user.findMany({
-              where: {
-                empresaId: channel.empresaId,
-                id: { in: targetUserIds },
-              },
-              select: { email: true, telefono: true },
-            })
-            resolvedRecipients.emails = uniqueStrings([
-              ...resolvedRecipients.emails,
-              ...fallbackUsers.map((user) => user.email),
-            ])
-            resolvedRecipients.whatsapp = uniqueStrings([
-              ...resolvedRecipients.whatsapp,
-              ...fallbackUsers.map((user) => normalizeWhatsAppRecipient(user.telefono)),
-            ])
-          }
-          const notificationBodyText = buildChatbotNotificationText({
-            actionLabel: selectedQuickAction?.label || 'Acción del chatbot',
-            contactName: resolvedIdentity.nombre,
-            companyName: resolvedIdentity.companyName,
-            requestedProduct: effectiveProduct,
-            quantity: resolvedIdentity.quantity,
-            whatsapp: resolvedIdentity.whatsapp,
-            email: resolvedIdentity.email,
-            summary: richTextToPlainText(assistantReply.body),
-          })
-
-          if (targetUserIds.length) {
-            await tx.notification.createMany({
-              data: targetUserIds.map((userId) => ({
-                type: 'INFO',
-                title: selectedQuickAction?.label ? `Automatización del chatbot: ${selectedQuickAction.label}` : 'Automatización del chatbot',
-                body: [
-                  resolvedIdentity.nombre ? `Contacto: ${resolvedIdentity.nombre}` : '',
-                  effectiveProduct ? `Interés: ${effectiveProduct}` : '',
-                  selectedAutomation.notifications.notifyChannels.length ? `Canales: ${selectedAutomation.notifications.notifyChannels.join(', ')}` : '',
-                ].filter(Boolean).join(' · ') || 'Se ejecutó una acción avanzada desde el chatbot.',
-                empresaId: channel.empresaId,
-                sedeId: channel.sedeId,
-                userId,
-                actionUrl: '/dashboard/crm',
-                actionLabel: 'Abrir CRM',
-              })),
-            })
-          }
-
-          const normalizedChannels = normalizeNotificationChannels(selectedAutomation.notifications.notifyChannels)
-          if (normalizedChannels.has('email')) {
-            await sendChatbotNotificationEmail({
-              to: resolvedRecipients.emails,
-              actionLabel: selectedQuickAction?.label || 'Acción del chatbot',
-              companyName: resolvedIdentity.companyName,
-              bodyText: notificationBodyText,
-            })
-          }
-
-          if (normalizedChannels.has('whatsapp')) {
-            await sendChatbotNotificationWhatsApp(tx, {
-              empresaId: channel.empresaId,
-              sedeId: channel.sedeId,
-              channelId: normalizeString(selectedAutomation.notifications.whatsappChannelId) || undefined,
-              to: uniqueStrings([...resolvedRecipients.whatsapp, ...externalWhatsAppTargets]),
-              bodyText: notificationBodyText,
-            })
-          }
-
-          if (normalizedChannels.has('telegram')) {
-            await sendChatbotNotificationTelegram({
-              to: resolvedRecipients.telegram,
-              bodyText: notificationBodyText,
-            })
-          }
-        }
-
-        if (externalWhatsAppTargets.length && !selectedAutomation.notifications.notifyMe) {
-          await sendChatbotNotificationWhatsApp(tx, {
-            empresaId: channel.empresaId,
-            sedeId: channel.sedeId,
-            channelId: normalizeString(selectedAutomation.notifications.whatsappChannelId) || undefined,
-            to: externalWhatsAppTargets,
-            bodyText: buildChatbotNotificationText({
-              actionLabel: selectedQuickAction?.label || 'Acción del chatbot',
-              contactName: resolvedIdentity.nombre,
-              companyName: resolvedIdentity.companyName,
-              requestedProduct: effectiveProduct,
-              quantity: resolvedIdentity.quantity,
-              whatsapp: resolvedIdentity.whatsapp,
-              email: resolvedIdentity.email,
-              summary: richTextToPlainText(assistantReply.body),
-            }),
-          })
-        }
-
-        if (selectedAutomation.notifications.addNote && selectedAutomation.notifications.noteText) {
-          await tx.crmActivity.create({
-            data: {
-              empresaId: channel.empresaId,
-              sedeId: channel.sedeId,
-              type: 'NOTE',
-              summary: 'Nota privada agregada por acción del chatbot',
-              details: interpolateChatbotVariables({
-                template: selectedAutomation.notifications.noteText,
-                variables: flowVariables,
-                context: assistantContext,
-              }),
-              leadId: artifacts.lead.id,
-              opportunityId: existingConversation?.opportunityId || artifacts.conversation.opportunityId || null,
-              occurredAt: new Date(),
-              createdById: channel.createdBy.id,
-            },
-          })
-        }
-
-        if (selectedAutomation.notifications.startA360Event && selectedAutomation.notifications.a360EventName) {
-          runtimeState = {
-            ...runtimeState,
-            lastA360EventName: selectedAutomation.notifications.a360EventName,
-          }
-          await tx.crmActivity.create({
-            data: {
-              empresaId: channel.empresaId,
-              sedeId: channel.sedeId,
-              type: 'OTHER',
-              summary: 'Evento A360 solicitado por chatbot',
-              details: selectedAutomation.notifications.a360EventName,
-              leadId: artifacts.lead.id,
-              opportunityId: existingConversation?.opportunityId || artifacts.conversation.opportunityId || null,
-              occurredAt: new Date(),
-              createdById: channel.createdBy.id,
-            },
-          })
-        }
-
-        if (selectedAutomation.notifications.sendWebhook && selectedAutomation.notifications.webhookUrl) {
-          webhookJobs.push({
-            url: selectedAutomation.notifications.webhookUrl,
-            payload: {
-              source: 'crm-chatbot',
-              channelId: channel.id,
-              quickActionId: selectedQuickAction?.id || null,
-              quickActionLabel: selectedQuickAction?.label || null,
-              leadId: artifacts.lead.id,
-              conversationId: artifacts.conversation.id,
-              contact: {
-                name: resolvedIdentity.nombre,
-                email: resolvedIdentity.email,
-                phone: resolvedIdentity.phone,
-                whatsapp: resolvedIdentity.whatsapp,
-              },
-              product: effectiveProduct,
-              quantity: resolvedIdentity.quantity,
-              runtime: runtimeState,
-              targetContact: selectedAutomation.notifications.notifyOtherContact ? selectedAutomation.notifications.targetContact : null,
-              a360EventName: selectedAutomation.notifications.startA360Event ? selectedAutomation.notifications.a360EventName : null,
-              requestedAt: new Date().toISOString(),
-            },
-          })
-        }
-      }
-
-      const shouldHandoffToHuman = requestHuman
-        || selectedQuickAction?.kind === 'human'
-        || matchedTrigger.matchedTrigger?.event === 'human_request'
-
-      if (shouldHandoffToHuman || isHumanHandoffStage(resolvedStage)) {
-        runtimeState = {
-          ...runtimeState,
-          botSubscriptionActive: false,
-          pauseUntil: null,
-        }
-        conversationStatus = 'HUMAN_ACTIVE'
-        conversationResolvedAt = null
-      }
-
-      const assistantBodyTemplate = matchedTrigger.matchedTrigger?.assistantReply || assistantReply.body
-      const assistantBodyHtml = normalizeRichTextHtml(interpolateChatbotVariables({
-        template: resolvedPauseNode
-          ? appendPauseCopy(assistantBodyTemplate, resolvedPauseNode)
-          : decorateAssistantReply(assistantBodyTemplate),
-        variables: flowVariables,
-        context: assistantContext,
-      }))
-      const assistantBody = richTextToPlainText(assistantBodyHtml)
-
-      const stageQuickActions = getStageQuickActions(resolvedStage, quickActions)
-      const stageResponseOptions = getStageResponseOptions(resolvedStage)
-
-      let pauseUntil = resolvedPauseNode
-        ? new Date(Date.now() + (resolvedPauseNode.durationMinutes * 60 * 1000)).toISOString()
-        : null
-      let pauseDescription = resolvedPauseNode?.description || null
-      let pauseDurationMinutes = resolvedPauseNode?.durationMinutes || null
-
-      if (runtimeState.pauseUntil && (!pauseUntil || Date.parse(runtimeState.pauseUntil) > Date.parse(pauseUntil))) {
-        pauseUntil = runtimeState.pauseUntil
-        pauseDescription = automationPauseDescription || pauseDescription
-        pauseDurationMinutes = automationPauseDurationMinutes || pauseDurationMinutes
-      }
-
-      const activeInactivityRule = resolveActiveInactivityRule({
-        stage: resolvedStage,
-        quickAction: selectedQuickAction,
-        trigger: matchedTrigger.matchedTrigger ?? null,
-      })
-
-      const quickActionAttachments = buildQuickActionAttachments(selectedQuickAction)
-      const catalogAttachments = [catalogInsight.primary, ...catalogInsight.alternatives]
-        .filter((item): item is MaterialMatch => Boolean(item?.imagenUrl))
-        .slice(0, 3)
-        .map((item) => ({ type: 'image' as const, url: item.imagenUrl!, alt: item.nombre }))
-
-      await tx.crmMessage.create({
-        data: {
-          empresaId: channel.empresaId,
-          sedeId: channel.sedeId,
-          conversationId: artifacts.conversation.id,
-          providerMessageId: `chatbot-assistant-${Date.now()}`,
-          direction: 'OUTBOUND',
-          messageType: 'TEXT',
-          status: 'SENT',
-          bodyText: assistantBody,
-          payloadJson: {
-            provider: 'WEB_CHATBOT',
-            dispatch: 'guided-chatbot-autoreply',
-            chatRenderedHtml: assistantBodyHtml,
-            matchedMaterialId: catalogInsight.primary?.id || null,
-            alternativeMaterialIds: catalogInsight.alternatives.map((item) => item.id),
-            catalogIntent: catalogInsight.catalogIntent,
-            requestedProduct: effectiveProduct,
-            chatFlowNextField: resolvedStage?.nextField === 'none' ? null : (assistantReply.nextField ?? resolvedStage?.nextField ?? null),
-            chatFlowStageId: resolvedStage?.id || null,
-            chatFlowId: activeFlow.id,
-            chatFlowName: activeFlow.name,
-            chatQuickActionIds: stageQuickActions.map((item) => item.id),
-            chatFlowResponseOptionIds: stageResponseOptions.map((item) => item.id),
-            chatPauseNodeId: resolvedPauseNode?.id || null,
-            chatPauseDurationMinutes: pauseDurationMinutes,
-            chatPauseDescription: pauseDescription,
-            chatPauseUntil: pauseUntil,
-            chatInactivityRule: activeInactivityRule as ChatbotInactivityRule | null,
-            chatbotRuntime: runtimeState,
-            quantity: resolvedIdentity.quantity,
-            whatsapp: resolvedIdentity.whatsapp,
-            address: resolvedIdentity.address,
-            businessActionKind: businessActionResult?.kind || null,
-            businessQuoteId: businessActionResult?.quoteId || null,
-            businessQuoteNumber: businessActionResult?.quoteNumber || null,
-            businessInvoiceNumber: businessActionResult?.invoiceNumber || null,
-            businessWorkOrderNumber: businessActionResult?.workOrderNumber || null,
-            matchedTriggerId: matchedTrigger.matchedTrigger?.id || null,
-          },
-          attachmentsJson: [...quickActionAttachments, ...catalogAttachments],
-          occurredAt: new Date(),
-        },
-      })
-
-      await tx.crmConversation.update({
-        where: { id: artifacts.conversation.id },
-        data: {
-          assignedToUserId: conversationAssignedToUserId,
-          status: conversationStatus,
-          directionLastMessage: 'OUTBOUND',
-          lastMessageAt: new Date(),
-          resolvedAt: conversationResolvedAt,
-        },
-      })
-
-      await tx.crmLeadCapture.update({
-        where: { id: artifacts.capture.id },
-        data: {
-          normalizedDataJson: buildNormalizedCaptureData(artifacts.capture.normalizedDataJson, runtimeState),
-        },
-      })
-
-      if (leadQualified && artifacts.lead.status === 'NEW') {
-        await tx.crmLead.update({
-          where: { id: artifacts.lead.id },
-          data: {
-            status: 'QUALIFIED',
-            notes: [artifacts.lead.notes, `Producto consultado: ${effectiveProduct}`, resolvedIdentity.quantity ? `Cantidad solicitada: ${resolvedIdentity.quantity}` : '', resolvedIdentity.whatsapp ? `WhatsApp: ${resolvedIdentity.whatsapp}` : '', resolvedIdentity.address ? `Dirección: ${resolvedIdentity.address}` : ''].filter(Boolean).join('\n\n'),
-          },
-        })
-      }
-
-      await tx.crmActivity.create({
-        data: {
-          empresaId: channel.empresaId,
-          sedeId: channel.sedeId,
-          type: 'OTHER',
-          summary: catalogInsight.primary || catalogInsight.catalogIntent ? 'Respuesta automática del chatbot con catálogo e inventario' : 'Respuesta automática del chatbot',
-          details: assistantBody,
-          leadId: artifacts.lead.id,
-          occurredAt: new Date(),
-          createdById: channel.createdBy.id,
-        },
-      })
-
-      await tx.crmChannelConnection.update({
-        where: { id: channel.id },
-        data: { lastWebhookAt: eventAt, lastErrorAt: null, lastErrorMessage: null },
-      })
-
-      return { artifacts, autoReply: true, webhookJobs }
     })
 
     if (result.webhookJobs.length) {

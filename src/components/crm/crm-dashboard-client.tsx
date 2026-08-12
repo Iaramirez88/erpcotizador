@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/select'
 import { ArrowUpRight, Bot, CalendarClock, CircleDot, FileText, GripVertical, Mail, MessageCircle, PhoneCall, Plus, Sparkles, UserRound } from 'lucide-react'
 import { CrmLinkedFilesPanel } from '@/components/crm/crm-linked-files-panel'
+import { CrmNegotiationsTabs } from '@/components/crm/crm-negotiations-tabs'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
 
@@ -316,7 +317,8 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResp
 
 type CrmDashboardClientProps = {
   initialTab?: 'leads' | 'opportunities' | 'tasks'
-  mode?: 'overview' | 'opportunities'
+  mode?: 'overview' | 'opportunities' | 'tasks'
+  initialOpportunityView?: 'list' | 'pipeline'
   canAccessTeamChat?: boolean
   canAccessCrmChat?: boolean
 }
@@ -330,10 +332,11 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
   const phonePlaceholder = '601 234 5678'
   const opportunityOrderStorageKey = 'crm-opportunity-stage-order'
   const isFocusedOpportunities = props?.mode === 'opportunities'
+  const isFocusedTasks = props?.mode === 'tasks'
   const canAccessAnyChat = Boolean(props?.canAccessTeamChat || props?.canAccessCrmChat)
 
-  const [activeTab, setActiveTab] = useState<'leads' | 'opportunities' | 'tasks'>(isFocusedOpportunities ? 'opportunities' : props?.initialTab ?? 'leads')
-  const [opportunityView, setOpportunityView] = useState<'list' | 'pipeline'>(isFocusedOpportunities ? 'pipeline' : 'list')
+  const [activeTab, setActiveTab] = useState<'leads' | 'opportunities' | 'tasks'>(isFocusedOpportunities ? 'opportunities' : isFocusedTasks ? 'tasks' : props?.initialTab ?? 'leads')
+  const [opportunityView, setOpportunityView] = useState<'list' | 'pipeline'>(props?.initialOpportunityView ?? (isFocusedOpportunities ? 'pipeline' : 'list'))
   const [focusedOpportunityTab, setFocusedOpportunityTab] = useState<'filters' | 'list'>('filters')
   const [draggingOpportunityId, setDraggingOpportunityId] = useState<string | null>(null)
   const [draggingOpportunityStage, setDraggingOpportunityStage] = useState<OpportunityStage | null>(null)
@@ -447,7 +450,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
   }, [loadData])
 
   useEffect(() => {
-    if (isFocusedOpportunities) return
+    if (isFocusedOpportunities || isFocusedTasks) return
     if (!requestedTaskId) {
       handledRequestedTaskIdRef.current = null
       return
@@ -459,12 +462,17 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
     handledRequestedTaskIdRef.current = requestedTaskId
     setActiveTab('tasks')
     openEditTaskDialog(task)
-  }, [isFocusedOpportunities, requestedTaskId, tasks])
+  }, [isFocusedOpportunities, isFocusedTasks, requestedTaskId, tasks])
 
   useEffect(() => {
     if (!isFocusedOpportunities) return
     setActiveTab('opportunities')
   }, [isFocusedOpportunities])
+
+  useEffect(() => {
+    if (!isFocusedTasks) return
+    setActiveTab('tasks')
+  }, [isFocusedTasks])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1430,7 +1438,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                   items={[
                     { label: 'Dashboard', href: '/dashboard' },
                     { label: 'CRM', href: '/dashboard/crm' },
-                    { label: 'Oportunidades' },
+                    { label: 'Negociaciones' },
                   ]}
                 />
                 <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-sky-700 backdrop-blur">
@@ -1442,7 +1450,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button asChild variant="outline" className="h-8 rounded-lg border-slate-200 bg-white/85 px-3 text-xs">
-                    <Link href="/dashboard/crm">Volver al panel comercial</Link>
+                    <Link href="/dashboard/crm/negociaciones">Volver a Negociaciones</Link>
                   </Button>
                   {props?.canAccessCrmChat ? <Button asChild variant="outline" className="h-8 rounded-lg border-slate-200 bg-white/85 px-3 text-xs">
                     <Link href="/dashboard/crm/conversations">Inbox omnicanal</Link>
@@ -1476,6 +1484,8 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
               </div>
             </div>
           </section>
+
+          <CrmNegotiationsTabs />
 
           <section className="space-y-3">
             <Tabs value={focusedOpportunityTab} onValueChange={(value) => setFocusedOpportunityTab(value as 'filters' | 'list')}>
@@ -1647,7 +1657,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
         </>
       )}
 
-      {!isFocusedOpportunities ? (
+      {!isFocusedOpportunities && !isFocusedTasks ? (
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'leads' | 'opportunities' | 'tasks')}>
         <div className="space-y-3">
           <div className="grid gap-2.5 rounded-[24px] border border-slate-200 bg-white/90 p-3.5 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.25)] md:grid-cols-3">
@@ -1675,10 +1685,10 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
             </TabsList>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
-              <Link href="/dashboard/crm/agenda">Agenda CRM</Link>
+              <Link href="/dashboard/crm/negociaciones/calendario">Calendario</Link>
             </Button>
             {canAccessAnyChat ? <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
-              <Link href="/dashboard/chat">Chat global</Link>
+              <Link href="/dashboard/chat">Conversaciones</Link>
             </Button> : null}
             <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50/80 text-emerald-800 hover:bg-emerald-100">
               <Link href="/dashboard/crm/chatbot">Mensajes chatbot</Link>
@@ -1817,10 +1827,11 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
         <TabsContent value="opportunities">{opportunitiesWorkspace}</TabsContent>
 
         <TabsContent value="tasks" className="space-y-4 pt-4">
+          <CrmNegotiationsTabs className="mb-1" />
           <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
             <CardHeader className="border-b border-slate-100 pb-5">
-              <CardTitle className="text-xl">Seguimiento ({tasks.length})</CardTitle>
-              <CardDescription>Tareas comerciales que empujan captación y pipeline sin mezclar ambas lógicas.</CardDescription>
+              <CardTitle className="text-xl">Actividades ({tasks.length})</CardTitle>
+              <CardDescription>Actividades comerciales que empujan captación y pipeline sin mezclar ambas lógicas.</CardDescription>
             </CardHeader>
             <CardContent className="p-4 md:p-5">
               <div className="space-y-3">
@@ -1867,6 +1878,58 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
           </Card>
         </TabsContent>
       </Tabs>
+      ) : isFocusedTasks ? (
+        <div className="space-y-4 pt-1">
+          <CrmNegotiationsTabs />
+          <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+            <CardHeader className="border-b border-slate-100 pb-5">
+              <CardTitle className="text-xl">Actividades ({tasks.length})</CardTitle>
+              <CardDescription>Actividades comerciales que empujan captación y pipeline sin mezclar ambas lógicas.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 md:p-5">
+              <div className="space-y-3">
+                {loading ? <p className="text-sm text-muted-foreground">Cargando...</p> : null}
+                {!loading && tasks.length === 0 ? <p className="text-sm text-muted-foreground">No hay actividades para mostrar.</p> : null}
+                {tasks.map((task) => {
+                  const origin = task.originKey && task.originLabel
+                    ? { key: task.originKey, label: task.originLabel }
+                    : task.lead?.originKey && task.lead?.originLabel
+                      ? { key: task.lead.originKey, label: task.lead.originLabel }
+                      : task.lead?.source
+                        ? getLeadSourceFallbackMeta(task.lead.source)
+                        : null
+                  return (
+                    <div key={task.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-lg font-semibold text-slate-900">{task.title}</span>
+                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">{task.status}</span>
+                            <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-violet-700">{task.priority}</span>
+                            {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
+                          </div>
+                          <p className="text-sm text-slate-600">{task.opportunity?.title || task.lead?.nombre || 'Sin relación'} · vence {formatDate(task.dueAt, locale, 'Sin fecha')}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {task.status !== 'DONE' ? (
+                            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void completeTask(task.id)}>Marcar hecha</Button>
+                          ) : null}
+                          {task.status === 'DONE' ? (
+                            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void updateTaskStatus(task.id, 'OPEN')}>Reabrir</Button>
+                          ) : null}
+                          {task.status !== 'CANCELED' ? (
+                            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void updateTaskStatus(task.id, 'CANCELED')}>Cancelar</Button>
+                          ) : null}
+                          <Button variant="ghost" className="rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEditTaskDialog(task)}>Editar</Button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       ) : null}
 
       <Dialog open={opportunityDealOpen} onOpenChange={setOpportunityDealOpen}>

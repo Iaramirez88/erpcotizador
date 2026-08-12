@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
 
-export default function CrmOportunidadesPage() {
+export default function CrmNegociacionesPage() {
   redirect('/dashboard/crm/negociaciones/pipeline')
 }

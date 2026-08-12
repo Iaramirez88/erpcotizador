@@ -5,6 +5,7 @@ import { createConversationMessageEvent, createInboundArtifacts, getConnectionTo
 import { normalizeString } from '@/lib/crm'
 import { enrichWebhookInboundEventsWithAttachments } from '@/lib/crm-webhook-media'
 import { getWebhookInboundMapping, normalizeWebhookInboundPayload } from '@/lib/crm-webhook-normalizer'
+import { isSupportedChatbotRuntimeProvider, processChatbotInboundAutomation, resolveChatbotAutomationProvider } from '@/app/api/crm/captures/chatbot/route'
 
 export const runtime = 'nodejs'
 
@@ -142,6 +143,12 @@ export async function POST(request: Request, context: RouteContext) {
       return NextResponse.json({ error: 'Canal no soporta webhook' }, { status: 400 })
     }
 
+    if (!isSupportedChatbotRuntimeProvider(channel.provider)) {
+      return NextResponse.json({ error: 'Canal no soporta automatización de chatbot' }, { status: 400 })
+    }
+
+    const runtimeProvider = channel.provider
+
     if (!['TESTING', 'ACTIVE'].includes(channel.status)) {
       return NextResponse.json({ error: 'Canal no disponible para webhook' }, { status: 409 })
     }
@@ -180,6 +187,11 @@ export async function POST(request: Request, context: RouteContext) {
         testing: channel.status === 'TESTING',
       })
     }
+
+    const inboundAutomationQueue: Array<{
+      artifacts: Awaited<ReturnType<typeof createInboundArtifacts>>
+      event: (typeof events)[number]
+    }> = []
 
     const results = await prisma.$transaction(async (tx) => {
       const processed = [] as Array<{
@@ -255,6 +267,13 @@ export async function POST(request: Request, context: RouteContext) {
               attachmentsJson: event.attachmentsJson,
             })
 
+        if (event.eventDirection === 'INBOUND' && event.messageOrigin === 'CUSTOMER') {
+          inboundAutomationQueue.push({
+            artifacts: artifacts as Awaited<ReturnType<typeof createInboundArtifacts>>,
+            event,
+          })
+        }
+
         processed.push(artifacts)
       }
 
@@ -265,6 +284,46 @@ export async function POST(request: Request, context: RouteContext) {
 
       return { processed, processedStatuses }
     })
+
+    const automationResults = await Promise.allSettled(
+      inboundAutomationQueue.map(({ artifacts, event }) => processChatbotInboundAutomation({
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          provider: runtimeProvider,
+          status: channel.status,
+          empresaId: channel.empresaId,
+          sedeId: channel.sedeId,
+          verifyToken: channel.verifyToken,
+          settingsJson: channel.settingsJson,
+          externalPageId: channel.externalPageId,
+          externalPhoneNumberId: channel.externalPhoneNumberId,
+          createdBy: channel.createdBy,
+        },
+        eventAt: event.eventAt,
+        provider: resolveChatbotAutomationProvider(runtimeProvider),
+        artifacts,
+        nombre: event.nombre || '',
+        email: event.email || '',
+        phone: event.phone || '',
+        whatsapp: event.phone || '',
+        requestedProduct: '',
+        empresaNombre: event.empresaNombre || '',
+        ciudad: event.ciudad || '',
+        document: '',
+        address: '',
+        messageText: event.messageText || '',
+        expectedField: '',
+        requestHuman: false,
+        quickActionId: '',
+        responseOptionId: '',
+        currentStageId: '',
+        currentFlowId: '',
+        landingPageUrl: '',
+        referrerUrl: '',
+        inboundAttachments: [],
+      })),
+    )
 
     const first = results.processed[0]
 
@@ -283,6 +342,7 @@ export async function POST(request: Request, context: RouteContext) {
           messageId: result.message.id,
           captureId: result.capture?.id ?? null,
         })),
+        autoReplies: automationResults.filter((result) => result.status === 'fulfilled' && result.value.autoReply).length,
         testing: channel.status === 'TESTING',
       },
     })

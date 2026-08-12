@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, Facebook, FileAudio, FileText, Image as ImageIcon, Instagram, Mail, MessageCircle, MoreVertical, Pencil, PhoneCall, Plus, RefreshCcw, SendHorizontal, Smile, Video, X } from 'lucide-react'
@@ -238,6 +238,12 @@ type PreparedCallSession = {
   }
 }
 
+type CallSetupItem = {
+  tone: 'ready' | 'attention' | 'blocked'
+  title: string
+  detail: string
+}
+
 type UploadedConversationAttachment = {
   name: string
   url: string
@@ -266,6 +272,12 @@ type CrmConversationsClientProps = {
 const STATUS_OPTIONS: Array<'ALL' | ConversationStatus> = ['ALL', 'OPEN', 'PENDING', 'BOT_ACTIVE', 'HUMAN_ACTIVE', 'DISABLED', 'RESOLVED', 'SPAM']
 const ATTENTION_STATUS_OPTIONS: ConversationStatus[] = ['OPEN', 'BOT_ACTIVE', 'HUMAN_ACTIVE', 'PENDING', 'DISABLED', 'RESOLVED', 'SPAM']
 const EMOJI_CHOICES = ['😀', '😂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀']
+const CONVERSATION_WALLPAPER_STYLE: CSSProperties = {
+  backgroundImage: "linear-gradient(rgba(255,255,255,0.76), rgba(255,255,255,0.76)), url('/fondo-conversaciones.jpg')",
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+  backgroundRepeat: 'repeat',
+}
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
   const res = await fetch(url, init)
@@ -554,6 +566,98 @@ function getCallInviteMeta(message: ConversationMessage) {
     inviteUrl,
     callType,
   }
+}
+
+function buildCallSetupItems(args: {
+  conversation: ConversationDetail | null
+  addon: DailyCallsAddonState | null
+  messagingWindowState: { open: boolean; label: string; hint: string } | null
+  callType: 'video' | 'audio'
+}): CallSetupItem[] {
+  if (!args.conversation) {
+    return [{
+      tone: 'blocked',
+      title: 'Sin conversación seleccionada',
+      detail: 'Selecciona primero el prospecto, cliente o contacto antes de abrir la llamada.',
+    }]
+  }
+
+  const provider = args.conversation.channelConnection.provider
+  const providerLabel = formatProviderDisplayName(provider)
+  const isWhatsApp = provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX'
+  const hasPhone = Boolean(args.conversation.contactPhone?.trim())
+  const items: CallSetupItem[] = []
+
+  if (!args.addon?.enabled) {
+    items.push({
+      tone: 'blocked',
+      title: 'Addon Daily desactivado',
+      detail: 'Activa Videollamadas Daily en Integraciones CRM para que el modal pueda levantar una sala real.',
+    })
+  } else if (!args.addon.ready) {
+    items.push({
+      tone: 'blocked',
+      title: 'Daily todavía no está listo',
+      detail: args.addon.validation.message || 'Falta validar dominio y credenciales de Daily antes de iniciar llamadas desde el CRM.',
+    })
+  } else {
+    items.push({
+      tone: 'ready',
+      title: 'Sala CRM disponible',
+      detail: `Daily ya está listo para abrir una ${args.callType === 'audio' ? 'llamada' : 'videollamada'} embebida para el asesor dentro del CRM.`,
+    })
+  }
+
+  if (args.callType === 'audio') {
+    items.push({
+      tone: 'attention',
+      title: 'Invitación automática al prospecto',
+      detail: isWhatsApp
+        ? 'La llamada de audio abre la sala para el asesor, pero hoy la invitación automática al prospecto está implementada solo para videollamadas por WhatsApp.'
+        : `El canal ${providerLabel} todavía no envía invitaciones automáticas de llamada. Usa videollamada por WhatsApp o comparte el enlace manualmente con el prospecto.`,
+    })
+    return items
+  }
+
+  if (isWhatsApp) {
+    if (!hasPhone) {
+      items.push({
+        tone: 'blocked',
+        title: 'Falta número del prospecto',
+        detail: 'La conversación necesita un teléfono válido para poder enviar el enlace de videollamada por WhatsApp.',
+      })
+    } else if (!args.messagingWindowState?.open) {
+      items.push({
+        tone: 'attention',
+        title: 'Ventana de WhatsApp cerrada',
+        detail: 'La sala sí puede prepararse, pero WhatsApp no podrá enviar el enlace automáticamente hasta que el prospecto vuelva a escribir o se implementen plantillas aprobadas.',
+      })
+    } else {
+      items.push({
+        tone: 'ready',
+        title: 'Canal listo para invitar',
+        detail: 'WhatsApp tiene número de contacto y ventana abierta, así que el CRM puede intentar enviar el enlace automático al prospecto.',
+      })
+    }
+    return items
+  }
+
+  if (provider === 'WEB_FORM' || provider === 'WEB_CHATBOT') {
+    items.push({
+      tone: 'attention',
+      title: 'Canal sin mensajería nativa',
+      detail: 'Este contacto llegó por formulario o chatbot web. El CRM puede preparar la sala, pero no puede entregar el enlace automáticamente por este canal; debes compartirlo manualmente o continuar por WhatsApp.',
+    })
+    return items
+  }
+
+  items.push({
+    tone: 'attention',
+    title: `Invitación por ${providerLabel}`,
+    detail: `El CRM aún no envía enlaces de videollamada automáticamente por ${providerLabel}. El modal te confirma la preparación de la sala, pero el enlace al prospecto debe compartirse manualmente o por un hilo de WhatsApp.`,
+  })
+
+  return items
 }
 
 function getPrimaryAttachment(message: ConversationMessage) {
@@ -1055,6 +1159,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [preparedCallSession, setPreparedCallSession] = useState<PreparedCallSession | null>(null)
   const [callState, setCallState] = useState<'BOOTING' | 'JOINING' | 'JOINED' | 'LEFT' | 'ERROR'>('BOOTING')
   const [callInvitePreview, setCallInvitePreview] = useState<CallInvitePreview | null>(null)
+  const [callDialogType, setCallDialogType] = useState<'video' | 'audio'>('audio')
 
   const [assigneeDraft, setAssigneeDraft] = useState('__none__')
   const [statusDraft, setStatusDraft] = useState<ConversationStatus>('OPEN')
@@ -1308,6 +1413,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   }, [selectedConversation?.id, selectedConversation?.messages.length])
 
   async function openCallDialog(callType: 'video' | 'audio') {
+    setCallDialogType(callType)
     setCallDialogOpen(true)
     setPreparedCallSession(null)
     setCallError(null)
@@ -2067,6 +2173,13 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     return getRecentPhoneOutboundGuard(selectedConversation.messages)
   }, [selectedConversation])
 
+  const callSetupItems = useMemo(() => buildCallSetupItems({
+    conversation: selectedConversation,
+    addon: dailyCallsAddon,
+    messagingWindowState,
+    callType: callDialogType,
+  }), [callDialogType, dailyCallsAddon, messagingWindowState, selectedConversation])
+
   useEffect(() => {
     setHybridOverrideConfirmed(false)
   }, [selectedConversation?.id, hybridComposerGuard?.messageId])
@@ -2495,13 +2608,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2 rounded-[20px] border border-slate-200 bg-white/92 p-1.5 shadow-[0_14px_32px_-28px_rgba(15,23,42,0.35)]">
-                          <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void openCallDialog('audio')}>
-                            <PhoneCall className="mr-2 h-4 w-4" />
-                            Llamada
+                          <Button type="button" variant="outline" size="icon" className="h-10 w-10 rounded-xl border-slate-200 bg-white" onClick={() => void openCallDialog('audio')} aria-label="Abrir modal de llamada" title="Llamada de audio">
+                            <PhoneCall className="h-4 w-4" />
                           </Button>
-                          <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void openCallDialog('video')}>
-                            <Video className="mr-2 h-4 w-4" />
-                            Videollamada
+                          <Button type="button" variant="outline" size="icon" className="h-10 w-10 rounded-xl border-slate-200 bg-white" onClick={() => void openCallDialog('video')} aria-label="Abrir modal de videollamada" title="Videollamada">
+                            <Video className="h-4 w-4" />
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -2584,14 +2695,14 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                   <div className="h-full">
                     <Card className="flex h-full min-h-0 flex-col rounded-[24px] border border-slate-200 bg-white/98 shadow-none">
                       <CardContent className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-3 p-3.5 lg:p-4">
-                        <div className="min-h-0 rounded-[20px] border border-slate-100 bg-slate-50/45 p-2.5">
-                          <div className="h-full space-y-2.5 overflow-y-auto pr-1">
+                        <div className="min-h-0 rounded-[24px] border border-slate-200/80 bg-white/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]" style={CONVERSATION_WALLPAPER_STYLE}>
+                          <div className="h-full space-y-3 overflow-y-auto px-1.5 pr-2 sm:px-3 lg:px-5 xl:px-7">
                           {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
                           {selectedConversation.messages.map((message, index) => {
                             const hasCollision = hasMessageCollision(message)
 
                             return (
-                              <div ref={index === selectedConversation.messages.length - 1 ? lastConversationMessageRef : null} key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[86%] rounded-[24px] border border-blue-200 bg-[linear-gradient(135deg,#eff6ff,#ffffff)] px-3.5 py-2.5 text-[13px] text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[86%] rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[13px] text-slate-600' : 'mr-auto max-w-[86%] rounded-[24px] border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] text-slate-700'}>
+                              <div ref={index === selectedConversation.messages.length - 1 ? lastConversationMessageRef : null} key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[80%] rounded-[24px] border border-sky-200 bg-white/96 px-4 py-3 text-[13px] text-slate-700 shadow-[0_16px_36px_-28px_rgba(14,116,144,0.45)]' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[80%] rounded-[22px] border border-dashed border-slate-300 bg-white/90 px-4 py-3 text-[13px] text-slate-600' : 'mr-auto max-w-[80%] rounded-[24px] border border-slate-200 bg-white/96 px-4 py-3 text-[13px] text-slate-700 shadow-[0_16px_36px_-28px_rgba(15,23,42,0.22)]'}>
                                 <div className="flex items-center justify-between gap-3 text-[10px] text-slate-500">
                                   <span className="font-semibold text-slate-700">{getMessageDisplayName(message, selectedConversation)}</span>
                                   <span>{formatDate(message.occurredAt, locale, naText)}</span>
@@ -3836,13 +3947,13 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           ) : null}
                         </div>
 
-                        <div ref={conversationThreadViewportRef} className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+                        <div ref={conversationThreadViewportRef} className="max-h-[420px] space-y-3 overflow-y-auto rounded-[26px] border border-slate-200/80 bg-white/55 px-3 py-3 pr-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] sm:px-4 lg:px-6 xl:px-8" style={CONVERSATION_WALLPAPER_STYLE}>
                           {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
                           {selectedConversation.messages.map((message: ConversationMessage, index) => {
                             const hasCollision = hasMessageCollision(message)
 
                             return (
-                            <div ref={index === selectedConversation.messages.length - 1 ? lastConversationMessageRef : null} key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[88%] rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[88%] rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600' : 'mr-auto max-w-[88%] rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
+                            <div ref={index === selectedConversation.messages.length - 1 ? lastConversationMessageRef : null} key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[78%] rounded-3xl border border-sky-200 bg-white/96 px-4 py-3 text-sm text-slate-700 shadow-[0_18px_42px_-30px_rgba(14,116,144,0.42)]' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[78%] rounded-3xl border border-dashed border-slate-300 bg-white/90 px-4 py-3 text-sm text-slate-600' : 'mr-auto max-w-[78%] rounded-3xl border border-slate-200 bg-white/96 px-4 py-3 text-sm text-slate-700 shadow-[0_18px_42px_-30px_rgba(15,23,42,0.22)]'}>
                               <div className="flex items-center justify-between gap-3 text-[11px] text-slate-500">
                                 <span className="font-semibold text-slate-700">{getMessageDisplayName(message, selectedConversation)}</span>
                                 <span>{formatDate(message.occurredAt, locale, naText)}</span>
@@ -4161,14 +4272,25 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       </Dialog>
 
       <Dialog open={callDialogOpen} onOpenChange={setCallDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="z-[181] max-w-3xl rounded-[28px] border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-34px_rgba(15,23,42,0.42)]" overlayClassName="z-[180] bg-slate-950/75 backdrop-blur-[2px]">
+          <div className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,.14),transparent_38%),linear-gradient(180deg,#f8fbff,#ffffff)] px-6 py-5">
           <DialogHeader>
-            <DialogTitle>Llamada embebida CRM</DialogTitle>
+            <DialogTitle>{callDialogType === 'audio' ? 'Llamada embebida CRM' : 'Videollamada embebida CRM'}</DialogTitle>
             <DialogDescription>
-              Esta fase deja lista la preparación de sala dentro del CRM. El siguiente paso es montar el SDK de Daily dentro de este mismo modal.
+              Este modal debe abrirse siempre para confirmar si el CRM está intentando preparar la sala y qué falta para contactar al prospecto por el canal actual.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          </div>
+          <div className="space-y-4 px-6 py-5">
+            <div className="grid gap-3 md:grid-cols-2">
+              {callSetupItems.map((item) => (
+                <div key={`${item.title}-${item.detail}`} className={item.tone === 'ready' ? 'rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900' : item.tone === 'attention' ? 'rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900' : 'rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800'}>
+                  <div className="font-semibold">{item.title}</div>
+                  <div className="mt-1 leading-6">{item.detail}</div>
+                </div>
+              ))}
+            </div>
+
             {dailyCallsAddon?.settings.connectionMode === 'CUSTOMER_DAILY' ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
                 <div className="flex items-start gap-2.5">
@@ -4233,8 +4355,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
               </div>
             ) : null}
           </div>
-          <DialogFooter>
-            <Button variant="outline" className="rounded-2xl" onClick={() => setCallDialogOpen(false)}>Cerrar</Button>
+          <DialogFooter className="border-t border-slate-200 px-6 py-4">
+            <Button type="button" variant="outline" className="rounded-2xl" onClick={() => setCallDialogOpen(false)}>Cerrar</Button>
             {preparedCallSession ? <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">{callState === 'JOINED' ? 'Sesión activa' : callState === 'LEFT' ? 'Sesión cerrada' : callState === 'ERROR' ? 'Revisar error' : 'Abriendo sesión'}</div> : <Button asChild className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800"><Link href="/dashboard/crm/integraciones">Configurar addon</Link></Button>}
           </DialogFooter>
         </DialogContent>
