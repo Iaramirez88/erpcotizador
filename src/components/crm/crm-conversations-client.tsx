@@ -4,7 +4,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, Facebook, FileAudio, FileText, Image as ImageIcon, Instagram, Mail, MessageCircle, MoreVertical, PhoneCall, Plus, RefreshCcw, SendHorizontal, Smile, Video } from 'lucide-react'
+import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, Facebook, FileAudio, FileText, Image as ImageIcon, Instagram, Mail, MessageCircle, MoreVertical, PhoneCall, Plus, RefreshCcw, SendHorizontal, Smile, Video, X } from 'lucide-react'
 import { CrmDailyCallEmbed } from '@/components/crm/crm-daily-call-embed'
 import { CrmFileLibraryPicker } from '@/components/crm/crm-file-library-picker'
 import type { CrmFileItem } from '@/components/crm/crm-files-types'
@@ -556,6 +556,48 @@ function getCallInviteMeta(message: ConversationMessage) {
   }
 }
 
+function getPrimaryAttachment(message: ConversationMessage) {
+  if (!Array.isArray(message.attachmentsJson) || message.attachmentsJson.length === 0) return null
+  return message.attachmentsJson.find((attachment) => typeof attachment?.url === 'string' && attachment.url.trim().length > 0) || null
+}
+
+function shouldHideMessageBodyText(message: ConversationMessage) {
+  const bodyText = message.bodyText?.trim() || ''
+  if (!bodyText) return false
+
+  const attachment = getPrimaryAttachment(message)
+  if (!attachment?.url) return false
+
+  const attachmentUrl = attachment.url.trim()
+  const bodyLooksLikeUrl = /^https?:\/\/\S+$/i.test(bodyText)
+  if (!bodyLooksLikeUrl) return false
+
+  if (bodyText === attachmentUrl) return true
+
+  const bodyWithoutQuery = bodyText.split('?')[0]
+  const attachmentWithoutQuery = attachmentUrl.split('?')[0]
+  return bodyWithoutQuery === attachmentWithoutQuery
+}
+
+function getAttachmentPreviewLabel(message: ConversationMessage) {
+  const attachment = getPrimaryAttachment(message)
+  if (!attachment) return null
+
+  const attachmentType = String(attachment.type || '').trim().toLowerCase()
+  if (attachmentType === 'image') return 'Imagen recibida'
+  if (attachmentType === 'audio') return 'Audio recibido'
+  return 'Archivo adjunto'
+}
+
+function getConversationPreviewText(message: ConversationMessage | undefined, fallback: string) {
+  if (!message) return fallback
+  if (shouldHideMessageBodyText(message)) {
+    return getAttachmentPreviewLabel(message) || fallback
+  }
+
+  return message.bodyText || fallback
+}
+
 function renderConversationMessageBody(args: {
   message: ConversationMessage
   search: string
@@ -584,6 +626,10 @@ function renderConversationMessageBody(args: {
         </div>
       </div>
     )
+  }
+
+  if (shouldHideMessageBodyText(args.message)) {
+    return null
   }
 
   return <p className="mt-1.5 whitespace-pre-wrap leading-5">{renderHighlightedText(args.message.bodyText || 'Sin contenido textual', args.search)}</p>
@@ -908,6 +954,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const searchParams = useSearchParams()
   const requestedConversationId = (searchParams?.get('conversationId') || '').trim() || null
   const selectedConversationIdRef = useRef<string | null>(null)
+  const conversationThreadViewportRef = useRef<HTMLDivElement | null>(null)
+  const lastConversationMessageRef = useRef<HTMLDivElement | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -1022,6 +1070,18 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     setManualConversationName('')
     setManualConversationPhone('')
   }
+
+  const resetAttachmentComposer = useCallback(() => {
+    if (recordingAudio) {
+      stopAudioRecording()
+    }
+
+    setMessageTypeDraft('TEXT')
+    setAttachmentUrlDraft('')
+    setAttachmentNameDraft('')
+    setAudioRecordingIssue(null)
+    if (attachmentInputRef.current) attachmentInputRef.current.value = ''
+  }, [recordingAudio])
 
   async function startNewConversation() {
     const payload = newConversationMode === 'CLIENTE'
@@ -1183,6 +1243,24 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     setCallError(null)
     setCallInvitePreview(null)
   }, [selectedConversationId])
+
+  useEffect(() => {
+    if (!selectedConversation) return
+
+    const scrollToLatestMessage = () => {
+      if (lastConversationMessageRef.current) {
+        lastConversationMessageRef.current.scrollIntoView({ block: 'end', behavior: 'auto' })
+        return
+      }
+
+      if (conversationThreadViewportRef.current) {
+        conversationThreadViewportRef.current.scrollTop = conversationThreadViewportRef.current.scrollHeight
+      }
+    }
+
+    const frame = window.requestAnimationFrame(scrollToLatestMessage)
+    return () => window.cancelAnimationFrame(frame)
+  }, [selectedConversation?.id, selectedConversation?.messages.length])
 
   async function openCallDialog(callType: 'video' | 'audio') {
     setCallDialogOpen(true)
@@ -1467,8 +1545,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       }
       setMessageDraft('')
       setMessageTypeDraft('TEXT')
-      setAttachmentUrlDraft('')
-      setAttachmentNameDraft('')
+      resetAttachmentComposer()
       await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
     } finally {
       setSending(false)
@@ -2192,16 +2269,22 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                   {!loading && displayedConversations.length === 0 ? <p className="px-2 py-4 text-sm text-slate-500">No hay conversaciones para mostrar.</p> : null}
                   {displayedConversations.map((item) => {
                     const isActive = item.id === selectedConversationId
-                    const preview = item.messages?.[0]?.bodyText || item.sourceCampaign || item.contactEmail || item.contactPhone || naText
+                    const preview = getConversationPreviewText(item.messages?.[0], item.sourceCampaign || item.contactEmail || item.contactPhone || naText)
                     const slaMeta = getConversationSlaMeta(item, locale)
                     const statusMeta = getConversationStatusMeta(item.status)
+                    const hasUnread = item.unreadCount > 0
                     return (
                       <button
                         key={item.id}
                         type="button"
                         onClick={() => setSelectedConversationId(item.id)}
-                        className={isActive ? 'w-full rounded-[18px] border border-blue-200 bg-[linear-gradient(135deg,rgba(239,246,255,0.95),rgba(255,255,255,1))] px-3 py-2.5 text-left shadow-[0_16px_32px_-28px_rgba(37,99,235,0.6)]' : 'w-full rounded-[18px] border border-transparent bg-transparent px-3 py-2.5 text-left transition hover:border-slate-200 hover:bg-slate-50/70'}
+                        className={isActive
+                          ? 'w-full rounded-[18px] border-2 border-blue-500 bg-[linear-gradient(135deg,rgba(191,219,254,0.95),rgba(239,246,255,1))] px-3 py-2.5 text-left shadow-[0_18px_36px_-24px_rgba(37,99,235,0.7)]'
+                          : hasUnread
+                            ? 'w-full rounded-[18px] border-2 border-blue-400 bg-[linear-gradient(135deg,rgba(219,234,254,0.98),rgba(239,246,255,0.94))] px-3 py-2.5 text-left shadow-[0_18px_34px_-26px rgba(37,99,235,0.55)] transition hover:border-blue-500 hover:bg-blue-100/80'
+                            : 'w-full rounded-[18px] border border-transparent bg-transparent px-3 py-2.5 text-left transition hover:border-slate-200 hover:bg-slate-50/70'}
                       >
+                                                            {item.unreadCount > 0 ? <span className="rounded-full bg-blue-700 px-1.5 py-0.5 text-[9px] font-semibold text-white shadow-sm">{item.unreadCount}</span> : null}
                         <div className="flex items-start justify-between gap-2.5">
                           <div className="flex min-w-0 items-start gap-2.5">
                             <div className="relative shrink-0">
@@ -2362,11 +2445,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                         <div className="min-h-0 rounded-[20px] border border-slate-100 bg-slate-50/45 p-2.5">
                           <div className="h-full space-y-2.5 overflow-y-auto pr-1">
                           {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
-                          {selectedConversation.messages.map((message: ConversationMessage) => {
+                          {selectedConversation.messages.map((message, index) => {
                             const hasCollision = hasMessageCollision(message)
 
                             return (
-                              <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[86%] rounded-[24px] border border-blue-200 bg-[linear-gradient(135deg,#eff6ff,#ffffff)] px-3.5 py-2.5 text-[13px] text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[86%] rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[13px] text-slate-600' : 'mr-auto max-w-[86%] rounded-[24px] border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] text-slate-700'}>
+                              <div ref={index === selectedConversation.messages.length - 1 ? lastConversationMessageRef : null} key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[86%] rounded-[24px] border border-blue-200 bg-[linear-gradient(135deg,#eff6ff,#ffffff)] px-3.5 py-2.5 text-[13px] text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[86%] rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[13px] text-slate-600' : 'mr-auto max-w-[86%] rounded-[24px] border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] text-slate-700'}>
                                 <div className="flex items-center justify-between gap-3 text-[10px] text-slate-500">
                                   <span className="font-semibold text-slate-700">{getMessageDisplayName(message, selectedConversation)}</span>
                                   <span>{formatDate(message.occurredAt, locale, naText)}</span>
@@ -2497,11 +2580,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                       {recordingAudio ? 'Detener grabación' : 'Grabar voz'}
                                     </Button>
                                   ) : null}
+                                  <Button type="button" variant="ghost" size="icon" className="rounded-xl text-slate-600" onClick={resetAttachmentComposer} aria-label="Cerrar adjunto">
+                                    <X className="h-4 w-4" />
+                                  </Button>
                                   {attachmentUrlDraft ? (
-                                    <Button type="button" variant="ghost" className="rounded-xl text-slate-600" onClick={() => {
-                                      setAttachmentUrlDraft('')
-                                      setAttachmentNameDraft('')
-                                    }}>
+                                    <Button type="button" variant="ghost" className="rounded-xl text-slate-600" onClick={resetAttachmentComposer}>
                                       Quitar adjunto
                                     </Button>
                                   ) : null}
@@ -3099,20 +3182,26 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
             {displayedConversations.map((item) => {
               const isActive = item.id === selectedConversationId
               const isMuted = mutedCrmConversationIds.includes(item.id)
-              const preview = item.messages?.[0]?.bodyText || item.sourceCampaign || item.contactEmail || item.contactPhone || naText
+              const preview = getConversationPreviewText(item.messages?.[0], item.sourceCampaign || item.contactEmail || item.contactPhone || naText)
               const origin = getConversationOrigin(item.channelConnection)
               const signal = getConversationListSignal(item)
               const slaMeta = getConversationSlaMeta(item, locale)
               const priorityMeta = getConversationPriorityMeta(item, locale)
               const statusMeta = getConversationStatusMeta(item.status)
               const providerLabel = formatProviderDisplayName(item.channelConnection.provider)
+              const hasUnread = item.unreadCount > 0
               return (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => setSelectedConversationId(item.id)}
-                  className={isActive ? 'w-full rounded-3xl border border-sky-300 bg-sky-50/80 p-4 text-left shadow-sm' : 'w-full rounded-3xl border border-sky-100 bg-[linear-gradient(180deg,_rgba(240,249,255,0.72),_#ffffff)] p-4 text-left shadow-sm transition-shadow hover:shadow-md hover:bg-sky-50/70'}
+                  className={isActive
+                    ? 'w-full rounded-3xl border-2 border-blue-500 bg-[linear-gradient(180deg,rgba(191,219,254,0.9),#eff6ff)] p-4 text-left shadow-[0_22px_40px_-28px_rgba(37,99,235,0.72)]'
+                    : hasUnread
+                      ? 'w-full rounded-3xl border-2 border-blue-400 bg-[linear-gradient(180deg,rgba(219,234,254,0.9),#eff6ff)] p-4 text-left shadow-[0_18px_34px_-26px_rgba(37,99,235,0.52)] transition-shadow hover:shadow-md hover:border-blue-500 hover:bg-blue-100/70'
+                      : 'w-full rounded-3xl border border-sky-100 bg-[linear-gradient(180deg,_rgba(240,249,255,0.72),_#ffffff)] p-4 text-left shadow-sm transition-shadow hover:shadow-md hover:bg-sky-50/70'}
                 >
+                                            {item.unreadCount > 0 ? <span className="text-xs font-semibold text-blue-700">{item.unreadCount} sin leer</span> : null}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-3">
                       <div className="relative shrink-0">
@@ -3578,13 +3667,13 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           ) : null}
                         </div>
 
-                        <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+                        <div ref={conversationThreadViewportRef} className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
                           {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
-                          {selectedConversation.messages.map((message: ConversationMessage) => {
+                          {selectedConversation.messages.map((message: ConversationMessage, index) => {
                             const hasCollision = hasMessageCollision(message)
 
                             return (
-                            <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[88%] rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[88%] rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600' : 'mr-auto max-w-[88%] rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
+                            <div ref={index === selectedConversation.messages.length - 1 ? lastConversationMessageRef : null} key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[88%] rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[88%] rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600' : 'mr-auto max-w-[88%] rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
                               <div className="flex items-center justify-between gap-3 text-[11px] text-slate-500">
                                 <span className="font-semibold text-slate-700">{getMessageDisplayName(message, selectedConversation)}</span>
                                 <span>{formatDate(message.occurredAt, locale, naText)}</span>
@@ -3664,15 +3753,22 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                       {recordingAudio ? 'Detener grabación' : 'Grabar voz'}
                                     </Button>
                                   ) : null}
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="rounded-xl text-slate-600"
+                                    onClick={resetAttachmentComposer}
+                                    aria-label="Cerrar adjunto"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
                                   {attachmentUrlDraft ? (
                                     <Button
                                       type="button"
                                       variant="ghost"
                                       className="rounded-xl text-slate-600"
-                                      onClick={() => {
-                                        setAttachmentUrlDraft('')
-                                        setAttachmentNameDraft('')
-                                      }}
+                                      onClick={resetAttachmentComposer}
                                     >
                                       Quitar adjunto
                                     </Button>
