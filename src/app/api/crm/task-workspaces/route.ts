@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { normalizeString } from '@/lib/crm'
+import { parseCompanyTaskSettings } from '@/lib/company-task-settings'
 import { crmTaskWorkspaceInclude, getAccessibleTaskWorkspaceIds, mapWorkspaceForUser, normalizeUserIdList, normalizeWorkspaceSedeIdList } from '@/lib/crm-task-workspaces'
 
 export const runtime = 'nodejs'
@@ -30,7 +31,18 @@ export async function GET() {
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     })
 
-    return NextResponse.json({ success: true, data: rows.map((row) => mapWorkspaceForUser(row, access.userId)) })
+    const empresa = await prisma.empresa.findUnique({
+      where: { id: access.empresaId },
+      select: { dashboardConfig: true },
+    })
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        workspaces: rows.map((row) => mapWorkspaceForUser(row, access.userId)),
+        settings: parseCompanyTaskSettings(empresa?.dashboardConfig),
+      },
+    })
   } catch (error) {
     console.error('Error listando espacios de trabajo CRM:', error)
     return NextResponse.json({ error: 'Error listando espacios de trabajo CRM' }, { status: 500 })

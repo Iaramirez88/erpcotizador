@@ -146,6 +146,8 @@ type ExtraTaskColumn = 'attachments' | 'custom-fields' | 'history' | 'note'
 type TaskSortDirection = 'asc' | 'desc'
 type TaskViewMode = 'SPACE' | 'MINE' | 'ALL_SPACES'
 type DragPayload = { type: 'project'; projectId: string } | { type: 'task'; taskId: string }
+type TaskWorkspaceSettings = { requireTaskCancellationReason: boolean }
+type TaskWorkspaceBootstrap = { workspaces: Workspace[]; settings: TaskWorkspaceSettings }
 
 const COLOR_PRESETS = ['#0F172A', '#1D4ED8', '#0F766E', '#BE185D', '#7C3AED', '#C2410C', '#DC2626', '#16A34A']
 
@@ -413,6 +415,7 @@ const TASK_COLUMN_WIDTH_STORAGE_KEY = 'crm-task-workspaces:task-column-width'
 const TASK_EXTRA_COLUMNS_STORAGE_KEY = 'crm-task-workspaces:task-extra-columns'
 const TASK_PRIORITY_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-priority-column-visible'
 const TASK_CREATED_AT_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-created-at-column-visible'
+const TASK_PAGE_SIZE_STORAGE_KEY = 'crm-task-workspaces:task-page-size'
 const LAST_WORKSPACE_STORAGE_KEY = 'crm-task-workspaces:last-workspace-id'
 
 function normalizePinnedTaskIds(value: unknown) {
@@ -431,12 +434,26 @@ function reorderValues(values: string[], fromValue: string, toValue: string) {
   return next
 }
 
+function requestCancellationReason(taskTitle: string, required: boolean) {
+  const response = window.prompt(
+    required
+      ? `Debes registrar el motivo de anulación para la tarea "${taskTitle}".`
+      : `Si deseas, registra el motivo de anulación para la tarea "${taskTitle}".`,
+    '',
+  )
+  if (response === null) return null
+  const normalized = response.trim()
+  if (required && !normalized) return ''
+  return normalized
+}
+
 export function CrmTaskWorkspacesClient() {
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
   const attachmentInputRef = useRef<HTMLInputElement | null>(null)
   const customFieldFileInputRef = useRef<HTMLInputElement | null>(null)
+  const workspaceGridRef = useRef<HTMLDivElement | null>(null)
   const handledNotificationTaskRef = useRef<string>('')
   const detailDialogOpenedFromNotificationRef = useRef(false)
   const notificationCleanupTimerRef = useRef<number | null>(null)
@@ -474,6 +491,8 @@ export function CrmTaskWorkspacesClient() {
   const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>('MINE')
   const [taskColumnWidth, setTaskColumnWidth] = useState(150)
   const [taskSortDirection, setTaskSortDirection] = useState<TaskSortDirection>('desc')
+  const [taskPageSize, setTaskPageSize] = useState(10)
+  const [taskPage, setTaskPage] = useState(1)
   const [showPriorityColumn, setShowPriorityColumn] = useState(true)
   const [showCreatedAtColumn, setShowCreatedAtColumn] = useState(true)
   const [visibleExtraTaskColumns, setVisibleExtraTaskColumns] = useState<ExtraTaskColumn[]>([])
@@ -482,6 +501,8 @@ export function CrmTaskWorkspacesClient() {
   const [dragOverTaskId, setDragOverTaskId] = useState('')
   const [currentUserId, setCurrentUserId] = useState('')
   const [pinnedTaskIds, setPinnedTaskIds] = useState<string[]>([])
+  const [taskSettings, setTaskSettings] = useState<TaskWorkspaceSettings>({ requireTaskCancellationReason: false })
+  const [workspaceViewportHeight, setWorkspaceViewportHeight] = useState<number | null>(null)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [tasks, setTasks] = useState<TaskItem[]>([])
   const [users, setUsers] = useState<TeamUser[]>([])
@@ -489,6 +510,10 @@ export function CrmTaskWorkspacesClient() {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('')
   const [selectedProjectId, setSelectedProjectId] = useState<string>('')
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null)
+  const [taskCancelDialogOpen, setTaskCancelDialogOpen] = useState(false)
+  const [taskCancelTarget, setTaskCancelTarget] = useState<TaskItem | null>(null)
+  const [taskCancelReason, setTaskCancelReason] = useState('')
+  const [cancellingTask, setCancellingTask] = useState(false)
   const [customFieldUploadTarget, setCustomFieldUploadTarget] = useState<string | null>(null)
   const [workspaceForm, setWorkspaceForm] = useState({ name: '', description: '', scope: 'SEDE' as WorkspaceScope, visibility: 'PRIVATE' as WorkspaceVisibility, sedeId: '', sedeIds: [] as string[], ownerUserId: '', memberUserIds: [] as string[] })
   const [projectForm, setProjectForm] = useState({ sourceWorkspaceId: '', workspaceId: '', projectId: '', name: '', description: '' })
@@ -525,15 +550,16 @@ export function CrmTaskWorkspacesClient() {
     setLoading(true)
     try {
       const [workspaceRes, userRes, sedeRes, meRes, uiPrefRes] = await Promise.all([
-        requestJson<Workspace[]>('/api/crm/task-workspaces'),
+        requestJson<TaskWorkspaceBootstrap>('/api/crm/task-workspaces'),
         requestJson<TeamUser[]>('/api/crm/assignees'),
         requestJson<SedeOption[]>('/api/crm/sedes'),
         requestJson<{ id: string }>('/api/me'),
         requestJson<{ report?: { tasks?: { pinnedTaskIds?: string[] } } }>('/api/ui-preferences'),
       ])
-      const nextWorkspaces = Array.isArray(workspaceRes.data) ? workspaceRes.data : []
+      const nextWorkspaces = Array.isArray(workspaceRes.data?.workspaces) ? workspaceRes.data.workspaces : []
       const lastWorkspaceId = typeof window !== 'undefined' ? window.localStorage.getItem(LAST_WORKSPACE_STORAGE_KEY) || '' : ''
       setWorkspaces(nextWorkspaces)
+      setTaskSettings(workspaceRes.data?.settings ?? { requireTaskCancellationReason: false })
       setUsers(Array.isArray(userRes.data) ? userRes.data : [])
       setSedes(Array.isArray(sedeRes.data) ? sedeRes.data : [])
       setCurrentUserId(meRes.data?.id || nextWorkspaces[0]?.currentUserId || '')
@@ -635,6 +661,10 @@ export function CrmTaskWorkspacesClient() {
       if (savedCreatedAtColumn === 'true' || savedCreatedAtColumn === 'false') {
         setShowCreatedAtColumn(savedCreatedAtColumn === 'true')
       }
+      const savedPageSize = Number(window.localStorage.getItem(TASK_PAGE_SIZE_STORAGE_KEY) || '')
+      if ([10, 20, 30, 50].includes(savedPageSize)) {
+        setTaskPageSize(savedPageSize)
+      }
     } catch {
       // ignore
     }
@@ -648,10 +678,37 @@ export function CrmTaskWorkspacesClient() {
       window.localStorage.setItem(TASK_EXTRA_COLUMNS_STORAGE_KEY, JSON.stringify(visibleExtraTaskColumns))
       window.localStorage.setItem(TASK_PRIORITY_COLUMN_STORAGE_KEY, String(showPriorityColumn))
       window.localStorage.setItem(TASK_CREATED_AT_COLUMN_STORAGE_KEY, String(showCreatedAtColumn))
+      window.localStorage.setItem(TASK_PAGE_SIZE_STORAGE_KEY, String(taskPageSize))
     } catch {
       // ignore
     }
-  }, [clampedTaskColumnWidth, showCreatedAtColumn, showPriorityColumn, visibleExtraTaskColumns, workspacePanelCollapsed])
+  }, [clampedTaskColumnWidth, showCreatedAtColumn, showPriorityColumn, taskPageSize, visibleExtraTaskColumns, workspacePanelCollapsed])
+
+  useEffect(() => {
+    setTaskPage(1)
+  }, [search, selectedProjectId, selectedWorkspaceId, showArchived, taskPageSize, taskSortDirection, taskViewMode])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const measure = () => {
+      if (window.innerWidth < 1280) {
+        setWorkspaceViewportHeight(null)
+        return
+      }
+      const top = workspaceGridRef.current?.getBoundingClientRect().top ?? 0
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight
+      setWorkspaceViewportHeight(Math.max(520, Math.floor(viewportHeight - top - 20)))
+    }
+
+    measure()
+    window.addEventListener('resize', measure)
+    window.visualViewport?.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('resize', measure)
+      window.visualViewport?.removeEventListener('resize', measure)
+    }
+  }, [workspacePanelCollapsed])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -789,6 +846,31 @@ export function CrmTaskWorkspacesClient() {
       return taskSortDirection === 'asc' ? leftTime - rightTime : rightTime - leftTime
     })
   }, [pinnedTaskIds, search, selectedProjectId, taskSortDirection, taskViewMode, tasks])
+
+  const totalTaskPages = useMemo(() => Math.max(1, Math.ceil(filteredTasks.length / taskPageSize)), [filteredTasks.length, taskPageSize])
+  const paginatedTasks = useMemo(() => {
+    const safePage = Math.min(taskPage, totalTaskPages)
+    const start = (safePage - 1) * taskPageSize
+    return filteredTasks.slice(start, start + taskPageSize)
+  }, [filteredTasks, taskPage, taskPageSize, totalTaskPages])
+  const visibleTaskRange = useMemo(() => {
+    if (!filteredTasks.length) return { start: 0, end: 0 }
+    const safePage = Math.min(taskPage, totalTaskPages)
+    const start = (safePage - 1) * taskPageSize + 1
+    const end = Math.min(filteredTasks.length, start + paginatedTasks.length - 1)
+    return { start, end }
+  }, [filteredTasks.length, paginatedTasks.length, taskPage, taskPageSize, totalTaskPages])
+  const visibleTaskPages = useMemo(() => {
+    if (totalTaskPages <= 5) return Array.from({ length: totalTaskPages }, (_, index) => index + 1)
+    const start = Math.max(1, taskPage - 2)
+    const end = Math.min(totalTaskPages, start + 4)
+    const normalizedStart = Math.max(1, end - 4)
+    return Array.from({ length: end - normalizedStart + 1 }, (_, index) => normalizedStart + index)
+  }, [taskPage, totalTaskPages])
+
+  useEffect(() => {
+    setTaskPage((current) => Math.min(current, totalTaskPages))
+  }, [totalTaskPages])
 
   function canEditTask(task: TaskItem) {
     if (!currentUserId) return false
@@ -1122,16 +1204,65 @@ export function CrmTaskWorkspacesClient() {
   async function handleDeleteTask(task: TaskItem) {
     if (!canEditTask(task)) return alert('Solo un editor o administrador puede eliminar tareas.')
     if (task.createdBy?.id !== currentUserId) return alert('Solo puedes eliminar tareas creadas por tu usuario.')
-    if (!window.confirm(`Se eliminará la tarea "${task.title}". Esta acción no se puede deshacer.`)) return
-    const json = await requestJson<null>(`/api/crm/tasks/${task.id}`, { method: 'DELETE' })
-    if (!json.success) return alert(json.error || 'No se pudo eliminar la tarea.')
-    if (selectedTask?.id === task.id) {
-      setDetailDialogOpen(false)
-      setSelectedTask(null)
+    setTaskCancelTarget(task)
+    setTaskCancelReason('')
+    setTaskCancelDialogOpen(true)
+  }
+
+  async function handleConfirmTaskCancellation() {
+    if (!taskCancelTarget) return
+    if (taskSettings.requireTaskCancellationReason && !taskCancelReason.trim()) {
+      alert('Debes registrar el motivo de anulación para continuar.')
+      return
     }
-    await loadTasks(selectedWorkspaceId)
-    await loadBase()
-    toast({ title: 'Tarea eliminada', description: 'La tarea se borró del proyecto.' })
+
+    setCancellingTask(true)
+    try {
+      const json = await requestJson<TaskItem>(`/api/crm/tasks/${taskCancelTarget.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: taskCancelReason.trim() || null }),
+      })
+      if (!json.success) return alert(json.error || 'No se pudo anular la tarea.')
+
+      if (selectedTask?.id === taskCancelTarget.id && !showArchived) {
+        setDetailDialogOpen(false)
+        setSelectedTask(null)
+      }
+
+      setTaskCancelDialogOpen(false)
+      setTaskCancelTarget(null)
+      setTaskCancelReason('')
+      await loadTasks(selectedWorkspaceId)
+      await loadBase()
+      toast({
+        title: 'Tarea anulada',
+        description: taskCancelReason.trim()
+          ? 'La tarea quedó archivada y el motivo se registró en historial y notificaciones.'
+          : 'La tarea quedó archivada para conservar la trazabilidad.',
+      })
+    } finally {
+      setCancellingTask(false)
+    }
+  }
+
+  function closeTaskCancellationDialog() {
+    if (cancellingTask) return
+    setTaskCancelDialogOpen(false)
+    setTaskCancelTarget(null)
+    setTaskCancelReason('')
+  }
+
+  function goToPreviousTaskPage() {
+    setTaskPage((current) => Math.max(1, current - 1))
+  }
+
+  function goToNextTaskPage() {
+    setTaskPage((current) => Math.min(totalTaskPages, current + 1))
+  }
+
+  function goToTaskPage(page: number) {
+    setTaskPage(Math.min(totalTaskPages, Math.max(1, page)))
   }
 
   function handleProjectDragStart(project: WorkspaceProject, event: React.DragEvent<HTMLDivElement>) {
@@ -1200,12 +1331,23 @@ export function CrmTaskWorkspacesClient() {
     setSavingDetail(true)
     try {
       const patch: Record<string, unknown> = { title: detailForm.title, description: detailForm.description, dueAt: detailForm.dueAt || null, priority: detailForm.priority, status: detailForm.status, colorHex: normalizeHex(detailForm.colorHex), attachmentsJson: detailForm.attachmentsJson, customFieldsJson: detailForm.customFieldsJson, assignedToUserIds: detailForm.assignedToUserIds, archived: detailForm.archived }
+      if (selectedTask && selectedTask.status !== 'CANCELED' && detailForm.status === 'CANCELED') {
+        const reason = requestCancellationReason(detailForm.title || selectedTask.title, taskSettings.requireTaskCancellationReason)
+        if (reason === null) return
+        if (taskSettings.requireTaskCancellationReason && !reason) {
+          alert('Debes registrar el motivo de anulación para continuar.')
+          return
+        }
+        patch.cancellationReason = reason || null
+      }
       patch.projectId = detailForm.projectId || null
       await handleUpdateTask(detailForm.id, patch, {
-        title: 'Tarea actualizada',
-        description: detailForm.assignedToUserIds.length
-          ? 'Se guardaron los cambios y se mantuvo la asignación de responsables.'
-          : 'Los cambios de la tarea se guardaron correctamente.',
+        title: detailForm.status === 'CANCELED' && selectedTask?.status !== 'CANCELED' ? 'Tarea anulada' : 'Tarea actualizada',
+        description: detailForm.status === 'CANCELED' && selectedTask?.status !== 'CANCELED'
+          ? 'La tarea quedó anulada y su traza se guardó en historial y notificaciones.'
+          : detailForm.assignedToUserIds.length
+            ? 'Se guardaron los cambios y se mantuvo la asignación de responsables.'
+            : 'Los cambios de la tarea se guardaron correctamente.',
       })
     } finally {
       setSavingDetail(false)
@@ -1406,7 +1548,19 @@ export function CrmTaskWorkspacesClient() {
           {statusOptions.map((option) => (
             <DropdownMenuItem
               key={option.value}
-              onSelect={() => void handleUpdateTask(task.id, { status: option.value }, { title: 'Estado actualizado', description: `La tarea quedó en estado ${option.label.toLowerCase()}.` })}
+              onSelect={() => {
+                if (option.value === 'CANCELED' && task.status !== 'CANCELED') {
+                  const reason = requestCancellationReason(task.title, taskSettings.requireTaskCancellationReason)
+                  if (reason === null) return
+                  if (taskSettings.requireTaskCancellationReason && !reason) {
+                    alert('Debes registrar el motivo de anulación para continuar.')
+                    return
+                  }
+                  void handleUpdateTask(task.id, { status: option.value, cancellationReason: reason || null }, { title: 'Tarea anulada', description: reason ? 'La anulación quedó registrada con motivo.' : 'La tarea quedó anulada y archivada.' })
+                  return
+                }
+                void handleUpdateTask(task.id, { status: option.value }, { title: 'Estado actualizado', description: `La tarea quedó en estado ${option.label.toLowerCase()}.` })
+              }}
               className="rounded-xl px-2 py-1.5"
             >
               <span className={`inline-flex w-full items-center justify-between rounded-full border px-3 py-2 text-sm font-semibold ${option.className}`}>
@@ -1580,9 +1734,13 @@ export function CrmTaskWorkspacesClient() {
         ]}
       />
 
-      <div className={`grid gap-4 xl:items-start ${workspacePanelCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[320px_minmax(0,1fr)]'}`}>
+      <div
+        ref={workspaceGridRef}
+        className={`grid gap-4 xl:min-h-0 xl:overflow-hidden ${workspacePanelCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[320px_minmax(0,1fr)]'}`}
+        style={workspaceViewportHeight ? { height: `${workspaceViewportHeight}px` } : undefined}
+      >
         {!workspacePanelCollapsed ? (
-          <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)] xl:flex xl:max-h-[calc(100vh-12rem)] xl:flex-col xl:overflow-hidden">
+          <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)] xl:flex xl:h-full xl:min-h-0 xl:flex-col xl:overflow-hidden">
             <CardHeader className="border-b border-slate-100 pb-5">
               <CardTitle className="text-xl">Proyectos</CardTitle>
               <CardDescription>Selecciona un proyecto, ajusta sus opciones desde el menú y administra sus listas cuando las necesites.</CardDescription>
@@ -1750,7 +1908,7 @@ export function CrmTaskWorkspacesClient() {
           </Card>
         ) : null}
 
-        <Card className="min-w-0 rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+        <Card className="min-w-0 rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)] xl:flex xl:h-full xl:min-h-0 xl:flex-col">
           <TooltipProvider delayDuration={150}>
             <CardHeader className="border-b border-slate-100 pb-5">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1874,10 +2032,11 @@ export function CrmTaskWorkspacesClient() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="min-w-0 p-0">
-            <div className="w-full overflow-x-auto overscroll-x-contain pb-2">
-              <div className="w-max" style={{ minWidth: `${taskTableMinWidth}px` }}>
-                <div className="grid gap-3 border-b border-slate-100 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500" style={{ gridTemplateColumns: taskGridTemplate }}>
+            <CardContent className="min-w-0 p-0 xl:flex-1 xl:min-h-0 xl:overflow-hidden">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
+                <div className="w-max min-h-full" style={{ minWidth: `${taskTableMinWidth}px` }}>
+                  <div className="grid gap-3 border-b border-slate-100 bg-white px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:sticky xl:top-0 xl:z-10" style={{ gridTemplateColumns: taskGridTemplate }}>
                   <span>Tarea</span>
                   {showCrossWorkspaceColumn ? <span>Proyecto</span> : null}
                   {showPriorityColumn ? <span>Prioridad</span> : null}
@@ -1893,10 +2052,10 @@ export function CrmTaskWorkspacesClient() {
                   {visibleExtraTaskColumns.includes('note') ? <span>Nota rápida</span> : null}
                   <span>Acciones</span>
                 </div>
-                {filteredTasks.map((task) => {
+                  {paginatedTasks.map((task) => {
                   const statusMeta = STATUS_META[task.status]
                   const canEditCurrentTask = canEditTask(task)
-                  const canDeleteTask = Boolean(canEditCurrentTask && currentUserId && task.createdBy?.id === currentUserId)
+                  const canDeleteTask = Boolean(canEditCurrentTask && currentUserId && task.createdBy?.id === currentUserId && (task.status !== 'CANCELED' || !task.archivedAt))
                   const pinned = isTaskPinned(task.id)
                   return (
                     <div
@@ -1949,7 +2108,7 @@ export function CrmTaskWorkspacesClient() {
                               Mover tarea
                             </DropdownMenuItem>
                             <DropdownMenuItem onSelect={() => void handleDeleteTask(task)} disabled={!canDeleteTask} className="text-rose-600 focus:text-rose-700">
-                              Eliminar
+                              {task.status === 'CANCELED' && task.archivedAt ? 'Ya anulada' : 'Anular'}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1957,13 +2116,79 @@ export function CrmTaskWorkspacesClient() {
                     </div>
                   )
                 })}
-                {!filteredTasks.length ? <div className="px-6 py-8 text-sm text-slate-500">{taskViewMode === 'MINE' ? 'No tienes tareas asignadas para mostrar.' : taskViewMode === 'ALL_SPACES' ? 'No hay tareas para mostrar en tus proyectos asignados.' : selectedWorkspace ? (selectedProject ? 'No hay tareas para mostrar en esta lista.' : selectedWorkspace.projects.length ? 'No hay tareas para mostrar en este proyecto.' : 'Todavía no hay tareas en este proyecto. Puedes crear una tarea directa o agregar una lista.') : 'Selecciona un proyecto para ver tareas o usa Crear tarea para registrar una nueva.'}</div> : null}
+                  {!filteredTasks.length ? <div className="px-6 py-8 text-sm text-slate-500">{taskViewMode === 'MINE' ? 'No tienes tareas asignadas para mostrar.' : taskViewMode === 'ALL_SPACES' ? 'No hay tareas para mostrar en tus proyectos asignados.' : selectedWorkspace ? (selectedProject ? 'No hay tareas para mostrar en esta lista.' : selectedWorkspace.projects.length ? 'No hay tareas para mostrar en este proyecto.' : 'Todavía no hay tareas en este proyecto. Puedes crear una tarea directa o agregar una lista.') : 'Selecciona un proyecto para ver tareas o usa Crear tarea para registrar una nueva.'}</div> : null}
+                </div>
+              </div>
+              <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/90 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                  <span>{filteredTasks.length ? `Mostrando ${visibleTaskRange.start}-${visibleTaskRange.end} de ${filteredTasks.length} tareas` : 'Sin tareas para paginar'}</span>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Por página</Label>
+                    <Select value={String(taskPageSize)} onValueChange={(value) => setTaskPageSize(Number(value))}>
+                      <SelectTrigger className="h-8 w-[92px] rounded-xl bg-white text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="20">20</SelectItem>
+                        <SelectItem value="30">30</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" size="sm" className="h-8 rounded-xl px-3 text-xs" onClick={goToPreviousTaskPage} disabled={taskPage <= 1}>
+                    Anterior
+                  </Button>
+                  {visibleTaskPages.map((page) => (
+                    <Button key={page} variant={page === taskPage ? 'default' : 'outline'} size="sm" className="h-8 min-w-8 rounded-xl px-2 text-xs" onClick={() => goToTaskPage(page)}>
+                      {page}
+                    </Button>
+                  ))}
+                  <Button variant="outline" size="sm" className="h-8 rounded-xl px-3 text-xs" onClick={goToNextTaskPage} disabled={taskPage >= totalTaskPages}>
+                    Siguiente
+                  </Button>
+                </div>
               </div>
             </div>
             </CardContent>
           </TooltipProvider>
         </Card>
       </div>
+
+      <Dialog open={taskCancelDialogOpen} onOpenChange={(open) => { if (!open) closeTaskCancellationDialog() }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Anular tarea</DialogTitle>
+            <DialogDescription>
+              {taskCancelTarget
+                ? `La tarea ${taskCancelTarget.title} se marcará como cancelada y archivada para conservar el historial.`
+                : 'Selecciona una tarea válida.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Esta acción ya no borra la tarea físicamente. Se guardará la traza en historial y se notificará a los involucrados.
+            </div>
+            <div className="grid gap-2">
+              <Label>Motivo{taskSettings.requireTaskCancellationReason ? ' obligatorio' : ' opcional'}</Label>
+              <Textarea
+                value={taskCancelReason}
+                onChange={(event) => setTaskCancelReason(event.target.value)}
+                rows={4}
+                placeholder="Ejemplo: el cliente canceló el requerimiento, se duplicó la tarea o ya no aplica."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeTaskCancellationDialog} disabled={cancellingTask}>Cancelar</Button>
+            <Button onClick={() => void handleConfirmTaskCancellation()} disabled={cancellingTask}>
+              {cancellingTask ? 'Anulando...' : 'Confirmar anulación'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(quickTaskPanel)} onOpenChange={(open) => { if (!open) setQuickTaskPanel(null) }}>
         <DialogContent className={quickTaskPanel?.mode === 'note' ? 'max-w-md' : 'max-w-2xl'}>

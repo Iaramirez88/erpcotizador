@@ -20,6 +20,7 @@ type EmpresaConfig = {
   nit: string
   logo: string | null
   intelligenceEnabled: boolean
+  taskCancellationReasonRequired: boolean
   hasRegistrationCode: boolean
 }
 
@@ -50,6 +51,10 @@ export default function ConfigEmpresaPage() {
   const [nit, setNit] = useState('')
   const [logo, setLogo] = useState<string | null>(null)
   const [intelligenceEnabled, setIntelligenceEnabled] = useState(false)
+  const [taskCancellationReasonRequired, setTaskCancellationReasonRequired] = useState(false)
+  const [savingTaskPolicy, setSavingTaskPolicy] = useState(false)
+  const [taskPolicyError, setTaskPolicyError] = useState<string | null>(null)
+  const [taskPolicyStatus, setTaskPolicyStatus] = useState<string | null>(null)
 
   const logoPreview = useMemo(() => (logo ?? config?.logo ?? null), [logo, config?.logo])
 
@@ -71,6 +76,7 @@ export default function ConfigEmpresaPage() {
         setNit(json.data.nit)
         setLogo(json.data.logo)
         setIntelligenceEnabled(Boolean(json.data.intelligenceEnabled))
+        setTaskCancellationReasonRequired(Boolean(json.data.taskCancellationReasonRequired))
       } catch {
         if (!cancelled) setError('No se pudo cargar la configuración.')
       }
@@ -132,6 +138,7 @@ export default function ConfigEmpresaPage() {
       }
       setConfig(json.data)
       setIntelligenceEnabled(Boolean(json.data.intelligenceEnabled))
+      setTaskCancellationReasonRequired(Boolean(json.data.taskCancellationReasonRequired))
       setStatus('Guardado.')
 
       window.dispatchEvent(
@@ -177,6 +184,42 @@ export default function ConfigEmpresaPage() {
       setIntelligenceError('No se pudo actualizar el módulo.')
     } finally {
       setSavingIntelligence(false)
+    }
+  }
+
+  async function saveTaskPolicySetting(nextValue: boolean) {
+    if (!config) return
+
+    const previousValue = taskCancellationReasonRequired
+    setTaskCancellationReasonRequired(nextValue)
+    setSavingTaskPolicy(true)
+    setTaskPolicyError(null)
+    setTaskPolicyStatus(null)
+
+    try {
+      const res = await fetch('/api/configuracion/empresa', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskCancellationReasonRequired: nextValue }),
+      })
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; data?: EmpresaConfig; error?: string } | null
+      if (!res.ok || !json?.ok || !json.data) {
+        setTaskCancellationReasonRequired(previousValue)
+        setTaskPolicyError(json?.error ?? 'No se pudo actualizar la política de tareas.')
+        return
+      }
+
+      const nextConfig = json.data
+      setConfig((current) => current ? { ...current, ...nextConfig } : nextConfig)
+      setTaskCancellationReasonRequired(Boolean(nextConfig.taskCancellationReasonRequired))
+      setTaskPolicyStatus(nextConfig.taskCancellationReasonRequired
+        ? 'Ahora se exigirá un motivo al anular una tarea.'
+        : 'El motivo al anular una tarea quedó opcional, pero la traza seguirá guardándose.')
+    } catch {
+      setTaskCancellationReasonRequired(previousValue)
+      setTaskPolicyError('No se pudo actualizar la política de tareas.')
+    } finally {
+      setSavingTaskPolicy(false)
     }
   }
 
@@ -319,6 +362,40 @@ export default function ConfigEmpresaPage() {
             <span>{savingIntelligence ? 'Guardando estado del módulo...' : intelligenceEnabled ? 'Estado actual: prendido' : 'Estado actual: apagado'}</span>
             <span className={intelligenceEnabled ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700' : 'rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700'}>
               {intelligenceEnabled ? 'Activo' : 'Inactivo'}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardInfoHeader
+            title={<CardTitle>Política de anulación de tareas</CardTitle>}
+            description="Las tareas no se borran físicamente: se anulan, se archivan y conservan su historial. Aquí defines si el motivo será obligatorio para tu empresa."
+            tone="action"
+          />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-4">
+            <div className="space-y-1">
+              <Label htmlFor="task-cancellation-reason-required" className="text-sm font-medium text-slate-950">Exigir motivo al anular o retirar una tarea</Label>
+              <CardDescription>
+                Si lo activas, el usuario deberá registrar por qué la tarea no sigue. La traza también quedará en notificaciones.
+              </CardDescription>
+              {taskPolicyError ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{taskPolicyError}</div> : null}
+              {taskPolicyStatus ? <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{taskPolicyStatus}</div> : null}
+            </div>
+            <Switch
+              id="task-cancellation-reason-required"
+              checked={taskCancellationReasonRequired}
+              onCheckedChange={(checked) => void saveTaskPolicySetting(checked)}
+              disabled={saving || savingTaskPolicy || loading || !config}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-600">
+            <span>{savingTaskPolicy ? 'Guardando política de tareas...' : taskCancellationReasonRequired ? 'Estado actual: motivo obligatorio' : 'Estado actual: motivo opcional'}</span>
+            <span className={taskCancellationReasonRequired ? 'rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800' : 'rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700'}>
+              {taskCancellationReasonRequired ? 'Obligatorio' : 'Opcional'}
             </span>
           </div>
         </CardContent>

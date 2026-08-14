@@ -20,6 +20,7 @@ import {
   normalizeUserIdList,
 } from '@/lib/crm-task-workspaces'
 import { notifyTaskUsers } from '@/lib/crm-task-notifications'
+import { parseCompanyTaskSettings } from '@/lib/company-task-settings'
 import { assertTaskCapabilitySedeAccess, requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
 
 export const runtime = 'nodejs'
@@ -117,6 +118,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const workspaceId = normalizeString(body?.workspaceId)
     const projectId = normalizeString(body?.projectId)
     const explicitSedeId = normalizeString(body?.sedeId)
+    const cancellationReason = normalizeString(body?.cancellationReason)
     const status = Object.prototype.hasOwnProperty.call(body ?? {}, 'status') ? parseTaskStatus(body?.status) : undefined
     const priority = Object.prototype.hasOwnProperty.call(body ?? {}, 'priority') ? parseTaskPriority(body?.priority) : undefined
     const dueAt = parseOptionalDate(body?.dueAt)
@@ -203,6 +205,19 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const nextStatus = status ?? current.status
+    const isCancellingTask = nextStatus === 'CANCELED' && current.status !== 'CANCELED'
+
+    if (isCancellingTask) {
+      const empresa = await prisma.empresa.findUnique({
+        where: { id: access.empresaId },
+        select: { dashboardConfig: true },
+      })
+      const taskSettings = parseCompanyTaskSettings(empresa?.dashboardConfig)
+      if (taskSettings.requireTaskCancellationReason && !cancellationReason) {
+        return NextResponse.json({ error: 'Debes registrar un motivo para anular la tarea.' }, { status: 400 })
+      }
+    }
+
     const assigneesWereUpdated = Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId') || Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserIds')
     const newlyAssignedUserIds = assigneesWereUpdated
       ? normalizedAssigneeIds.filter((userId) => !current.assignments.some((assignment) => assignment.userId === userId))
@@ -296,6 +311,29 @@ export async function PATCH(request: Request, context: RouteContext) {
             message: `Estado cambiado de ${current.status} a ${status}.`,
           }),
         )
+        if (status === 'CANCELED') {
+          historyWrites.push(
+            appendTaskHistory(tx, {
+              empresaId: access.empresaId,
+              taskId: current.id,
+              actorUserId: access.userId,
+              type: 'ARCHIVED',
+              message: 'La tarea fue anulada y archivada para conservar la trazabilidad.',
+              metadata: cancellationReason ? { reason: cancellationReason } : {},
+            }),
+          )
+          if (cancellationReason) {
+            historyWrites.push(
+              appendTaskHistory(tx, {
+                empresaId: access.empresaId,
+                taskId: current.id,
+                actorUserId: access.userId,
+                type: 'NOTE_ADDED',
+                message: `Motivo de anulación: ${cancellationReason}`,
+              }),
+            )
+          }
+        }
       }
       if (priority && priority !== current.priority) {
         historyWrites.push(
@@ -389,10 +427,14 @@ export async function PATCH(request: Request, context: RouteContext) {
           actorUserId: access.userId,
           recipientUserIds: taskWatchers,
           title: 'Estado de tarea actualizado',
-          body: `La tarea ${updated.title} cambió a ${updated.status}.`,
+          body: updated.status === 'CANCELED'
+            ? (cancellationReason
+                ? `La tarea ${updated.title} fue anulada. Motivo: ${cancellationReason}`
+                : `La tarea ${updated.title} fue anulada.`)
+            : `La tarea ${updated.title} cambió a ${updated.status}.`,
           taskId: updated.id,
           workspaceId: updated.workspaceId,
-          type: updated.status === 'DONE' ? 'SUCCESS' : 'INFO',
+          type: updated.status === 'DONE' ? 'SUCCESS' : updated.status === 'CANCELED' ? 'WARNING' : 'INFO',
         })
       }
 
@@ -426,7 +468,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 }
 
-export async function DELETE(_: Request, context: RouteContext) {
+export async function DELETE(request: Request, context: RouteContext) {
   try {
     const access = await requireWorkspaceTaskCapability({
       action: 'UPDATE',
@@ -435,15 +477,11 @@ export async function DELETE(_: Request, context: RouteContext) {
     if (!access.ok) return access.response
 
     const { id } = await context.params
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
+    const cancellationReason = normalizeString(body?.reason)
     const current = await prisma.crmTask.findUnique({
       where: { id },
-      include: {
-        workspace: {
-          include: {
-            members: true,
-          },
-        },
-      },
+      include: crmTaskInclude,
     })
 
     if (!current || current.empresaId !== access.empresaId) {
@@ -475,9 +513,81 @@ export async function DELETE(_: Request, context: RouteContext) {
       if (denied) return denied
     }
 
-    await prisma.crmTask.delete({ where: { id: current.id } })
+    const empresa = await prisma.empresa.findUnique({
+      where: { id: access.empresaId },
+      select: { dashboardConfig: true },
+    })
+    const taskSettings = parseCompanyTaskSettings(empresa?.dashboardConfig)
+    if (taskSettings.requireTaskCancellationReason && !cancellationReason) {
+      return NextResponse.json({ error: 'Debes registrar un motivo para anular la tarea.' }, { status: 400 })
+    }
 
-    return NextResponse.json({ success: true })
+    if (current.status === 'CANCELED' && current.archivedAt) {
+      return NextResponse.json({ success: true, data: current })
+    }
+
+    const row = await prisma.$transaction(async (tx) => {
+      const updated = await tx.crmTask.update({
+        where: { id: current.id },
+        data: {
+          status: 'CANCELED',
+          archivedAt: current.archivedAt ?? new Date(),
+          completedAt: null,
+        },
+        include: crmTaskInclude,
+      })
+
+      await appendTaskHistory(tx, {
+        empresaId: access.empresaId,
+        taskId: current.id,
+        actorUserId: access.userId,
+        type: 'STATUS_CHANGED',
+        message: `Estado cambiado de ${current.status} a CANCELED.`,
+      })
+
+      await appendTaskHistory(tx, {
+        empresaId: access.empresaId,
+        taskId: current.id,
+        actorUserId: access.userId,
+        type: 'ARCHIVED',
+        message: 'La tarea fue anulada y archivada para conservar la trazabilidad.',
+        metadata: cancellationReason ? { reason: cancellationReason } : {},
+      })
+
+      if (cancellationReason) {
+        await appendTaskHistory(tx, {
+          empresaId: access.empresaId,
+          taskId: current.id,
+          actorUserId: access.userId,
+          type: 'NOTE_ADDED',
+          message: `Motivo de anulación: ${cancellationReason}`,
+        })
+      }
+
+      const taskWatchers = Array.from(new Set([
+        current.createdById,
+        ...current.assignments.map((assignment) => assignment.userId),
+      ].filter(Boolean)))
+
+      await notifyTaskUsers({
+        client: tx,
+        empresaId: access.empresaId,
+        sedeId: updated.sedeId,
+        actorUserId: access.userId,
+        recipientUserIds: taskWatchers,
+        title: 'Tarea anulada',
+        body: cancellationReason
+          ? `La tarea ${updated.title} fue anulada. Motivo: ${cancellationReason}`
+          : `La tarea ${updated.title} fue anulada y quedó archivada en el historial.`,
+        taskId: updated.id,
+        workspaceId: updated.workspaceId,
+        type: 'WARNING',
+      })
+
+      return updated
+    })
+
+    return NextResponse.json({ success: true, data: row })
   } catch (error) {
     console.error('Error eliminando tarea CRM:', error)
     return NextResponse.json({ error: 'Error eliminando tarea CRM' }, { status: 500 })

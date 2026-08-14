@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import bcrypt from 'bcryptjs'
 import { mergeCompanyIntelligenceSettings, parseCompanyIntelligenceSettings } from '@/lib/company-intelligence'
+import { mergeCompanyTaskSettings, parseCompanyTaskSettings } from '@/lib/company-task-settings'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
 
 export const runtime = 'nodejs'
@@ -54,6 +55,7 @@ export async function GET() {
       nit: empresa.nit,
       logo: empresa.logo,
       intelligenceEnabled: parseCompanyIntelligenceSettings(empresa.dashboardConfig).enabled,
+      taskCancellationReasonRequired: parseCompanyTaskSettings(empresa.dashboardConfig).requireTaskCancellationReason,
       hasRegistrationCode: Boolean(empresa.registrationCodeHash),
     },
   })
@@ -89,6 +91,9 @@ export async function PUT(request: NextRequest) {
   const nitRaw = asString(body.nit).trim()
   const logoRaw = asString(body.logo).trim()
   const intelligenceEnabled = typeof body.intelligenceEnabled === 'boolean' ? body.intelligenceEnabled : null
+  const taskCancellationReasonRequired = typeof body.taskCancellationReasonRequired === 'boolean'
+    ? body.taskCancellationReasonRequired
+    : null
 
   const updateData: {
     nombre?: string
@@ -122,6 +127,12 @@ export async function PUT(request: NextRequest) {
     }) as Prisma.InputJsonValue
   }
 
+  if (taskCancellationReasonRequired !== null) {
+    updateData.dashboardConfig = mergeCompanyTaskSettings(updateData.dashboardConfig ?? currentEmpresa?.dashboardConfig, {
+      requireTaskCancellationReason: taskCancellationReasonRequired,
+    }) as Prisma.InputJsonValue
+  }
+
   const empresa = await prisma.empresa.update({
     where: { id: empresaId },
     data: updateData,
@@ -136,6 +147,7 @@ export async function PUT(request: NextRequest) {
       nit: empresa.nit,
       logo: empresa.logo,
       intelligenceEnabled: parseCompanyIntelligenceSettings(empresa.dashboardConfig).enabled,
+      taskCancellationReasonRequired: parseCompanyTaskSettings(empresa.dashboardConfig).requireTaskCancellationReason,
       hasRegistrationCode: Boolean(empresa.registrationCodeHash),
     },
   })
