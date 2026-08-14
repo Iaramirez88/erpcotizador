@@ -154,10 +154,10 @@ const START_CARDS: StartCardDefinition[] = [
     surface: 'border-emerald-200 bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.28),transparent_34%),linear-gradient(180deg,#f7fffb,#ebfff6)]',
   },
   {
-    title: 'Coordinar tareas internas',
-    description: 'Organiza responsables, tareas y frentes internos conectados con CRM.',
+    title: 'Tareas y proyectos',
+    description: 'Organiza responsables, tareas, proyectos y listas internas conectadas con CRM.',
     href: '/dashboard/espacios-trabajo',
-    cta: 'Organizar equipo',
+    cta: 'Abrir tareas y proyectos',
     moduleKey: 'CRM',
     icon: 'tasks',
     tone: 'text-violet-950',

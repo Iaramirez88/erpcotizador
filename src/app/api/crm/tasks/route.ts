@@ -131,6 +131,46 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'projectId requiere workspaceId' }, { status: 400 })
     }
 
+    const andFilters: Array<Record<string, unknown>> = []
+
+    if (accessibleWorkspaceIds) {
+      andFilters.push({
+        OR: [
+          { workspaceId: { in: accessibleWorkspaceIds.length ? accessibleWorkspaceIds : ['__none__'] } },
+          {
+            workspaceId: null,
+            OR: [
+              { createdById: access.userId },
+              { assignedToUserId: access.userId },
+              { assignments: { some: { userId: access.userId } } },
+            ],
+          },
+        ],
+      })
+    }
+
+    if (assignedToUserId) {
+      andFilters.push({
+        OR: [
+          { assignedToUserId },
+          { assignments: { some: { userId: assignedToUserId } } },
+        ],
+      })
+    }
+
+    if (search) {
+      andFilters.push({
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+          { workspace: { name: { contains: search, mode: 'insensitive' } } },
+          { lead: { nombre: { contains: search, mode: 'insensitive' } } },
+          { opportunity: { title: { contains: search, mode: 'insensitive' } } },
+          { cliente: { nombre: { contains: search, mode: 'insensitive' } } },
+        ],
+      })
+    }
+
     const rows = await prisma.crmTask.findMany({
       where: {
         empresaId: access.empresaId,
@@ -138,31 +178,11 @@ export async function GET(request: Request) {
         ...(opportunityId ? { opportunityId } : {}),
         ...(clienteId ? { clienteId } : {}),
         ...(workspaceId ? { workspaceId } : {}),
-        ...(accessibleWorkspaceIds ? { workspaceId: { in: accessibleWorkspaceIds.length ? accessibleWorkspaceIds : ['__none__'] } } : {}),
         ...(projectId ? { projectId } : {}),
-        ...(assignedToUserId
-          ? {
-              OR: [
-                { assignedToUserId },
-                { assignments: { some: { userId: assignedToUserId } } },
-              ],
-            }
-          : {}),
         ...(sedeId ? { sedeId } : {}),
         ...(status ? { status } : {}),
         ...(includeArchived ? {} : { archivedAt: null }),
-        ...(search
-          ? {
-              OR: [
-                { title: { contains: search, mode: 'insensitive' } },
-                { description: { contains: search, mode: 'insensitive' } },
-                { workspace: { name: { contains: search, mode: 'insensitive' } } },
-                { lead: { nombre: { contains: search, mode: 'insensitive' } } },
-                { opportunity: { title: { contains: search, mode: 'insensitive' } } },
-                { cliente: { nombre: { contains: search, mode: 'insensitive' } } },
-              ],
-            }
-          : {}),
+        ...(andFilters.length ? { AND: andFilters } : {}),
       },
       orderBy: [{ dueAt: 'asc' }, { createdAt: 'desc' }],
       include: crmTaskInclude,
@@ -232,9 +252,6 @@ export async function POST(request: Request) {
     const aiOriginalTaskSuggestion = normalizeAiTaskSuggestion(aiAudit?.originalTaskSuggestion)
 
     if (!title) return NextResponse.json({ error: 'title es requerido' }, { status: 400 })
-    if (!workspaceId && !leadId && !opportunityId && !clienteId) {
-      return NextResponse.json({ error: 'workspaceId, leadId, opportunityId o clienteId es requerido' }, { status: 400 })
-    }
     if (dueAt === undefined) return NextResponse.json({ error: 'dueAt inválido' }, { status: 400 })
 
     const workspace = workspaceId
@@ -267,9 +284,6 @@ export async function POST(request: Request) {
         })
       : null
 
-    if (workspaceId && !projectId) {
-      return NextResponse.json({ error: 'Selecciona un proyecto antes de crear la tarea.' }, { status: 400 })
-    }
     if (projectId && !project) {
       return NextResponse.json({ error: 'projectId inválido' }, { status: 400 })
     }
@@ -295,7 +309,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'clienteId inválido' }, { status: 400 })
     }
 
-    const normalizedAssigneeIds = Array.from(new Set([...(assignedToUserId ? [assignedToUserId] : []), ...assignedToUserIds]))
+    const normalizedAssigneeIds = Array.from(new Set([access.userId, ...(assignedToUserId ? [assignedToUserId] : []), ...assignedToUserIds]))
     if (normalizedAssigneeIds.length) {
       const users = await prisma.user.findMany({
         where: { id: { in: normalizedAssigneeIds }, empresaId: access.empresaId },

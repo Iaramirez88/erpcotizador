@@ -81,7 +81,7 @@ const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard/crm/leads": "Captura clientes potenciales y haz seguimiento a cada contacto.",
   "/dashboard/crm/oportunidades": "Gestiona etapas de negocio hasta cerrar la venta.",
   "/dashboard/crm/tareas": "Controla pendientes, seguimientos y trabajo del equipo.",
-  "/dashboard/espacios-trabajo": "Separa operaciones por equipos, marcas o unidades.",
+  "/dashboard/espacios-trabajo": "Coordina tareas, proyectos y listas internas del equipo.",
   "/dashboard/chat": "Chat interno o global para coordinar al equipo.",
   "/dashboard/ordenes": "Administra ordenes de produccion, servicio o trabajo.",
   "/dashboard/litografia": "Opera cotizacion, produccion y control de litografia.",
@@ -354,7 +354,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: "Espacios de trabajo",
+    name: "Tareas y proyectos",
     href: "/dashboard/espacios-trabajo",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

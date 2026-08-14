@@ -2465,6 +2465,12 @@ enum CrmTaskWorkspaceScope {
   USER
 }
 
+enum CrmTaskWorkspaceVisibility {
+  PUBLIC
+  PRIVATE
+  HIDDEN
+}
+
 enum CrmTaskWorkspaceMemberRole {
   VIEWER
   EDITOR
@@ -2819,6 +2825,7 @@ model CrmTaskWorkspace {
   sede   Sede? @relation(fields: [sedeId], references: [id], onDelete: SetNull)
 
   scope CrmTaskWorkspaceScope
+  visibility CrmTaskWorkspaceVisibility @default(PRIVATE)
   name  String
   description String? @db.Text
 
@@ -2837,6 +2844,7 @@ model CrmTaskWorkspace {
   updatedAt DateTime @updatedAt
 
   @@index([empresaId, scope, createdAt])
+  @@index([empresaId, visibility, createdAt])
   @@index([sedeId, createdAt])
   @@index([ownerUserId, createdAt])
   @@map("crm_task_workspaces")

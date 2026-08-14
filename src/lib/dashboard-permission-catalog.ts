@@ -193,7 +193,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     key: 'OPERACIONES.TASK_WORKSPACES',
     moduleKey: ModuleKey.ORDENES,
     section: 'Operaciones',
-    label: 'Espacios de trabajo',
+    label: 'Tareas y proyectos',
     hrefs: ['/dashboard/espacios-trabajo'],
     capabilities: [{ domain: 'OPERACIONES', subdomain: 'TASK_WORKSPACES' }],
   },

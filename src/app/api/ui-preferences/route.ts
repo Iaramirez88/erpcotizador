@@ -34,6 +34,9 @@ type ReportPrefs = {
     mutedCrmConversationIds?: string[]
     mutedTeamThreadIds?: string[]
   }
+  tasks?: {
+    pinnedTaskIds?: string[]
+  }
   intelligence?: {
     recommendations?: {
       openedCount?: number
@@ -107,6 +110,18 @@ function normalizeChatPrefs(value: unknown): Required<NonNullable<ReportPrefs['c
   }
 }
 
+function normalizeTaskPrefs(value: unknown): Required<NonNullable<ReportPrefs['tasks']>> {
+  if (!isPlainObject(value)) {
+    return {
+      pinnedTaskIds: [],
+    }
+  }
+
+  return {
+    pinnedTaskIds: normalizeStringList(value.pinnedTaskIds),
+  }
+}
+
 function normalizeSidebarTooltipPrefs(value: unknown): Required<SidebarTooltipPrefs> {
   if (!isPlainObject(value)) {
     return { desktop: true, mobile: true }
@@ -142,6 +157,7 @@ function defaultPrefs() {
     sections: { kpis: true, ventas: true, topClientes: true, documentos: true, compras: true },
     charts: { ventasMensuales: true, documentosPorTipo: true, comprasPorProveedor: true },
     chat: { mutedCrmConversationIds: [], mutedTeamThreadIds: [] },
+    tasks: { pinnedTaskIds: [] },
     intelligence: { recommendations: { openedCount: 0, uniqueActionIds: [], lastOpenedAt: null } },
   }
   const tutorial: TutorialPrefs = { seen: {} }
@@ -218,6 +234,7 @@ export async function GET() {
       report: {
         ...(storedReport ?? defaults.report),
         chat: normalizeChatPrefs(storedReport?.chat),
+        tasks: normalizeTaskPrefs(storedReport?.tasks),
         intelligence: normalizeIntelligencePrefs(storedReport?.intelligence),
       },
       tutorial: (pref?.tutorial as unknown) ?? defaults.tutorial,
@@ -273,6 +290,7 @@ export async function PUT(req: NextRequest) {
     theme: theme ?? currentReport.theme ?? defaults.theme,
     sidebarTooltips: sidebarTooltips ?? normalizeSidebarTooltipPrefs(currentReport.sidebarTooltips),
     chat: normalizeChatPrefs(report?.chat ?? currentReport.chat),
+    tasks: normalizeTaskPrefs(report?.tasks ?? currentReport.tasks),
     intelligence: normalizeIntelligencePrefs(report?.intelligence ?? currentReport.intelligence),
   }
   const nextNav = {
@@ -310,6 +328,7 @@ export async function PUT(req: NextRequest) {
         ? {
             ...updatedReport,
             chat: normalizeChatPrefs(updatedReport.chat),
+            tasks: normalizeTaskPrefs(updatedReport.tasks),
             intelligence: normalizeIntelligencePrefs(updatedReport.intelligence),
           }
         : updatedReport,

@@ -93,6 +93,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const name = normalizeString(body?.name)
     const description = normalizeString(body?.description)
     const ownerUserId = normalizeString(body?.ownerUserId)
+    const visibilityRaw = typeof body?.visibility === 'string' ? body.visibility.trim().toUpperCase() : ''
     const sedeIds = normalizeWorkspaceSedeIdList(body?.sedeIds)
     const memberRoles = normalizeMemberRoles(body?.members)
     const nextSedeIds = Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeIds')
@@ -120,6 +121,10 @@ export async function PATCH(request: Request, context: RouteContext) {
       if (!owner || owner.empresaId !== access.empresaId) {
         return NextResponse.json({ error: 'ownerUserId inválido' }, { status: 400 })
       }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'visibility') && visibilityRaw !== 'PUBLIC' && visibilityRaw !== 'PRIVATE' && visibilityRaw !== 'HIDDEN') {
+      return NextResponse.json({ error: 'visibility inválido' }, { status: 400 })
     }
 
     if (memberRoles.length) {
@@ -155,6 +160,7 @@ export async function PATCH(request: Request, context: RouteContext) {
         data: {
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'name') ? { name: name || current.name } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'description') ? { description: description || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'visibility') ? { visibility: visibilityRaw as 'PUBLIC' | 'PRIVATE' | 'HIDDEN' } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'ownerUserId') ? { ownerUserId: ownerUserId || null } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeIds') ? { sedeId: nextSedeIds[0] || null } : {}),
         },

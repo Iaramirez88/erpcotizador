@@ -78,7 +78,7 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/pos', label: 'Facturación', labelKey: 'nav.billing', section: 'Ventas', layer: 'Ventas', domain: 'Punto de venta', moduleKey: 'POS' },
 
   { href: '/dashboard/ordenes', label: 'Órdenes', labelKey: 'nav.orders', section: 'Operaciones', layer: 'Operaciones', domain: 'Órdenes de trabajo', moduleKey: 'ORDENES' },
-  { href: '/dashboard/espacios-trabajo', label: 'Espacios de trabajo', section: 'Operaciones', layer: 'Operaciones', domain: 'Proyectos y trabajo', moduleKey: 'ORDENES' },
+  { href: '/dashboard/espacios-trabajo', label: 'Tareas y proyectos', section: 'Operaciones', layer: 'Operaciones', domain: 'Proyectos y trabajo', moduleKey: 'ORDENES' },
   { href: '/dashboard/chat', label: 'Conversaciones', section: 'Operaciones', layer: 'Operaciones', domain: 'Coordinación interna', moduleKey: 'ORDENES' },
   { href: '/dashboard/litografia', label: 'Litografía', labelKey: 'nav.printshop', section: 'Operaciones', layer: 'Operaciones', domain: 'Producción especializada', moduleKey: 'COTIZADOR' },
   { href: '/dashboard/escaneos', label: 'Escaneos', labelKey: 'nav.scans', section: 'Operaciones', layer: 'Operaciones', domain: 'Captura documental', moduleKey: 'ESCANEOS' },

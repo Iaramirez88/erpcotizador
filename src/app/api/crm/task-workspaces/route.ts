@@ -51,6 +51,7 @@ export async function POST(request: Request) {
     const name = normalizeString(body?.name)
     const description = normalizeString(body?.description)
     const scope = typeof body?.scope === 'string' ? body.scope.trim().toUpperCase() : ''
+    const visibility = typeof body?.visibility === 'string' ? body.visibility.trim().toUpperCase() : 'PRIVATE'
     const sedeId = normalizeString(body?.sedeId)
     const sedeIds = normalizeWorkspaceSedeIdList(body?.sedeIds)
     const ownerUserId = normalizeString(body?.ownerUserId)
@@ -60,6 +61,9 @@ export async function POST(request: Request) {
     if (!name) return NextResponse.json({ error: 'name es requerido' }, { status: 400 })
     if (scope !== 'SEDE' && scope !== 'USER') {
       return NextResponse.json({ error: 'scope inválido' }, { status: 400 })
+    }
+    if (visibility !== 'PUBLIC' && visibility !== 'PRIVATE' && visibility !== 'HIDDEN') {
+      return NextResponse.json({ error: 'visibility inválido' }, { status: 400 })
     }
     if (scope === 'SEDE' && !normalizedSedeIds.length) {
       return NextResponse.json({ error: 'sedeId es requerido para espacios por sede' }, { status: 400 })
@@ -100,6 +104,7 @@ export async function POST(request: Request) {
       data: {
         empresaId: access.empresaId,
         scope: scope as 'SEDE' | 'USER',
+        visibility: visibility as 'PUBLIC' | 'PRIVATE' | 'HIDDEN',
         name,
         description: description || null,
         sedeId: normalizedSedeIds[0] || null,

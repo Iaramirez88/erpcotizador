@@ -46,7 +46,7 @@ const domains: Domain[] = [
     description: 'Ejecucion interna, seguimiento operativo, produccion y trabajo coordinado.',
     href: '/dashboard/ordenes',
     tone: 'amber',
-    items: ['Ordenes de trabajo', 'Espacios de trabajo', 'Conversaciones', 'Escaneos', 'Plantillas', 'Litografia'],
+    items: ['Ordenes de trabajo', 'Tareas y proyectos', 'Conversaciones', 'Escaneos', 'Plantillas', 'Litografia'],
   },
   {
     id: 'inventario',
@@ -105,7 +105,7 @@ const observations = {
   exists: [
     'Existe una capa de inicio administrativa clara con empresa, usuarios, sedes y plan.',
     'Existe un frente comercial fuerte, pero historicamente repartido entre CRM, cotizador, documentos y POS.',
-    'Existe una capa operativa real con ordenes, tareas, espacios de trabajo, litografia y escaneos.',
+    'Existe una capa operativa real con ordenes, tareas, proyectos internos, litografia y escaneos.',
     'Existe una base financiera importante con contabilidad y nomina separadas por submodulos.',
   ],
   missing: [

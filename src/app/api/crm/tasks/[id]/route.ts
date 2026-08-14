@@ -173,14 +173,8 @@ export async function PATCH(request: Request, context: RouteContext) {
           : null)
       : current.project
 
-    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'workspaceId') && workspaceId && !(Object.prototype.hasOwnProperty.call(body ?? {}, 'projectId') ? projectId : current.projectId)) {
-      return NextResponse.json({ error: 'Selecciona un proyecto antes de mover la tarea a un espacio de trabajo.' }, { status: 400 })
-    }
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'projectId') && projectId && !nextProject) {
       return NextResponse.json({ error: 'projectId inválido' }, { status: 400 })
-    }
-    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'projectId') && !projectId) {
-      return NextResponse.json({ error: 'La tarea debe permanecer asociada a un proyecto del espacio.' }, { status: 400 })
     }
 
     const normalizedAssigneeIds = Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserIds')
