@@ -156,6 +156,19 @@ const PLAN_COMPARISON: ComparisonFeature[] = [
   },
 ]
 
+const USER_PLAN_ORDER: PlanTier[] = ['BASIC', 'MEDIO', 'INTERMEDIO', 'FULL']
+
+const USER_PLAN_PROGRESSIVE_COPY: Partial<Record<PlanTier, string>> = {
+  BASIC: 'Base operativa para empezar con ventas, cotizaciones y control inicial.',
+  MEDIO: 'Todo lo Basico mas inventario, POS, compras y mayor capacidad operativa.',
+  INTERMEDIO: 'Todo lo Medio mas facturacion, reportes amplios y una operacion mas robusta.',
+  FULL: 'Todo lo Intermedio mas gestion total, escalabilidad y cobertura sin limites.',
+}
+
+function cleanPlanGroupTitle(value: string) {
+  return value.replace(/^[^\p{L}\p{N}]+\s*/u, '').trim()
+}
+
 type PlanApiResponse =
   | {
       ok: true
@@ -354,11 +367,11 @@ export default function PlanPage() {
       try {
         const res = await fetch('/api/me', { cache: 'no-store' })
         const json = (await res.json().catch(() => null)) as
-          | { success?: boolean; data?: { role?: string | null } | null }
+          | { success?: boolean; data?: { isPlanOwner?: boolean; canManageBilling?: boolean } | null }
           | null
 
-        if (!cancelled && res.ok && json?.success && json?.data?.role === 'ADMIN') {
-          setIsSuperAdmin(true)
+        if (!cancelled && res.ok && json?.success) {
+          setIsSuperAdmin(Boolean(json.data?.canManageBilling && !json.data?.isPlanOwner))
         }
       } catch {
         // ignore
@@ -443,6 +456,12 @@ export default function PlanPage() {
   }, [comparisonPlans])
 
   const activeCatalogPlans = useMemo(() => sortedPlans.filter((plan) => plan.active !== false), [sortedPlans])
+  const userVisiblePlans = useMemo(() => {
+    const orderMap = new Map(USER_PLAN_ORDER.map((tier, index) => [tier, index]))
+    return activeCatalogPlans
+      .filter((plan) => USER_PLAN_ORDER.includes(plan.tier))
+      .sort((a, b) => (orderMap.get(a.tier) ?? 99) - (orderMap.get(b.tier) ?? 99))
+  }, [activeCatalogPlans])
 
   const planStorageSummary = useMemo(() => {
     return activeCatalogPlans.map((plan) => ({
@@ -551,7 +570,7 @@ export default function PlanPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Plan</h1>
-          <p className="text-sm text-gray-600">Gestiona tu plan y facturación.</p>
+          <p className="text-sm text-gray-600">{isSuperAdmin ? 'Vista extendida del catálogo y estrategia comercial.' : 'Elige el plan que mejor se ajuste a tu operación.'}</p>
         </div>
 
         {isSuperAdmin ? (
@@ -561,7 +580,7 @@ export default function PlanPage() {
         ) : null}
       </div>
 
-      {blockedModule ? (
+      {!isSuperAdmin && blockedModule ? (
         <Card>
           <CardHeader>
             <CardTitle>No incluido en tu plan</CardTitle>
@@ -579,164 +598,135 @@ export default function PlanPage() {
         </Card>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 items-start">
-        <Card>
-          <CardHeader className="p-3">
-            <CardTitle>Plan actual</CardTitle>
-            <CardDescription>Este es el plan asociado a tu empresa.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-3 pt-0">
-            {isLoading ? (
-              <div className="text-sm text-gray-600">Cargando…</div>
-            ) : error ? (
-              <div className="text-sm text-red-600">{error}</div>
-            ) : current ? (
-              <div>
-                <div className="text-base font-semibold text-gray-900">{current.nombre}</div>
-                <div className="text-sm text-gray-600">{current.descripcion}</div>
-                <div className="mt-1 text-sm text-gray-700">
-                  <span className="font-medium">{formatCOP(current.precioMensualCOP)}</span> / mes
-                </div>
-                {typeof current.storageLimitGb === 'number' ? (
-                  <div className="mt-1 text-sm text-gray-700">
-                    Espacio CRM: <span className="font-medium">{current.storageLimitGb} GB</span>
-                  </div>
-                ) : null}
-                {empresa?.planValidUntil ? (
-                  <div className="mt-1 text-sm text-gray-700">
-                    Vigente hasta:{" "}
-                    <span className="font-medium">
-                      {new Date(empresa.planValidUntil).toLocaleDateString("es-CO", {
-                        year: "numeric",
-                        month: "2-digit",
-                        day: "2-digit",
-                      })}
-                    </span>
-                  </div>
-                ) : null}
+      {!isSuperAdmin ? (
+        <>
+          <section className="overflow-hidden rounded-[32px] border border-slate-200 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_32%),linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] px-5 py-8 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)] md:px-8 md:py-10">
+            <div className="mx-auto max-w-4xl text-center">
+              <h2 className="text-3xl font-semibold tracking-tight text-slate-950 md:text-5xl">Una sola tarifa. Una sola plataforma. Todo tu negocio en un solo lugar.</h2>
+              <p className="mx-auto mt-3 max-w-2xl text-sm text-slate-600 md:text-base">Compara los planes disponibles, elige el ciclo de facturación y compra el plan que mejor soporte la etapa actual de tu empresa.</p>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs font-medium text-slate-600">
+                <span className="rounded-full border border-slate-200 bg-white/90 px-3 py-1.5">Plan actual: {current?.nombre ?? current?.tier ?? 'Sin plan'}</span>
+                {cycle === 'YEARLY' ? <span className="rounded-full bg-amber-100 px-3 py-1.5 text-amber-900">Ahorro anual del 10%</span> : null}
               </div>
-            ) : (
-              <div className="text-sm text-gray-600">No se encontró el plan actual.</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="p-3">
-            <CardTitle>Facturación</CardTitle>
-            <CardDescription>Elige mensual o anual (10% de descuento anual).</CardDescription>
-          </CardHeader>
-          <CardContent className="p-3 pt-0">
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={cycle === "MONTHLY" ? "default" : "secondary"}
-                onClick={() => setCycle("MONTHLY")}
-                disabled={isPaying}
-              >
-                Mensual
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={cycle === "YEARLY" ? "default" : "secondary"}
-                onClick={() => setCycle("YEARLY")}
-                disabled={isPaying}
-              >
-                Anual (-10%)
-              </Button>
+              <div className="mt-7 flex justify-center">
+                <div className="inline-flex rounded-[20px] border border-slate-200 bg-white p-1 shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => setCycle('MONTHLY')}
+                    disabled={isPaying}
+                    className={cn('rounded-2xl px-5 py-2.5 text-sm font-semibold transition', cycle === 'MONTHLY' ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-600 hover:text-slate-950')}
+                  >
+                    Al mes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCycle('YEARLY')}
+                    disabled={isPaying}
+                    className={cn('rounded-2xl px-5 py-2.5 text-sm font-semibold transition', cycle === 'YEARLY' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-950')}
+                  >
+                    Al año
+                  </button>
+                </div>
+              </div>
             </div>
-          </CardContent>
-        </Card>
+          </section>
 
-        <Card>
-          <CardHeader className="p-3">
-            <CardTitle>Último cobro</CardTitle>
-            <CardDescription>Estado del último intento de pago registrado.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-3 pt-0">
-            {!lastInvoice ? (
-              <div className="text-sm text-gray-600">Aún no hay cobros registrados.</div>
-            ) : (
-              <div className="space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
+          {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+          {isLoading ? <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-600">Cargando planes...</div> : null}
+
+          {!isLoading ? (
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+              {userVisiblePlans.map((p) => {
+                const isCurrent = current?.tier === p.tier
+                const displayPrice = getCatalogPrice(p, cycle)
+                const disablePay = isPaying || (isCurrent && empresa?.billingCycle === cycle && !!empresa?.planValidUntil)
+                const details = {
+                  ...PLAN_DETAILS[p.tier],
+                  tagline: p.tagline ?? PLAN_DETAILS[p.tier].tagline,
+                  forWho: p.forWho ?? PLAN_DETAILS[p.tier].forWho,
+                  incluye: p.incluye ?? PLAN_DETAILS[p.tier].incluye,
+                  alcance: p.alcance ?? PLAN_DETAILS[p.tier].alcance,
+                }
+
+                return (
+                  <Card
+                    key={p.tier}
                     className={cn(
-                      "text-xs font-semibold px-2 py-1 rounded",
-                      lastInvoice.status === "PAID"
-                        ? "bg-green-50 text-green-700"
-                        : lastInvoice.status === "PENDING"
-                          ? "bg-yellow-50 text-yellow-800"
-                          : lastInvoice.status === "REJECTED"
-                            ? "bg-red-50 text-red-700"
-                            : "bg-gray-100 text-gray-700"
+                      'relative overflow-hidden rounded-[28px] border shadow-[0_22px_70px_-46px_rgba(15,23,42,0.42)]',
+                      isCurrent ? 'border-sky-300 bg-[linear-gradient(180deg,#eff6ff_0%,#ffffff_38%,#f8fafc_100%)]' : 'border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]'
                     )}
                   >
-                    {lastInvoice.status}
-                  </span>
-                  <span className="text-sm text-gray-700">
-                    {formatCOP(lastInvoice.amountCOP)} ({lastInvoice.billingCycle === "YEARLY" ? "Anual" : "Mensual"})
-                  </span>
-                </div>
+                    <CardHeader className="space-y-4 pb-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <CardTitle className="text-[30px] leading-none text-slate-950">{p.nombre}</CardTitle>
+                          <CardDescription className="mt-2 text-sm leading-6 text-slate-600">{USER_PLAN_PROGRESSIVE_COPY[p.tier] ?? p.descripcion}</CardDescription>
+                        </div>
+                        {isCurrent ? <span className="rounded-full bg-sky-600 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white">Actual</span> : null}
+                      </div>
 
-                <div className="text-sm text-gray-700">
-                  Referencia: <span className="font-mono text-xs">{lastInvoice.externalReference}</span>
-                </div>
-                <div className="text-xs text-gray-500">
-                  Creado: {new Date(lastInvoice.createdAt).toLocaleString("es-CO")}
-                  {lastInvoice.paidAt ? ` · Pagado: ${new Date(lastInvoice.paidAt).toLocaleString("es-CO")}` : ""}
-                </div>
+                      <div>
+                        <div className="text-4xl font-black tracking-tight text-slate-950">{formatCOP(displayPrice)}</div>
+                        <div className="mt-1 text-sm text-slate-500">{cycle === 'YEARLY' ? 'COP / año' : 'COP / mes'}</div>
+                      </div>
 
-                {lastInvoice.quotedModules.length ? (
-                  <div className="pt-1">
-                    <div className="text-xs font-medium text-gray-700">Módulos cotizados</div>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {lastInvoice.quotedModules.map((moduleKey) => {
-                        const item = pricedCatalog.find((module) => module.module === moduleKey)
-                        return (
-                          <span key={moduleKey} className="rounded-full bg-gray-100 px-2 py-1 text-[11px] text-gray-700">
-                            {item?.nombre ?? moduleKey}
-                          </span>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : null}
+                      {typeof p.storageLimitGb === 'number' ? (
+                        <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">Espacio incluido: {p.storageLimitGb} GB</div>
+                      ) : null}
 
-                {lastInvoice.status === "PENDING" && lastInvoice.checkoutUrl ? (
-                  <div className="pt-1">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => (window.location.href = lastInvoice.checkoutUrl!)}
-                    >
-                      Continuar pago
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                      <Button
+                        className={cn('h-11 w-full rounded-2xl text-sm font-semibold', isCurrent ? 'bg-slate-200 text-slate-700 hover:bg-slate-200' : 'bg-lime-400 text-slate-950 hover:bg-lime-300')}
+                        disabled={disablePay}
+                        onClick={() => startPayment(p.tier)}
+                      >
+                        {isPaying ? 'Redirigiendo...' : isCurrent ? 'Plan actual' : 'Comprar plan'}
+                      </Button>
+                    </CardHeader>
 
-      <Card className="border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
+                    <CardContent className="space-y-5 pt-0">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-950">{cleanPlanGroupTitle(details.tagline)}</div>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">{details.forWho}</p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {details.alcance.slice(0, 4).map((item) => (
+                          <span key={item} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">{item}</span>
+                        ))}
+                      </div>
+
+                      <div className="space-y-3">
+                        {details.incluye.filter((group) => group.items.length > 0).map((group) => (
+                          <details key={group.title} className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 open:bg-white">
+                            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-slate-900">
+                              <span>{cleanPlanGroupTitle(group.title)}</span>
+                              <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">{group.items.length} items</span>
+                            </summary>
+                            <ul className="mt-3 space-y-2 text-sm text-slate-600">
+                              {group.items.map((item) => (
+                                <li key={item} className="flex items-start gap-2">
+                                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-sky-500" />
+                                  <span>{item}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
+      {isSuperAdmin ? <Card className="border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
         <CardHeader className="space-y-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <CardTitle>Catálogo y cotización de planes</CardTitle>
-              <CardDescription>La información del catálogo sale del registro persistido en base de datos y se puede editar desde super admin en producción.</CardDescription>
-            </div>
-            <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600 sm:grid-cols-3 lg:min-w-[420px]">
-              {planStorageSummary.map((plan) => (
-                <div key={plan.tier} className="rounded-xl bg-slate-50 px-3 py-2">
-                  <div className="font-semibold text-slate-900">{plan.nombre}</div>
-                  <div>Espacio: {plan.storageLabel}</div>
-                </div>
-              ))}
-            </div>
+          <div>
+            <CardTitle>Catálogo y edición de planes</CardTitle>
+            <CardDescription>Los tabs extendidos se dejan solo para superadmin.</CardDescription>
           </div>
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PlanSectionTab)}>
             <TabsList className="h-auto flex-wrap justify-start rounded-2xl bg-slate-100 p-1">
@@ -1481,7 +1471,7 @@ export default function PlanPage() {
             </TabsContent>
           </Tabs>
         </CardHeader>
-      </Card>
+      </Card> : null}
     </div>
   )
 }
