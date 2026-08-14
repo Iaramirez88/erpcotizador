@@ -1693,19 +1693,19 @@ export function CrmTaskWorkspacesClient() {
         ) : null}
 
         <Card className="min-w-0 rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
-          <CardHeader className="border-b border-slate-100 pb-5">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <CardTitle className="text-xl">{taskViewMode === 'MINE' ? 'Mis tareas' : taskViewMode === 'ALL_SPACES' ? 'Todas las tareas' : 'Tareas del proyecto'}</CardTitle>
-                {taskViewMode === 'SPACE' ? (
-                  <CardDescription>
-                    {selectedWorkspace
-                      ? `${selectedWorkspace.name}${selectedProject ? ` · Lista ${selectedProject.name}` : ' · Todas las listas'} · ${formatRole(selectedWorkspace.currentUserRole)}${selectedWorkspace.permissions?.canEditTasks ? ' con edición de tareas' : ' solo lectura'}`
-                      : 'Tabla operativa con responsables, creado por, estado, color, evidencia y acceso a detalle completo.'}
-                  </CardDescription>
-                ) : null}
-              </div>
-              <TooltipProvider delayDuration={150}>
+          <TooltipProvider delayDuration={150}>
+            <CardHeader className="border-b border-slate-100 pb-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <CardTitle className="text-xl">{taskViewMode === 'MINE' ? 'Mis tareas' : taskViewMode === 'ALL_SPACES' ? 'Todas las tareas' : 'Tareas del proyecto'}</CardTitle>
+                  {taskViewMode === 'SPACE' ? (
+                    <CardDescription>
+                      {selectedWorkspace
+                        ? `${selectedWorkspace.name}${selectedProject ? ` · Lista ${selectedProject.name}` : ' · Todas las listas'} · ${formatRole(selectedWorkspace.currentUserRole)}${selectedWorkspace.permissions?.canEditTasks ? ' con edición de tareas' : ' solo lectura'}`
+                        : 'Tabla operativa con responsables, creado por, estado, color, evidencia y acceso a detalle completo.'}
+                    </CardDescription>
+                  ) : null}
+                </div>
                 <div className="flex flex-col gap-2 lg:items-end">
                   <div className="flex flex-wrap items-center gap-2">
                     <Tooltip>
@@ -1814,10 +1814,9 @@ export function CrmTaskWorkspacesClient() {
                     <span className="min-w-[46px] text-[11px] font-semibold text-slate-600">{clampedTaskColumnWidth}px</span>
                   </div>
                 </div>
-              </TooltipProvider>
-            </div>
-          </CardHeader>
-          <CardContent className="min-w-0 p-0">
+              </div>
+            </CardHeader>
+            <CardContent className="min-w-0 p-0">
             <div className="w-full overflow-x-auto overscroll-x-contain pb-2">
               <div className="w-max" style={{ minWidth: `${taskTableMinWidth}px` }}>
                 <div className="grid gap-3 border-b border-slate-100 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500" style={{ gridTemplateColumns: taskGridTemplate }}>
@@ -1903,7 +1902,8 @@ export function CrmTaskWorkspacesClient() {
                 {!filteredTasks.length ? <div className="px-6 py-8 text-sm text-slate-500">{taskViewMode === 'MINE' ? 'No tienes tareas asignadas para mostrar.' : taskViewMode === 'ALL_SPACES' ? 'No hay tareas para mostrar en tus proyectos asignados.' : selectedWorkspace ? (selectedProject ? 'No hay tareas para mostrar en esta lista.' : selectedWorkspace.projects.length ? 'No hay tareas para mostrar en este proyecto.' : 'Todavía no hay tareas en este proyecto. Puedes crear una tarea directa o agregar una lista.') : 'Selecciona un proyecto para ver tareas o usa Crear tarea para registrar una nueva.'}</div> : null}
               </div>
             </div>
-          </CardContent>
+            </CardContent>
+          </TooltipProvider>
         </Card>
       </div>
 
