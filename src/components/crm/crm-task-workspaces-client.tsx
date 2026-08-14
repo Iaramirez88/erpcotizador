@@ -346,6 +346,63 @@ function getLatestTaskHistoryEntry(task: TaskItem | null | undefined) {
   return [...task.history].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null
 }
 
+function getSortedTaskHistoryEntries(history: TaskHistoryEntry[] | null | undefined) {
+  if (!history?.length) return []
+  return [...history].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+}
+
+function formatTaskHistoryType(type: TaskHistoryType) {
+  switch (type) {
+    case 'CREATED':
+      return 'Creacion'
+    case 'UPDATED':
+      return 'Datos actualizados'
+    case 'STATUS_CHANGED':
+      return 'Estado actualizado'
+    case 'PRIORITY_CHANGED':
+      return 'Prioridad actualizada'
+    case 'DUE_DATE_CHANGED':
+      return 'Fecha actualizada'
+    case 'ASSIGNEES_CHANGED':
+      return 'Responsables actualizados'
+    case 'NOTE_ADDED':
+      return 'Nota agregada'
+    case 'ATTACHMENTS_CHANGED':
+      return 'Adjuntos actualizados'
+    case 'CUSTOM_FIELDS_CHANGED':
+      return 'Campos personalizados actualizados'
+    case 'ARCHIVED':
+      return 'Tarea archivada'
+    case 'RESTORED':
+      return 'Tarea restaurada'
+    default:
+      return 'Cambio registrado'
+  }
+}
+
+function translateTaskHistoryMessage(message: string, type?: TaskHistoryType) {
+  const translations: Array<[string, string]> = [
+    ['IN_PROGRESS', 'En curso'],
+    ['CANCELED', 'Cancelada'],
+    ['OPEN', 'No iniciado'],
+    ['DONE', 'Finalizada'],
+    ['NORMAL', 'Normal'],
+    ['HIGH', 'Alta'],
+    ['LOW', 'Baja'],
+  ]
+
+  let normalized = message
+  translations.forEach(([source, target]) => {
+    normalized = normalized.replaceAll(source, target)
+  })
+
+  if (type === 'UPDATED' && normalized === 'Se actualizaron los detalles de la tarea.') {
+    return 'Se actualizaron los datos principales de la tarea.'
+  }
+
+  return normalized
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
   const response = await fetch(url, init)
   return (await response.json().catch(() => ({}))) as JsonResponse<T>
@@ -414,7 +471,7 @@ export function CrmTaskWorkspacesClient() {
   const [quickNoteDraft, setQuickNoteDraft] = useState('')
   const [savingQuickNote, setSavingQuickNote] = useState(false)
   const [workspacePanelCollapsed, setWorkspacePanelCollapsed] = useState(false)
-  const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>('SPACE')
+  const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>('MINE')
   const [taskColumnWidth, setTaskColumnWidth] = useState(150)
   const [taskSortDirection, setTaskSortDirection] = useState<TaskSortDirection>('desc')
   const [showPriorityColumn, setShowPriorityColumn] = useState(true)
@@ -459,6 +516,7 @@ export function CrmTaskWorkspacesClient() {
   const taskTableMinWidth = useMemo(() => clampedTaskColumnWidth * totalTaskColumnCount + 32, [clampedTaskColumnWidth, totalTaskColumnCount])
   const quickTask = useMemo(() => quickTaskPanel ? tasks.find((task) => task.id === quickTaskPanel.taskId) ?? null : null, [quickTaskPanel, tasks])
   const quickTaskLatestHistory = useMemo(() => getLatestTaskHistoryEntry(quickTask), [quickTask])
+  const selectedTaskHistory = useMemo(() => getSortedTaskHistoryEntries(selectedTask?.history), [selectedTask])
   const selectedTaskCanEdit = Boolean(selectedTask && currentUserId && (!selectedTask.workspace?.id || editableWorkspaceIds.has(selectedTask.workspace.id)))
   const quickTaskCanEdit = Boolean(quickTask && currentUserId && (!quickTask.workspace?.id || editableWorkspaceIds.has(quickTask.workspace.id)))
   const canEditTasks = Boolean(selectedWorkspace?.permissions?.canEditTasks || selectedTaskCanEdit || quickTaskCanEdit)
@@ -1461,7 +1519,7 @@ export function CrmTaskWorkspacesClient() {
 
     return (
       <div className="min-w-0">
-        <p className="truncate text-xs font-medium text-slate-700">{latestHistory.message}</p>
+        <p className="truncate text-xs font-medium text-slate-700">{translateTaskHistoryMessage(latestHistory.message, latestHistory.type)}</p>
         <p className="truncate text-xs text-slate-500">{formatDate(latestHistory.createdAt, 'Sin fecha')}</p>
       </div>
     )
@@ -1978,10 +2036,10 @@ export function CrmTaskWorkspacesClient() {
             quickTaskLatestHistory ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-600">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-medium text-slate-900">{quickTaskLatestHistory.message}</p>
+                  <p className="font-medium text-slate-900">{translateTaskHistoryMessage(quickTaskLatestHistory.message, quickTaskLatestHistory.type)}</p>
                   <span className="text-xs text-slate-500">{formatDate(quickTaskLatestHistory.createdAt, 'Sin fecha')}</span>
                 </div>
-                <p className="mt-2 text-xs text-slate-500">{quickTaskLatestHistory.actorUser?.name || quickTaskLatestHistory.actorUser?.email || 'Sistema'} · {quickTaskLatestHistory.type}</p>
+                <p className="mt-2 text-xs text-slate-500">{quickTaskLatestHistory.actorUser?.name || quickTaskLatestHistory.actorUser?.email || 'Sistema'} · {formatTaskHistoryType(quickTaskLatestHistory.type)}</p>
               </div>
             ) : <p className="text-sm text-slate-500">Esta tarea no tiene historial todavía.</p>
           ) : null}
