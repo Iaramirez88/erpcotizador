@@ -6,8 +6,8 @@
 "use client"
 
 import Link from "next/link"
-import { Lock, Building2 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { Lock, Building2, GripVertical, Home, Briefcase, ShoppingCart, Boxes, Landmark, BarChart3, Sparkles, Layers3, Shield } from "lucide-react"
+import { useEffect, useMemo, useState, type DragEvent } from "react"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useUiStore } from "@/lib/ui-store"
@@ -175,6 +175,53 @@ function sortSectionsByOrder(sections: NavSection[], order: string[]) {
     const bIndex = Math.min(...b.items.map((item) => getOrderIndex(item.href, order)))
     return aIndex - bIndex
   })
+}
+
+function reorderSectionNavOrder(sections: NavSection[], order: string[], fromSection: string, toSection: string) {
+  if (!fromSection || !toSection || fromSection === toSection) return order
+
+  const sectionByHref = new Map(sections.flatMap((section) => section.items.map((item) => [item.href, section.title] as const)))
+  const visibleHrefs = sections.flatMap((section) => section.items.map((item) => item.href))
+  const normalized = [
+    ...order.filter((href, index) => order.indexOf(href) === index),
+    ...visibleHrefs.filter((href) => !order.includes(href)),
+  ]
+
+  const movedHrefs = normalized.filter((href) => sectionByHref.get(href) === fromSection)
+  if (!movedHrefs.length) return order
+
+  const remaining = normalized.filter((href) => sectionByHref.get(href) !== fromSection)
+  const targetIndex = remaining.findIndex((href) => sectionByHref.get(href) === toSection)
+  if (targetIndex === -1) return order
+
+  remaining.splice(targetIndex, 0, ...movedHrefs)
+  return remaining
+}
+
+function getSectionIcon(title: string) {
+  switch (title) {
+    case 'Inicio':
+      return <Home className="h-4 w-4" />
+    case 'Captación':
+      return <Briefcase className="h-4 w-4" />
+    case 'Ventas':
+      return <ShoppingCart className="h-4 w-4" />
+    case 'Operaciones':
+      return <Boxes className="h-4 w-4" />
+    case 'Recursos':
+      return <Layers3 className="h-4 w-4" />
+    case 'Finanzas':
+      return <Landmark className="h-4 w-4" />
+    case 'Analítica':
+      return <BarChart3 className="h-4 w-4" />
+    case 'IA':
+      return <Sparkles className="h-4 w-4" />
+    case 'Plataforma':
+    case 'Otros':
+      return <Shield className="h-4 w-4" />
+    default:
+      return <Layers3 className="h-4 w-4" />
+  }
 }
 
 function buildModuleNavigation(t: (key: string) => string): NavItem[] {
@@ -648,6 +695,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const [planTier, setPlanTier] = useState<string | null>(null)
   const [isPersonal, setIsPersonal] = useState<boolean>(false)
   const [openSectionTitle, setOpenSectionTitle] = useState<string | null>(null)
+  const [draggingSectionTitle, setDraggingSectionTitle] = useState<string | null>(null)
   const [canAccessWebsiteServices, setCanAccessWebsiteServices] = useState(false)
   const [isMobileViewport, setIsMobileViewport] = useState(false)
 
@@ -670,6 +718,19 @@ export default function Sidebar({ user }: SidebarProps) {
     if (href === pathname) return
     if (pathname.startsWith(href + '/')) return
     setRouteLoading(true)
+  }
+
+  async function persistNavOrder(nextOrder: string[]) {
+    setNavOrder(nextOrder)
+    window.dispatchEvent(new CustomEvent('ui-preferences:nav-updated', {
+      detail: { navOrder: nextOrder },
+    }))
+
+    await fetch('/api/ui-preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ navOrder: nextOrder }),
+    }).catch(() => null)
   }
 
   useEffect(() => {
@@ -974,6 +1035,25 @@ export default function Sidebar({ user }: SidebarProps) {
   const userStrongText = isDark ? "text-slate-100" : "text-slate-900"
   const badgeSurface = isDark ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-600"
 
+  function handleSectionDragStart(event: DragEvent<HTMLButtonElement>, sectionTitle: string) {
+    if (isMobileViewport) return
+    setDraggingSectionTitle(sectionTitle)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', sectionTitle)
+  }
+
+  function handleSectionDrop(targetSectionTitle: string) {
+    if (!draggingSectionTitle || draggingSectionTitle === targetSectionTitle) {
+      setDraggingSectionTitle(null)
+      return
+    }
+
+    const nextOrder = reorderSectionNavOrder(sections, effectiveNavOrder, draggingSectionTitle, targetSectionTitle)
+    setDraggingSectionTitle(null)
+    if (nextOrder === effectiveNavOrder) return
+    void persistNavOrder(nextOrder)
+  }
+
   return (
     <>
       {/* Backdrop (mobile) */}
@@ -1104,6 +1184,13 @@ export default function Sidebar({ user }: SidebarProps) {
               >
                 <button
                   type="button"
+                  draggable={!isMobileViewport}
+                  onDragStart={(event) => handleSectionDragStart(event, section.title)}
+                  onDragOver={(event) => {
+                    if (!isMobileViewport) event.preventDefault()
+                  }}
+                  onDrop={() => handleSectionDrop(section.title)}
+                  onDragEnd={() => setDraggingSectionTitle(null)}
                   onClick={() => {
                     setOpenSectionTitle((cur) => (cur === section.title ? null : section.title))
                   }}
@@ -1112,10 +1199,23 @@ export default function Sidebar({ user }: SidebarProps) {
                     isActiveSection ? sectionHeaderActive : isOpen ? sectionHeaderOpen : cn(navText, navHover)
                   )}
                 >
-                  <span className={cn(
-                    "text-[10px] font-semibold uppercase tracking-[0.12em]",
-                    isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : sectionTitleText
-                  )}>{section.title === 'Captación' ? 'CRM' : section.title}</span>
+                  <span className="flex items-center gap-2">
+                    <GripVertical className={cn(
+                      "h-3.5 w-3.5 shrink-0 cursor-grab",
+                      isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : sectionTitleText,
+                      isMobileViewport ? "hidden" : ""
+                    )} />
+                    <span className={cn(
+                      "shrink-0",
+                      isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : sectionTitleText
+                    )}>
+                      {getSectionIcon(section.title)}
+                    </span>
+                    <span className={cn(
+                      "text-[10px] font-semibold uppercase tracking-[0.12em]",
+                      isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : sectionTitleText
+                    )}>{section.title === 'Captación' ? 'CRM' : section.title}</span>
+                  </span>
                   <svg
                     className={cn(
                       "h-3.5 w-3.5 transition-transform",

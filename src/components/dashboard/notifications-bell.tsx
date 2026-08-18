@@ -83,11 +83,11 @@ export default function NotificationsBell({ onUnreadCountChange, placement = 'he
         type="button"
         variant="ghost"
         size="icon"
-        className={placement === 'mobile-footer' ? 'relative h-11 w-11 rounded-2xl text-slate-700 hover:bg-slate-100' : 'relative h-9 w-9 rounded-full'}
+        className={placement === 'mobile-footer' ? 'relative h-12 w-12 rounded-2xl text-slate-700 hover:bg-slate-100' : 'relative h-9 w-9 rounded-full'}
         aria-label="Notificaciones"
         onClick={() => setOpen((v) => !v)}
       >
-        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className={placement === 'mobile-footer' ? 'h-6 w-6' : 'h-5 w-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
