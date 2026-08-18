@@ -8,7 +8,8 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
-import { InventoryMovementSourceType, InventoryMovementType, ModuleKey } from "@prisma/client"
+import { InventoryMovementSourceType, InventoryMovementType, ModuleKey, type Prisma } from "@prisma/client"
+import { requireSedeAccess } from "@/lib/rbac"
 
 function normalizeUnidadMedida(value: unknown): 'm2' | 'ml' | 'unidad' {
   const u = String(value ?? '').trim().toLowerCase()
@@ -22,6 +23,39 @@ function toPositiveNumberOrNull(value: unknown): number | null {
   const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n)) return null
   return n
+}
+
+function normalizeWarehouseIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim()).filter(Boolean)))
+}
+
+async function ensureDefaultWarehouse(tx: Prisma.TransactionClient, args: { empresaId: string; sedeId: string }) {
+  const existingDefault = await tx.inventoryWarehouse.findFirst({
+    where: { empresaId: args.empresaId, sedeId: args.sedeId, isDefault: true },
+    select: { id: true },
+  })
+  if (existingDefault?.id) return existingDefault.id
+
+  const existingAny = await tx.inventoryWarehouse.findFirst({
+    where: { empresaId: args.empresaId, sedeId: args.sedeId },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  })
+  if (existingAny?.id) return existingAny.id
+
+  const created = await tx.inventoryWarehouse.create({
+    data: {
+      empresaId: args.empresaId,
+      sedeId: args.sedeId,
+      nombre: 'Principal',
+      codigo: 'PRIN',
+      isDefault: true,
+    },
+    select: { id: true },
+  })
+
+  return created.id
 }
 
 interface RouteContext {
@@ -186,8 +220,9 @@ export async function PUT(
     const nextStock = Number.isFinite(nextStockRaw) ? Math.max(0, nextStockRaw) : 0
 
     const stockScopeRaw = typeof body.stockScope === 'string' ? body.stockScope.trim() : ''
-    const stockScope: 'warehouse' | 'allSedes' = stockScopeRaw === 'allSedes' ? 'allSedes' : 'warehouse'
+    const stockScope: 'warehouse' | 'selectedSedes' | 'allSedes' = stockScopeRaw === 'allSedes' ? 'allSedes' : stockScopeRaw === 'selectedSedes' ? 'selectedSedes' : 'warehouse'
     const requestedWarehouseId = typeof body.warehouseId === 'string' ? body.warehouseId.trim() : ''
+    const requestedWarehouseIds = normalizeWarehouseIds(body.warehouseIds)
 
     if (stockScope === 'warehouse' && !requestedWarehouseId) {
       return NextResponse.json(
@@ -196,20 +231,58 @@ export async function PUT(
       )
     }
 
-    const whValidated = nextStock > 0 && stockScope === 'warehouse'
-      ? await prisma.inventoryWarehouse.findFirst({
-          where: {
-            id: requestedWarehouseId,
-            empresaId: access.empresaId,
-            OR: [{ sedeId: access.sedeId }, { sedeId: null }],
-          },
-          select: { id: true },
-        })
-      : null
+    if (stockScope === 'selectedSedes' && !requestedWarehouseIds.length) {
+      return NextResponse.json(
+        { error: 'Selecciona al menos una sede para aplicar el stock.' },
+        { status: 400 }
+      )
+    }
 
-    if (nextStock > 0 && stockScope === 'warehouse' && !whValidated?.id) {
+    const validateRequestedWarehouses = async (warehouseIds: string[]) => {
+      const validated: Array<{ id: string; sedeId: string | null }> = []
+      for (const warehouseId of warehouseIds) {
+        const warehouse = await prisma.inventoryWarehouse.findUnique({
+          where: { id: warehouseId },
+          select: { id: true, empresaId: true, sedeId: true },
+        })
+
+        if (!warehouse || warehouse.empresaId !== access.empresaId) return null
+
+        if (warehouse.sedeId && access.session.user.role !== 'ADMIN') {
+          await requireSedeAccess({
+            userId: access.userId,
+            sedeId: warehouse.sedeId,
+            module: ModuleKey.MATERIALES,
+            minLevel: 'WRITE' as never,
+          })
+        }
+
+        validated.push({ id: warehouse.id, sedeId: warehouse.sedeId ?? null })
+      }
+
+      return validated
+    }
+
+    let whValidated: Array<{ id: string; sedeId: string | null }> = []
+    if (nextStock > 0 && stockScope === 'warehouse') {
+      const validated = await validateRequestedWarehouses([requestedWarehouseId])
+      whValidated = validated ?? []
+    }
+    if (nextStock > 0 && stockScope === 'selectedSedes') {
+      const validated = await validateRequestedWarehouses(requestedWarehouseIds)
+      whValidated = validated ?? []
+    }
+
+    if (nextStock > 0 && stockScope === 'warehouse' && !whValidated[0]?.id) {
       return NextResponse.json(
         { error: 'Bodega inválida o sin acceso para registrar stock.' },
+        { status: 400 }
+      )
+    }
+
+    if (nextStock > 0 && stockScope === 'selectedSedes' && !whValidated.length) {
+      return NextResponse.json(
+        { error: 'Una o más sedes no son válidas o no tienes acceso para registrar stock.' },
         { status: 400 }
       )
     }
@@ -230,7 +303,7 @@ export async function PUT(
 
       // Aplicar regla de stock por bodega o por todas las sedes.
       if (stockScope === 'warehouse') {
-        const warehouseId = whValidated?.id ?? null
+        const warehouseId = whValidated[0]?.id ?? null
         const current = warehouseId
           ? await tx.inventoryStock.findUnique({
               where: { warehouseId_materialId: { warehouseId, materialId: id } },
@@ -273,6 +346,62 @@ export async function PUT(
             },
           })
         }
+      } else if (stockScope === 'selectedSedes') {
+        const currentRows = await tx.inventoryStock.findMany({
+          where: { materialId: id },
+          select: {
+            warehouseId: true,
+            quantity: true,
+            warehouse: { select: { sedeId: true, isDefault: true } },
+          },
+        })
+
+        const manageableWarehouseIds = new Set<string>([
+          ...currentRows
+            .filter((row) => row.warehouse?.sedeId && row.warehouse.isDefault)
+            .map((row) => row.warehouseId),
+          ...whValidated.map((warehouse) => warehouse.id),
+        ])
+
+        let deltaTotal = 0
+        for (const warehouseId of manageableWarehouseIds) {
+          const current = currentRows.find((row) => row.warehouseId === warehouseId)
+          const stockBeforeWarehouse = current?.quantity ?? 0
+          const stockAfterWarehouse = whValidated.some((warehouse) => warehouse.id === warehouseId) ? nextStock : 0
+          const delta = stockAfterWarehouse - stockBeforeWarehouse
+          deltaTotal += delta
+
+          await tx.inventoryStock.upsert({
+            where: { warehouseId_materialId: { warehouseId, materialId: id } },
+            create: { warehouseId, materialId: id, quantity: stockAfterWarehouse },
+            update: { quantity: stockAfterWarehouse },
+            select: { id: true },
+          })
+        }
+
+        globalAfter = stockBeforeGlobal + deltaTotal
+        if (globalAfter < 0) {
+          throw new Error('INVALID_GLOBAL_STOCK')
+        }
+
+        if (deltaTotal !== 0) {
+          await tx.inventoryMovement.create({
+            data: {
+              empresaId: access.empresaId,
+              sedeId: access.sedeId,
+              warehouseId: null,
+              materialId: id,
+              type: InventoryMovementType.ADJUST,
+              quantity: deltaTotal,
+              stockBefore: stockBeforeGlobal,
+              stockAfter: globalAfter,
+              note: 'Ajuste manual desde Productos (sedes seleccionadas)',
+              sourceType: InventoryMovementSourceType.MANUAL,
+              sourceId: id,
+              createdById: access.userId,
+            },
+          })
+        }
       } else {
         const sedes = await tx.sede.findMany({
           where: { empresaId: access.empresaId },
@@ -281,35 +410,7 @@ export async function PUT(
 
         let sumBefore = 0
         for (const s of sedes) {
-          let whId: string | null = null
-          const whDefault = await tx.inventoryWarehouse.findFirst({
-            where: { empresaId: access.empresaId, sedeId: s.id, isDefault: true },
-            select: { id: true },
-          })
-          if (whDefault?.id) whId = whDefault.id
-
-          if (!whId) {
-            const whAny = await tx.inventoryWarehouse.findFirst({
-              where: { empresaId: access.empresaId, sedeId: s.id },
-              orderBy: { createdAt: 'asc' },
-              select: { id: true },
-            })
-            if (whAny?.id) whId = whAny.id
-          }
-
-          if (!whId) {
-            const whCreated = await tx.inventoryWarehouse.create({
-              data: {
-                empresaId: access.empresaId,
-                sedeId: s.id,
-                nombre: 'Principal',
-                codigo: 'PRIN',
-                isDefault: true,
-              },
-              select: { id: true },
-            })
-            whId = whCreated.id
-          }
+          const whId = await ensureDefaultWarehouse(tx, { empresaId: access.empresaId, sedeId: s.id })
 
           const current = await tx.inventoryStock.findUnique({
             where: { warehouseId_materialId: { warehouseId: whId, materialId: id } },

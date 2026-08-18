@@ -261,7 +261,8 @@ export default function ProductosPage() {
     stockMinimo: "0",
     unidadMedida: "m2",
     warehouseId: "",
-    stockScope: 'warehouse' as 'warehouse' | 'allSedes',
+    warehouseIds: [] as string[],
+    stockScope: 'warehouse' as 'warehouse' | 'selectedSedes' | 'allSedes',
     proveedor: "",
     observaciones: "",
     extraFields: {} as Record<string, string | boolean>,
@@ -394,6 +395,41 @@ export default function ProductosPage() {
       return sedeWarehouseOptions.find((option) => option.sedeId === currentWarehouse.sedeId)?.warehouseId ?? warehouseId
     },
     [bodegas, sedeWarehouseOptions]
+  )
+
+  const selectedWarehouseOptions = useMemo(
+    () => formData.warehouseIds
+      .map((warehouseId) => sedeWarehouseOptions.find((option) => option.warehouseId === warehouseId))
+      .filter((option): option is SedeWarehouseOption => Boolean(option)),
+    [formData.warehouseIds, sedeWarehouseOptions]
+  )
+
+  const buildWarehouseSelectionFromMaterial = useCallback(
+    (material: Material) => {
+      const defaultWarehouseIds = Array.from(
+        new Set(
+          (material.stocks ?? [])
+            .filter((stock) => stock.warehouse?.sedeId && stock.warehouse.isDefault)
+            .map((stock) => resolveWarehouseIdForSedePicker(stock.warehouse.id))
+            .filter(Boolean)
+        )
+      )
+
+      if (defaultWarehouseIds.length > 1) {
+        return {
+          warehouseId: defaultWarehouseIds[0] ?? '',
+          warehouseIds: defaultWarehouseIds,
+          stockScope: 'selectedSedes' as const,
+        }
+      }
+
+      return {
+        warehouseId: defaultWarehouseIds[0] ?? resolveWarehouseIdForSedePicker(material.stocks?.[0]?.warehouse?.id ?? ''),
+        warehouseIds: defaultWarehouseIds,
+        stockScope: 'warehouse' as const,
+      }
+    },
+    [resolveWarehouseIdForSedePicker]
   )
 
   useEffect(() => {
@@ -804,12 +840,18 @@ export default function ProductosPage() {
       
       const method = editingMaterial ? 'PUT' : 'POST'
 
-      const { warehouseId, stockScope, ...restForm } = formData
+      const { warehouseId, warehouseIds, stockScope, ...restForm } = formData
       const stockActualN = Number(restForm.stockActual)
       const effectiveWarehouseId = stockScope === 'warehouse' ? (warehouseId || defaultBodegaId || '') : ''
 
       if (stockScope === 'warehouse' && stockActualN > 0 && !effectiveWarehouseId) {
         alert('Selecciona una bodega para el stock inicial o cambia el alcance a Todas las sedes.')
+        setIsSubmitting(false)
+        return
+      }
+
+      if (stockScope === 'selectedSedes' && stockActualN > 0 && warehouseIds.length === 0) {
+        alert('Agrega al menos una sede para el stock inicial o cambia el alcance a Todas las sedes.')
         setIsSubmitting(false)
         return
       }
@@ -829,6 +871,7 @@ export default function ProductosPage() {
           ),
           stockScope,
           warehouseId: stockScope === 'warehouse' ? (effectiveWarehouseId || undefined) : undefined,
+          warehouseIds: stockScope === 'selectedSedes' ? warehouseIds : undefined,
           quantityDiscounts: quantityDiscounts
             .map((d) => ({
               minQty: parseFloat(d.minQty),
@@ -907,8 +950,7 @@ export default function ProductosPage() {
       stockActual: "0",
       stockMinimo: material.stockMinimo?.toString() || "0",
       unidadMedida: material.unidadMedida,
-      warehouseId: resolveWarehouseIdForSedePicker(material.stocks?.[0]?.warehouse?.id ?? ""),
-      stockScope: 'warehouse',
+      ...buildWarehouseSelectionFromMaterial(material),
       proveedor: material.proveedor ?? "",
       observaciones: material.observaciones ?? "",
       extraFields: normalizeExtraFields(material.extraFields),
@@ -920,6 +962,7 @@ export default function ProductosPage() {
 
   const handleEdit = (material: Material) => {
     setEditingMaterial(material)
+    const warehouseSelection = buildWarehouseSelectionFromMaterial(material)
     setFormData({
       externalId: material.externalId ?? "",
       nombre: material.nombre,
@@ -938,8 +981,7 @@ export default function ProductosPage() {
       stockActual: material.stockActual.toString(),
       stockMinimo: material.stockMinimo.toString(),
       unidadMedida: material.unidadMedida,
-      warehouseId: resolveWarehouseIdForSedePicker(material.stocks?.[0]?.warehouse?.id ?? ""),
-      stockScope: 'warehouse',
+      ...warehouseSelection,
       proveedor: material.proveedor || "",
       observaciones: material.observaciones || "",
       extraFields: normalizeExtraFields(material.extraFields),
@@ -1007,6 +1049,7 @@ export default function ProductosPage() {
       stockMinimo: "0",
       unidadMedida: "m2",
       warehouseId: defaultBodegaId,
+      warehouseIds: defaultBodegaId ? [defaultBodegaId] : [],
       stockScope: 'warehouse',
       proveedor: "",
       observaciones: "",
@@ -2217,10 +2260,23 @@ export default function ProductosPage() {
                 <Label>Aplicar stock a</Label>
                 <select
                   value={formData.stockScope}
-                  onChange={(e) => setFormData((p) => ({ ...p, stockScope: e.target.value as 'warehouse' | 'allSedes' }))}
+                  onChange={(e) => {
+                    const nextScope = e.target.value as 'warehouse' | 'selectedSedes' | 'allSedes'
+                    setFormData((p) => ({
+                      ...p,
+                      stockScope: nextScope,
+                      warehouseIds: nextScope === 'selectedSedes'
+                        ? (p.warehouseIds.length ? p.warehouseIds : p.warehouseId ? [p.warehouseId] : [])
+                        : p.warehouseIds,
+                      warehouseId: nextScope === 'warehouse'
+                        ? (p.warehouseId || p.warehouseIds[0] || defaultBodegaId || '')
+                        : p.warehouseId,
+                    }))
+                  }}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                 >
                   <option value="warehouse">Esta bodega (solo una sede)</option>
+                  <option value="selectedSedes">Varias sedes (una a una)</option>
                   <option value="allSedes">Todas las sedes (duplica en bodega principal)</option>
                 </select>
               </div>
@@ -2249,6 +2305,61 @@ export default function ProductosPage() {
                   )}
                   <p className="text-xs text-muted-foreground mt-1">
                     El stock quedará registrado en la bodega principal de la sede seleccionada.
+                  </p>
+                </div>
+              ) : formData.stockScope === 'selectedSedes' ? (
+                <div className="col-span-2 space-y-3 rounded-xl border border-border/70 bg-muted/30 p-4">
+                  <div>
+                    <Label>Agregar sede</Label>
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                      <select
+                        value={formData.warehouseId}
+                        onChange={(e) => setFormData({ ...formData, warehouseId: e.target.value })}
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      >
+                        <option value="">Selecciona una sede…</option>
+                        {sedeWarehouseOptions.map((option) => (
+                          <option key={option.sedeId} value={option.warehouseId} disabled={formData.warehouseIds.includes(option.warehouseId)}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setFormData((prev) => {
+                          if (!prev.warehouseId || prev.warehouseIds.includes(prev.warehouseId)) return prev
+                          return { ...prev, warehouseIds: [...prev.warehouseIds, prev.warehouseId] }
+                        })}
+                      >
+                        Agregar sede
+                      </Button>
+                    </div>
+                  </div>
+
+                  {selectedWarehouseOptions.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedWarehouseOptions.map((option) => (
+                        <div key={option.warehouseId} className="flex items-center gap-2 rounded-full border border-sky-200 bg-background px-3 py-1 text-xs text-sky-700">
+                          <span>{option.label}</span>
+                          <button
+                            type="button"
+                            className="font-semibold text-sky-700"
+                            onClick={() => setFormData((prev) => ({ ...prev, warehouseIds: prev.warehouseIds.filter((id) => id !== option.warehouseId) }))}
+                          >
+                            Quitar
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Agrega una sede y luego puedes seguir sumando más una a una.
+                    </p>
+                  )}
+
+                  <p className="text-xs text-muted-foreground">
+                    El mismo stock inicial se aplicará en la bodega principal de cada sede seleccionada.
                   </p>
                 </div>
               ) : (

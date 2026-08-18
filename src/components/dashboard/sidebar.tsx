@@ -1049,14 +1049,9 @@ export default function Sidebar({ user }: SidebarProps) {
     event.dataTransfer.setData('text/plain', sectionTitle)
   }
 
-  function handleSectionDragOver(event: DragEvent<HTMLDivElement>, sectionTitle: string) {
+  function handleSectionDropZoneDragOver(event: DragEvent<HTMLDivElement>, sectionTitle: string, placement: 'before' | 'after') {
     if (isMobileViewport || !draggingSectionTitle) return
     event.preventDefault()
-
-    const bounds = event.currentTarget.getBoundingClientRect()
-    const offset = event.clientY - bounds.top
-    const placement = offset < bounds.height / 2 ? 'before' : 'after'
-
     setDragOverSectionTitle(sectionTitle)
     setDragOverSectionPlacement(placement)
   }
@@ -1206,22 +1201,32 @@ export default function Sidebar({ user }: SidebarProps) {
                   draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before' ? 'pt-7' : '',
                   draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after' ? 'pb-6' : ''
                 )}
-                onDragOver={(event) => handleSectionDragOver(event, section.title)}
                 onDragLeave={(event) => {
                   const nextTarget = event.relatedTarget as Node | null
                   if (nextTarget && event.currentTarget.contains(nextTarget)) return
                   setDragOverSectionTitle((current) => current === section.title ? null : current)
                 }}
-                onDrop={(event) => {
-                  event.preventDefault()
-                  handleSectionDrop(section.title)
-                }}
               >
-                {draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before' ? (
-                  <div className="mb-3 rounded-full border-2 border-dashed border-sky-300 bg-sky-100/75 shadow-[0_0_0_6px_rgba(125,211,252,0.14)] transition-all duration-300 ease-out animate-[pulse_1.6s_ease-in-out_infinite]" aria-hidden="true">
-                    <div className="h-4 rounded-full bg-sky-400/80" />
-                  </div>
-                ) : null}
+                <div
+                  className={cn(
+                    "rounded-full transition-all duration-300 ease-out",
+                    draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before'
+                      ? 'mb-3 border-2 border-dashed border-sky-300 bg-sky-100/75 shadow-[0_0_0_6px_rgba(125,211,252,0.14)] animate-[pulse_1.6s_ease-in-out_infinite]'
+                      : 'mb-0 border-0 bg-transparent shadow-none'
+                  )}
+                  onDragOver={(event) => handleSectionDropZoneDragOver(event, section.title, 'before')}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    setDragOverSectionPlacement('before')
+                    handleSectionDrop(section.title)
+                  }}
+                  aria-hidden="true"
+                >
+                  <div className={cn(
+                    "rounded-full transition-all duration-300 ease-out",
+                    draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before' ? 'h-4 bg-sky-400/80' : 'h-0'
+                  )} />
+                </div>
                 <button
                   type="button"
                   draggable={!isMobileViewport}
@@ -1264,11 +1269,26 @@ export default function Sidebar({ user }: SidebarProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
-                {draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after' ? (
-                  <div className="mt-3 rounded-full border-2 border-dashed border-sky-300 bg-sky-100/75 shadow-[0_0_0_6px_rgba(125,211,252,0.14)] transition-all duration-300 ease-out animate-[pulse_1.6s_ease-in-out_infinite]" aria-hidden="true">
-                    <div className="h-4 rounded-full bg-sky-400/80" />
-                  </div>
-                ) : null}
+                <div
+                  className={cn(
+                    "rounded-full transition-all duration-300 ease-out",
+                    draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after'
+                      ? 'mt-3 border-2 border-dashed border-sky-300 bg-sky-100/75 shadow-[0_0_0_6px_rgba(125,211,252,0.14)] animate-[pulse_1.6s_ease-in-out_infinite]'
+                      : 'mt-0 border-0 bg-transparent shadow-none'
+                  )}
+                  onDragOver={(event) => handleSectionDropZoneDragOver(event, section.title, 'after')}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    setDragOverSectionPlacement('after')
+                    handleSectionDrop(section.title)
+                  }}
+                  aria-hidden="true"
+                >
+                  <div className={cn(
+                    "rounded-full transition-all duration-300 ease-out",
+                    draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after' ? 'h-4 bg-sky-400/80' : 'h-0'
+                  )} />
+                </div>
 
                 <div
                   className={cn(

@@ -167,7 +167,9 @@ export default function InventarioPage() {
     type: "IN" as "IN" | "OUT" | "ADJUST",
     quantity: "",
     newStock: "",
+    moveScope: 'warehouse' as 'global' | 'warehouse' | 'selectedSedes' | 'allSedes',
     warehouseId: "",
+    warehouseIds: [] as string[],
     note: "",
     updateProveedor: false,
     proveedor: "",
@@ -328,6 +330,13 @@ export default function InventarioPage() {
     [activeMaterials, form.materialId]
   )
 
+  const selectedMovementWarehouses = useMemo(
+    () => form.warehouseIds
+      .map((warehouseId) => sedeWarehouseOptions.find((option) => option.warehouseId === warehouseId))
+      .filter((option): option is SedeWarehouseOption => Boolean(option)),
+    [form.warehouseIds, sedeWarehouseOptions]
+  )
+
   const canUpdateProveedor = form.type === 'IN'
 
   useEffect(() => {
@@ -462,8 +471,20 @@ export default function InventarioPage() {
       const payload: Record<string, unknown> = {
         materialId: form.materialId,
         type: form.type,
-        warehouseId: form.warehouseId || undefined,
         note: form.note || undefined,
+      }
+
+      if (form.moveScope === 'warehouse') {
+        payload.warehouseId = form.warehouseId || undefined
+      } else if (form.moveScope === 'selectedSedes') {
+        if (!form.warehouseIds.length) {
+          setError('Selecciona al menos una sede para registrar el movimiento.')
+          setIsSubmitting(false)
+          return
+        }
+        payload.warehouseIds = form.warehouseIds
+      } else if (form.moveScope === 'allSedes') {
+        payload.applyToAllSedes = true
       }
 
       if (form.updateProveedor && form.type === 'IN') {
@@ -490,7 +511,7 @@ export default function InventarioPage() {
       }
 
       setIsModalOpen(false)
-      setForm((prev) => ({ ...prev, quantity: "", newStock: "", note: "", updateProveedor: false, proveedor: "" }))
+  setForm((prev) => ({ ...prev, quantity: "", newStock: "", note: "", updateProveedor: false, proveedor: "", warehouseIds: [] }))
       setProveedorMatches([])
       setProveedorCreateOpen(false)
       setProveedorNuevoNombre("")
@@ -525,7 +546,7 @@ export default function InventarioPage() {
     try {
       const lookupUrl = new URL('/api/inventario/by-code', window.location.origin)
       lookupUrl.searchParams.set('code', code)
-      if (form.warehouseId) lookupUrl.searchParams.set('warehouseId', form.warehouseId)
+      if (form.moveScope === 'warehouse' && form.warehouseId) lookupUrl.searchParams.set('warehouseId', form.warehouseId)
 
       const lookupRes = await fetch(lookupUrl.toString(), { cache: 'no-store' })
       const lookupJson = (await lookupRes.json().catch(() => ({}))) as InventoryScanLookupResponse
@@ -539,8 +560,19 @@ export default function InventarioPage() {
         materialId: lookupJson.data.id,
         type: 'IN',
         quantity,
-        warehouseId: form.warehouseId || undefined,
         note: form.note || undefined,
+      }
+
+      if (form.moveScope === 'warehouse') {
+        payload.warehouseId = form.warehouseId || undefined
+      } else if (form.moveScope === 'selectedSedes') {
+        if (!form.warehouseIds.length) {
+          setScanStatus({ kind: 'error', message: 'Selecciona al menos una sede para registrar la entrada.' })
+          return
+        }
+        payload.warehouseIds = form.warehouseIds
+      } else if (form.moveScope === 'allSedes') {
+        payload.applyToAllSedes = true
       }
 
       if (form.updateProveedor) {
@@ -894,23 +926,111 @@ export default function InventarioPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>{t('inventory.fields.site')}</Label>
+              <Label>Aplicar movimiento a</Label>
               <select
                 className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
-                value={form.warehouseId}
-                onChange={(e) => setForm((p) => ({ ...p, warehouseId: e.target.value }))}
+                value={form.moveScope}
+                onChange={(e) => {
+                  const nextScope = e.target.value as 'global' | 'warehouse' | 'selectedSedes' | 'allSedes'
+                  setForm((p) => ({
+                    ...p,
+                    moveScope: nextScope,
+                    warehouseIds: nextScope === 'selectedSedes'
+                      ? (p.warehouseIds.length ? p.warehouseIds : p.warehouseId ? [p.warehouseId] : [])
+                      : p.warehouseIds,
+                    warehouseId: nextScope === 'warehouse'
+                      ? (p.warehouseId || p.warehouseIds[0] || defaultBodegaId || '')
+                      : p.warehouseId,
+                  }))
+                }}
               >
-                <option value="">{t('inventory.site.global')}</option>
-                {sedeWarehouseOptions.map((option) => (
-                  <option key={option.sedeId} value={option.warehouseId}>
-                    {option.label}
-                  </option>
-                ))}
+                <option value="global">Stock global</option>
+                <option value="warehouse">Una sede</option>
+                <option value="selectedSedes">Varias sedes</option>
+                <option value="allSedes">Todas las sedes</option>
               </select>
               <div className="text-xs text-gray-600">
-                {t('inventory.fields.siteHelp')}
+                {form.moveScope === 'global'
+                  ? 'El movimiento afectará el stock global sin distribuirlo en una sede específica.'
+                  : form.moveScope === 'allSedes'
+                    ? 'Se aplicará el mismo movimiento a la bodega principal de cada sede.'
+                    : 'Selecciona la sede sobre la que se registrará el movimiento.'}
               </div>
             </div>
+
+            {form.moveScope === 'warehouse' ? (
+              <div className="space-y-2">
+                <Label>{t('inventory.fields.site')}</Label>
+                <select
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
+                  value={form.warehouseId}
+                  onChange={(e) => setForm((p) => ({ ...p, warehouseId: e.target.value }))}
+                >
+                  <option value="">Selecciona una sede…</option>
+                  {sedeWarehouseOptions.map((option) => (
+                    <option key={option.sedeId} value={option.warehouseId}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="text-xs text-gray-600">
+                  {t('inventory.fields.siteHelp')}
+                </div>
+              </div>
+            ) : null}
+
+            {form.moveScope === 'selectedSedes' ? (
+              <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="space-y-2">
+                  <Label>Agregar sede</Label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <select
+                      className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
+                      value={form.warehouseId}
+                      onChange={(e) => setForm((p) => ({ ...p, warehouseId: e.target.value }))}
+                    >
+                      <option value="">Selecciona una sede…</option>
+                      {sedeWarehouseOptions.map((option) => (
+                        <option key={option.sedeId} value={option.warehouseId} disabled={form.warehouseIds.includes(option.warehouseId)}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setForm((p) => {
+                        if (!p.warehouseId || p.warehouseIds.includes(p.warehouseId)) return p
+                        return { ...p, warehouseIds: [...p.warehouseIds, p.warehouseId] }
+                      })}
+                    >
+                      Agregar sede
+                    </Button>
+                  </div>
+                </div>
+
+                {selectedMovementWarehouses.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedMovementWarehouses.map((option) => (
+                      <div key={option.warehouseId} className="flex items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-1 text-xs text-sky-700">
+                        <span>{option.label}</span>
+                        <button
+                          type="button"
+                          className="font-semibold text-sky-700"
+                          onClick={() => setForm((p) => ({ ...p, warehouseIds: p.warehouseIds.filter((id) => id !== option.warehouseId) }))}
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-gray-600">
+                    Agrega una sede y luego podrás seguir sumando más una a una.
+                  </div>
+                )}
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

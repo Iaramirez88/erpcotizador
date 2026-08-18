@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
 import { checkPlanLimit } from "@/lib/plan-limits"
 import { AccessLevel, ModuleKey } from "@prisma/client"
+import type { Prisma } from "@prisma/client"
 import { requireSedeAccess } from "@/lib/rbac"
 
 function normalizeUnidadMedida(value: unknown): 'm2' | 'ml' | 'unidad' {
@@ -41,6 +42,39 @@ function parseNumberParam(value: string | null): number | null {
   const n = Number(v)
   if (!Number.isFinite(n)) return null
   return n
+}
+
+function normalizeWarehouseIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim()).filter(Boolean)))
+}
+
+async function ensureDefaultWarehouse(tx: Prisma.TransactionClient, args: { empresaId: string; sedeId: string }) {
+  const existingDefault = await tx.inventoryWarehouse.findFirst({
+    where: { empresaId: args.empresaId, sedeId: args.sedeId, isDefault: true },
+    select: { id: true },
+  })
+  if (existingDefault?.id) return existingDefault.id
+
+  const existingAny = await tx.inventoryWarehouse.findFirst({
+    where: { empresaId: args.empresaId, sedeId: args.sedeId },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  })
+  if (existingAny?.id) return existingAny.id
+
+  const created = await tx.inventoryWarehouse.create({
+    data: {
+      empresaId: args.empresaId,
+      sedeId: args.sedeId,
+      nombre: 'Principal',
+      codigo: 'PRIN',
+      isDefault: true,
+    },
+    select: { id: true },
+  })
+
+  return created.id
 }
 
 // GET - Listar todos los materiales
@@ -561,6 +595,7 @@ export async function POST(request: Request) {
       extraFields,
       activo,
       warehouseId: warehouseIdInput,
+      warehouseIds: warehouseIdsInput,
       stockScope: stockScopeInput,
     } = body
 
@@ -599,29 +634,33 @@ export async function POST(request: Request) {
     const stockActualN = Number.isFinite(stockActualNRaw) ? Math.max(0, stockActualNRaw) : 0
 
     const stockScopeRaw = typeof stockScopeInput === 'string' ? stockScopeInput.trim() : ''
-    const stockScope: 'warehouse' | 'allSedes' = stockScopeRaw === 'allSedes' ? 'allSedes' : 'warehouse'
+    const stockScope: 'warehouse' | 'selectedSedes' | 'allSedes' = stockScopeRaw === 'allSedes' ? 'allSedes' : stockScopeRaw === 'selectedSedes' ? 'selectedSedes' : 'warehouse'
 
     const requestedWarehouseId = typeof warehouseIdInput === 'string' ? warehouseIdInput.trim() : ''
+    const requestedWarehouseIds = normalizeWarehouseIds(warehouseIdsInput)
 
-    const canUseRequestedWarehouse = async () => {
-      if (!requestedWarehouseId) return null
-      const warehouse = await prisma.inventoryWarehouse.findUnique({
-        where: { id: requestedWarehouseId },
-        select: { id: true, empresaId: true, sedeId: true },
-      })
-
-      if (!warehouse || warehouse.empresaId !== empresaId) return null
-
-      if (warehouse.sedeId && access.session.user.role !== 'ADMIN') {
-        await requireSedeAccess({
-          userId: access.userId,
-          sedeId: warehouse.sedeId,
-          module: ModuleKey.MATERIALES,
-          minLevel: AccessLevel.WRITE,
+    const validateRequestedWarehouses = async (warehouseIds: string[]) => {
+      const validated: Array<{ id: string; sedeId: string | null }> = []
+      for (const warehouseId of warehouseIds) {
+        const warehouse = await prisma.inventoryWarehouse.findUnique({
+          where: { id: warehouseId },
+          select: { id: true, empresaId: true, sedeId: true },
         })
-      }
 
-      return warehouse
+        if (!warehouse || warehouse.empresaId !== empresaId) return null
+
+        if (warehouse.sedeId && access.session.user.role !== 'ADMIN') {
+          await requireSedeAccess({
+            userId: access.userId,
+            sedeId: warehouse.sedeId,
+            module: ModuleKey.MATERIALES,
+            minLevel: AccessLevel.WRITE,
+          })
+        }
+
+        validated.push({ id: warehouse.id, sedeId: warehouse.sedeId ?? null })
+      }
+      return validated
     }
 
     // Regla: si el stock aplica a una bodega específica, debe venir explícita (no auto-asignamos).
@@ -632,11 +671,19 @@ export async function POST(request: Request) {
       )
     }
 
-    let whValidated: Awaited<ReturnType<typeof canUseRequestedWarehouse>> = null
+    if (stockActualN > 0 && stockScope === 'selectedSedes' && !requestedWarehouseIds.length) {
+      return NextResponse.json(
+        { error: 'Selecciona al menos una sede para registrar el stock inicial.' },
+        { status: 400 }
+      )
+    }
+
+    let whValidated: Array<{ id: string; sedeId: string | null }> = []
 
     if (stockActualN > 0 && stockScope === 'warehouse') {
       try {
-        whValidated = await canUseRequestedWarehouse()
+        const validated = await validateRequestedWarehouses([requestedWarehouseId])
+        whValidated = validated ?? []
       } catch (error) {
         if (error instanceof Error && error.message === 'FORBIDDEN') {
           return NextResponse.json(
@@ -648,9 +695,31 @@ export async function POST(request: Request) {
       }
     }
 
-    if (stockActualN > 0 && stockScope === 'warehouse' && !whValidated?.id) {
+    if (stockActualN > 0 && stockScope === 'selectedSedes') {
+      try {
+        const validated = await validateRequestedWarehouses(requestedWarehouseIds)
+        whValidated = validated ?? []
+      } catch (error) {
+        if (error instanceof Error && error.message === 'FORBIDDEN') {
+          return NextResponse.json(
+            { error: 'Una o más sedes no son válidas o no tienes acceso para registrar stock.' },
+            { status: 403 }
+          )
+        }
+        throw error
+      }
+    }
+
+    if (stockActualN > 0 && stockScope === 'warehouse' && !whValidated[0]?.id) {
       return NextResponse.json(
         { error: 'Bodega inválida o sin acceso para registrar stock.' },
+        { status: 400 }
+      )
+    }
+
+    if (stockActualN > 0 && stockScope === 'selectedSedes' && !whValidated.length) {
+      return NextResponse.json(
+        { error: 'Una o más sedes no son válidas o no tienes acceso para registrar stock.' },
         { status: 400 }
       )
     }
@@ -724,43 +793,24 @@ export async function POST(request: Request) {
       if (stockActualN > 0) {
         if (stockScope === 'warehouse') {
           await tx.inventoryStock.upsert({
-            where: { warehouseId_materialId: { warehouseId: whValidated!.id, materialId: created.id } },
-            create: { warehouseId: whValidated!.id, materialId: created.id, quantity: stockActualN },
+            where: { warehouseId_materialId: { warehouseId: whValidated[0]!.id, materialId: created.id } },
+            create: { warehouseId: whValidated[0]!.id, materialId: created.id, quantity: stockActualN },
             update: { quantity: stockActualN },
             select: { id: true },
           })
+        } else if (stockScope === 'selectedSedes') {
+          for (const warehouse of whValidated) {
+            await tx.inventoryStock.upsert({
+              where: { warehouseId_materialId: { warehouseId: warehouse.id, materialId: created.id } },
+              create: { warehouseId: warehouse.id, materialId: created.id, quantity: stockActualN },
+              update: { quantity: stockActualN },
+              select: { id: true },
+            })
+          }
         } else {
           const sedes = await tx.sede.findMany({ where: { empresaId }, select: { id: true } })
           for (const s of sedes) {
-            let whId: string | null = null
-            const whDefault = await tx.inventoryWarehouse.findFirst({
-              where: { empresaId, sedeId: s.id, isDefault: true },
-              select: { id: true },
-            })
-            if (whDefault?.id) whId = whDefault.id
-
-            if (!whId) {
-              const whAny = await tx.inventoryWarehouse.findFirst({
-                where: { empresaId, sedeId: s.id },
-                orderBy: { createdAt: 'asc' },
-                select: { id: true },
-              })
-              if (whAny?.id) whId = whAny.id
-            }
-
-            if (!whId) {
-              const whCreated = await tx.inventoryWarehouse.create({
-                data: {
-                  empresaId,
-                  sedeId: s.id,
-                  nombre: 'Principal',
-                  codigo: 'PRIN',
-                  isDefault: true,
-                },
-                select: { id: true },
-              })
-              whId = whCreated.id
-            }
+            const whId = await ensureDefaultWarehouse(tx, { empresaId, sedeId: s.id })
 
             await tx.inventoryStock.upsert({
               where: { warehouseId_materialId: { warehouseId: whId, materialId: created.id } },
