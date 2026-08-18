@@ -1049,9 +1049,11 @@ export default function Sidebar({ user }: SidebarProps) {
     event.dataTransfer.setData('text/plain', sectionTitle)
   }
 
-  function handleSectionDropZoneDragOver(event: DragEvent<HTMLDivElement>, sectionTitle: string, placement: 'before' | 'after') {
+  function handleSectionDragOver(event: DragEvent<HTMLElement>, sectionTitle: string) {
     if (isMobileViewport || !draggingSectionTitle) return
     event.preventDefault()
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const placement = event.clientY - bounds.top < bounds.height / 2 ? 'before' : 'after'
     setDragOverSectionTitle(sectionTitle)
     setDragOverSectionPlacement(placement)
   }
@@ -1201,10 +1203,10 @@ export default function Sidebar({ user }: SidebarProps) {
                   draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before' ? 'pt-7' : '',
                   draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after' ? 'pb-6' : ''
                 )}
-                onDragLeave={(event) => {
-                  const nextTarget = event.relatedTarget as Node | null
-                  if (nextTarget && event.currentTarget.contains(nextTarget)) return
-                  setDragOverSectionTitle((current) => current === section.title ? null : current)
+                onDragOver={(event) => handleSectionDragOver(event, section.title)}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  handleSectionDrop(section.title)
                 }}
               >
                 <div
@@ -1214,12 +1216,6 @@ export default function Sidebar({ user }: SidebarProps) {
                       ? 'mb-3 border-2 border-dashed border-sky-300 bg-sky-100/75 shadow-[0_0_0_6px_rgba(125,211,252,0.14)] animate-[pulse_1.6s_ease-in-out_infinite]'
                       : 'mb-0 border-0 bg-transparent shadow-none'
                   )}
-                  onDragOver={(event) => handleSectionDropZoneDragOver(event, section.title, 'before')}
-                  onDrop={(event) => {
-                    event.preventDefault()
-                    setDragOverSectionPlacement('before')
-                    handleSectionDrop(section.title)
-                  }}
                   aria-hidden="true"
                 >
                   <div className={cn(
@@ -1234,6 +1230,11 @@ export default function Sidebar({ user }: SidebarProps) {
                   onDragEnd={() => {
                     setDraggingSectionTitle(null)
                     setDragOverSectionTitle(null)
+                  }}
+                  onDragOver={(event) => handleSectionDragOver(event, section.title)}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    handleSectionDrop(section.title)
                   }}
                   onClick={() => {
                     setOpenSectionTitle((cur) => (cur === section.title ? null : section.title))
@@ -1276,12 +1277,6 @@ export default function Sidebar({ user }: SidebarProps) {
                       ? 'mt-3 border-2 border-dashed border-sky-300 bg-sky-100/75 shadow-[0_0_0_6px_rgba(125,211,252,0.14)] animate-[pulse_1.6s_ease-in-out_infinite]'
                       : 'mt-0 border-0 bg-transparent shadow-none'
                   )}
-                  onDragOver={(event) => handleSectionDropZoneDragOver(event, section.title, 'after')}
-                  onDrop={(event) => {
-                    event.preventDefault()
-                    setDragOverSectionPlacement('after')
-                    handleSectionDrop(section.title)
-                  }}
                   aria-hidden="true"
                 >
                   <div className={cn(
