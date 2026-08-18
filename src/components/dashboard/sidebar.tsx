@@ -1049,7 +1049,7 @@ export default function Sidebar({ user }: SidebarProps) {
     event.dataTransfer.setData('text/plain', sectionTitle)
   }
 
-  function handleSectionDragOver(event: DragEvent<HTMLButtonElement>, sectionTitle: string) {
+  function handleSectionDragOver(event: DragEvent<HTMLDivElement>, sectionTitle: string) {
     if (isMobileViewport || !draggingSectionTitle) return
     event.preventDefault()
 
@@ -1206,6 +1206,16 @@ export default function Sidebar({ user }: SidebarProps) {
                   draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before' ? 'pt-7' : '',
                   draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after' ? 'pb-6' : ''
                 )}
+                onDragOver={(event) => handleSectionDragOver(event, section.title)}
+                onDragLeave={(event) => {
+                  const nextTarget = event.relatedTarget as Node | null
+                  if (nextTarget && event.currentTarget.contains(nextTarget)) return
+                  setDragOverSectionTitle((current) => current === section.title ? null : current)
+                }}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  handleSectionDrop(section.title)
+                }}
               >
                 {draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before' ? (
                   <div className="mb-3 rounded-full border-2 border-dashed border-sky-300 bg-sky-100/75 shadow-[0_0_0_6px_rgba(125,211,252,0.14)] transition-all duration-300 ease-out animate-[pulse_1.6s_ease-in-out_infinite]" aria-hidden="true">
@@ -1216,11 +1226,6 @@ export default function Sidebar({ user }: SidebarProps) {
                   type="button"
                   draggable={!isMobileViewport}
                   onDragStart={(event) => handleSectionDragStart(event, section.title)}
-                  onDragOver={(event) => handleSectionDragOver(event, section.title)}
-                  onDragLeave={() => {
-                    setDragOverSectionTitle((current) => current === section.title ? null : current)
-                  }}
-                  onDrop={() => handleSectionDrop(section.title)}
                   onDragEnd={() => {
                     setDraggingSectionTitle(null)
                     setDragOverSectionTitle(null)
