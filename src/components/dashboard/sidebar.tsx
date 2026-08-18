@@ -1202,14 +1202,14 @@ export default function Sidebar({ user }: SidebarProps) {
               <div
                 key={section.title}
                 className={cn(
-                  "space-y-0.5 pt-1.5 transition-[padding] duration-150",
-                  draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before' ? 'pt-5' : '',
-                  draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after' ? 'pb-4' : ''
+                  "space-y-0.5 pt-1.5 transition-[padding] duration-300 ease-out",
+                  draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before' ? 'pt-7' : '',
+                  draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after' ? 'pb-6' : ''
                 )}
               >
                 {draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before' ? (
-                  <div className="mb-2 rounded-full border-2 border-dashed border-sky-300 bg-sky-100/70 shadow-[0_0_0_4px_rgba(125,211,252,0.18)] animate-pulse" aria-hidden="true">
-                    <div className="h-2 rounded-full bg-sky-400/80" />
+                  <div className="mb-3 rounded-full border-2 border-dashed border-sky-300 bg-sky-100/75 shadow-[0_0_0_6px_rgba(125,211,252,0.14)] transition-all duration-300 ease-out animate-[pulse_1.6s_ease-in-out_infinite]" aria-hidden="true">
+                    <div className="h-4 rounded-full bg-sky-400/80" />
                   </div>
                 ) : null}
                 <button
@@ -1260,8 +1260,8 @@ export default function Sidebar({ user }: SidebarProps) {
                   </svg>
                 </button>
                 {draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after' ? (
-                  <div className="mt-2 rounded-full border-2 border-dashed border-sky-300 bg-sky-100/70 shadow-[0_0_0_4px_rgba(125,211,252,0.18)] animate-pulse" aria-hidden="true">
-                    <div className="h-2 rounded-full bg-sky-400/80" />
+                  <div className="mt-3 rounded-full border-2 border-dashed border-sky-300 bg-sky-100/75 shadow-[0_0_0_6px_rgba(125,211,252,0.14)] transition-all duration-300 ease-out animate-[pulse_1.6s_ease-in-out_infinite]" aria-hidden="true">
+                    <div className="h-4 rounded-full bg-sky-400/80" />
                   </div>
                 ) : null}
 

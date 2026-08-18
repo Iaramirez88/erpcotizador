@@ -36,6 +36,7 @@ type ReportPrefs = {
   }
   tasks?: {
     pinnedTaskIds?: string[]
+    orderedTaskIds?: string[]
   }
   intelligence?: {
     recommendations?: {
@@ -114,11 +115,13 @@ function normalizeTaskPrefs(value: unknown): Required<NonNullable<ReportPrefs['t
   if (!isPlainObject(value)) {
     return {
       pinnedTaskIds: [],
+      orderedTaskIds: [],
     }
   }
 
   return {
     pinnedTaskIds: normalizeStringList(value.pinnedTaskIds),
+    orderedTaskIds: normalizeStringList(value.orderedTaskIds),
   }
 }
 

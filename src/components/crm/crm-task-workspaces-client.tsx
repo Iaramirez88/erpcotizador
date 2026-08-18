@@ -423,6 +423,11 @@ function normalizePinnedTaskIds(value: unknown) {
   return Array.from(new Set(value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)))
 }
 
+function normalizeOrderedTaskIds(value: unknown) {
+  if (!Array.isArray(value)) return [] as string[]
+  return Array.from(new Set(value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)))
+}
+
 function reorderValues(values: string[], fromValue: string, toValue: string) {
   return reorderValuesByPlacement(values, fromValue, toValue, 'before')
 }
@@ -508,6 +513,7 @@ export function CrmTaskWorkspacesClient() {
   const [dragOverTaskPlacement, setDragOverTaskPlacement] = useState<'before' | 'after'>('before')
   const [currentUserId, setCurrentUserId] = useState('')
   const [pinnedTaskIds, setPinnedTaskIds] = useState<string[]>([])
+  const [orderedTaskIds, setOrderedTaskIds] = useState<string[]>([])
   const [taskSettings, setTaskSettings] = useState<TaskWorkspaceSettings>({ requireTaskCancellationReason: false })
   const [workspaceViewportHeight, setWorkspaceViewportHeight] = useState<number | null>(null)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
@@ -561,7 +567,7 @@ export function CrmTaskWorkspacesClient() {
         requestJson<TeamUser[]>('/api/crm/assignees'),
         requestJson<SedeOption[]>('/api/crm/sedes'),
         requestJson<{ id: string }>('/api/me'),
-        requestJson<{ report?: { tasks?: { pinnedTaskIds?: string[] } } }>('/api/ui-preferences'),
+        requestJson<{ report?: { tasks?: { pinnedTaskIds?: string[]; orderedTaskIds?: string[] } } }>('/api/ui-preferences'),
       ])
       const nextWorkspaces = Array.isArray(workspaceRes.data?.workspaces) ? workspaceRes.data.workspaces : []
       const lastWorkspaceId = typeof window !== 'undefined' ? window.localStorage.getItem(LAST_WORKSPACE_STORAGE_KEY) || '' : ''
@@ -571,6 +577,7 @@ export function CrmTaskWorkspacesClient() {
       setSedes(Array.isArray(sedeRes.data) ? sedeRes.data : [])
       setCurrentUserId(meRes.data?.id || nextWorkspaces[0]?.currentUserId || '')
       setPinnedTaskIds(normalizePinnedTaskIds(uiPrefRes.data?.report?.tasks?.pinnedTaskIds))
+      setOrderedTaskIds(normalizeOrderedTaskIds(uiPrefRes.data?.report?.tasks?.orderedTaskIds))
       setSelectedWorkspaceId((current) => {
         if (requestedWorkspaceId && nextWorkspaces.some((workspace) => workspace.id === requestedWorkspaceId)) {
           return requestedWorkspaceId
@@ -839,6 +846,8 @@ export function CrmTaskWorkspacesClient() {
 
     const pinnedVisibleIds = pinnedTaskIds.filter((taskId) => matchingTasks.some((task) => task.id === taskId))
     const pinnedIndex = new Map(pinnedVisibleIds.map((taskId, index) => [taskId, index]))
+    const orderedVisibleIds = orderedTaskIds.filter((taskId) => matchingTasks.some((task) => task.id === taskId) && !pinnedVisibleIds.includes(taskId))
+    const orderedIndex = new Map(orderedVisibleIds.map((taskId, index) => [taskId, index]))
 
     return [...matchingTasks].sort((left, right) => {
       const leftPinnedIndex = pinnedIndex.get(left.id)
@@ -848,11 +857,18 @@ export function CrmTaskWorkspacesClient() {
         if (rightPinnedIndex === undefined) return -1
         return leftPinnedIndex - rightPinnedIndex
       }
+      const leftOrderedIndex = orderedIndex.get(left.id)
+      const rightOrderedIndex = orderedIndex.get(right.id)
+      if (leftOrderedIndex !== undefined || rightOrderedIndex !== undefined) {
+        if (leftOrderedIndex === undefined) return 1
+        if (rightOrderedIndex === undefined) return -1
+        return leftOrderedIndex - rightOrderedIndex
+      }
       const leftTime = new Date(left.createdAt).getTime()
       const rightTime = new Date(right.createdAt).getTime()
       return taskSortDirection === 'asc' ? leftTime - rightTime : rightTime - leftTime
     })
-  }, [pinnedTaskIds, search, selectedProjectId, taskSortDirection, taskViewMode, tasks])
+  }, [orderedTaskIds, pinnedTaskIds, search, selectedProjectId, taskSortDirection, taskViewMode, tasks])
 
   const totalTaskPages = useMemo(() => Math.max(1, Math.ceil(filteredTasks.length / taskPageSize)), [filteredTasks.length, taskPageSize])
   const paginatedTasks = useMemo(() => {
@@ -887,13 +903,25 @@ export function CrmTaskWorkspacesClient() {
 
   async function savePinnedTasks(nextPinnedTaskIds: string[]) {
     setPinnedTaskIds(nextPinnedTaskIds)
-    const json = await requestJson<{ report?: { tasks?: { pinnedTaskIds?: string[] } } }>('/api/ui-preferences', {
+    const json = await requestJson<{ report?: { tasks?: { pinnedTaskIds?: string[]; orderedTaskIds?: string[] } } }>('/api/ui-preferences', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ report: { tasks: { pinnedTaskIds: nextPinnedTaskIds } } }),
+      body: JSON.stringify({ report: { tasks: { pinnedTaskIds: nextPinnedTaskIds, orderedTaskIds } } }),
     })
     if (!json.success) {
       throw new Error(json.error || 'No se pudieron guardar las tareas ancladas.')
+    }
+  }
+
+  async function saveOrderedTasks(nextOrderedTaskIds: string[]) {
+    setOrderedTaskIds(nextOrderedTaskIds)
+    const json = await requestJson<{ report?: { tasks?: { pinnedTaskIds?: string[]; orderedTaskIds?: string[] } } }>('/api/ui-preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report: { tasks: { pinnedTaskIds, orderedTaskIds: nextOrderedTaskIds } } }),
+    })
+    if (!json.success) {
+      throw new Error(json.error || 'No se pudo guardar el orden manual de tareas.')
     }
   }
 
@@ -932,6 +960,32 @@ export function CrmTaskWorkspacesClient() {
       await savePinnedTasks(nextPinnedTaskIds)
     } catch (error) {
       alert(error instanceof Error ? error.message : 'No se pudo reordenar el anclaje.')
+    }
+  }
+
+  async function reorderVisibleTasks(fromTaskId: string, toTaskId: string, placement: 'before' | 'after') {
+    const visibleUnpinnedIds = filteredTasks
+      .filter((task) => !pinnedTaskIds.includes(task.id))
+      .map((task) => task.id)
+
+    if (!visibleUnpinnedIds.includes(fromTaskId) || !visibleUnpinnedIds.includes(toTaskId)) return
+
+    const normalizedCurrentOrder = [
+      ...orderedTaskIds.filter((taskId) => visibleUnpinnedIds.includes(taskId)),
+      ...visibleUnpinnedIds.filter((taskId) => !orderedTaskIds.includes(taskId)),
+    ]
+
+    const nextVisibleOrder = reorderValuesByPlacement(normalizedCurrentOrder, fromTaskId, toTaskId, placement)
+    if (nextVisibleOrder === normalizedCurrentOrder) return
+
+    const visibleSet = new Set(visibleUnpinnedIds)
+    const preserved = orderedTaskIds.filter((taskId) => !visibleSet.has(taskId))
+    const nextOrderedTaskIds = [...preserved, ...nextVisibleOrder]
+
+    try {
+      await saveOrderedTasks(nextOrderedTaskIds)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'No se pudo reordenar la tarea.')
     }
   }
 
@@ -1314,6 +1368,11 @@ export function CrmTaskWorkspacesClient() {
 
     if (isTaskPinned(payload.taskId) && isTaskPinned(targetTask.id)) {
       await reorderPinnedTasks(payload.taskId, targetTask.id, dragOverTaskPlacement)
+      return
+    }
+
+    if (!isTaskPinned(payload.taskId) && !isTaskPinned(targetTask.id)) {
+      await reorderVisibleTasks(payload.taskId, targetTask.id, dragOverTaskPlacement)
       return
     }
 
@@ -2092,10 +2151,10 @@ export function CrmTaskWorkspacesClient() {
                         }
                         void handleTaskRowDrop(task, event)
                       }}
-                      className={`group relative grid items-center gap-3 border-b px-4 py-2 text-xs text-slate-700 bg-gradient-to-r transition-[margin,box-shadow,colors] ${dragOverTaskId === task.id ? 'border-emerald-400 ring-2 ring-inset ring-emerald-200' : ''} ${dragOverTaskId === task.id && dragOverTaskPlacement === 'before' ? 'mt-3' : ''} ${dragOverTaskId === task.id && dragOverTaskPlacement === 'after' ? 'mb-3' : ''} ${statusMeta.softClass}`}
+                      className={`group relative grid items-center gap-3 border-b px-4 py-2 text-xs text-slate-700 bg-gradient-to-r transition-[margin,box-shadow,colors,transform] duration-300 ease-out ${dragOverTaskId === task.id ? 'border-emerald-400 ring-2 ring-inset ring-emerald-200' : ''} ${dragOverTaskId === task.id && dragOverTaskPlacement === 'before' ? 'mt-6' : ''} ${dragOverTaskId === task.id && dragOverTaskPlacement === 'after' ? 'mb-6' : ''} ${statusMeta.softClass}`}
                       style={{ gridTemplateColumns: taskGridTemplate, borderLeft: `5px solid ${normalizeHex(task.colorHex)}`, borderBottomColor: 'rgba(226,232,240,0.9)' }}
                     >
-                      {dragOverTaskId === task.id && dragOverTaskPlacement === 'before' ? <div className="pointer-events-none absolute -top-3 left-4 right-4 h-2 rounded-full border-2 border-dashed border-emerald-300 bg-emerald-100/80 shadow-[0_0_0_4px_rgba(110,231,183,0.2)] animate-pulse" aria-hidden="true" /> : null}
+                      {dragOverTaskId === task.id && dragOverTaskPlacement === 'before' ? <div className="pointer-events-none absolute -top-5 left-4 right-4 h-4 rounded-full border-2 border-dashed border-emerald-300 bg-emerald-100/85 shadow-[0_0_0_6px_rgba(110,231,183,0.16)] transition-all duration-300 ease-out animate-[pulse_1.6s_ease-in-out_infinite]" aria-hidden="true" /> : null}
                       <div className="flex min-w-0 items-center gap-2"><GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-slate-400 active:cursor-grabbing" /><div className="min-w-0 flex-1"><Tooltip><TooltipTrigger asChild><p className="truncate font-semibold text-slate-950">{task.title}</p></TooltipTrigger><TooltipContent><p className="max-w-sm break-words text-xs">{task.title}</p></TooltipContent></Tooltip></div><Button variant="ghost" size="icon" className={pinned ? 'h-7 w-7 shrink-0 rounded-full text-amber-600 opacity-100 hover:bg-amber-100 hover:text-amber-700' : 'h-7 w-7 shrink-0 rounded-full opacity-0 transition-opacity hover:bg-slate-200 hover:text-slate-900 group-hover:opacity-100'} aria-label={pinned ? `Desanclar ${task.title}` : `Anclar ${task.title}`} onClick={() => void toggleTaskPinned(task)}><Pin className="h-3.5 w-3.5" /></Button></div>
                       {showCrossWorkspaceColumn ? <div className="min-w-0"><p className="truncate font-medium text-slate-900">{task.workspace?.name || 'Sin proyecto'}</p><p className="truncate text-[11px] text-slate-500">{task.project?.name || 'Sin lista'}</p></div> : null}
                       {showPriorityColumn ? <div className="overflow-hidden">{renderTaskPriorityControl(task)}</div> : null}
@@ -2109,7 +2168,7 @@ export function CrmTaskWorkspacesClient() {
                       {visibleExtraTaskColumns.includes('custom-fields') ? <div className="overflow-hidden">{renderTaskCustomFieldsColumn(task)}</div> : null}
                       {visibleExtraTaskColumns.includes('history') ? <div className="overflow-hidden">{renderTaskHistoryColumn(task)}</div> : null}
                       {visibleExtraTaskColumns.includes('note') ? <div className="overflow-hidden">{renderTaskNoteColumn(task)}</div> : null}
-                      {dragOverTaskId === task.id && dragOverTaskPlacement === 'after' ? <div className="pointer-events-none absolute -bottom-3 left-4 right-4 h-2 rounded-full border-2 border-dashed border-emerald-300 bg-emerald-100/80 shadow-[0_0_0_4px_rgba(110,231,183,0.2)] animate-pulse" aria-hidden="true" /> : null}
+                      {dragOverTaskId === task.id && dragOverTaskPlacement === 'after' ? <div className="pointer-events-none absolute -bottom-5 left-4 right-4 h-4 rounded-full border-2 border-dashed border-emerald-300 bg-emerald-100/85 shadow-[0_0_0_6px_rgba(110,231,183,0.16)] transition-all duration-300 ease-out animate-[pulse_1.6s_ease-in-out_infinite]" aria-hidden="true" /> : null}
                       <div className="flex items-center gap-1 overflow-hidden">
                         <Button variant="outline" size="icon" className="h-8 w-8 rounded-full" aria-label={`Ver detalle de ${task.title}`} onClick={() => void loadTaskDetail(task.id)}>
                           <Eye className="h-3.5 w-3.5" />
