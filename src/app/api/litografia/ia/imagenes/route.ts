@@ -9,11 +9,15 @@ import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
 
+const IMAGE_SIZE_VALUES = ['1024x1024', '1024x1536', '1536x1024', '1024x768', '1536x864', '864x1536'] as const
+const IMAGE_QUALITY_VALUES = ['low', 'medium', 'high', 'auto'] as const
+const FLEXIBLE_SIZE_VALUES = new Set(['1024x768', '1536x864', '864x1536'])
+
 const generateSchema = z.object({
   action: z.literal('generate').optional(),
   prompt: z.string().trim().min(12, 'Escribe un prompt más específico para generar la imagen.'),
-  size: z.enum(['1024x1024', '1024x1536', '1536x1024']).optional(),
-  quality: z.enum(['low', 'medium', 'high', 'auto']).optional(),
+  size: z.enum(IMAGE_SIZE_VALUES).optional(),
+  quality: z.enum(IMAGE_QUALITY_VALUES).optional(),
 })
 
 const saveSchema = z.object({
@@ -43,6 +47,35 @@ async function getEmpresaIdFromSedeId(sedeId: string) {
   return sede?.empresaId ?? null
 }
 
+function supportsFlexibleImageSizes(model: string) {
+  return /^gpt-image-2(?:$|-)/i.test(model.trim())
+}
+
+async function mapHistoryWithPreviewUrls(args: {
+  empresaId: string
+  history: Awaited<ReturnType<typeof listAiWorkspaceHistory>>
+}) {
+  return Promise.all(args.history.map(async (entry) => {
+    const metadata = entry.metadata && typeof entry.metadata === 'object' && !Array.isArray(entry.metadata)
+      ? entry.metadata as Record<string, unknown>
+      : null
+    const pendingId = typeof metadata?.pendingId === 'string' ? metadata.pendingId.trim() : ''
+    const pending = !entry.asset?.url && pendingId
+      ? await readPendingLitografiaAiImage({ empresaId: args.empresaId, pendingId })
+      : null
+    const previewUrl = entry.asset?.url
+      ? entry.asset.url
+      : pending?.base64
+        ? `data:${pending.mimeType};base64,${pending.base64}`
+        : null
+
+    return {
+      ...entry,
+      previewUrl,
+    }
+  }))
+}
+
 export async function GET() {
   try {
     const access = await requireApiAccess(ModuleKey.COTIZADOR, 'READ')
@@ -60,11 +93,13 @@ export async function GET() {
     const history = await listAiWorkspaceHistory({
       empresaId,
       limit: 120,
-      kinds: ['LITOGRAFIA_QUOTE', 'IMAGE_GENERATION'],
+      kinds: ['IMAGE_GENERATION'],
       actorUserId: canViewCompanyWide ? null : access.userId,
     })
 
-    return NextResponse.json({ ok: true, scope: canViewCompanyWide ? 'company' : 'personal', history })
+    const mappedHistory = await mapHistoryWithPreviewUrls({ empresaId, history })
+
+    return NextResponse.json({ ok: true, scope: canViewCompanyWide ? 'company' : 'personal', history: mappedHistory })
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'No se pudo consultar el historial IA.' }, { status: 400 })
   }
@@ -75,8 +110,13 @@ export async function POST(request: NextRequest) {
     const access = await requireApiAccess(ModuleKey.COTIZADOR, 'WRITE')
     if (!access.ok) return access.response
 
-    const body = await request.json().catch(() => null)
-    const requestedAction = typeof body?.action === 'string' ? body.action : 'generate'
+    const contentType = request.headers.get('content-type') || ''
+    const body = contentType.includes('multipart/form-data') ? null : await request.json().catch(() => null)
+    const requestedAction = contentType.includes('multipart/form-data')
+      ? String((await request.formData().catch(() => null))?.get('action') || 'generate').trim()
+      : typeof body?.action === 'string'
+        ? body.action
+        : 'generate'
 
     const empresaId = await getEmpresaIdFromSedeId(access.sedeId)
     if (!empresaId) return NextResponse.json({ ok: false, error: 'Empresa no encontrada.' }, { status: 404 })
@@ -167,7 +207,32 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const parsed = generateSchema.safeParse(body)
+    let parsed = generateSchema.safeParse(body)
+    let referenceImages: File[] = []
+
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await request.formData().catch(() => null)
+      if (!formData) {
+        return NextResponse.json({ ok: false, error: 'No se pudo leer el formulario de generación.' }, { status: 400 })
+      }
+
+      if (requestedAction !== 'generate') {
+        return NextResponse.json({ ok: false, error: 'Acción no soportada para envío multipart.' }, { status: 400 })
+      }
+
+      parsed = generateSchema.safeParse({
+        action: 'generate',
+        prompt: String(formData.get('prompt') || ''),
+        size: String(formData.get('size') || ''),
+        quality: String(formData.get('quality') || ''),
+      })
+
+      referenceImages = formData
+        .getAll('images')
+        .filter((item): item is File => item instanceof File && item.size > 0)
+        .slice(0, 4)
+    }
+
     if (!parsed.success) {
       return NextResponse.json({ ok: false, error: parsed.error.issues[0]?.message || 'Body inválido.' }, { status: 400 })
     }
@@ -177,19 +242,56 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'La generación de imágenes no está configurada. Define LITOGRAFIA_AI_IMAGE_API_KEY y LITOGRAFIA_AI_IMAGE_MODEL.' }, { status: 400 })
     }
 
-    const imageResponse = await fetch(`${config.baseUrl}/images/generations`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.model,
-        prompt: parsed.data.prompt,
-        size: parsed.data.size || '1024x1024',
-        quality: parsed.data.quality || 'auto',
-      }),
-    })
+    const requestedSize = parsed.data.size || '1024x1024'
+    const requestedQuality = parsed.data.quality || 'auto'
+    const usingReferences = referenceImages.length > 0
+
+    if (FLEXIBLE_SIZE_VALUES.has(requestedSize) && !supportsFlexibleImageSizes(config.model)) {
+      return NextResponse.json({
+        ok: false,
+        error: 'Las relaciones 4:3, 16:9 y 9:16 requieren configurar LITOGRAFIA_AI_IMAGE_MODEL con un modelo compatible con tamaños flexibles, por ejemplo gpt-image-2.',
+      }, { status: 400 })
+    }
+
+    const imageResponse = usingReferences
+      ? await (async () => {
+          const upstream = new FormData()
+          upstream.append('model', config.model)
+          upstream.append('prompt', parsed.data.prompt)
+          upstream.append('size', requestedSize)
+          upstream.append('quality', requestedQuality)
+
+          for (let index = 0; index < referenceImages.length; index += 1) {
+            const file = referenceImages[index]
+            const bytes = Buffer.from(await file.arrayBuffer())
+            upstream.append(
+              'image[]',
+              new Blob([bytes], { type: file.type || 'application/octet-stream' }),
+              file.name || `referencia-${index + 1}.png`,
+            )
+          }
+
+          return fetch(`${config.baseUrl}/images/edits`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${config.apiKey}`,
+            },
+            body: upstream,
+          })
+        })()
+      : await fetch(`${config.baseUrl}/images/generations`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: config.model,
+            prompt: parsed.data.prompt,
+            size: requestedSize,
+            quality: requestedQuality,
+          }),
+        })
 
     if (!imageResponse.ok) {
       const errorText = await imageResponse.text().catch(() => '')
@@ -224,14 +326,16 @@ export async function POST(request: NextRequest) {
       empresaId,
       prompt: parsed.data.prompt,
       revisedPrompt: imageItem.revised_prompt || null,
-      size: parsed.data.size || '1024x1024',
-      quality: parsed.data.quality || 'auto',
+      size: requestedSize,
+      quality: requestedQuality,
       provider: config.baseUrl.includes('openai.com') ? 'OpenAI' : 'Proveedor OpenAI-compatible',
       model: config.model,
       mimeType: 'image/png',
       base64: bytes.toString('base64'),
     })
-    const responseText = `Imagen generada por ${pending.provider} con ${config.model}. Revísala y apruébala si quieres guardarla en ${AI_IMAGES_FOLDER}.`
+    const responseText = usingReferences
+      ? `Imagen generada por ${pending.provider} con ${config.model} usando ${referenceImages.length} imagen${referenceImages.length === 1 ? '' : 'es'} de referencia. Revísala y apruébala si quieres guardarla en ${AI_IMAGES_FOLDER}.`
+      : `Imagen generada por ${pending.provider} con ${config.model}. Revísala y apruébala si quieres guardarla en ${AI_IMAGES_FOLDER}.`
     const historyEntry = await appendAiWorkspaceHistory({
       empresaId,
       entry: {
@@ -244,9 +348,11 @@ export async function POST(request: NextRequest) {
         metadata: {
           provider: pending.provider,
           model: config.model,
-          size: parsed.data.size || '1024x1024',
-          quality: parsed.data.quality || 'auto',
+          size: requestedSize,
+          quality: requestedQuality,
           pendingId: pending.id,
+          referenceImageCount: referenceImages.length,
+          mode: usingReferences ? 'REFERENCE_EDIT' : 'LLM',
           status: 'PREVIEW_READY',
         },
         asset: null,
@@ -265,7 +371,7 @@ export async function POST(request: NextRequest) {
         source: {
           provider: pending.provider,
           model: config.model,
-          mode: 'LLM',
+          mode: usingReferences ? 'REFERENCE_EDIT' : 'LLM',
         },
       },
     })

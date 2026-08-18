@@ -7,7 +7,7 @@ export type LitografiaAiPendingImageRecord = {
   empresaId: string
   prompt: string
   revisedPrompt: string | null
-  size: '1024x1024' | '1024x1536' | '1536x1024'
+  size: '1024x1024' | '1024x1536' | '1536x1024' | '1024x768' | '1536x864' | '864x1536'
   quality: 'low' | 'medium' | 'high' | 'auto'
   provider: string
   model: string
