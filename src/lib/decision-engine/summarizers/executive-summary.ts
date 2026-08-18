@@ -7,6 +7,7 @@ type BuildExecutiveSummaryArgs = {
   staleOpportunities: number
   lowStockCount: number
   pendingPurchaseAuthorizationCount: number
+  pendingSupplyRequestCount: number
   overdueOrdersCount: number
   netCashflow: number
   receivablesCount: number
@@ -40,8 +41,8 @@ export function buildExecutiveSummary(args: BuildExecutiveSummaryArgs) {
     ? `Hay ${args.overdueQuotes} cotizaciones vencidas o sin mover y ${args.staleOpportunities} oportunidades estancadas que deben revisarse.`
     : 'No se observan señales fuertes de fricción comercial en cotizaciones ni oportunidades abiertas.'
 
-  const operationsLine = args.lowStockCount > 0 || args.pendingPurchaseAuthorizationCount > 0 || args.overdueOrdersCount > 0
-    ? `En recursos y operaciones aparecen ${args.lowStockCount} faltantes críticos, ${args.pendingPurchaseAuthorizationCount} compras pendientes por autorizar y ${args.overdueOrdersCount} órdenes retrasadas.`
+  const operationsLine = args.lowStockCount > 0 || args.pendingPurchaseAuthorizationCount > 0 || args.pendingSupplyRequestCount > 0 || args.overdueOrdersCount > 0
+    ? `En recursos y operaciones aparecen ${args.lowStockCount} faltantes críticos, ${args.pendingPurchaseAuthorizationCount} compras pendientes por autorizar, ${args.pendingSupplyRequestCount} solicitudes de abastecimiento entre sedes y ${args.overdueOrdersCount} órdenes retrasadas.`
     : 'Recursos y operaciones no muestran una fricción dominante en stock, compras u órdenes activas.'
 
   const financeLine = args.netCashflow < 0 || args.receivablesCount > 0 || args.draftVouchersCount > 0

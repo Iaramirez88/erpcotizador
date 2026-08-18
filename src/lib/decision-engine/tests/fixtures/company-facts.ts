@@ -57,6 +57,7 @@ export const companyDecisionFactsFixture: CompanyDecisionFacts = {
   resources: {
     lowStockCount: 2,
     pendingPurchaseAuthorizationCount: 1,
+    pendingSupplyRequestCount: 3,
   },
   operations: {
     overdueOrdersCount: 1,

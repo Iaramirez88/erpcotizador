@@ -8,6 +8,7 @@ type ComputeHealthScoreArgs = {
   unreadNotifications: number
   lowStockCount: number
   pendingPurchaseAuthorizationCount: number
+  pendingSupplyRequestCount: number
   overdueOrdersCount: number
   unassignedActiveOrdersCount: number
   operatingResult: number
@@ -44,7 +45,7 @@ export function computeHealthScore(args: ComputeHealthScoreArgs) {
         ? 7
         : 3
 
-  const operationalAttention = args.lowStockCount + args.pendingPurchaseAuthorizationCount + args.overdueOrdersCount + args.unassignedActiveOrdersCount + args.unreadNotifications
+  const operationalAttention = args.lowStockCount + args.pendingPurchaseAuthorizationCount + args.pendingSupplyRequestCount + args.overdueOrdersCount + args.unassignedActiveOrdersCount + args.unreadNotifications
   const operationsScore = operationalAttention === 0
     ? 20
     : operationalAttention <= 5
@@ -94,7 +95,7 @@ export function computeHealthScore(args: ComputeHealthScoreArgs) {
       label: 'Ejecución y abastecimiento',
       score: operationsScore,
       maxScore: 20,
-      summary: `${args.lowStockCount} faltantes críticos, ${args.pendingPurchaseAuthorizationCount} compras pendientes, ${args.overdueOrdersCount} órdenes retrasadas, ${args.unassignedActiveOrdersCount} órdenes sin responsable y ${args.unreadNotifications} notificaciones pendientes.`,
+      summary: `${args.lowStockCount} faltantes críticos, ${args.pendingPurchaseAuthorizationCount} compras pendientes, ${args.pendingSupplyRequestCount} solicitudes internas de abastecimiento, ${args.overdueOrdersCount} órdenes retrasadas, ${args.unassignedActiveOrdersCount} órdenes sin responsable y ${args.unreadNotifications} notificaciones pendientes.`,
     },
     {
       id: 'finance-resilience',

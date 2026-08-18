@@ -207,6 +207,30 @@ function buildInsights(facts: CompanyDecisionFacts, locale: string) {
     })
   }
 
+  if (facts.resources.pendingSupplyRequestCount > 0) {
+    alerts.push({
+      id: 'alert-pending-supply-requests',
+      kind: 'ALERT',
+      title: 'Solicitudes internas de abastecimiento pendientes',
+      summary: `Hay ${facts.resources.pendingSupplyRequestCount} solicitudes entre sedes esperando atención.` ,
+      severity: facts.resources.pendingSupplyRequestCount >= 5 ? 'HIGH' : 'MEDIUM',
+      domain: 'RECURSOS',
+      subdomain: 'INVENTORY',
+      reasons: ['Las sedes hijas ya reportaron necesidad de productos y la sede padre aún no las atiende.'],
+      evidence: [`Solicitudes pendientes: ${facts.resources.pendingSupplyRequestCount}.`],
+    })
+
+    actions.push({
+      id: 'action-review-supply-requests',
+      title: 'Atender solicitudes entre sedes',
+      description: 'Revisa la cola de abastecimiento interno, prioriza urgentes y despacha desde la sede padre.',
+      priority: 'NOW',
+      owner: 'OPERATIONS',
+      expectedImpact: 'Reducir faltantes operativos en sedes hijas y mejorar tiempos de respuesta internos.',
+      href: '/dashboard/inventario/abastecimiento',
+    })
+  }
+
   if (facts.operations.overdueOrdersCount > 0) {
     risks.push({
       id: 'risk-overdue-work-orders',
@@ -316,6 +340,14 @@ function buildKpis(facts: CompanyDecisionFacts, locale: string, salesGrowthPct: 
       status: facts.quotes.overdueQuotes.length === 0 ? 'POSITIVE' : 'WARNING',
       note: 'Cotizaciones abiertas que ya superaron su ventana esperada.',
     },
+    {
+      id: 'kpi-pending-supply-requests',
+      label: 'Abastecimientos pendientes',
+      value: facts.resources.pendingSupplyRequestCount,
+      formattedValue: String(facts.resources.pendingSupplyRequestCount),
+      status: facts.resources.pendingSupplyRequestCount === 0 ? 'POSITIVE' : 'WARNING',
+      note: 'Solicitudes internas entre sedes todavía sin atender.',
+    },
   ]
 }
 
@@ -381,6 +413,7 @@ export const companyAnalyzerPlugin: DecisionAnalyzerPlugin<CompanyDecisionFacts>
       unreadNotifications: facts.notifications.unreadCount,
       lowStockCount: facts.resources.lowStockCount,
       pendingPurchaseAuthorizationCount: facts.resources.pendingPurchaseAuthorizationCount,
+      pendingSupplyRequestCount: facts.resources.pendingSupplyRequestCount,
       overdueOrdersCount: facts.operations.overdueOrdersCount,
       unassignedActiveOrdersCount: facts.operations.unassignedActiveOrdersCount,
       operatingResult: facts.finance.operatingResult,
@@ -400,6 +433,7 @@ export const companyAnalyzerPlugin: DecisionAnalyzerPlugin<CompanyDecisionFacts>
       staleOpportunities: facts.crm.staleOpportunities.length,
       lowStockCount: facts.resources.lowStockCount,
       pendingPurchaseAuthorizationCount: facts.resources.pendingPurchaseAuthorizationCount,
+      pendingSupplyRequestCount: facts.resources.pendingSupplyRequestCount,
       overdueOrdersCount: facts.operations.overdueOrdersCount,
       netCashflow: facts.finance.netCashflow,
       receivablesCount: facts.finance.receivablesCount,

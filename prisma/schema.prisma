@@ -153,6 +153,8 @@ model User {
   // Traslados de inventario
   transfersCreated   InventoryTransfer[] @relation("TransferCreated")
   transfersCompleted InventoryTransfer[] @relation("TransferCompleted")
+  inventorySupplyRequestsCreated InventorySupplyRequest[] @relation("InventorySupplyRequestCreatedBy")
+  inventorySupplyRequestsFulfilled InventorySupplyRequest[] @relation("InventorySupplyRequestFulfilledBy")
 
   // Contabilidad
   accountingJournalEntriesCreated AccountingJournalEntry[] @relation("AccountingJournalEntryCreatedBy")
@@ -576,6 +578,19 @@ enum InventoryTransferStatus {
   CANCELADO
 }
 
+enum InventorySupplyRequestStatus {
+  PENDIENTE
+  COMPLETADO
+  CANCELADO
+}
+
+enum InventorySupplyRequestPriority {
+  BAJA
+  MEDIA
+  ALTA
+  URGENTE
+}
+
 enum PosInvoiceStatus {
   DRAFT
   PAID
@@ -725,6 +740,7 @@ model Empresa {
   backups EmpresaBackup[]
 
   inventoryMovements InventoryMovement[]
+  inventorySupplyRequests InventorySupplyRequest[]
 
   // Bodegas / stock / POS
   warehouses  InventoryWarehouse[]
@@ -1246,6 +1262,7 @@ model InventoryWarehouse {
   nombre    String
   codigo    String?
   isDefault Boolean @default(false)
+  isSupplyHub Boolean @default(false)
 
   empresaId String
   empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
@@ -1264,6 +1281,8 @@ model InventoryWarehouse {
   
   transfersFrom InventoryTransfer[] @relation("TransfersFrom")
   transfersTo   InventoryTransfer[] @relation("TransfersTo")
+  supplyRequestsAsSource InventorySupplyRequest[] @relation("SupplyRequestSource")
+  supplyRequestsAsRequester InventorySupplyRequest[] @relation("SupplyRequestRequester")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1331,6 +1350,66 @@ model InventoryTransfer {
   @@index([materialId, createdAt])
   @@index([status])
   @@map("inventory_transfers")
+}
+
+model InventorySupplyRequest {
+  id     String @id @default(cuid())
+  numero String @unique
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  requestingWarehouseId String
+  requestingWarehouse   InventoryWarehouse @relation("SupplyRequestRequester", fields: [requestingWarehouseId], references: [id], onDelete: Restrict)
+
+  supplyWarehouseId String
+  supplyWarehouse   InventoryWarehouse @relation("SupplyRequestSource", fields: [supplyWarehouseId], references: [id], onDelete: Restrict)
+
+  requestingSedeId String?
+  requestingSede   Sede? @relation(fields: [requestingSedeId], references: [id], onDelete: SetNull)
+
+  status   InventorySupplyRequestStatus   @default(PENDIENTE)
+  priority InventorySupplyRequestPriority @default(MEDIA)
+  note     String?
+  taskId   String?
+
+  requestedById String?
+  requestedBy   User? @relation("InventorySupplyRequestCreatedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  fulfilledById String?
+  fulfilledBy   User? @relation("InventorySupplyRequestFulfilledBy", fields: [fulfilledById], references: [id], onDelete: SetNull)
+  fulfilledAt   DateTime?
+
+  items InventorySupplyRequestItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status, createdAt])
+  @@index([requestingWarehouseId, createdAt])
+  @@index([supplyWarehouseId, createdAt])
+  @@index([requestingSedeId, createdAt])
+  @@map("inventory_supply_requests")
+}
+
+model InventorySupplyRequestItem {
+  id String @id @default(cuid())
+
+  requestId String
+  request   InventorySupplyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  quantity Float
+  note     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([requestId])
+  @@index([materialId])
+  @@map("inventory_supply_request_items")
 }
 
 model PosSequence {
@@ -1706,6 +1785,7 @@ model Sede {
   // Inventario / bodegas / POS
   inventoryMovements InventoryMovement[]
   warehouses         InventoryWarehouse[]
+  inventorySupplyRequests InventorySupplyRequest[]
   posSequence        PosSequence?
   cotizacionSequence CotizacionSequence?
   remisionSequence   RemisionSequence?
@@ -3671,6 +3751,7 @@ model Material {
   inventoryMovements InventoryMovement[]
   stocks             InventoryStock[]
   inventoryTransfers InventoryTransfer[]
+  inventorySupplyRequestItems InventorySupplyRequestItem[]
 
   posInvoiceItems PosInvoiceItem[]
   posReturnItems  PosReturnItem[]

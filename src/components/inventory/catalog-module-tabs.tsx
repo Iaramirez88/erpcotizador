@@ -13,10 +13,16 @@ const ITEMS = [
     match: (pathname: string) => pathname.startsWith("/dashboard/productos") || pathname.startsWith("/dashboard/materiales"),
   },
   {
+    href: "/dashboard/inventario/abastecimiento",
+    label: "Abastecimiento",
+    description: "Solicitudes entre sedes",
+    match: (pathname: string) => pathname.startsWith("/dashboard/inventario/abastecimiento"),
+  },
+  {
     href: "/dashboard/inventario",
     label: "Inventario",
     description: "Stock y movimientos",
-    match: (pathname: string) => pathname.startsWith("/dashboard/inventario"),
+    match: (pathname: string) => pathname.startsWith("/dashboard/inventario") && !pathname.startsWith("/dashboard/inventario/abastecimiento"),
   },
 ] as const
 
@@ -25,7 +31,7 @@ export function CatalogModuleTabs() {
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-white/80 p-1 shadow-sm">
-      <div className="grid gap-1 sm:grid-cols-2">
+      <div className="grid gap-1 sm:grid-cols-3">
         {ITEMS.map((item) => {
           const isActive = item.match(pathname)
 

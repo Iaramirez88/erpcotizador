@@ -51,6 +51,7 @@ export type CompanyDecisionFacts = {
   resources: {
     lowStockCount: number
     pendingPurchaseAuthorizationCount: number
+    pendingSupplyRequestCount: number
   }
   operations: {
     overdueOrdersCount: number
@@ -142,7 +143,7 @@ export async function collectCompanyFacts(args: CollectCompanyFactsArgs): Promis
   const range = resolveAnalysisDateRange(args)
   const staleThreshold = new Date(range.to.getTime() - 21 * 24 * 60 * 60 * 1000)
 
-  const [currentSales, previousSales, staleOpportunities, openOpportunityAggregate, wonThisPeriod, createdQuotesCount, overdueQuotes, unreadNotifications, lowStockCount, pendingPurchaseAuthorizationCount, overdueOrdersCount, unassignedActiveOrdersCount, accountingLines, posPayments, purchasePayments, openReceivableInvoices, draftVouchersCount] = await Promise.all([
+  const [currentSales, previousSales, staleOpportunities, openOpportunityAggregate, wonThisPeriod, createdQuotesCount, overdueQuotes, unreadNotifications, lowStockCount, pendingPurchaseAuthorizationCount, pendingSupplyRequestCount, overdueOrdersCount, unassignedActiveOrdersCount, accountingLines, posPayments, purchasePayments, openReceivableInvoices, draftVouchersCount] = await Promise.all([
     loadSalesWindow({
       prisma: args.prisma,
       empresaId: args.empresaId,
@@ -257,6 +258,13 @@ export async function collectCompanyFacts(args: CollectCompanyFactsArgs): Promis
         ...(args.sedeId ? { sedeId: args.sedeId } : {}),
         autorizado: false,
         estado: { not: 'ANULADA' },
+      },
+    }),
+    args.prisma.inventorySupplyRequest.count({
+      where: {
+        empresaId: args.empresaId,
+        ...(args.sedeId ? { requestingSedeId: args.sedeId } : {}),
+        status: 'PENDIENTE',
       },
     }),
     args.prisma.ordenTrabajo.count({
@@ -430,6 +438,7 @@ export async function collectCompanyFacts(args: CollectCompanyFactsArgs): Promis
     resources: {
       lowStockCount,
       pendingPurchaseAuthorizationCount,
+      pendingSupplyRequestCount,
     },
     operations: {
       overdueOrdersCount,
