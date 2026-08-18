@@ -13,6 +13,21 @@ import { formatDateShort } from '@/lib/utils'
 
 export type DataViewMode = 'list' | 'grid'
 
+export type PayrollVacationSummary = {
+  earnedDays: number
+  takenDays: number
+  availableDays: number
+  earnedHours: number
+  takenHours: number
+  availableHours: number
+}
+
+export type PayrollPerformanceChartPoint = {
+  label: string
+  target: number
+  actual: number
+}
+
 export type PayrollEmployeeRow = {
   id: string
   code: string
@@ -51,6 +66,9 @@ export type PayrollEmployeeRow = {
   bankAccountType?: string | null
   bankAccountNumber?: string | null
   notes?: string | null
+  overtimeMinutes: number
+  overtimeHours: number
+  vacation: PayrollVacationSummary
   alerts: string[]
 }
 
@@ -73,6 +91,13 @@ export type PayrollContractRow = {
   notes?: string | null
   sede: string
   costCenter: string
+  extensionCount: number
+  lastExtensionDate?: string | null
+  lastExtensionReason?: string | null
+  renewalReminderDays: number
+  adminOnlyReminder: boolean
+  daysToExpiration?: number | null
+  expiresSoon: boolean
 }
 
 export type PayrollPeriodRow = {
@@ -164,6 +189,17 @@ export type PayrollEmployeeDocumentRow = {
   signedAt?: string | null
   expiresAt?: string | null
   notes?: string | null
+  legalFormName?: string | null
+  signatureMode: string
+  signableInPlatform: boolean
+  hrApprovalStatus: string
+  hrApproverName?: string | null
+  hrApprovedAt?: string | null
+  directorApprovalStatus: string
+  directorApproverName?: string | null
+  directorApprovedAt?: string | null
+  approvalStatus: string
+  formSummary?: string | null
 }
 
 export type PayrollOnboardingJourneyRow = {
@@ -299,6 +335,12 @@ export type PayrollPerformanceReviewRow = {
   completedAt?: string | null
   developmentPlan?: string | null
   summary?: string | null
+  salesTargetAmount?: number | null
+  salesAchievedAmount?: number | null
+  salesTargetDeals?: number | null
+  salesAchievedDeals?: number | null
+  goalProgressPercent?: number | null
+  chartSeries: PayrollPerformanceChartPoint[]
 }
 
 export type PayrollTrainingAssignmentRow = {
@@ -329,6 +371,31 @@ export function buildPayrollEmployeeFullName(employee: {
 
 export function buildPayrollDateRange(startsAt: Date | string, endsAt: Date | string) {
   return `${formatDateShort(startsAt)} al ${formatDateShort(endsAt)}`
+}
+
+function roundPayrollMetric(value: number) {
+  return Math.round(value * 10) / 10
+}
+
+export function resolvePayrollVacationBalance(hireDate: Date, novelties: Array<{ type: string; days: number | null }>): PayrollVacationSummary {
+  const elapsedMs = Date.now() - hireDate.getTime()
+  const elapsedDays = Math.max(0, elapsedMs / (1000 * 60 * 60 * 24))
+  const earnedDays = roundPayrollMetric((elapsedDays / 365) * 15)
+  const takenDays = roundPayrollMetric(
+    novelties
+      .filter((item) => item.type === 'VACACIONES')
+      .reduce((sum, item) => sum + (item.days ?? 0), 0),
+  )
+  const availableDays = roundPayrollMetric(Math.max(0, earnedDays - takenDays))
+
+  return {
+    earnedDays,
+    takenDays,
+    availableDays,
+    earnedHours: roundPayrollMetric(earnedDays * 8),
+    takenHours: roundPayrollMetric(takenDays * 8),
+    availableHours: roundPayrollMetric(availableDays * 8),
+  }
 }
 
 export function nextPayrollCode(sequence: number) {

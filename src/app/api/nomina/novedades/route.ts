@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey, PayrollNoveltyStatus, PayrollNoveltyType } from '@prisma/client'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { resolvePayrollNoveltyAmounts } from '@/lib/payroll-compensation'
 import { ensurePayrollNoveltyDemoData } from '@/lib/payroll-operations'
 import { prisma } from '@/lib/prisma'
 import { buildPayrollEmployeeFullName, type PayrollNoveltyRow } from '@/lib/payroll'
@@ -170,25 +171,39 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'La incapacidad requiere adjuntar un soporte en PDF o imagen.' }, { status: 400 })
   }
 
+  const resolvedCompensation = await resolvePayrollNoveltyAmounts({
+    empresaId: access.empresaId,
+    employeeId,
+    contractId: asString(body.contractId) || null,
+    type,
+    amount: asNumber(body.amount),
+    quantity: asNumber(body.quantity),
+    days: asNumber(body.days),
+    occurredOn: asDate(body.occurredOn),
+    startsAt: asDate(body.startsAt),
+    endsAt: asDate(body.endsAt),
+  })
+
   await prisma.payrollNovelty.create({
     data: {
       empresaId: access.empresaId,
       employeeId,
-      contractId: asString(body.contractId) || null,
+      contractId: resolvedCompensation.contractId,
       periodId: asString(body.periodId) || null,
       type,
       status,
       source: asString(body.source) || 'MANUAL',
       detail,
-      amount: asNumber(body.amount),
-      quantity: asNumber(body.quantity),
-      days: asNumber(body.days),
+      amount: resolvedCompensation.amount,
+      quantity: resolvedCompensation.quantity,
+      days: resolvedCompensation.days,
       occurredOn: asDate(body.occurredOn),
       startsAt: asDate(body.startsAt),
       endsAt: asDate(body.endsAt),
       supportNumber,
       supportUrl,
       createdById: access.userId,
+      metadata: resolvedCompensation.metadata,
     },
   })
 
@@ -232,19 +247,32 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'La incapacidad requiere adjuntar un soporte en PDF o imagen.' }, { status: 400 })
   }
 
+  const resolvedCompensation = await resolvePayrollNoveltyAmounts({
+    empresaId: access.empresaId,
+    employeeId,
+    contractId: asNullableString(body.contractId),
+    type,
+    amount: asNumber(body.amount),
+    quantity: asNumber(body.quantity),
+    days: asNumber(body.days),
+    occurredOn: asDate(body.occurredOn),
+    startsAt: asDate(body.startsAt),
+    endsAt: asDate(body.endsAt),
+  })
+
   await prisma.payrollNovelty.update({
     where: { id },
     data: {
       employeeId,
-      contractId: asNullableString(body.contractId),
+      contractId: resolvedCompensation.contractId,
       periodId: asNullableString(body.periodId),
       type,
       status,
       source: asString(body.source) || 'MANUAL',
       detail,
-      amount: asNumber(body.amount),
-      quantity: asNumber(body.quantity),
-      days: asNumber(body.days),
+      amount: resolvedCompensation.amount,
+      quantity: resolvedCompensation.quantity,
+      days: resolvedCompensation.days,
       occurredOn: asDate(body.occurredOn),
       startsAt: asDate(body.startsAt),
       endsAt: asDate(body.endsAt),
@@ -252,6 +280,7 @@ export async function PUT(request: NextRequest) {
       supportUrl,
       approvedAt: status === 'VALIDADA' || status === 'APLICADA' ? new Date() : null,
       approvedById: status === 'VALIDADA' || status === 'APLICADA' ? access.userId : null,
+      metadata: resolvedCompensation.metadata,
     },
   })
 

@@ -11,6 +11,10 @@ function daysAgo(days: number) {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 }
 
+function parseMetadata(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
 export async function ensurePayrollDocumentDemoData(empresaId: string, userId?: string | null) {
   const count = await prisma.payrollEmployeeDocument.count({ where: { empresaId } })
   if (count) return
@@ -45,6 +49,19 @@ export async function ensurePayrollDocumentDemoData(empresaId: string, userId?: 
         signedAt: daysAgo(10),
         signedById: userId ?? null,
         notes: 'Documento firmado desde portal del colaborador.',
+        metadata: {
+          legalFormName: 'Desprendible legal de nómina',
+          signatureMode: 'PLATAFORMA',
+          signableInPlatform: true,
+          hrApprovalStatus: 'APROBADA',
+          hrApproverName: 'Coordinación RRHH',
+          hrApprovedAt: daysAgo(11).toISOString(),
+          directorApprovalStatus: 'APROBADA',
+          directorApproverName: 'Dirección administrativa',
+          directorApprovedAt: daysAgo(11).toISOString(),
+          approvalStatus: 'COMPLETA',
+          formSummary: 'Aceptación de desprendible con conformidad digital del colaborador.',
+        },
       },
       {
         id: randomUUID(),
@@ -64,6 +81,18 @@ export async function ensurePayrollDocumentDemoData(empresaId: string, userId?: 
         deliveredAt: daysAgo(5),
         expiresAt: daysAgo(-2),
         notes: 'Pendiente de firma electrónica por parte del colaborador.',
+        metadata: {
+          legalFormName: 'Otrosí contractual',
+          signatureMode: 'PLATAFORMA',
+          signableInPlatform: true,
+          hrApprovalStatus: 'APROBADA',
+          hrApproverName: 'Business Partner RRHH',
+          hrApprovedAt: daysAgo(5).toISOString(),
+          directorApprovalStatus: 'PENDIENTE',
+          directorApproverName: 'Dirección general',
+          approvalStatus: 'EN_APROBACION',
+          formSummary: 'Ajuste salarial con aprobación previa de RRHH y visto bueno de dirección.',
+        },
       },
       {
         id: randomUUID(),
@@ -81,6 +110,15 @@ export async function ensurePayrollDocumentDemoData(empresaId: string, userId?: 
         fileFormat: 'PDF',
         requestedAt: daysAgo(1),
         notes: 'Pendiente de publicación al portal del colaborador.',
+        metadata: {
+          legalFormName: 'Política de tratamiento de datos',
+          signatureMode: 'CHECKBOX',
+          signableInPlatform: true,
+          hrApprovalStatus: 'BORRADOR',
+          directorApprovalStatus: 'BORRADOR',
+          approvalStatus: 'BORRADOR',
+          formSummary: 'Lectura obligatoria y aceptación digital para publicación interna.',
+        },
       },
     ],
   })
@@ -97,6 +135,22 @@ export async function serializePayrollDocuments(empresaId: string): Promise<Payr
   })
 
   return rows.map((item) => ({
+    ...(() => {
+      const metadata = parseMetadata(item.metadata)
+      return {
+        legalFormName: typeof metadata.legalFormName === 'string' ? metadata.legalFormName : null,
+        signatureMode: typeof metadata.signatureMode === 'string' ? metadata.signatureMode : 'PLATAFORMA',
+        signableInPlatform: typeof metadata.signableInPlatform === 'boolean' ? metadata.signableInPlatform : true,
+        hrApprovalStatus: typeof metadata.hrApprovalStatus === 'string' ? metadata.hrApprovalStatus : 'PENDIENTE',
+        hrApproverName: typeof metadata.hrApproverName === 'string' ? metadata.hrApproverName : null,
+        hrApprovedAt: typeof metadata.hrApprovedAt === 'string' ? metadata.hrApprovedAt : null,
+        directorApprovalStatus: typeof metadata.directorApprovalStatus === 'string' ? metadata.directorApprovalStatus : 'PENDIENTE',
+        directorApproverName: typeof metadata.directorApproverName === 'string' ? metadata.directorApproverName : null,
+        directorApprovedAt: typeof metadata.directorApprovedAt === 'string' ? metadata.directorApprovedAt : null,
+        approvalStatus: typeof metadata.approvalStatus === 'string' ? metadata.approvalStatus : 'PENDIENTE',
+        formSummary: typeof metadata.formSummary === 'string' ? metadata.formSummary : null,
+      }
+    })(),
     id: item.id,
     employeeId: item.employeeId,
     periodId: item.periodId ?? null,

@@ -206,6 +206,16 @@ export default function NominaAsistenciaPage() {
           <CardDescription>{language === 'en' ? 'Administrative attendance tray used to validate presence, overtime and leave before payroll processing.' : 'Bandeja administrativa para validar presencia, horas extra y permisos antes del procesamiento de nómina.'}</CardDescription>
         </CardHeader>
         <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
+          <div className="rounded-[22px] border border-amber-200 bg-amber-50/60 p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">{language === 'en' ? 'Overtime summary' : 'Resumen horas extra'}</div>
+            <div className="mt-2 text-2xl font-semibold text-slate-950">{Math.round((rows.reduce((sum, item) => sum + item.overtimeMinutes, 0) / 60) * 10) / 10} h</div>
+            <div className="text-sm text-slate-600">{rows.reduce((sum, item) => sum + item.overtimeMinutes, 0)} {language === 'en' ? 'minutes recorded across shifts.' : 'minutos registrados en asistencia.'}</div>
+          </div>
+          <div className="rounded-[22px] border border-emerald-200 bg-emerald-50/60 p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-800">{language === 'en' ? 'Vacation entries' : 'Registros de vacaciones'}</div>
+            <div className="mt-2 text-2xl font-semibold text-slate-950">{rows.filter((item) => item.status === 'VACACIONES').length}</div>
+            <div className="text-sm text-slate-600">{language === 'en' ? 'Approved attendance rows marked as vacation.' : 'Registros aprobados de asistencia marcados como vacaciones.'}</div>
+          </div>
           {rows.map((item) => (
             <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
               <div className="flex items-start justify-between gap-3">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { AccessLevel, ModuleKey, PayrollContractStatus, PayrollContractType, PayrollFrequency } from '@prisma/client'
+import { AccessLevel, ModuleKey, PayrollContractStatus, PayrollContractType, PayrollFrequency, Prisma } from '@prisma/client'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { sendPayrollContractExpirationReminders } from '@/lib/payroll-contract-reminders'
 import { prisma } from '@/lib/prisma'
 import { buildPayrollEmployeeFullName, type PayrollContractRow } from '@/lib/payroll'
 
@@ -34,6 +35,28 @@ function asNullableString(value: unknown) {
   return raw || null
 }
 
+function asBoolean(value: unknown) {
+  return value === true || value === 'true'
+}
+
+function asPositiveInteger(value: unknown, fallback: number) {
+  const next = Number(value)
+  return Number.isInteger(next) && next > 0 ? next : fallback
+}
+
+function parseMetadata(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function parseExtensionHistory(value: unknown) {
+  if (!Array.isArray(value)) return [] as Array<Record<string, unknown>>
+  return value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+}
+
+function diffDays(from: Date, to: Date) {
+  return Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24))
+}
+
 async function serializeContracts(empresaId: string): Promise<PayrollContractRow[]> {
   const rows = await prisma.payrollContract.findMany({
     where: { empresaId },
@@ -54,6 +77,23 @@ async function serializeContracts(empresaId: string): Promise<PayrollContractRow
   })
 
   return rows.map((item) => ({
+    ...(() => {
+      const metadata = parseMetadata(item.metadata)
+      const extensions = parseExtensionHistory(metadata.extensions)
+      const lastExtension = extensions[0] ?? null
+      const reminderDays = asPositiveInteger(metadata.renewalReminderDays, 15)
+      const adminOnlyReminder = typeof metadata.adminOnlyReminder === 'boolean' ? metadata.adminOnlyReminder : true
+      const daysToExpiration = item.endDate ? diffDays(new Date(), item.endDate) : null
+      return {
+        extensionCount: extensions.length,
+        lastExtensionDate: typeof lastExtension?.effectiveUntil === 'string' ? lastExtension.effectiveUntil : null,
+        lastExtensionReason: typeof lastExtension?.reason === 'string' ? lastExtension.reason : null,
+        renewalReminderDays: reminderDays,
+        adminOnlyReminder,
+        daysToExpiration,
+        expiresSoon: daysToExpiration !== null && daysToExpiration >= 0 && daysToExpiration <= reminderDays,
+      }
+    })(),
     id: item.id,
     employeeId: item.employeeId,
     sedeId: item.sedeId,
@@ -73,6 +113,20 @@ async function serializeContracts(empresaId: string): Promise<PayrollContractRow
     sede: item.sede.nombre,
     costCenter: item.costCenter?.name ?? 'Sin centro de costo',
   }))
+}
+
+function buildContractMetadata(input: {
+  renewalReminderDays: number
+  adminOnlyReminder: boolean
+  extensions: Array<Record<string, unknown>>
+  currentMetadata?: Record<string, unknown>
+}) {
+  return {
+    ...(input.currentMetadata ?? {}),
+    renewalReminderDays: input.renewalReminderDays,
+    adminOnlyReminder: input.adminOnlyReminder,
+    extensions: input.extensions as Prisma.InputJsonArray,
+  } satisfies Prisma.InputJsonObject
 }
 
 export async function GET() {
@@ -120,8 +174,23 @@ export async function POST(request: NextRequest) {
       transportationAllowance: body.transportationAllowance === true,
       payrollGroup: asString(body.payrollGroup) || null,
       notes: asString(body.notes) || null,
+      metadata: buildContractMetadata({
+        renewalReminderDays: asPositiveInteger(body.renewalReminderDays, 15),
+        adminOnlyReminder: body.adminOnlyReminder === undefined ? true : asBoolean(body.adminOnlyReminder),
+        extensions: [],
+      }),
     },
   })
+
+  const createdContract = await prisma.payrollContract.findFirst({
+    where: { empresaId: access.empresaId, employeeId, startDate },
+    orderBy: [{ createdAt: 'desc' }],
+    include: { employee: { select: { firstName: true, middleName: true, lastName: true, secondLastName: true } } },
+  })
+
+  if (createdContract) {
+    await sendPayrollContractExpirationReminders({ empresaId: access.empresaId, contractId: createdContract.id })
+  }
 
   const data = await serializeContracts(access.empresaId)
   return NextResponse.json({ ok: true, data })
@@ -149,6 +218,25 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Contrato no encontrado' }, { status: 404 })
   }
 
+  const currentContract = await prisma.payrollContract.findUnique({
+    where: { id },
+    select: { endDate: true, metadata: true, employee: { select: { firstName: true, middleName: true, lastName: true, secondLastName: true } } },
+  })
+
+  const currentMetadata = parseMetadata(currentContract?.metadata)
+  const existingExtensions = parseExtensionHistory(currentMetadata.extensions)
+  const extensionEndDate = asDate(body.extensionEndDate)
+  const extensionReason = asNullableString(body.extensionReason)
+  const shouldAppendExtension = Boolean(extensionEndDate && extensionEndDate.toISOString() !== currentContract?.endDate?.toISOString())
+  const nextExtensions = shouldAppendExtension
+    ? [{
+        effectiveUntil: extensionEndDate?.toISOString(),
+        reason: extensionReason,
+        recordedAt: new Date().toISOString(),
+        recordedById: access.userId,
+      }, ...existingExtensions]
+    : existingExtensions
+
   await prisma.payrollContract.update({
     where: { id },
     data: {
@@ -159,15 +247,25 @@ export async function PUT(request: NextRequest) {
       status,
       frequency,
       startDate,
-      endDate: asDate(body.endDate),
+      endDate: extensionEndDate ?? asDate(body.endDate),
       baseSalary,
       variableSalary: body.variableSalary === true,
       integralSalary: body.integralSalary === true,
       transportationAllowance: body.transportationAllowance === true,
       payrollGroup: asNullableString(body.payrollGroup),
       notes: asNullableString(body.notes),
+      metadata: buildContractMetadata({
+        currentMetadata,
+        renewalReminderDays: asPositiveInteger(body.renewalReminderDays ?? currentMetadata.renewalReminderDays, 15),
+        adminOnlyReminder: body.adminOnlyReminder === undefined
+          ? (typeof currentMetadata.adminOnlyReminder === 'boolean' ? currentMetadata.adminOnlyReminder : true)
+          : asBoolean(body.adminOnlyReminder),
+        extensions: nextExtensions,
+      }),
     },
   })
+
+  await sendPayrollContractExpirationReminders({ empresaId: access.empresaId, contractId: id })
 
   const data = await serializeContracts(access.empresaId)
   return NextResponse.json({ ok: true, data })

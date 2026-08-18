@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey, PayrollSettlementReason, PayrollSettlementStatus } from '@prisma/client'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { buildPayrollSettlementComputation } from '@/lib/payroll-compensation'
 import { ensurePayrollSettlementDemoData } from '@/lib/payroll-operations'
 import { prisma } from '@/lib/prisma'
 import { buildPayrollEmployeeFullName, type PayrollSettlementRow } from '@/lib/payroll'
@@ -91,22 +92,42 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'employeeId, reason, retirementDate y workedDays son requeridos' }, { status: 400 })
   }
 
-  await prisma.payrollSettlement.create({
-    data: {
-      empresaId: access.empresaId,
-      employeeId,
-      contractId: asString(body.contractId) || null,
-      periodId: asString(body.periodId) || null,
-      reason,
-      status,
-      retirementDate,
-      liquidationDate: asDate(body.liquidationDate) ?? (status === 'LIQUIDADA' || status === 'PAGADA' ? new Date() : null),
-      paymentDate: asDate(body.paymentDate) ?? (status === 'PAGADA' ? new Date() : null),
-      workedDays,
-      total: asNumber(body.total) ?? 0,
-      notes: asString(body.notes) || null,
-      createdById: access.userId,
-    },
+  const manualBaseTotal = Math.max(0, asNumber(body.total) ?? 0)
+  const settlementComputation = await buildPayrollSettlementComputation({
+    empresaId: access.empresaId,
+    employeeId,
+    contractId: asString(body.contractId) || null,
+    retirementDate,
+    manualBaseTotal,
+  })
+
+  await prisma.$transaction(async (tx) => {
+    const created = await tx.payrollSettlement.create({
+      data: {
+        empresaId: access.empresaId,
+        employeeId,
+        contractId: asString(body.contractId) || null,
+        periodId: asString(body.periodId) || null,
+        reason,
+        status,
+        retirementDate,
+        liquidationDate: asDate(body.liquidationDate) ?? (status === 'LIQUIDADA' || status === 'PAGADA' ? new Date() : null),
+        paymentDate: asDate(body.paymentDate) ?? (status === 'PAGADA' ? new Date() : null),
+        workedDays,
+        total: settlementComputation.total,
+        notes: asString(body.notes) || null,
+        createdById: access.userId,
+      },
+    })
+
+    if (settlementComputation.lines.length) {
+      await tx.payrollSettlementLine.createMany({
+        data: settlementComputation.lines.map((line) => ({
+          settlementId: created.id,
+          ...line,
+        })),
+      })
+    }
   })
 
   const data = await serializeSettlements(access.empresaId)
@@ -134,21 +155,42 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Liquidación no encontrada' }, { status: 404 })
   }
 
-  await prisma.payrollSettlement.update({
-    where: { id },
-    data: {
-      employeeId,
-      contractId: asNullableString(body.contractId),
-      periodId: asNullableString(body.periodId),
-      reason,
-      status,
-      retirementDate,
-      liquidationDate: asDate(body.liquidationDate) ?? (status === 'LIQUIDADA' || status === 'PAGADA' ? new Date() : null),
-      paymentDate: asDate(body.paymentDate) ?? (status === 'PAGADA' ? new Date() : null),
-      workedDays,
-      total: asNumber(body.total) ?? 0,
-      notes: asNullableString(body.notes),
-    },
+  const manualBaseTotal = Math.max(0, asNumber(body.total) ?? 0)
+  const settlementComputation = await buildPayrollSettlementComputation({
+    empresaId: access.empresaId,
+    employeeId,
+    contractId: asNullableString(body.contractId),
+    retirementDate,
+    manualBaseTotal,
+  })
+
+  await prisma.$transaction(async (tx) => {
+    await tx.payrollSettlement.update({
+      where: { id },
+      data: {
+        employeeId,
+        contractId: asNullableString(body.contractId),
+        periodId: asNullableString(body.periodId),
+        reason,
+        status,
+        retirementDate,
+        liquidationDate: asDate(body.liquidationDate) ?? (status === 'LIQUIDADA' || status === 'PAGADA' ? new Date() : null),
+        paymentDate: asDate(body.paymentDate) ?? (status === 'PAGADA' ? new Date() : null),
+        workedDays,
+        total: settlementComputation.total,
+        notes: asNullableString(body.notes),
+      },
+    })
+
+    await tx.payrollSettlementLine.deleteMany({ where: { settlementId: id } })
+    if (settlementComputation.lines.length) {
+      await tx.payrollSettlementLine.createMany({
+        data: settlementComputation.lines.map((line) => ({
+          settlementId: id,
+          ...line,
+        })),
+      })
+    }
   })
 
   const data = await serializeSettlements(access.empresaId)

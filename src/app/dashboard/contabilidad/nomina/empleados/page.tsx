@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
@@ -68,6 +69,10 @@ const EMPTY_CONTRACT_FORM = {
   baseSalary: '',
   status: 'ACTIVE',
   payrollGroup: '',
+  renewalReminderDays: '15',
+  adminOnlyReminder: true,
+  extensionEndDate: '',
+  extensionReason: '',
   notes: '',
 }
 
@@ -114,6 +119,13 @@ export default function NominaEmpleadosPage() {
           description: 'Search by name, document, role or cost center.',
           searchPlaceholder: 'Search employee...',
           empty: 'No employees created yet.',
+          expiringTitle: 'Contracts close to expiration',
+          expiringDescription: 'This tray only shows active contracts that are already within their configured alert threshold.',
+          expiringEmpty: 'No contracts are currently within their configured expiration alert window.',
+          expiringBadge: 'days left',
+          expiringAdminsOnly: 'Admin-only alert',
+          expiringModuleUsers: 'Alert visible to authorized users',
+          openContract: 'Open contract',
         },
         detail: {
           emptyTitle: 'Work detail',
@@ -203,6 +215,10 @@ export default function NominaEmpleadosPage() {
           baseSalary: 'Base salary',
           status: 'Status',
           payrollGroup: 'Payroll group',
+          reminderDays: 'Alert days before expiration',
+          reminderDaysHelp: 'Defines how many days in advance the system should notify before the contract expires.',
+          adminOnlyReminder: 'Notify only administrators',
+          adminOnlyReminderHelp: 'Keep the reminder restricted to admin users and global administrators.',
           notes: 'Notes',
         },
         actions: {
@@ -234,6 +250,13 @@ export default function NominaEmpleadosPage() {
           description: 'Busca por nombre, documento, cargo o centro de costo.',
           searchPlaceholder: 'Buscar empleado...',
           empty: 'No hay empleados creados todavía.',
+          expiringTitle: 'Contratos próximos a vencer',
+          expiringDescription: 'Esta bandeja solo muestra contratos activos que ya entraron en su umbral configurado de alerta.',
+          expiringEmpty: 'No hay contratos dentro de la ventana configurada de vencimiento.',
+          expiringBadge: 'días restantes',
+          expiringAdminsOnly: 'Alerta solo administrativa',
+          expiringModuleUsers: 'Alerta visible para usuarios autorizados',
+          openContract: 'Abrir contrato',
         },
         detail: {
           emptyTitle: 'Detalle laboral',
@@ -323,6 +346,10 @@ export default function NominaEmpleadosPage() {
           baseSalary: 'Salario base',
           status: 'Estado',
           payrollGroup: 'Grupo nómina',
+          reminderDays: 'Días de alerta antes del vencimiento',
+          reminderDaysHelp: 'Define cuántos días antes debe avisar el sistema que el contrato está por vencer.',
+          adminOnlyReminder: 'Notificar solo a administradores',
+          adminOnlyReminderHelp: 'Mantiene el aviso restringido a usuarios administradores y administradores globales.',
           notes: 'Notas',
         },
         actions: {
@@ -400,6 +427,13 @@ export default function NominaEmpleadosPage() {
     })
   }, [employees, search])
 
+  const expiringContracts = useMemo(() => {
+    const visibleEmployeeIds = new Set(filteredEmployees.map((employee) => employee.id))
+    return contracts
+      .filter((contract) => contract.status === 'ACTIVE' && contract.expiresSoon && visibleEmployeeIds.has(contract.employeeId))
+      .sort((left, right) => (left.daysToExpiration ?? Number.MAX_SAFE_INTEGER) - (right.daysToExpiration ?? Number.MAX_SAFE_INTEGER))
+  }, [contracts, filteredEmployees])
+
   const selectedEmployee = employees.find((employee) => employee.id === selectedEmployeeId) ?? filteredEmployees[0] ?? null
   const selectedContract = contracts.find((contract) => contract.id === selectedEmployee?.activeContractId) ?? contracts.find((contract) => contract.employeeId === selectedEmployee?.id && contract.status === 'ACTIVE') ?? null
 
@@ -452,6 +486,8 @@ export default function NominaEmpleadosPage() {
       sedeId: selectedEmployee?.sedeId ?? sedes[0]?.id ?? '',
       costCenterId: selectedEmployee?.costCenterId ?? '',
       startDate: selectedEmployee?.startDate?.slice(0, 10) ?? '',
+      renewalReminderDays: '15',
+      adminOnlyReminder: true,
     })
     setContractDialogOpen(true)
   }
@@ -470,6 +506,10 @@ export default function NominaEmpleadosPage() {
       baseSalary: String(contract.salary),
       status: contract.status,
       payrollGroup: contract.payrollGroup ?? '',
+      renewalReminderDays: String(contract.renewalReminderDays ?? 15),
+      adminOnlyReminder: contract.adminOnlyReminder ?? true,
+      extensionEndDate: contract.endDate?.slice(0, 10) ?? '',
+      extensionReason: contract.lastExtensionReason ?? '',
       notes: contract.notes ?? '',
     })
     setContractDialogOpen(true)
@@ -537,6 +577,10 @@ export default function NominaEmpleadosPage() {
       costCenterId: contractForm.costCenterId || null,
       endDate: contractForm.endDate || null,
       baseSalary: Number(contractForm.baseSalary),
+      renewalReminderDays: Number(contractForm.renewalReminderDays || 15),
+      adminOnlyReminder: contractForm.adminOnlyReminder,
+      extensionEndDate: contractForm.extensionEndDate || null,
+      extensionReason: contractForm.extensionReason || null,
     }
 
     const res = await fetch('/api/nomina/contratos', {
@@ -618,62 +662,100 @@ export default function NominaEmpleadosPage() {
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card className="rounded-[26px] border-slate-200" data-tour="nomina-empleados-list">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle>{copy.directory.title}</CardTitle>
-              <DataViewToggle mode={mode} onChange={setMode} />
-            </div>
-            <CardDescription>{copy.directory.description}</CardDescription>
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.directory.searchPlaceholder} className="mt-2 rounded-xl" />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {!filteredEmployees.length ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">{copy.directory.empty}</div> : null}
-            {mode === 'grid'
-              ? <div className="grid gap-3 md:grid-cols-2">{filteredEmployees.map((employee) => (
-                  <button
-                    key={employee.id}
-                    type="button"
-                    onClick={() => setSelectedEmployeeId(employee.id)}
-                    className={selectedEmployee?.id === employee.id ? 'w-full rounded-[22px] border border-sky-300 bg-sky-50/70 p-4 text-left' : 'w-full rounded-[22px] border border-slate-200 bg-white p-4 text-left'}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-slate-950">{employee.fullName}</p>
-                        <p className="text-sm text-slate-500">{employee.role} · {employee.document}</p>
+        <div className="space-y-4">
+          <Card className="rounded-[26px] border-slate-200" data-tour="nomina-empleados-list">
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle>{copy.directory.title}</CardTitle>
+                <DataViewToggle mode={mode} onChange={setMode} />
+              </div>
+              <CardDescription>{copy.directory.description}</CardDescription>
+              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.directory.searchPlaceholder} className="mt-2 rounded-xl" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {!filteredEmployees.length ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">{copy.directory.empty}</div> : null}
+              {mode === 'grid'
+                ? <div className="grid gap-3 md:grid-cols-2">{filteredEmployees.map((employee) => (
+                    <button
+                      key={employee.id}
+                      type="button"
+                      onClick={() => setSelectedEmployeeId(employee.id)}
+                      className={selectedEmployee?.id === employee.id ? 'w-full rounded-[22px] border border-sky-300 bg-sky-50/70 p-4 text-left' : 'w-full rounded-[22px] border border-slate-200 bg-white p-4 text-left'}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-slate-950">{employee.fullName}</p>
+                          <p className="text-sm text-slate-500">{employee.role} · {employee.document}</p>
+                        </div>
+                        <span className={employee.status === 'ACTIVE' ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800' : employee.status === 'SUSPENDED' ? 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800' : 'rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700'}>{employeeStatusLabel[employee.status as keyof typeof employeeStatusLabel] ?? employee.status}</span>
                       </div>
-                      <span className={employee.status === 'ACTIVE' ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800' : employee.status === 'SUSPENDED' ? 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800' : 'rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700'}>{employeeStatusLabel[employee.status as keyof typeof employeeStatusLabel] ?? employee.status}</span>
-                    </div>
-                    <div className="mt-2 grid gap-1 text-sm text-slate-600">
-                      <div>{employee.sede}</div>
-                      <div>{employee.contractType ? (contractTypeLabel[employee.contractType as keyof typeof contractTypeLabel] ?? employee.contractType) : copy.detail.noContract} · {employee.frequency ? (frequencyLabel[employee.frequency as keyof typeof frequencyLabel] ?? employee.frequency) : copy.detail.noFrequency}</div>
-                      <div>{copy.contractDialog.baseSalary}: {formatCurrency(employee.salary)}</div>
-                    </div>
-                  </button>
-                ))}</div>
-              : filteredEmployees.map((employee) => (
-                  <button
-                    key={employee.id}
-                    type="button"
-                    onClick={() => setSelectedEmployeeId(employee.id)}
-                    className={selectedEmployee?.id === employee.id ? 'w-full rounded-[18px] border border-sky-300 bg-sky-50/70 px-4 py-3 text-left' : 'w-full rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-left'}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-950">{employee.fullName}</p>
-                        <p className="truncate text-xs text-slate-500">{employee.role} · {employee.document}</p>
+                      <div className="mt-2 grid gap-1 text-sm text-slate-600">
+                        <div>{employee.sede}</div>
+                        <div>{employee.contractType ? (contractTypeLabel[employee.contractType as keyof typeof contractTypeLabel] ?? employee.contractType) : copy.detail.noContract} · {employee.frequency ? (frequencyLabel[employee.frequency as keyof typeof frequencyLabel] ?? employee.frequency) : copy.detail.noFrequency}</div>
+                        <div>{copy.contractDialog.baseSalary}: {formatCurrency(employee.salary)}</div>
                       </div>
-                      <span className={employee.status === 'ACTIVE' ? 'rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-800' : employee.status === 'SUSPENDED' ? 'rounded-full bg-amber-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800' : 'rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700'}>{employeeStatusLabel[employee.status as keyof typeof employeeStatusLabel] ?? employee.status}</span>
+                    </button>
+                  ))}</div>
+                : filteredEmployees.map((employee) => (
+                    <button
+                      key={employee.id}
+                      type="button"
+                      onClick={() => setSelectedEmployeeId(employee.id)}
+                      className={selectedEmployee?.id === employee.id ? 'w-full rounded-[18px] border border-sky-300 bg-sky-50/70 px-4 py-3 text-left' : 'w-full rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-left'}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-950">{employee.fullName}</p>
+                          <p className="truncate text-xs text-slate-500">{employee.role} · {employee.document}</p>
+                        </div>
+                        <span className={employee.status === 'ACTIVE' ? 'rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-800' : employee.status === 'SUSPENDED' ? 'rounded-full bg-amber-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800' : 'rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700'}>{employeeStatusLabel[employee.status as keyof typeof employeeStatusLabel] ?? employee.status}</span>
+                      </div>
+                      <div className="mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-3">
+                        <div>{employee.sede}</div>
+                        <div>{employee.contractType ? (contractTypeLabel[employee.contractType as keyof typeof contractTypeLabel] ?? employee.contractType) : copy.detail.noContract}</div>
+                        <div>{formatCurrency(employee.salary)}</div>
+                      </div>
+                    </button>
+                  ))}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[26px] border-amber-200 bg-amber-50/40">
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle>{copy.directory.expiringTitle}</CardTitle>
+                <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-semibold text-amber-900">{expiringContracts.length}</span>
+              </div>
+              <CardDescription>{copy.directory.expiringDescription}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {!expiringContracts.length ? <div className="rounded-2xl border border-dashed border-amber-200 bg-white/80 p-4 text-sm text-slate-500">{copy.directory.expiringEmpty}</div> : null}
+              {expiringContracts.map((contract) => (
+                <button
+                  key={contract.id}
+                  type="button"
+                  onClick={() => setSelectedEmployeeId(contract.employeeId)}
+                  className={selectedEmployee?.id === contract.employeeId ? 'w-full rounded-[20px] border border-amber-300 bg-white px-4 py-3 text-left shadow-sm' : 'w-full rounded-[20px] border border-amber-200 bg-white/90 px-4 py-3 text-left'}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold text-slate-950">{contract.employeeName}</div>
+                      <div className="text-sm text-slate-600">{contractTypeLabel[contract.contractType as keyof typeof contractTypeLabel] ?? contract.contractType} · {frequencyLabel[contract.frequency as keyof typeof frequencyLabel] ?? contract.frequency}</div>
+                      <div className="mt-1 text-xs text-slate-500">{contract.sede} · {contract.costCenter}</div>
                     </div>
-                    <div className="mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-3">
-                      <div>{employee.sede}</div>
-                      <div>{employee.contractType ? (contractTypeLabel[employee.contractType as keyof typeof contractTypeLabel] ?? employee.contractType) : copy.detail.noContract}</div>
-                      <div>{formatCurrency(employee.salary)}</div>
-                    </div>
-                  </button>
-                ))}
-          </CardContent>
-        </Card>
+                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-900">{contract.daysToExpiration ?? 0} {copy.directory.expiringBadge}</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1">Umbral: {contract.renewalReminderDays} día(s)</span>
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1">Vence: {contract.endDate ? contract.endDate.slice(0, 10) : 'Sin fecha final'}</span>
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1">{contract.adminOnlyReminder ? copy.directory.expiringAdminsOnly : copy.directory.expiringModuleUsers}</span>
+                  </div>
+                  <div className="mt-3 text-sm font-medium text-amber-900">{copy.directory.openContract}</div>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
 
         <Card className="rounded-[26px] border-slate-200">
           <CardHeader>
@@ -709,6 +791,23 @@ export default function NominaEmpleadosPage() {
                   </div>
                 </div>
 
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">Horas extra</div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-950">{selectedEmployee.overtimeHours} h</div>
+                    <div className="text-sm text-slate-600">{selectedEmployee.overtimeMinutes} minutos acumulados desde asistencia.</div>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-800">Vacaciones</div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-950">{selectedEmployee.vacation.availableDays} días</div>
+                    <div className="mt-2 grid gap-1 text-sm text-slate-600">
+                      <div>Ganados: {selectedEmployee.vacation.earnedDays} días / {selectedEmployee.vacation.earnedHours} horas</div>
+                      <div>Tomados: {selectedEmployee.vacation.takenDays} días / {selectedEmployee.vacation.takenHours} horas</div>
+                      <div>Disponibles: {selectedEmployee.vacation.availableHours} horas</div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{copy.detail.accounting}</div>
                   <div className="mt-2 grid gap-2 md:grid-cols-3">
@@ -723,6 +822,7 @@ export default function NominaEmpleadosPage() {
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{copy.detail.activeContract}</div>
                       <div className="mt-1 text-sm text-slate-600">{selectedContract ? `${contractTypeLabel[selectedContract.contractType as keyof typeof contractTypeLabel] ?? selectedContract.contractType} · ${frequencyLabel[selectedContract.frequency as keyof typeof frequencyLabel] ?? selectedContract.frequency} · ${formatCurrency(selectedContract.salary)}` : copy.detail.noActiveContract}</div>
+                      {selectedContract ? <div className="mt-2 grid gap-1 text-sm text-slate-500"><div>Prórrogas registradas: {selectedContract.extensionCount}</div><div>Recordatorio administrativo: {selectedContract.renewalReminderDays} días antes</div><div>Destino de alerta: {selectedContract.adminOnlyReminder ? 'Solo administradores' : 'Usuarios autorizados del módulo'}</div><div>Vencimiento: {selectedContract.endDate ? `${selectedContract.endDate.slice(0, 10)}${selectedContract.daysToExpiration != null ? ` · ${selectedContract.daysToExpiration} día(s)` : ''}` : 'Sin fecha final'}</div>{selectedContract.lastExtensionDate ? <div>Última prórroga: {selectedContract.lastExtensionDate.slice(0, 10)}{selectedContract.lastExtensionReason ? ` · ${selectedContract.lastExtensionReason}` : ''}</div> : null}</div> : null}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {selectedContract ? <Button variant="outline" className="rounded-xl" onClick={() => openEditContract(selectedContract)}>{copy.detail.editContract}</Button> : null}
@@ -808,6 +908,18 @@ export default function NominaEmpleadosPage() {
             <div className="grid gap-2"><Label>{copy.contractDialog.endDate}</Label><Input type="date" value={contractForm.endDate} onChange={(event) => setContractForm((current) => ({ ...current, endDate: event.target.value }))} /></div>
             <div className="grid gap-2"><Label>{copy.contractDialog.baseSalary}</Label><Input type="number" value={contractForm.baseSalary} onChange={(event) => setContractForm((current) => ({ ...current, baseSalary: event.target.value }))} /></div>
             <div className="grid gap-2"><Label>{copy.contractDialog.status}</Label><Select value={contractForm.status} onValueChange={(value) => setContractForm((current) => ({ ...current, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ACTIVE">{contractStatusLabel.ACTIVE}</SelectItem><SelectItem value="SUSPENDED">{contractStatusLabel.SUSPENDED}</SelectItem><SelectItem value="FINALIZED">{contractStatusLabel.FINALIZED}</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>{copy.contractDialog.reminderDays}</Label><Input type="number" min="1" value={contractForm.renewalReminderDays} onChange={(event) => setContractForm((current) => ({ ...current, renewalReminderDays: event.target.value }))} /><div className="text-xs text-slate-500">{copy.contractDialog.reminderDaysHelp}</div></div>
+            <div className="grid gap-2"><Label>Prórroga hasta</Label><Input type="date" value={contractForm.extensionEndDate} onChange={(event) => setContractForm((current) => ({ ...current, extensionEndDate: event.target.value }))} /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Motivo de prórroga</Label><Input value={contractForm.extensionReason} onChange={(event) => setContractForm((current) => ({ ...current, extensionReason: event.target.value }))} placeholder="Ej. continuidad operativa, renovación comercial" /></div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 md:col-span-2">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <Label>{copy.contractDialog.adminOnlyReminder}</Label>
+                  <div className="text-xs text-slate-500">{copy.contractDialog.adminOnlyReminderHelp}</div>
+                </div>
+                <Switch checked={contractForm.adminOnlyReminder} onCheckedChange={(checked) => setContractForm((current) => ({ ...current, adminOnlyReminder: checked }))} />
+              </div>
+            </div>
             <div className="grid gap-2 md:col-span-2"><Label>{copy.contractDialog.payrollGroup}</Label><Input value={contractForm.payrollGroup} onChange={(event) => setContractForm((current) => ({ ...current, payrollGroup: event.target.value }))} /></div>
             <div className="grid gap-2 md:col-span-2"><Label>{copy.contractDialog.notes}</Label><Textarea value={contractForm.notes} onChange={(event) => setContractForm((current) => ({ ...current, notes: event.target.value }))} rows={3} /></div>
           </div>

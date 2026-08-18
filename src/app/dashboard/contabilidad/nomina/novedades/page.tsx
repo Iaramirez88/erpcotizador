@@ -399,6 +399,7 @@ export default function NominaNovedadesPage() {
                     <span className="rounded-full border border-slate-200 px-2.5 py-1">{formatDate(item.occurredOn, locale)}</span>
                     <span className="rounded-full border border-slate-200 px-2.5 py-1">{item.supportUrl ? copy.labels.attachmentPresent : copy.labels.attachmentMissing}</span>
                   </div>
+                  {(item.type === 'HORA_EXTRA' || item.type === 'VACACIONES') && typeof item.amount === 'number' ? <div className="mt-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">Valor calculado automáticamente desde salario base {item.type === 'HORA_EXTRA' ? 'y horas reportadas' : 'y días liquidados'}.</div> : null}
                   {item.supportUrl ? <div className="mt-2"><Link href={item.supportUrl} target="_blank" className="text-sm font-medium text-sky-700">{copy.labels.openAttachment}</Link></div> : null}
                   <div className="mt-3 flex justify-end gap-2">
                     <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
@@ -428,6 +429,7 @@ export default function NominaNovedadesPage() {
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
                     <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{item.periodLabel}</span>
                     <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{copy.labels.days}: {item.days ?? 0}</span>
+                    {typeof item.amount === 'number' ? <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{copy.labels.value}: {formatCurrency(item.amount)}</span> : null}
                     <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{copy.labels.supportNumber}: {item.supportNumber ?? '—'}</span>
                     <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{formatDate(item.startsAt, locale)} - {formatDate(item.endsAt, locale)}</span>
                     <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{item.supportUrl ? copy.labels.attachmentPresent : copy.labels.attachmentMissing}</span>

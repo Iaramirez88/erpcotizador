@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
@@ -28,6 +29,10 @@ const EMPTY_FORM = {
   targetScore: '',
   dueDate: '',
   completedAt: '',
+  salesTargetAmount: '',
+  salesAchievedAmount: '',
+  salesTargetDeals: '',
+  salesAchievedDeals: '',
   developmentPlan: '',
   summary: '',
 }
@@ -115,6 +120,10 @@ export default function NominaDesempenoPage() {
       targetScore: item.targetScore != null ? String(item.targetScore) : '',
       dueDate: item.dueDate?.slice(0, 10) ?? '',
       completedAt: item.completedAt?.slice(0, 10) ?? '',
+      salesTargetAmount: item.salesTargetAmount != null ? String(item.salesTargetAmount) : '',
+      salesAchievedAmount: item.salesAchievedAmount != null ? String(item.salesAchievedAmount) : '',
+      salesTargetDeals: item.salesTargetDeals != null ? String(item.salesTargetDeals) : '',
+      salesAchievedDeals: item.salesAchievedDeals != null ? String(item.salesAchievedDeals) : '',
       developmentPlan: item.developmentPlan ?? '',
       summary: item.summary ?? '',
     })
@@ -136,6 +145,10 @@ export default function NominaDesempenoPage() {
       targetScore: form.targetScore ? Number(form.targetScore) : null,
       dueDate: form.dueDate || null,
       completedAt: form.completedAt || null,
+      salesTargetAmount: form.salesTargetAmount ? Number(form.salesTargetAmount) : null,
+      salesAchievedAmount: form.salesAchievedAmount ? Number(form.salesAchievedAmount) : null,
+      salesTargetDeals: form.salesTargetDeals ? Number(form.salesTargetDeals) : null,
+      salesAchievedDeals: form.salesAchievedDeals ? Number(form.salesAchievedDeals) : null,
       developmentPlan: form.developmentPlan,
       summary: form.summary,
     }
@@ -223,10 +236,15 @@ export default function NominaDesempenoPage() {
                 <div>{language === 'en' ? 'Competency focus' : 'Foco de competencia'}: {item.competencyFocus}</div>
                 <div>{language === 'en' ? 'Score' : 'Score'}: {item.score ?? '—'}</div>
                 <div>{language === 'en' ? 'Target' : 'Meta'}: {item.targetScore ?? '—'}</div>
+                <div>{language === 'en' ? 'Sales target' : 'Meta ventas'}: {item.salesTargetAmount ?? '—'}</div>
+                <div>{language === 'en' ? 'Sales achieved' : 'Ventas logradas'}: {item.salesAchievedAmount ?? '—'}</div>
+                <div>{language === 'en' ? 'Deals achieved' : 'Negocios logrados'}: {item.salesAchievedDeals ?? '—'} / {item.salesTargetDeals ?? '—'}</div>
+                <div>{language === 'en' ? 'Goal progress' : 'Cumplimiento'}: {item.goalProgressPercent != null ? `${item.goalProgressPercent}%` : '—'}</div>
                 <div>{language === 'en' ? 'Due date' : 'Vence'}: {formatDate(item.dueDate ?? null, locale)}</div>
                 <div>{language === 'en' ? 'Completed' : 'Completada'}: {formatDate(item.completedAt ?? null, locale)}</div>
                 <div>{language === 'en' ? 'Owner' : 'Responsable'}: {item.ownerName ?? '—'}</div>
               </div>
+              {item.chartSeries.length ? <div className="mt-4 h-48 rounded-2xl border border-slate-200 bg-slate-50/70 p-3"><ResponsiveContainer width="100%" height="100%"><BarChart data={item.chartSeries}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={11} /><YAxis tickLine={false} axisLine={false} fontSize={11} /><Tooltip formatter={(value: number) => value.toLocaleString('es-CO')} /><Bar dataKey="target" name={language === 'en' ? 'Target' : 'Meta'} fill="#94a3b8" radius={[8, 8, 0, 0]} /><Bar dataKey="actual" name={language === 'en' ? 'Actual' : 'Real'} fill="#0f766e" radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer></div> : null}
               {item.summary ? <p className="mt-3 text-sm text-slate-600">{item.summary}</p> : null}
               {item.developmentPlan ? <div className="mt-3 text-sm text-slate-500">{item.developmentPlan}</div> : null}
               <div className="mt-3 flex justify-end gap-2">
@@ -255,6 +273,10 @@ export default function NominaDesempenoPage() {
             <div className="grid gap-2"><Label>{language === 'en' ? 'Target score' : 'Meta de score'}</Label><Input type="number" step="0.1" value={form.targetScore} onChange={(event) => setForm((current) => ({ ...current, targetScore: event.target.value }))} /></div>
             <div className="grid gap-2"><Label>{language === 'en' ? 'Due date' : 'Fecha límite'}</Label><Input type="date" value={form.dueDate} onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))} /></div>
             <div className="grid gap-2"><Label>{language === 'en' ? 'Completed at' : 'Fecha cierre'}</Label><Input type="date" value={form.completedAt} onChange={(event) => setForm((current) => ({ ...current, completedAt: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>{language === 'en' ? 'Sales target amount' : 'Meta en ventas'}</Label><Input type="number" value={form.salesTargetAmount} onChange={(event) => setForm((current) => ({ ...current, salesTargetAmount: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>{language === 'en' ? 'Sales achieved amount' : 'Ventas logradas'}</Label><Input type="number" value={form.salesAchievedAmount} onChange={(event) => setForm((current) => ({ ...current, salesAchievedAmount: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>{language === 'en' ? 'Target deals' : 'Meta de negocios'}</Label><Input type="number" value={form.salesTargetDeals} onChange={(event) => setForm((current) => ({ ...current, salesTargetDeals: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>{language === 'en' ? 'Achieved deals' : 'Negocios logrados'}</Label><Input type="number" value={form.salesAchievedDeals} onChange={(event) => setForm((current) => ({ ...current, salesAchievedDeals: event.target.value }))} /></div>
             <div className="grid gap-2 md:col-span-2"><Label>{language === 'en' ? 'Summary' : 'Resumen'}</Label><Textarea rows={3} value={form.summary} onChange={(event) => setForm((current) => ({ ...current, summary: event.target.value }))} /></div>
             <div className="grid gap-2 md:col-span-2"><Label>{language === 'en' ? 'Development plan' : 'Plan de desarrollo'}</Label><Textarea rows={3} value={form.developmentPlan} onChange={(event) => setForm((current) => ({ ...current, developmentPlan: event.target.value }))} /></div>
           </div>

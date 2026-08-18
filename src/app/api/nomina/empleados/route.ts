@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey, PayrollContractStatus, PayrollEmployeeStatus } from '@prisma/client'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { prisma } from '@/lib/prisma'
-import { buildPayrollEmployeeFullName, nextPayrollCode, type PayrollEmployeeRow } from '@/lib/payroll'
+import { buildPayrollEmployeeFullName, nextPayrollCode, resolvePayrollVacationBalance, type PayrollEmployeeRow } from '@/lib/payroll'
 
 export const runtime = 'nodejs'
 
@@ -26,6 +26,10 @@ function asNullableString(value: unknown) {
   return raw || null
 }
 
+function diffDays(from: Date, to: Date) {
+  return Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24))
+}
+
 function isEmployeeStatus(value: string): value is PayrollEmployeeStatus {
   return ['ACTIVE', 'SUSPENDED', 'RETIRED'].includes(value)
 }
@@ -42,7 +46,10 @@ async function serializeEmployees(empresaId: string): Promise<PayrollEmployeeRow
       },
       novelties: {
         where: { status: { in: ['RADICADA', 'VALIDADA'] } },
-        select: { type: true },
+        select: { type: true, days: true },
+      },
+      attendanceEntries: {
+        select: { overtimeMinutes: true },
       },
       payslips: {
         where: { signedAt: null },
@@ -62,11 +69,15 @@ async function serializeEmployees(empresaId: string): Promise<PayrollEmployeeRow
   return rows.map((employee) => {
     const activeContract = employee.contracts.find((item) => item.status === PayrollContractStatus.ACTIVE) ?? employee.contracts[0] ?? null
     const bankAccount = [employee.bankName, employee.bankAccountNumber].filter(Boolean).join(' · ')
+    const overtimeMinutes = employee.attendanceEntries.reduce((sum, item) => sum + Math.max(0, item.overtimeMinutes), 0)
+    const vacation = resolvePayrollVacationBalance(employee.hireDate, employee.novelties)
+    const daysToExpiration = activeContract?.endDate ? diffDays(new Date(), activeContract.endDate) : null
     const alerts = compact<string>([
       employee.novelties.some((item) => item.type === 'INCAPACIDAD') ? 'Incapacidad vigente' : null,
       employee.novelties.some((item) => item.type !== 'INCAPACIDAD') ? 'Novedades pendientes' : null,
       employee.payslips.length ? 'Pendiente firmar desprendible' : null,
       employee.settlements.length ? 'Liquidación pendiente de pago' : null,
+      activeContract?.endDate && daysToExpiration !== null && daysToExpiration >= 0 && daysToExpiration <= 15 ? `Contrato vence en ${daysToExpiration} día(s)` : null,
     ])
 
     return {
@@ -107,6 +118,9 @@ async function serializeEmployees(empresaId: string): Promise<PayrollEmployeeRow
       bankAccountType: employee.bankAccountType,
       bankAccountNumber: employee.bankAccountNumber,
       notes: employee.notes,
+      overtimeMinutes,
+      overtimeHours: Math.round((overtimeMinutes / 60) * 10) / 10,
+      vacation,
       alerts,
     }
   })

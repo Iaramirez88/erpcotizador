@@ -156,6 +156,54 @@ Si necesitas lanzar una corrida manual dentro del stack:
 
 - `docker compose -f docker-compose.prod.yml exec -T app npm run decision-engine:schedule-snapshots -- --locale=es-CO`
 
+### Cron diario para contratos por vencer en nómina
+
+La app ya expone el job administrativo [src/app/api/admin/jobs/payroll-contract-reminders/route.ts](src/app/api/admin/jobs/payroll-contract-reminders/route.ts), pero en Kamatera debes programar el disparo diario desde el host.
+
+Variables necesarias en `.env`:
+
+- `ADMIN_API_KEY` con un secreto largo y aleatorio
+- `APP_URL` apuntando al dominio público real, por ejemplo `https://sgdigitalordex.com`
+
+Generar una llave robusta en Ubuntu:
+
+- `openssl rand -hex 32`
+
+Aplicar cambios del `.env` al stack:
+
+- `docker compose -f docker-compose.prod.yml up -d app`
+
+Prueba manual del endpoint antes de programar el cron:
+
+- `curl -X POST https://tu-dominio.com/api/admin/jobs/payroll-contract-reminders -H "X-API-Key: TU_ADMIN_API_KEY"`
+
+Respuesta esperada:
+
+- JSON con `success: true`, `timestamp` y el resumen final del script
+
+Instalar el cron diario en el servidor:
+
+- `crontab -e`
+- Agrega esta línea para ejecutarlo todos los días a las 7:00 a. m. hora del servidor:
+- `0 7 * * * /usr/bin/curl -fsS -X POST https://tu-dominio.com/api/admin/jobs/payroll-contract-reminders -H "X-API-Key: TU_ADMIN_API_KEY" >> /var/log/sgdigital-payroll-reminders.log 2>&1`
+
+Verificación operativa:
+
+- `crontab -l`
+- `tail -n 50 /var/log/sgdigital-payroll-reminders.log`
+- `docker compose -f docker-compose.prod.yml logs --tail=100 app`
+
+Si prefieres ejecutarlo con zona horaria fija en UTC para evitar desfases del VPS:
+
+- `CRON_TZ=UTC`
+- `0 12 * * * /usr/bin/curl -fsS -X POST https://tu-dominio.com/api/admin/jobs/payroll-contract-reminders -H "X-API-Key: TU_ADMIN_API_KEY" >> /var/log/sgdigital-payroll-reminders.log 2>&1`
+
+Notas:
+
+- Usa `-fsS` en `curl` para que el cron falle con código distinto de cero si el endpoint devuelve error HTTP.
+- No dejes `ADMIN_API_KEY` hardcodeada en scripts versionados ni en screenshots operativos.
+- Si Cloudflare queda con proxy activo, el endpoint sigue funcionando igual siempre que el dominio resuelva correctamente y el header llegue intacto.
+
 ### Fallback si Prisma se bloquea por drift histórico
 
 Si `npx prisma migrate deploy` falla porque existen migraciones antiguas modificadas o drift heredado, no hagas reset del schema. Aplica primero el SQL idempotente del snapshot:

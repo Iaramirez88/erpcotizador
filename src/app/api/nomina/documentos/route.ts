@@ -26,6 +26,22 @@ function asDate(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
+function buildDocumentMetadata(body: Record<string, unknown>) {
+  return {
+    legalFormName: asNullableString(body.legalFormName),
+    signatureMode: asString(body.signatureMode) || 'PLATAFORMA',
+    signableInPlatform: body.signableInPlatform === undefined ? true : asBoolean(body.signableInPlatform),
+    hrApprovalStatus: asString(body.hrApprovalStatus) || 'PENDIENTE',
+    hrApproverName: asNullableString(body.hrApproverName),
+    hrApprovedAt: asDate(body.hrApprovedAt)?.toISOString() ?? null,
+    directorApprovalStatus: asString(body.directorApprovalStatus) || 'PENDIENTE',
+    directorApproverName: asNullableString(body.directorApproverName),
+    directorApprovedAt: asDate(body.directorApprovedAt)?.toISOString() ?? null,
+    approvalStatus: asString(body.approvalStatus) || 'PENDIENTE',
+    formSummary: asNullableString(body.formSummary),
+  }
+}
+
 export async function GET() {
   const access = await requireApiAccess(ModuleKey.CONTABILIDAD, AccessLevel.READ)
   if (!access.ok) return access.response
@@ -69,6 +85,7 @@ export async function POST(request: NextRequest) {
       expiresAt: asDate(body.expiresAt),
       notes: asNullableString(body.notes),
       signedById: asDate(body.signedAt) ? access.userId : null,
+      metadata: buildDocumentMetadata(body),
     },
   })
 
@@ -118,6 +135,7 @@ export async function PUT(request: NextRequest) {
       expiresAt: asDate(body.expiresAt),
       notes: asNullableString(body.notes),
       signedById: signedAt ? access.userId : null,
+      metadata: buildDocumentMetadata(body),
     },
   })
 

@@ -36,6 +36,17 @@ const EMPTY_FORM = {
   deliveredAt: '',
   signedAt: '',
   expiresAt: '',
+  legalFormName: '',
+  signatureMode: 'PLATAFORMA',
+  signableInPlatform: 'true',
+  hrApprovalStatus: 'PENDIENTE',
+  hrApproverName: '',
+  hrApprovedAt: '',
+  directorApprovalStatus: 'PENDIENTE',
+  directorApproverName: '',
+  directorApprovedAt: '',
+  approvalStatus: 'PENDIENTE',
+  formSummary: '',
   notes: '',
 }
 
@@ -238,6 +249,17 @@ export default function NominaReportesPage() {
       deliveredAt: item.deliveredAt?.slice(0, 10) ?? '',
       signedAt: item.signedAt?.slice(0, 10) ?? '',
       expiresAt: item.expiresAt?.slice(0, 10) ?? '',
+      legalFormName: item.legalFormName ?? '',
+      signatureMode: item.signatureMode,
+      signableInPlatform: String(item.signableInPlatform),
+      hrApprovalStatus: item.hrApprovalStatus,
+      hrApproverName: item.hrApproverName ?? '',
+      hrApprovedAt: item.hrApprovedAt?.slice(0, 10) ?? '',
+      directorApprovalStatus: item.directorApprovalStatus,
+      directorApproverName: item.directorApproverName ?? '',
+      directorApprovedAt: item.directorApprovedAt?.slice(0, 10) ?? '',
+      approvalStatus: item.approvalStatus,
+      formSummary: item.formSummary ?? '',
       notes: item.notes ?? '',
     })
     setDialogOpen(true)
@@ -252,6 +274,7 @@ export default function NominaReportesPage() {
       periodId: form.periodId || null,
       signatureRequired: form.signatureRequired === 'true',
       visibleInPortal: form.visibleInPortal === 'true',
+      signableInPlatform: form.signableInPlatform === 'true',
     }
     const res = await fetch('/api/nomina/documentos', {
       method: editingId ? 'PUT' : 'POST',
@@ -356,14 +379,23 @@ export default function NominaReportesPage() {
                     <div>{copy.labels.category}: {item.category}</div>
                     <div>{copy.labels.status}: {item.status}</div>
                     <div>{copy.labels.signatureStatus}: {item.signatureStatus}</div>
+                    <div>Aprobación global: {item.approvalStatus}</div>
+                    <div>RRHH: {item.hrApprovalStatus}{item.hrApproverName ? ` · ${item.hrApproverName}` : ''}</div>
+                    <div>Dirección: {item.directorApprovalStatus}{item.directorApproverName ? ` · ${item.directorApproverName}` : ''}</div>
                     <div>{copy.labels.deliveryChannel}: {item.deliveryChannel}</div>
                     <div>{copy.labels.visibleInPortal}: {item.visibleInPortal ? copy.yes : copy.no}</div>
                     <div>{copy.labels.fileFormat}: {item.fileFormat}</div>
+                    <div>Firma en plataforma: {item.signableInPlatform ? copy.yes : copy.no}</div>
                     <div>{copy.labels.requestedAt}: {formatDate(item.requestedAt, locale)}</div>
                     <div>{copy.labels.signedAt}: {formatDate(item.signedAt, locale)}</div>
                   </div>
+                  {item.legalFormName ? <div className="mt-2 text-sm text-slate-600">Formulario legal: {item.legalFormName}</div> : null}
+                  {item.formSummary ? <div className="mt-2 text-sm text-slate-600">Resumen legal: {item.formSummary}</div> : null}
                   {item.notes ? <div className="mt-2 text-sm text-slate-600">{copy.labels.notes}: {item.notes}</div> : null}
                   <div className="mt-3 flex justify-end gap-2">
+                    <Button asChild variant="outline" className="rounded-xl">
+                      <Link href={`/api/nomina/documentos/${item.id}/pdf`} target="_blank">Ver PDF legal</Link>
+                    </Button>
                     <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
                     <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
                   </div>
@@ -418,10 +450,21 @@ export default function NominaReportesPage() {
             <div className="grid gap-2"><Label>{copy.labels.visibleInPortal}</Label><Select value={form.visibleInPortal} onValueChange={(value) => setForm((current) => ({ ...current, visibleInPortal: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="true">{copy.yes}</SelectItem><SelectItem value="false">{copy.no}</SelectItem></SelectContent></Select></div>
             <div className="grid gap-2"><Label>{copy.labels.deliveryChannel}</Label><Select value={form.deliveryChannel} onValueChange={(value) => setForm((current) => ({ ...current, deliveryChannel: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PORTAL">Portal</SelectItem><SelectItem value="EMAIL">Email</SelectItem><SelectItem value="PDF">PDF</SelectItem><SelectItem value="FISICO">Físico</SelectItem></SelectContent></Select></div>
             <div className="grid gap-2"><Label>{copy.labels.fileFormat}</Label><Select value={form.fileFormat} onValueChange={(value) => setForm((current) => ({ ...current, fileFormat: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PDF">PDF</SelectItem><SelectItem value="DOCX">DOCX</SelectItem><SelectItem value="XLSX">XLSX</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Nombre formulario legal</Label><Input value={form.legalFormName} onChange={(event) => setForm((current) => ({ ...current, legalFormName: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>Modo de firma</Label><Select value={form.signatureMode} onValueChange={(value) => setForm((current) => ({ ...current, signatureMode: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PLATAFORMA">Plataforma</SelectItem><SelectItem value="CHECKBOX">Aceptación simple</SelectItem><SelectItem value="EXTERNA">Proveedor externo</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>Firmable en plataforma</Label><Select value={form.signableInPlatform} onValueChange={(value) => setForm((current) => ({ ...current, signableInPlatform: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="true">{copy.yes}</SelectItem><SelectItem value="false">{copy.no}</SelectItem></SelectContent></Select></div>
             <div className="grid gap-2"><Label>{copy.labels.requestedAt}</Label><Input type="date" value={form.requestedAt} onChange={(event) => setForm((current) => ({ ...current, requestedAt: event.target.value }))} /></div>
             <div className="grid gap-2"><Label>{copy.labels.deliveredAt}</Label><Input type="date" value={form.deliveredAt} onChange={(event) => setForm((current) => ({ ...current, deliveredAt: event.target.value }))} /></div>
             <div className="grid gap-2"><Label>{copy.labels.signedAt}</Label><Input type="date" value={form.signedAt} onChange={(event) => setForm((current) => ({ ...current, signedAt: event.target.value }))} /></div>
             <div className="grid gap-2"><Label>{copy.labels.expiresAt}</Label><Input type="date" value={form.expiresAt} onChange={(event) => setForm((current) => ({ ...current, expiresAt: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>Aprobación RRHH</Label><Select value={form.hrApprovalStatus} onValueChange={(value) => setForm((current) => ({ ...current, hrApprovalStatus: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PENDIENTE">Pendiente</SelectItem><SelectItem value="APROBADA">Aprobada</SelectItem><SelectItem value="RECHAZADA">Rechazada</SelectItem><SelectItem value="BORRADOR">Borrador</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>Aprobó RRHH</Label><Input value={form.hrApproverName} onChange={(event) => setForm((current) => ({ ...current, hrApproverName: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>Fecha aprobación RRHH</Label><Input type="date" value={form.hrApprovedAt} onChange={(event) => setForm((current) => ({ ...current, hrApprovedAt: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>Aprobación dirección</Label><Select value={form.directorApprovalStatus} onValueChange={(value) => setForm((current) => ({ ...current, directorApprovalStatus: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PENDIENTE">Pendiente</SelectItem><SelectItem value="APROBADA">Aprobada</SelectItem><SelectItem value="RECHAZADA">Rechazada</SelectItem><SelectItem value="BORRADOR">Borrador</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>Aprobó dirección</Label><Input value={form.directorApproverName} onChange={(event) => setForm((current) => ({ ...current, directorApproverName: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>Fecha aprobación dirección</Label><Input type="date" value={form.directorApprovedAt} onChange={(event) => setForm((current) => ({ ...current, directorApprovedAt: event.target.value }))} /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Estado general de aprobación</Label><Select value={form.approvalStatus} onValueChange={(value) => setForm((current) => ({ ...current, approvalStatus: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PENDIENTE">Pendiente</SelectItem><SelectItem value="EN_APROBACION">En aprobación</SelectItem><SelectItem value="COMPLETA">Completa</SelectItem><SelectItem value="RECHAZADA">Rechazada</SelectItem><SelectItem value="BORRADOR">Borrador</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Resumen legal y condiciones de firma</Label><Textarea value={form.formSummary} onChange={(event) => setForm((current) => ({ ...current, formSummary: event.target.value }))} rows={3} /></div>
             <div className="grid gap-2 md:col-span-2"><Label>{copy.labels.notes}</Label><Textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} rows={3} /></div>
           </div>
           {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}

@@ -27,6 +27,29 @@ function asDate(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
+function parseChartSeries(value: unknown) {
+  if (!Array.isArray(value)) return [] as Array<{ label: string; target: number; actual: number }>
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return []
+    const row = item as Record<string, unknown>
+    const label = asString(row.label)
+    const target = Number(row.target)
+    const actual = Number(row.actual)
+    if (!label || !Number.isFinite(target) || !Number.isFinite(actual)) return []
+    return [{ label, target, actual }]
+  })
+}
+
+function buildPerformanceMetadata(body: Record<string, unknown>) {
+  return {
+    salesTargetAmount: asNumber(body.salesTargetAmount),
+    salesAchievedAmount: asNumber(body.salesAchievedAmount),
+    salesTargetDeals: asNumber(body.salesTargetDeals),
+    salesAchievedDeals: asNumber(body.salesAchievedDeals),
+    chartSeries: parseChartSeries(body.chartSeries),
+  }
+}
+
 export async function GET() {
   const access = await requireApiAccess(ModuleKey.CONTABILIDAD, AccessLevel.READ)
   if (!access.ok) return access.response
@@ -65,6 +88,7 @@ export async function POST(request: NextRequest) {
       completedAt: asDate(body.completedAt),
       developmentPlan: asNullableString(body.developmentPlan),
       summary: asNullableString(body.summary),
+      metadata: buildPerformanceMetadata(body),
     },
   })
 
@@ -107,6 +131,7 @@ export async function PUT(request: NextRequest) {
       completedAt: asDate(body.completedAt),
       developmentPlan: asNullableString(body.developmentPlan),
       summary: asNullableString(body.summary),
+      metadata: buildPerformanceMetadata(body),
     },
   })
 

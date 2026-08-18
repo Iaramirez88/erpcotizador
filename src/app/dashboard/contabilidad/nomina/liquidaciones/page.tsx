@@ -306,6 +306,7 @@ export default function NominaLiquidacionesPage() {
                 <div>{copy.labels.liquidationDate}: {formatDate(settlement.liquidationDate, locale)}</div>
                 <div>{copy.labels.paymentDate}: {formatDate(settlement.paymentDate, locale)}</div>
               </div>
+              <div className="mt-2 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">El total incluye automáticamente horas extra y vacaciones validadas del colaborador hasta la fecha de retiro.</div>
               {settlement.notes ? <div className="mt-2 text-sm text-slate-600">{copy.labels.notes}: {settlement.notes}</div> : null}
               {settlement.accountingStatus === 'PENDIENTE' && settlement.total > 0 ? <div className="mt-3 flex justify-end"><Button variant="outline" className="rounded-xl" onClick={() => void contabilizar(settlement.id)}>{copy.actions.post}</Button></div> : null}
               <div className="mt-3 flex justify-end gap-2">

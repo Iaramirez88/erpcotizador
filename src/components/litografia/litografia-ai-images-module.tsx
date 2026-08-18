@@ -10,12 +10,10 @@ import {
   History,
   ImageIcon,
   ImagePlus,
-  Info,
   LoaderCircle,
   RefreshCw,
   Save,
   SlidersHorizontal,
-  Sparkles,
   Upload,
   X,
 } from "lucide-react"
@@ -132,13 +130,6 @@ const ASPECT_RATIO_OPTIONS: AspectRatioOption[] = [
   { id: "3:4", label: "3:4", dimensions: "Próximamente", hint: "Disponible cuando abramos resoluciones adicionales en el backend.", active: false },
   { id: "2:3", label: "2:3", size: "1024x1536", dimensions: "1024 x 1536", hint: "Portadas, posters y piezas altas.", active: true },
   { id: "9:16", label: "9:16", size: "864x1536", dimensions: "864 x 1536", hint: "Ideal para historias, reels y anuncios verticales.", active: true },
-]
-
-const PROMPT_RECOMMENDATIONS = [
-  "Define la pieza final: logo, mockup, portada, banner, empaque o afiche.",
-  "Aclara el lenguaje visual: minimalista, corporativo, realista, premium, editorial o infantil.",
-  "Describe materiales, colores, restricciones y si la composición debe dejar espacio para texto.",
-  "Si adjuntas referencias, explica qué debe conservar la IA: estilo, encuadre, producto, luz o jerarquía visual.",
 ]
 
 const HISTORY_PAGE_SIZE = 5
@@ -269,12 +260,6 @@ export function LitografiaAiImagesModule() {
 
   const referenceInputRef = useRef<HTMLInputElement | null>(null)
   const referenceImagesRef = useRef<ReferenceImageDraft[]>([])
-
-  const historyCountLabel = useMemo(() => {
-    if (historyLoading) return "Cargando historial..."
-    if (!history.length) return "Sin consultas registradas"
-    return `${history.length} registros recientes`
-  }, [history, historyLoading])
 
   const selectedSizeLabel = IMAGE_SIZE_OPTIONS.find((option) => option.value === imageSize)?.label ?? imageSize
   const selectedAspectRatio = ASPECT_RATIO_OPTIONS.find((option) => option.size === imageSize && option.active) ?? ASPECT_RATIO_OPTIONS[0]
@@ -501,42 +486,29 @@ export function LitografiaAiImagesModule() {
 
       <Card className="overflow-hidden border-slate-200 shadow-sm dark:border-slate-800 dark:bg-[#0f1728] dark:text-white">
         <CardContent className="space-y-6 p-4 sm:p-6">
-          <div className="rounded-[32px] border border-slate-900/10 bg-[radial-gradient(circle_at_top_left,_rgba(49,46,129,0.18),_transparent_34%),linear-gradient(135deg,#151821_0%,#111827_55%,#18212f_100%)] p-4 text-white shadow-[0_24px_60px_rgba(15,23,42,0.28)] sm:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="space-y-2">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.22em] text-white/70">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Generador visual
-                </div>
-                <div>
-                  <h2 className="text-2xl font-semibold tracking-tight">Escribe el prompt como si fuera una dirección de arte</h2>
-                  <p className="mt-1 max-w-3xl text-sm text-white/70">Puedes trabajar solo con texto o sumar una o varias imágenes de referencia para que la IA tome forma, estilo, producto o composición como punto de partida.</p>
+          <div className="rounded-[36px] border border-slate-900/10 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.14),_transparent_30%),linear-gradient(180deg,#12151d_0%,#0b0d12_100%)] p-4 text-white shadow-[0_24px_60px_rgba(15,23,42,0.28)] sm:p-6">
+            <div className="mx-auto max-w-5xl">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">Describe tu imagen</h2>
+                <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/75">
+                  {selectedAspectRatio.label} · {selectedSizeLabel}
                 </div>
               </div>
-              <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-right text-sm text-white/80">
-                <p className="text-xs uppercase tracking-[0.18em] text-white/50">Salida activa</p>
-                <p className="mt-2 font-medium text-white">{selectedAspectRatio.label} · {selectedSizeLabel}</p>
-                <p className="mt-1 text-xs text-white/55">{IMAGE_QUALITY_OPTIONS.find((option) => option.value === imageQuality)?.label} calidad</p>
-              </div>
-            </div>
 
-            <div className="mt-5 rounded-[28px] border border-white/10 bg-black/25 p-3 shadow-inner backdrop-blur sm:p-4">
+              <div className="rounded-[28px] border border-white/8 bg-[#1f1f22] p-3 shadow-inner sm:p-4">
               <Label htmlFor="litografia-ai-images-prompt" className="sr-only">Prompt para imagen</Label>
               <Textarea
                 id="litografia-ai-images-prompt"
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
-                className="min-h-40 resize-none border-0 bg-transparent px-1 py-2 text-base text-white shadow-none placeholder:text-white/35 focus-visible:ring-0"
-                placeholder="Describe tu imagen como un director de arte: pieza, estilo, composición, color, material, atmósfera y objetivo final de impresión."
+                className="min-h-40 resize-none rounded-[22px] border border-white/6 bg-white px-4 py-4 text-base text-slate-950 shadow-none placeholder:text-slate-400 focus-visible:ring-0"
+                placeholder="Describe tu imagen"
               />
 
               {useReferenceImages ? (
                 <div className="mt-3 rounded-3xl border border-white/10 bg-white/5 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-white">Imágenes de referencia</p>
-                      <p className="text-xs text-white/60">Con la integración actual se pueden enviar hasta {MAX_REFERENCE_IMAGES} referencias junto al prompt. El backend cambia automáticamente a edición por referencias cuando adjuntas imágenes.</p>
-                    </div>
+                    <p className="text-sm font-medium text-white">Imágenes de referencia</p>
                     <div className="flex items-center gap-2">
                       {referenceImages.length ? (
                         <Button type="button" variant="outline" className="border-white/15 bg-transparent text-white hover:bg-white/10" onClick={clearReferenceImages}>
@@ -578,23 +550,19 @@ export function LitografiaAiImagesModule() {
                         </div>
                       ))}
                     </div>
-                  ) : (
-                    <div className="mt-3 rounded-3xl border border-dashed border-white/15 bg-black/20 px-4 py-6 text-sm text-white/55">
-                      Adjunta una o varias imágenes si quieres que la IA preserve producto, ángulo, luz, estilo o estructura general.
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               ) : null}
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
                 <div className="flex flex-wrap items-center gap-2 text-sm text-white/70">
-                  <Button type="button" variant="outline" className="rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10" onClick={() => setAspectDialogOpen(true)}>
+                  <Button type="button" variant="outline" className="rounded-full border-white/10 bg-[#2a2b31] text-slate-100 hover:bg-[#33353d]" onClick={() => setAspectDialogOpen(true)}>
                     <SlidersHorizontal className="mr-2 h-4 w-4" />
                     Relación {selectedAspectRatio.label}
                   </Button>
                   <div className="min-w-[12rem]">
                     <Select value={imageQuality} onValueChange={(value) => setImageQuality(value as ImageQuality)}>
-                      <SelectTrigger className="rounded-full border-white/15 bg-white/5 text-white">
+                      <SelectTrigger className="rounded-full border-white/10 bg-white text-slate-950">
                         <SelectValue placeholder="Calidad" />
                       </SelectTrigger>
                       <SelectContent>
@@ -604,7 +572,7 @@ export function LitografiaAiImagesModule() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/60">
+                  <div className="rounded-full border border-white/10 bg-[#2a2b31] px-3 py-2 text-xs text-slate-200">
                     {referenceImages.length ? `${referenceImages.length} referencia${referenceImages.length === 1 ? '' : 's'} activa${referenceImages.length === 1 ? '' : 's'}` : "Solo prompt"}
                   </div>
                 </div>
@@ -614,107 +582,55 @@ export function LitografiaAiImagesModule() {
                   Generar imagen
                 </Button>
               </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-start gap-3 text-xs text-white/60">
-              <div className="inline-flex max-w-xl items-start gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
-                <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{IMAGE_QUALITY_OPTIONS.find((option) => option.value === imageQuality)?.hint}</span>
-              </div>
-              <div className="inline-flex max-w-xl items-start gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
-                <ImageIcon className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{IMAGE_SIZE_OPTIONS.find((option) => option.value === imageSize)?.hint}</span>
               </div>
             </div>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
-            <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#ecfdf5_0%,#f8fffb_100%)] p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Carrusel de referencias de muestra</p>
-                  <p className="text-sm text-slate-600">Primero ves una referencia visual. Al pasar el cursor aparece cómo pedir una imagen similar y puedes usar el prompt base.</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="icon" className="rounded-full" onClick={() => setSampleIndex((current) => (current - 1 + SAMPLE_PROMPTS.length) % SAMPLE_PROMPTS.length)}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button type="button" variant="outline" size="icon" className="rounded-full" onClick={() => setSampleIndex((current) => (current + 1) % SAMPLE_PROMPTS.length)}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="mt-4 group relative overflow-hidden rounded-[28px] border border-emerald-200 bg-white shadow-sm">
-                <div className="grid gap-0 lg:grid-cols-[0.95fr_1.05fr]">
-                  <div className="relative min-h-[22rem] overflow-hidden bg-slate-100">
-                    <img src={currentSample.previewUrl} alt={currentSample.title} className="h-full w-full object-cover" />
-                    <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">{currentSample.eyebrow}</div>
-                    <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(15,23,42,0.72)_100%)]" />
-                    <div className="absolute inset-x-0 bottom-0 p-5 text-white">
-                      <p className="text-lg font-semibold">{currentSample.title}</p>
-                      <p className="mt-2 max-w-md text-sm text-white/75">Usa esta referencia como guía visual de composición y tono. El hover te muestra la instrucción útil para recrearla.</p>
-                    </div>
-                  </div>
-
-                  <div className="relative flex min-h-[22rem] flex-col justify-between bg-slate-950 p-5 text-white">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">Hover para aprender</p>
-                      <p className="mt-3 text-base text-white/80">Pasa el cursor sobre esta tarjeta para ver la guía que explica cómo pedir una imagen similar sin copiar la referencia literalmente.</p>
-                    </div>
-                    <div className="rounded-3xl border border-white/10 bg-white/5 p-4 transition duration-200 group-hover:opacity-0">
-                      <p className="text-sm font-medium text-white">Vista rápida</p>
-                      <p className="mt-2 text-sm text-white/65">{truncatePrompt(currentSample.prompt, 180)}</p>
-                    </div>
-                    <div className="absolute inset-0 flex flex-col justify-between bg-[linear-gradient(180deg,rgba(8,47,73,0.95)_0%,rgba(15,23,42,0.98)_100%)] p-5 opacity-0 transition duration-200 group-hover:opacity-100">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.22em] text-cyan-300">Cómo crear algo similar</p>
-                        <p className="mt-3 text-sm leading-6 text-white/85">{currentSample.hoverGuide}</p>
-                        <div className="mt-4 rounded-3xl border border-white/10 bg-black/20 p-4 text-sm text-white/80">
-                          {currentSample.prompt}
-                        </div>
-                      </div>
-                      <Button type="button" className="self-start rounded-full bg-white text-slate-950 hover:bg-slate-200" onClick={() => setPrompt(currentSample.prompt)}>
-                        Usar prompt de muestra
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {SAMPLE_PROMPTS.map((sample, index) => (
-                  <button
-                    key={sample.title}
-                    type="button"
-                    onClick={() => setSampleIndex(index)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${index === sampleIndex ? "bg-emerald-600 text-white" : "border border-emerald-200 bg-white text-emerald-900 hover:bg-emerald-50"}`}
-                  >
-                    {sample.title}
-                  </button>
-                ))}
+          <div className="rounded-[30px] border border-slate-200 bg-[linear-gradient(180deg,#11141c_0%,#0b0d12_100%)] p-4 shadow-sm">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="text-sm font-medium text-white/80">Referencias visuales</div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="icon" className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10" onClick={() => setSampleIndex((current) => (current - 1 + SAMPLE_PROMPTS.length) % SAMPLE_PROMPTS.length)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="outline" size="icon" className="rounded-full border-white/10 bg-white/5 text-white hover:bg-white/10" onClick={() => setSampleIndex((current) => (current + 1) % SAMPLE_PROMPTS.length)}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-4 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-white">
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">Cómo pedir mejores imágenes y reducir intentos</p>
-                <div className="mt-3 space-y-2 text-sm text-slate-700 dark:text-white/80">
-                  {PROMPT_RECOMMENDATIONS.map((recommendation) => (
-                    <p key={recommendation}>{recommendation}</p>
-                  ))}
+            <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+              <div className="relative overflow-hidden rounded-[30px] border border-white/10 bg-[#171a22]">
+                <img src={currentSample.previewUrl} alt={currentSample.title} className="h-full min-h-[20rem] w-full object-cover" />
+                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.04)_0%,rgba(2,6,23,0.82)_100%)]" />
+                <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-800">{currentSample.eyebrow}</div>
+                <div className="absolute inset-x-0 bottom-0 p-5 text-white">
+                  <p className="text-2xl font-semibold">{currentSample.title}</p>
                 </div>
               </div>
 
-              <div className="rounded-[28px] border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950 shadow-sm">
-                <p className="font-semibold">Referencias con OpenAI</p>
-                <p className="mt-2">Sí es posible con la integración actual: cuando subes una o varias imágenes, el módulo deja de usar generación desde cero y llama al flujo de edición por referencias del proveedor.</p>
-                <p className="mt-2">En esta primera versión quedan soportadas hasta {MAX_REFERENCE_IMAGES} imágenes de referencia en la misma solicitud.</p>
+              <div className="flex flex-col justify-between gap-4 rounded-[30px] border border-white/10 bg-[#171a22] p-5 text-white">
+                <div>
+                  <p className="text-sm font-semibold text-white">Prompt base</p>
+                  <p className="mt-3 text-sm leading-6 text-white/72">{truncatePrompt(currentSample.prompt, 220)}</p>
+                </div>
+                <Button type="button" className="self-start rounded-full bg-white text-slate-950 hover:bg-slate-200" onClick={() => setPrompt(currentSample.prompt)}>
+                  Usar referencia
+                </Button>
               </div>
+            </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <p className="text-sm text-muted-foreground dark:text-white">{historyCountLabel}</p>
-              </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {SAMPLE_PROMPTS.map((sample, index) => (
+                <button
+                  key={sample.title}
+                  type="button"
+                  onClick={() => setSampleIndex(index)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${index === sampleIndex ? "bg-[#2b7fff] text-white" : "border border-white/10 bg-white/5 text-white/80 hover:bg-white/10"}`}
+                >
+                  {sample.title}
+                </button>
+              ))}
             </div>
           </div>
 
