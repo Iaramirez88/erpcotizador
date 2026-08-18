@@ -83,11 +83,11 @@ export default function NotificationsBell({ onUnreadCountChange, placement = 'he
         type="button"
         variant="ghost"
         size="icon"
-        className={placement === 'mobile-footer' ? 'relative h-12 w-12 rounded-2xl text-slate-700 hover:bg-slate-100' : 'relative h-9 w-9 rounded-full'}
+        className={placement === 'mobile-footer' ? 'relative h-14 w-14 rounded-full text-slate-700 hover:bg-slate-100/80' : 'relative h-9 w-9 rounded-full'}
         aria-label="Notificaciones"
         onClick={() => setOpen((v) => !v)}
       >
-        <svg className={placement === 'mobile-footer' ? 'h-6 w-6' : 'h-5 w-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className={placement === 'mobile-footer' ? 'h-7 w-7' : 'h-5 w-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -109,7 +109,7 @@ export default function NotificationsBell({ onUnreadCountChange, placement = 'he
           className={placement === 'sidebar-footer'
             ? 'absolute bottom-0 left-full z-50 ml-4 h-[70vh] w-[360px] max-w-[calc(100vw-6rem)] overflow-hidden rounded-[28px] border bg-background shadow-[0_24px_60px_-28px_rgba(15,23,42,0.38)]'
             : placement === 'mobile-footer'
-              ? 'absolute bottom-full right-0 z-50 mb-3 h-[70vh] w-[min(360px,calc(100vw-1.5rem))] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[28px] border bg-background shadow-[0_24px_60px_-28px_rgba(15,23,42,0.38)]'
+              ? 'fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+4.8rem)] z-[95] h-[min(70vh,32rem)] overflow-hidden rounded-[28px] border bg-background shadow-[0_24px_60px_-28px_rgba(15,23,42,0.38)]'
               : 'fixed right-4 top-[72px] z-50 h-[70vh] w-[360px] max-w-[calc(100vw-2rem)] overflow-hidden border bg-background'}
         >
           <NotificationsPanel onUnreadCountChange={setUnreadCount} />

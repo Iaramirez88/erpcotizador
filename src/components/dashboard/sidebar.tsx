@@ -6,7 +6,7 @@
 "use client"
 
 import Link from "next/link"
-import { Lock, Building2, GripVertical, Home, Briefcase, ShoppingCart, Boxes, Landmark, BarChart3, Sparkles, Layers3, Shield } from "lucide-react"
+import { Lock, Building2, Home, Briefcase, ShoppingCart, Boxes, Landmark, BarChart3, Sparkles, Layers3, Shield } from "lucide-react"
 import { useEffect, useMemo, useState, type DragEvent } from "react"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -177,7 +177,7 @@ function sortSectionsByOrder(sections: NavSection[], order: string[]) {
   })
 }
 
-function reorderSectionNavOrder(sections: NavSection[], order: string[], fromSection: string, toSection: string) {
+function reorderSectionNavOrder(sections: NavSection[], order: string[], fromSection: string, toSection: string, placement: 'before' | 'after') {
   if (!fromSection || !toSection || fromSection === toSection) return order
 
   const sectionByHref = new Map(sections.flatMap((section) => section.items.map((item) => [item.href, section.title] as const)))
@@ -194,7 +194,10 @@ function reorderSectionNavOrder(sections: NavSection[], order: string[], fromSec
   const targetIndex = remaining.findIndex((href) => sectionByHref.get(href) === toSection)
   if (targetIndex === -1) return order
 
-  remaining.splice(targetIndex, 0, ...movedHrefs)
+  const targetLength = remaining.filter((href) => sectionByHref.get(href) === toSection).length
+  const insertIndex = placement === 'after' ? targetIndex + targetLength : targetIndex
+
+  remaining.splice(insertIndex, 0, ...movedHrefs)
   return remaining
 }
 
@@ -696,6 +699,8 @@ export default function Sidebar({ user }: SidebarProps) {
   const [isPersonal, setIsPersonal] = useState<boolean>(false)
   const [openSectionTitle, setOpenSectionTitle] = useState<string | null>(null)
   const [draggingSectionTitle, setDraggingSectionTitle] = useState<string | null>(null)
+  const [dragOverSectionTitle, setDragOverSectionTitle] = useState<string | null>(null)
+  const [dragOverSectionPlacement, setDragOverSectionPlacement] = useState<'before' | 'after'>('before')
   const [canAccessWebsiteServices, setCanAccessWebsiteServices] = useState(false)
   const [isMobileViewport, setIsMobileViewport] = useState(false)
 
@@ -1038,18 +1043,34 @@ export default function Sidebar({ user }: SidebarProps) {
   function handleSectionDragStart(event: DragEvent<HTMLButtonElement>, sectionTitle: string) {
     if (isMobileViewport) return
     setDraggingSectionTitle(sectionTitle)
+    setDragOverSectionTitle(sectionTitle)
+    setDragOverSectionPlacement('before')
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', sectionTitle)
+  }
+
+  function handleSectionDragOver(event: DragEvent<HTMLButtonElement>, sectionTitle: string) {
+    if (isMobileViewport || !draggingSectionTitle) return
+    event.preventDefault()
+
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const offset = event.clientY - bounds.top
+    const placement = offset < bounds.height / 2 ? 'before' : 'after'
+
+    setDragOverSectionTitle(sectionTitle)
+    setDragOverSectionPlacement(placement)
   }
 
   function handleSectionDrop(targetSectionTitle: string) {
     if (!draggingSectionTitle || draggingSectionTitle === targetSectionTitle) {
       setDraggingSectionTitle(null)
+      setDragOverSectionTitle(null)
       return
     }
 
-    const nextOrder = reorderSectionNavOrder(sections, effectiveNavOrder, draggingSectionTitle, targetSectionTitle)
+    const nextOrder = reorderSectionNavOrder(sections, effectiveNavOrder, draggingSectionTitle, targetSectionTitle, dragOverSectionPlacement)
     setDraggingSectionTitle(null)
+    setDragOverSectionTitle(null)
     if (nextOrder === effectiveNavOrder) return
     void persistNavOrder(nextOrder)
   }
@@ -1180,31 +1201,39 @@ export default function Sidebar({ user }: SidebarProps) {
             return (
               <div
                 key={section.title}
-                className={cn("space-y-0.5", "pt-1.5")}
+                className={cn(
+                  "space-y-0.5 pt-1.5 transition-[padding] duration-150",
+                  draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before' ? 'pt-5' : '',
+                  draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after' ? 'pb-4' : ''
+                )}
               >
+                {draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before' ? (
+                  <div className="mb-2 rounded-full border-2 border-dashed border-sky-300 bg-sky-100/70 shadow-[0_0_0_4px_rgba(125,211,252,0.18)] animate-pulse" aria-hidden="true">
+                    <div className="h-2 rounded-full bg-sky-400/80" />
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   draggable={!isMobileViewport}
                   onDragStart={(event) => handleSectionDragStart(event, section.title)}
-                  onDragOver={(event) => {
-                    if (!isMobileViewport) event.preventDefault()
+                  onDragOver={(event) => handleSectionDragOver(event, section.title)}
+                  onDragLeave={() => {
+                    setDragOverSectionTitle((current) => current === section.title ? null : current)
                   }}
                   onDrop={() => handleSectionDrop(section.title)}
-                  onDragEnd={() => setDraggingSectionTitle(null)}
+                  onDragEnd={() => {
+                    setDraggingSectionTitle(null)
+                    setDragOverSectionTitle(null)
+                  }}
                   onClick={() => {
                     setOpenSectionTitle((cur) => (cur === section.title ? null : section.title))
                   }}
                   className={cn(
-                    "w-full flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                    "w-full flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors md:cursor-grab md:active:cursor-grabbing",
                     isActiveSection ? sectionHeaderActive : isOpen ? sectionHeaderOpen : cn(navText, navHover)
                   )}
                 >
                   <span className="flex items-center gap-2">
-                    <GripVertical className={cn(
-                      "h-3.5 w-3.5 shrink-0 cursor-grab",
-                      isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : sectionTitleText,
-                      isMobileViewport ? "hidden" : ""
-                    )} />
                     <span className={cn(
                       "shrink-0",
                       isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : sectionTitleText
@@ -1230,6 +1259,11 @@ export default function Sidebar({ user }: SidebarProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
+                {draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after' ? (
+                  <div className="mt-2 rounded-full border-2 border-dashed border-sky-300 bg-sky-100/70 shadow-[0_0_0_4px_rgba(125,211,252,0.18)] animate-pulse" aria-hidden="true">
+                    <div className="h-2 rounded-full bg-sky-400/80" />
+                  </div>
+                ) : null}
 
                 <div
                   className={cn(

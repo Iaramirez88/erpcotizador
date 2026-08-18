@@ -498,12 +498,12 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
                 variant="ghost"
                 size="icon"
                 type="button"
-                className={isMobileFooter ? 'h-12 w-12 rounded-2xl p-0 hover:bg-slate-100' : 'h-9 w-9 rounded-full p-0 hover:bg-accent/60'}
+                className={isMobileFooter ? 'h-14 w-14 rounded-full p-0 hover:bg-slate-100/80' : 'h-9 w-9 rounded-full p-0 hover:bg-accent/60'}
                 aria-label={t('header.profile')}
               >
-                <div className={isMobileFooter ? 'relative h-10 w-10 overflow-hidden rounded-2xl bg-muted' : 'relative h-8 w-8 overflow-hidden rounded-full bg-muted'}>
+                <div className={isMobileFooter ? 'relative h-11 w-11 overflow-hidden rounded-full bg-muted' : 'relative h-8 w-8 overflow-hidden rounded-full bg-muted'}>
                   {user.image ? (
-                    <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes={isMobileFooter ? '40px' : '32px'} unoptimized />
+                    <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes={isMobileFooter ? '44px' : '32px'} unoptimized />
                   ) : (
                     <div className="grid h-full w-full place-items-center bg-muted text-[11px] font-semibold text-foreground">
                       {initials}

@@ -424,13 +424,19 @@ function normalizePinnedTaskIds(value: unknown) {
 }
 
 function reorderValues(values: string[], fromValue: string, toValue: string) {
+  return reorderValuesByPlacement(values, fromValue, toValue, 'before')
+}
+
+function reorderValuesByPlacement(values: string[], fromValue: string, toValue: string, placement: 'before' | 'after') {
   if (!fromValue || !toValue || fromValue === toValue) return values
   const next = [...values]
   const fromIndex = next.indexOf(fromValue)
   const toIndex = next.indexOf(toValue)
   if (fromIndex === -1 || toIndex === -1) return values
   const [moved] = next.splice(fromIndex, 1)
-  next.splice(toIndex, 0, moved)
+  const targetIndex = next.indexOf(toValue)
+  if (targetIndex === -1) return values
+  next.splice(placement === 'after' ? targetIndex + 1 : targetIndex, 0, moved)
   return next
 }
 
@@ -499,6 +505,7 @@ export function CrmTaskWorkspacesClient() {
   const [dragOverWorkspaceId, setDragOverWorkspaceId] = useState('')
   const [dragOverProjectId, setDragOverProjectId] = useState('')
   const [dragOverTaskId, setDragOverTaskId] = useState('')
+  const [dragOverTaskPlacement, setDragOverTaskPlacement] = useState<'before' | 'after'>('before')
   const [currentUserId, setCurrentUserId] = useState('')
   const [pinnedTaskIds, setPinnedTaskIds] = useState<string[]>([])
   const [taskSettings, setTaskSettings] = useState<TaskWorkspaceSettings>({ requireTaskCancellationReason: false })
@@ -918,8 +925,8 @@ export function CrmTaskWorkspacesClient() {
     }
   }
 
-  async function reorderPinnedTasks(fromTaskId: string, toTaskId: string) {
-    const nextPinnedTaskIds = reorderValues(pinnedTaskIds, fromTaskId, toTaskId)
+  async function reorderPinnedTasks(fromTaskId: string, toTaskId: string, placement: 'before' | 'after') {
+    const nextPinnedTaskIds = reorderValuesByPlacement(pinnedTaskIds, fromTaskId, toTaskId, placement)
     if (nextPinnedTaskIds === pinnedTaskIds) return
     try {
       await savePinnedTasks(nextPinnedTaskIds)
@@ -1298,6 +1305,7 @@ export function CrmTaskWorkspacesClient() {
   async function handleTaskRowDrop(targetTask: TaskItem, event: React.DragEvent<HTMLDivElement>) {
     event.preventDefault()
     setDragOverTaskId('')
+    setDragOverTaskPlacement('before')
     const payload = parseDragPayload(event.dataTransfer.getData('text/plain'))
     if (payload?.type !== 'task' || payload.taskId === targetTask.id) return
 
@@ -1305,7 +1313,7 @@ export function CrmTaskWorkspacesClient() {
     if (!draggedTask || !canEditTask(draggedTask)) return
 
     if (isTaskPinned(payload.taskId) && isTaskPinned(targetTask.id)) {
-      await reorderPinnedTasks(payload.taskId, targetTask.id)
+      await reorderPinnedTasks(payload.taskId, targetTask.id, dragOverTaskPlacement)
       return
     }
 
@@ -1319,10 +1327,11 @@ export function CrmTaskWorkspacesClient() {
   async function handlePinnedTaskDrop(targetTaskId: string, event: React.DragEvent<HTMLDivElement>) {
     event.preventDefault()
     setDragOverTaskId('')
+    setDragOverTaskPlacement('before')
     const payload = parseDragPayload(event.dataTransfer.getData('text/plain'))
     if (payload?.type !== 'task') return
     if (!isTaskPinned(payload.taskId) || !isTaskPinned(targetTaskId)) return
-    await reorderPinnedTasks(payload.taskId, targetTaskId)
+    await reorderPinnedTasks(payload.taskId, targetTaskId, dragOverTaskPlacement)
   }
 
   async function handleSaveDetail() {
@@ -1723,7 +1732,7 @@ export function CrmTaskWorkspacesClient() {
     <div className="space-y-6">
       <ErpPageHero
         breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Proyectos' }]}
-        title="Proyectos y seguimiento interno"
+        title="Tareas y proyectos"
         description="Crea tareas de forma directa, relaciónalas opcionalmente con proyectos o listas existentes, y centraliza el seguimiento con responsables, evidencia y estados claros."
         actions={<div className="flex flex-wrap items-center gap-2"><DropdownMenu><DropdownMenuTrigger asChild><Button className="rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700"><Plus className="mr-2 h-4 w-4" />Crear tarea<ChevronDown className="ml-2 h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-60 rounded-2xl p-1.5"><DropdownMenuItem onSelect={() => openTaskCreationDialog('')}>Crear sin relación</DropdownMenuItem><DropdownMenuItem onSelect={() => openTaskCreationDialog(selectedProjectId || '')} disabled={!selectedWorkspaceId}>Crear en proyecto actual</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onSelect={() => setWorkspaceDialogOpen(true)}>Crear proyecto</DropdownMenuItem></DropdownMenuContent></DropdownMenu><Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85 dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10" onClick={() => setWorkspaceDialogOpen(true)}>Nuevo proyecto</Button></div>}
         stats={[
@@ -2062,10 +2071,19 @@ export function CrmTaskWorkspacesClient() {
                       key={task.id}
                       draggable={canEditCurrentTask}
                       onDragStart={(event) => handleTaskDragStart(task, event)}
-                      onDragEnd={() => setDragOverTaskId('')}
+                      onDragEnd={() => {
+                        setDragOverTaskId('')
+                        setDragOverTaskPlacement('before')
+                      }}
                       onDragOver={(event) => {
                         event.preventDefault()
+                        const bounds = event.currentTarget.getBoundingClientRect()
+                        const placement = event.clientY - bounds.top < bounds.height / 2 ? 'before' : 'after'
                         setDragOverTaskId(task.id)
+                        setDragOverTaskPlacement(placement)
+                      }}
+                      onDragLeave={() => {
+                        setDragOverTaskId((current) => current === task.id ? '' : current)
                       }}
                       onDrop={(event) => {
                         if (pinned) {
@@ -2074,9 +2092,10 @@ export function CrmTaskWorkspacesClient() {
                         }
                         void handleTaskRowDrop(task, event)
                       }}
-                      className={`group grid items-center gap-3 border-b px-4 py-2 text-xs text-slate-700 bg-gradient-to-r transition-colors ${dragOverTaskId === task.id ? 'border-emerald-400 ring-2 ring-inset ring-emerald-200' : ''} ${statusMeta.softClass}`}
+                      className={`group relative grid items-center gap-3 border-b px-4 py-2 text-xs text-slate-700 bg-gradient-to-r transition-[margin,box-shadow,colors] ${dragOverTaskId === task.id ? 'border-emerald-400 ring-2 ring-inset ring-emerald-200' : ''} ${dragOverTaskId === task.id && dragOverTaskPlacement === 'before' ? 'mt-3' : ''} ${dragOverTaskId === task.id && dragOverTaskPlacement === 'after' ? 'mb-3' : ''} ${statusMeta.softClass}`}
                       style={{ gridTemplateColumns: taskGridTemplate, borderLeft: `5px solid ${normalizeHex(task.colorHex)}`, borderBottomColor: 'rgba(226,232,240,0.9)' }}
                     >
+                      {dragOverTaskId === task.id && dragOverTaskPlacement === 'before' ? <div className="pointer-events-none absolute -top-3 left-4 right-4 h-2 rounded-full border-2 border-dashed border-emerald-300 bg-emerald-100/80 shadow-[0_0_0_4px_rgba(110,231,183,0.2)] animate-pulse" aria-hidden="true" /> : null}
                       <div className="flex min-w-0 items-center gap-2"><GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-slate-400 active:cursor-grabbing" /><div className="min-w-0 flex-1"><Tooltip><TooltipTrigger asChild><p className="truncate font-semibold text-slate-950">{task.title}</p></TooltipTrigger><TooltipContent><p className="max-w-sm break-words text-xs">{task.title}</p></TooltipContent></Tooltip></div><Button variant="ghost" size="icon" className={pinned ? 'h-7 w-7 shrink-0 rounded-full text-amber-600 opacity-100 hover:bg-amber-100 hover:text-amber-700' : 'h-7 w-7 shrink-0 rounded-full opacity-0 transition-opacity hover:bg-slate-200 hover:text-slate-900 group-hover:opacity-100'} aria-label={pinned ? `Desanclar ${task.title}` : `Anclar ${task.title}`} onClick={() => void toggleTaskPinned(task)}><Pin className="h-3.5 w-3.5" /></Button></div>
                       {showCrossWorkspaceColumn ? <div className="min-w-0"><p className="truncate font-medium text-slate-900">{task.workspace?.name || 'Sin proyecto'}</p><p className="truncate text-[11px] text-slate-500">{task.project?.name || 'Sin lista'}</p></div> : null}
                       {showPriorityColumn ? <div className="overflow-hidden">{renderTaskPriorityControl(task)}</div> : null}
@@ -2090,6 +2109,7 @@ export function CrmTaskWorkspacesClient() {
                       {visibleExtraTaskColumns.includes('custom-fields') ? <div className="overflow-hidden">{renderTaskCustomFieldsColumn(task)}</div> : null}
                       {visibleExtraTaskColumns.includes('history') ? <div className="overflow-hidden">{renderTaskHistoryColumn(task)}</div> : null}
                       {visibleExtraTaskColumns.includes('note') ? <div className="overflow-hidden">{renderTaskNoteColumn(task)}</div> : null}
+                      {dragOverTaskId === task.id && dragOverTaskPlacement === 'after' ? <div className="pointer-events-none absolute -bottom-3 left-4 right-4 h-2 rounded-full border-2 border-dashed border-emerald-300 bg-emerald-100/80 shadow-[0_0_0_4px_rgba(110,231,183,0.2)] animate-pulse" aria-hidden="true" /> : null}
                       <div className="flex items-center gap-1 overflow-hidden">
                         <Button variant="outline" size="icon" className="h-8 w-8 rounded-full" aria-label={`Ver detalle de ${task.title}`} onClick={() => void loadTaskDetail(task.id)}>
                           <Eye className="h-3.5 w-3.5" />
