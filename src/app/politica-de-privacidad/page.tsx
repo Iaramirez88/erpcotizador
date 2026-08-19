@@ -66,23 +66,13 @@ export default function PoliticaDePrivacidadPage() {
         <section className="border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,rgba(29,78,216,0.16),transparent_34%),linear-gradient(135deg,#0f172a,#1d4ed8)] px-6 py-10 text-white sm:px-10">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-100">Documento público</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Política de privacidad</h1>
-          <p className="mt-4 max-w-2xl text-sm leading-7 text-white/85 sm:text-base">
-            Esta página está disponible sin autenticación para cumplir requisitos públicos de la aplicación,
-            incluyendo revisiones de integración con Meta y WhatsApp.
-          </p>
           <div className="mt-6 flex flex-wrap gap-3 text-xs text-white/80">
-            <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Ruta pública: /politica-de-privacidad</span>
             <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Última actualización: {lastUpdated}</span>
           </div>
         </section>
 
         <section className="px-6 py-8 sm:px-10 sm:py-10">
-          <div className="rounded-3xl border border-sky-100 bg-sky-50/70 px-5 py-4 text-sm leading-7 text-slate-700">
-            Si Meta te solicita la URL de política de privacidad, puedes registrar la URL pública completa de esta página,
-            por ejemplo: https://tu-dominio.com/politica-de-privacidad.
-          </div>
-
-          <div className="mt-8 space-y-8">
+          <div className="space-y-8">
             {sections.map((section) => (
               <section key={section.title} className="space-y-3">
                 <h2 className="text-xl font-semibold tracking-tight text-slate-950">{section.title}</h2>

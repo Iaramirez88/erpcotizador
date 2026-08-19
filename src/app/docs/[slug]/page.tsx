@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation'
 
 import { PublicArchitectureMap } from '@/components/public/public-architecture-map'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { getPublicDeepDomainDocBySlug, getPublicDomainDocBySlug, publicDomainDocs } from '@/lib/public-docs-content'
+import { getPublicDomainDocBySlug, publicDomainDocs } from '@/lib/public-docs-content'
 
 type DocsDomainPageProps = {
   params: Promise<{ slug: string }>
@@ -40,16 +40,16 @@ export async function generateMetadata({ params }: DocsDomainPageProps): Promise
 
   if (!domain) {
     return {
-      title: 'Documentacion | Ordex',
+      title: 'Portal privado | Ordex',
     }
   }
 
   return {
-    title: `${domain.name} | Documentacion Ordex`,
+    title: `${domain.name} | Portal privado Ordex`,
     description: domain.summary,
     robots: {
-      index: true,
-      follow: true,
+      index: false,
+      follow: false,
     },
   }
 }
@@ -60,7 +60,6 @@ export default async function DocsDomainPage({ params }: DocsDomainPageProps) {
 
   if (!domain) notFound()
 
-  const deepDoc = getPublicDeepDomainDocBySlug(slug)
   const Icon = domainIcons[domain.id as keyof typeof domainIcons] ?? Compass
   const relatedDocs = publicDomainDocs.filter((item) => item.slug !== domain.slug).slice(0, 3)
 
@@ -71,7 +70,7 @@ export default async function DocsDomainPage({ params }: DocsDomainPageProps) {
           <div className="bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.2),transparent_28%),linear-gradient(135deg,#081626,#12385c_55%,#0ea5e9_100%)] px-6 py-10 text-white sm:px-10 lg:px-12">
             <Link href="/docs" className="inline-flex items-center gap-2 text-sm font-medium text-sky-100 transition hover:text-white">
               <ArrowLeft className="h-4 w-4" />
-              Volver al centro de documentacion
+              Volver al portal privado
             </Link>
             <div className="mt-6 inline-flex h-14 w-14 items-center justify-center rounded-3xl border border-white/15 bg-white/10">
               <Icon className="h-7 w-7" />
@@ -81,7 +80,7 @@ export default async function DocsDomainPage({ params }: DocsDomainPageProps) {
                 {domain.stage}
               </span>
               <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-100">
-                /docs/{domain.slug}
+                Acceso privado del dominio
               </span>
             </div>
             <h1 className="mt-4 max-w-4xl text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">{domain.name}</h1>
@@ -123,11 +122,11 @@ export default async function DocsDomainPage({ params }: DocsDomainPageProps) {
               </div>
 
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Rutas base</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Integraciones visibles</div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {domain.routes.map((route) => (
-                    <div key={route} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-                      {route}
+                  {domain.integrations.map((item) => (
+                    <div key={item} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                      {item}
                     </div>
                   ))}
                 </div>
@@ -165,135 +164,48 @@ export default async function DocsDomainPage({ params }: DocsDomainPageProps) {
 
         <PublicArchitectureMap highlightSlugs={[domain.slug]} compact />
 
-        {deepDoc ? (
-          <>
-            <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-              <Card className="rounded-[28px] border-slate-200 bg-white/95 shadow-sm">
-                <CardHeader>
-                  <CardTitle className="text-2xl text-slate-950">Documentacion profunda del dominio</CardTitle>
-                  <CardDescription>{deepDoc.overview}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Entidades principales</div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {deepDoc.entities.map((entity) => (
-                        <span key={entity} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700">
-                          {entity}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">KPI o focos de seguimiento</div>
-                    <div className="mt-3 space-y-2">
-                      {deepDoc.kpis.map((item) => (
-                        <div key={item} className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm leading-6 text-slate-700">
-                          {item}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-[28px] border-slate-200 bg-white/95 shadow-sm">
-                <CardHeader>
-                  <CardTitle className="text-2xl text-slate-950">Permisos y gobierno de acceso</CardTitle>
-                  <CardDescription>Lectura aterrizada a lo que hoy validan los endpoints del repositorio.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {deepDoc.permissions.map((permission) => (
-                    <div key={permission.title} className="rounded-[22px] border border-slate-200 bg-slate-50/75 p-4">
-                      <div className="text-sm font-semibold text-slate-950">{permission.title}</div>
-                      <div className="mt-2 text-sm leading-6 text-slate-700">{permission.requirement}</div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-                        <span className="rounded-full border border-slate-200 bg-white px-3 py-1">Scope: {permission.scope}</span>
-                      </div>
-                      <p className="mt-3 text-sm leading-6 text-slate-600">{permission.notes}</p>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </section>
-
-            <section className="rounded-[30px] border border-slate-200 bg-white/95 p-5 shadow-sm sm:p-6">
-              <div className="max-w-3xl">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">API surface</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Endpoints y responsabilidades</h2>
-                <p className="mt-3 text-sm leading-7 text-slate-600">Cada grupo resume que resuelve, que permiso exige y cuales rutas concretas sostienen ese comportamiento.</p>
+        <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+          <Card className="rounded-[28px] border-slate-200 bg-white/95 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-2xl text-slate-950">Controles de confianza</CardTitle>
+              <CardDescription>Esta capa privada resume el alcance del dominio sin exponer implementacion sensible fuera del acceso autenticado.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-[22px] border border-slate-200 bg-slate-50/75 p-4 text-sm leading-6 text-slate-700">
+                Permisos por roles, empresa y sede para ordenar la operacion segun responsabilidades del equipo.
               </div>
-              <div className="mt-6 grid gap-4 xl:grid-cols-2">
-                {deepDoc.endpointGroups.map((group) => (
-                  <div key={group.title} className="rounded-[24px] border border-slate-200 bg-slate-50/75 p-5">
-                    <h3 className="text-lg font-semibold text-slate-950">{group.title}</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">{group.purpose}</p>
-                    <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-                      {group.access}
-                    </div>
-                    <div className="mt-4 space-y-2">
-                      {group.endpoints.map((endpoint) => (
-                        <div key={endpoint} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-                          {endpoint}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+              <div className="rounded-[22px] border border-slate-200 bg-slate-50/75 p-4 text-sm leading-6 text-slate-700">
+                Continuidad operativa y respaldo documentado para sostener el servicio en procesos comerciales y operativos.
               </div>
-            </section>
+              <div className="rounded-[22px] border border-slate-200 bg-slate-50/75 p-4 text-sm leading-6 text-slate-700">
+                Integraciones empresariales habilitadas segun el dominio, sin exponer configuraciones, endpoints ni topologia tecnica.
+              </div>
+            </CardContent>
+          </Card>
 
-            <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-              <Card className="rounded-[28px] border-slate-200 bg-white/95 shadow-sm">
-                <CardHeader>
-                  <CardTitle className="text-2xl text-slate-950">Integraciones vivas</CardTitle>
-                  <CardDescription>Conexiones externas o capas transversales que ya participan en este dominio.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {deepDoc.integrations.map((integration) => (
-                    <div key={integration.name} className="rounded-[22px] border border-slate-200 bg-slate-50/75 p-4">
-                      <div className="text-sm font-semibold text-slate-950">{integration.name}</div>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">{integration.summary}</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {integration.touchpoints.map((item) => (
-                          <span key={item} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
-                            {item}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-[28px] border-slate-200 bg-white/95 shadow-sm">
-                <CardHeader>
-                  <CardTitle className="text-2xl text-slate-950">Playbooks operativos</CardTitle>
-                  <CardDescription>Secuencias recomendadas para usar el dominio como parte de un proceso y no como pantalla aislada.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {deepDoc.playbooks.map((playbook) => (
-                    <div key={playbook.title} className="rounded-[24px] border border-slate-200 bg-slate-50/75 p-4">
-                      <div className="text-sm font-semibold text-slate-950">{playbook.title}</div>
-                      <div className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Disparador</div>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">{playbook.trigger}</p>
-                      <div className="mt-3 space-y-2">
-                        {playbook.steps.map((step, index) => (
-                          <div key={step} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-                            {index + 1}. {step}
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-slate-700">
-                        Resultado: {playbook.outcome}
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </section>
-          </>
-        ) : null}
+          <Card className="rounded-[28px] border-slate-200 bg-white/95 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-2xl text-slate-950">Ficha tecnica bajo solicitud</CardTitle>
+              <CardDescription>Esta lectura acompana procesos comerciales, onboarding y evaluaciones de implementacion con acceso autenticado.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-[22px] border border-slate-200 bg-slate-50/75 p-4 text-sm leading-6 text-slate-700">
+                Cuestionarios de seguridad y continuidad del negocio.
+              </div>
+              <div className="rounded-[22px] border border-slate-200 bg-slate-50/75 p-4 text-sm leading-6 text-slate-700">
+                Alcance tecnico por integracion, entorno o proceso de implementacion.
+              </div>
+              <div className="rounded-[22px] border border-slate-200 bg-slate-50/75 p-4 text-sm leading-6 text-slate-700">
+                Detalle operativo para clientes enterprise, partners o proyectos de despliegue especializado.
+              </div>
+              <div className="pt-2">
+                <Link href="/auth/register" className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800">
+                  Solicitar ficha tecnica
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
 
         <section className="grid gap-4 xl:grid-cols-2">
           <Card className="rounded-[28px] border-slate-200 bg-white/95 shadow-sm">
@@ -313,7 +225,7 @@ export default async function DocsDomainPage({ params }: DocsDomainPageProps) {
           <Card className="rounded-[28px] border-slate-200 bg-white/95 shadow-sm">
             <CardHeader>
               <CardTitle className="text-xl text-slate-950">Integraciones y extensiones</CardTitle>
-              <CardDescription>Puntos de acople con servicios externos, automatizacion o capas transversales.</CardDescription>
+              <CardDescription>Capacidades visibles del dominio para canales, cumplimiento y continuidad de operacion.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
               {domain.integrations.map((item) => (
@@ -329,14 +241,14 @@ export default async function DocsDomainPage({ params }: DocsDomainPageProps) {
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-100">Siguiente lectura</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Explora dominios relacionados</h2>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Explora dominios relacionados dentro del portal</h2>
               <p className="mt-3 text-sm leading-7 text-white/80 sm:text-base">
-                La documentacion esta organizada para que cada dominio pueda entenderse por separado sin perder su relacion con la arquitectura completa del producto.
+                Cada dominio se puede entender por separado sin exponer el plano tecnico interno de la plataforma.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Link href="/plataforma" className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-slate-100">
-                Ver plataforma
+              <Link href="/auth/register" className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-slate-100">
+                Solicitar ficha tecnica
               </Link>
               <Link href="/producto" className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/15">
                 Ver landing comercial

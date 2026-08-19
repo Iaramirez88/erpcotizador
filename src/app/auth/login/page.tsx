@@ -9,7 +9,7 @@
 
 import { useEffect, useState } from "react"
 import { getProviders, signIn } from "next-auth/react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,6 +21,7 @@ import { useI18n } from "@/components/providers/i18n-provider"
 export default function LoginPage() {
   const { t } = useI18n()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [needsVerification, setNeedsVerification] = useState(false)
@@ -32,6 +33,10 @@ export default function LoginPage() {
     password: ""
   })
   const [showPassword, setShowPassword] = useState(false)
+  const requestedCallbackUrl = searchParams?.get('callbackUrl')
+  const callbackUrl = requestedCallbackUrl && requestedCallbackUrl.startsWith('/') && !requestedCallbackUrl.startsWith('//')
+    ? requestedCallbackUrl
+    : '/dashboard'
 
   useEffect(() => {
     let cancelled = false
@@ -65,7 +70,7 @@ export default function LoginPage() {
     setIsLoading(true)
     setError("")
     try {
-      await signIn('google', { callbackUrl: '/dashboard' })
+      await signIn('google', { callbackUrl })
     } catch {
       setError('No se pudo iniciar el acceso con Google.')
       setIsLoading(false)
@@ -84,6 +89,7 @@ export default function LoginPage() {
         email: formData.email,
         password: formData.password,
         remember: rememberMe ? 'true' : 'false',
+        callbackUrl,
         redirect: false,
       })
 
@@ -98,7 +104,7 @@ export default function LoginPage() {
       }
 
       // Si el login fue exitoso, redirigir al dashboard
-      router.push("/dashboard")
+      router.push(result?.url ?? callbackUrl)
       router.refresh()
     } catch {
       setError(t('auth.login.errors.generic'))
@@ -242,11 +248,11 @@ export default function LoginPage() {
                 </Link>
                 <span className="text-slate-300">|</span>
                 <Link href="/plataforma" className="text-sky-700 hover:underline">
-                  Arquitectura y confiabilidad
+                  Trust center
                 </Link>
                 <span className="text-slate-300">|</span>
-                <Link href="/docs" className="text-sky-700 hover:underline">
-                  Centro de documentacion
+                <Link href="/auth/register" className="text-sky-700 hover:underline">
+                  Solicitar ficha tecnica
                 </Link>
               </div>
             </div>

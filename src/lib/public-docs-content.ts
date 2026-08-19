@@ -1,59 +1,59 @@
 export const publicDocsLastUpdated = '18 de agosto de 2026'
 
 export const platformPrinciples = [
-  'Arquitectura por dominios de negocio, no por pantallas sueltas.',
-  'Multiempresa y multisede como condicion estructural del producto.',
-  'Capas transversales de permisos, trazabilidad, reportes e IA.',
-  'Integraciones desacopladas para no mezclar operacion con proveedores externos.',
+  'Arquitectura modular orientada a dominios de negocio.',
+  'Multiempresa y multisede como base estructural del producto.',
+  'Gobierno de acceso, trazabilidad y continuidad operativa como capacidades transversales.',
+  'Integraciones empresariales conectadas sin fragmentar la operacion.',
 ] as const
 
 export const reliabilityPillars = [
   {
-    title: 'Operacion desacoplada y escalable',
+    title: 'Infraestructura escalable',
     summary:
-      'La aplicacion corre sobre Next.js y servicios containerizados, con proxy reverso y despliegue preparado para separar web, workers y tareas operativas.',
-    bullets: ['Despliegue web y servicios auxiliares por contenedor.', 'Reverse proxy para entrada HTTPS y ruteo de trafico.', 'Separacion entre app web, procesos de OCR, colas y tareas programadas cuando aplica.'],
+      'La plataforma esta preparada para crecer con la operacion de la empresa sin depender de una sola pieza critica.',
+    bullets: ['Escalabilidad horizontal para acompanar crecimiento operativo.', 'Servicios distribuidos para mejorar rendimiento y continuidad.', 'Capa segura de entrada HTTPS para proteger el trafico.'],
   },
   {
-    title: 'Respaldo y recuperacion operativa',
+    title: 'Respaldo y recuperacion',
     summary:
-      'La estrategia recomendada del proyecto contempla respaldos diarios de PostgreSQL, retencion definida y copia externa para reducir riesgo operativo.',
-    bullets: ['Backups diarios con pg_dump.', 'Retencion operativa de 7 a 30 dias segun entorno.', 'Copia externa a almacenamiento separado del VPS principal.'],
+      'La operacion cuenta con politicas de respaldo y recuperacion documentadas para reducir riesgo y proteger la continuidad del negocio.',
+    bullets: ['Respaldos automaticos.', 'Continuidad operativa documentada.', 'Recuperacion preparada ante incidentes.'],
   },
   {
-    title: 'Control de acceso y seguridad aplicada',
+    title: 'Seguridad empresarial',
     summary:
-      'La base del producto ya contempla autenticacion, permisos por rol/modulo/sede y endurecimiento operativo para entornos productivos.',
-    bullets: ['Autenticacion centralizada con NextAuth.', 'Permisos por sede, modulo y capacidades administrativas.', 'Buenas practicas de firewall, secretos y exposicion minima de servicios.'],
+      'La plataforma incorpora autenticacion segura, controles por rol y separacion operativa entre empresas, sedes y equipos.',
+    bullets: ['Permisos por roles y responsabilidades.', 'Aislamiento por empresa y sede.', 'Controles de acceso centralizados.'],
   },
   {
-    title: 'Observabilidad y mantenimiento',
+    title: 'Monitoreo y continuidad',
     summary:
-      'La operacion documentada del proyecto incluye monitoreo minimo de disco, CPU, RAM, logs y procedimientos de actualizacion sin mezclar tareas del sistema con la app.',
-    bullets: ['Revision de logs y contenedores en produccion.', 'Alertas basicas de recursos y crecimiento de archivos.', 'Mantenimiento separado entre sistema operativo, Docker y aplicacion.'],
+      'La plataforma opera con politicas de monitoreo, mantenimiento y respuesta para sostener disponibilidad y confianza en el servicio.',
+    bullets: ['Monitoreo continuo de la plataforma.', 'Procedimientos de mantenimiento documentados.', 'Disponibilidad orientada a operacion empresarial.'],
   },
 ] as const
 
 export const stackLayers = [
   {
-    title: 'Capa de aplicacion',
-    items: ['Next.js App Router', 'TypeScript', 'Server Components', 'Tailwind CSS', 'shadcn/ui'],
+    title: 'Aplicacion empresarial',
+    items: ['Experiencia web moderna', 'Acceso seguro', 'Operacion multiempresa', 'Operacion multisede'],
   },
   {
-    title: 'Capa de negocio',
-    items: ['ERP multiempresa', 'CRM omnicanal', 'Cotizador y ordenes', 'Verticales por industria', 'Motor de inteligencia empresarial'],
+    title: 'Arquitectura modular',
+    items: ['ERP y CRM conectados', 'Ventas y operaciones', 'Inventario y finanzas', 'Verticales por industria'],
   },
   {
-    title: 'Capa de datos',
-    items: ['PostgreSQL', 'Prisma ORM', 'Modelos por dominio', 'Trazabilidad operativa', 'Snapshots y reportes'],
+    title: 'Datos y trazabilidad',
+    items: ['Datos transaccionales', 'Historial operativo', 'Trazabilidad por proceso', 'Lectura ejecutiva'],
   },
   {
-    title: 'Capa de infraestructura',
-    items: ['Docker Compose', 'Caddy reverse proxy', 'Workers opcionales', 'Cron y jobs internos', 'PWA y push notifications'],
+    title: 'Infraestructura y continuidad',
+    items: ['Servicios distribuidos', 'Alta disponibilidad', 'Escalabilidad', 'Respaldo y recuperacion'],
   },
   {
-    title: 'Capa de integracion',
-    items: ['Meta y WhatsApp', 'Google OAuth y calendar bridges', 'Bold para cobro', 'DIAN', 'OCR y activos de archivos'],
+    title: 'Integraciones empresariales',
+    items: ['WhatsApp y Meta', 'Google', 'DIAN', 'Canales y automatizaciones'],
   },
 ] as const
 
@@ -142,7 +142,7 @@ export const publicDomainDocs: PublicDomainDoc[] = [
     includes: ['Dashboard', 'Perfil', 'Usuarios', 'Sedes', 'Notificaciones', 'Plan y activacion'],
     flows: ['Ingreso y control de acceso', 'Configuracion de empresa y sede', 'Gobierno de permisos y perfiles'],
     routes: ['/dashboard', '/dashboard/perfil', '/dashboard/notificaciones'],
-    integrations: ['NextAuth', 'RBAC por sede y modulo', 'Preferencias de UI'],
+    integrations: ['Autenticacion segura', 'Permisos por roles', 'Gobierno por empresa y sede'],
     dependencies: ['Todos los dominios operan sobre esta capa de identidad y gobierno.'],
     outcomes: ['Control centralizado por empresa y sede', 'Menor riesgo operativo por permisos mal asignados', 'Base estable para crecimiento por modulos'],
   },
@@ -159,7 +159,7 @@ export const publicDomainDocs: PublicDomainDoc[] = [
     includes: ['CRM', 'Inbox omnicanal', 'Leads', 'Oportunidades', 'Agenda CRM', 'Tareas CRM'],
     flows: ['Lead -> conversacion -> oportunidad', 'Seguimiento por asesor, sede y SLA', 'Conversacion -> cliente ERP'],
     routes: ['/dashboard/crm'],
-    integrations: ['Meta lead ads y WhatsApp', 'Google Calendar', 'Google Sheets', 'Slack y Teams como backlog de integracion'],
+    integrations: ['WhatsApp y Meta', 'Google', 'Canales digitales', 'Seguimiento comercial'],
     dependencies: ['Se conecta con Ventas para cotizar y cerrar.', 'Comparte trazabilidad con IA, notificaciones y reportes.'],
     outcomes: ['Mejor tiempo de respuesta comercial', 'Historial omnicanal unificado', 'Conversion hacia clientes y ventas sin reingresar datos'],
   },
@@ -176,7 +176,7 @@ export const publicDomainDocs: PublicDomainDoc[] = [
     includes: ['Cotizador', 'Cotizaciones', 'Clientes', 'Remisiones', 'POS'],
     flows: ['Oportunidad -> cotizacion', 'Cotizacion -> remision o venta', 'Venta -> factura y control de pago'],
     routes: ['/dashboard/cotizaciones', '/dashboard/clientes', '/dashboard/remisiones', '/dashboard/pos'],
-    integrations: ['PDF de cotizacion', 'Bold checkout', 'Auditoria de cotizaciones'],
+    integrations: ['Documentos comerciales', 'Cobro y facturacion', 'Seguimiento de cierre'],
     dependencies: ['Consume catalogo e inventario.', 'Empuja datos hacia operaciones y finanzas.'],
     outcomes: ['Cierre comercial trazable', 'Documentos consistentes hacia cliente', 'Paso directo hacia operacion y contabilidad'],
   },
@@ -193,7 +193,7 @@ export const publicDomainDocs: PublicDomainDoc[] = [
     includes: ['Ordenes de trabajo', 'Plantillas', 'Escaneos', 'Tareas y proyectos', 'Litografia'],
     flows: ['Venta -> orden de trabajo', 'Escaneo -> aprobacion -> conversion', 'Plantilla -> ejecucion recurrente'],
     routes: ['/dashboard/ordenes', '/dashboard/plantillas', '/dashboard/litografia'],
-    integrations: ['OCR', 'Archivos y uploads', 'Flujos de aprobacion'],
+    integrations: ['Automatizacion documental', 'Flujos de aprobacion', 'Trazabilidad operativa'],
     dependencies: ['Recibe demanda desde ventas.', 'Consulta recursos e inventario para ejecutar.'],
     outcomes: ['Menos perdida de contexto entre venta y entrega', 'Mayor trazabilidad de produccion', 'Base reusable para verticales operativos'],
   },
@@ -210,7 +210,7 @@ export const publicDomainDocs: PublicDomainDoc[] = [
     includes: ['Inventario', 'Productos', 'Materiales', 'Bodegas', 'Proveedores', 'Traslados'],
     flows: ['Compra -> inventario', 'Inventario -> cotizacion y produccion', 'Traslado entre sedes y bodegas'],
     routes: ['/dashboard/inventario', '/dashboard/productos', '/dashboard/materiales', '/dashboard/proveedores'],
-    integrations: ['Exportaciones', 'Configuracion de materiales', 'Abastecimiento'],
+    integrations: ['Abastecimiento', 'Control de stock', 'Movimientos entre sedes'],
     dependencies: ['Abastece ventas, operaciones y reportes.', 'Entrega datos para costos y control financiero.'],
     outcomes: ['Stock mas confiable', 'Menos rupturas por informacion incompleta', 'Mayor control de materiales y traslados'],
   },
@@ -227,7 +227,7 @@ export const publicDomainDocs: PublicDomainDoc[] = [
     includes: ['Contabilidad', 'Plan de cuentas', 'Comprobantes', 'Libros', 'DIAN', 'Nomina'],
     flows: ['Venta -> factura -> contabilidad', 'Documento DIAN -> estado -> recepcion', 'Gestion de colaboradores y periodos'],
     routes: ['/dashboard/contabilidad', '/dashboard/nomina'],
-    integrations: ['DIAN', 'Facturacion electronica', 'Libros y reportes'],
+    integrations: ['DIAN', 'Documentos regulatorios', 'Control financiero'],
     dependencies: ['Recibe eventos desde ventas.', 'Comparte base de personas, empresas y sedes con nucleo.'],
     outcomes: ['Mayor coherencia financiera', 'Trazabilidad documental y fiscal', 'Menor reproceso administrativo'],
   },
@@ -244,7 +244,7 @@ export const publicDomainDocs: PublicDomainDoc[] = [
     includes: ['Generador de imagenes', 'Vectorizador', 'Litografia IA', 'Auditorias IA', 'Decision Engine'],
     flows: ['Solicitud -> generacion o vectorizacion', 'Operacion -> analisis -> snapshot', 'CRM -> apoyo conversacional y operativo'],
     routes: ['/dashboard/imagenes-ia', '/dashboard/reportes'],
-    integrations: ['OCR', 'Motores de IA por dominio', 'Snapshots de decision engine'],
+    integrations: ['Asistencia inteligente', 'Analitica aplicada', 'Automatizacion por dominio'],
     dependencies: ['Cruza comercial, operaciones y analitica.', 'Depende de datos historicos y eventos reales del ERP.'],
     outcomes: ['Aceleracion operativa y creativa', 'Mejor lectura ejecutiva', 'Automatizacion especializada por dominio'],
   },
@@ -261,7 +261,7 @@ export const publicDomainDocs: PublicDomainDoc[] = [
     includes: ['Reportes', 'Restaurante', 'Odontologia', 'Dotaciones', 'Mapa de producto'],
     flows: ['Operacion sectorial sobre base comun', 'Lectura ejecutiva por dominio', 'Expansion por industria sin duplicar nucleo'],
     routes: ['/dashboard/reportes', '/dashboard/restaurante', '/dashboard/odontologia', '/dashboard/dotaciones'],
-    integrations: ['Motor de inteligencia empresarial', 'Trazabilidad transversal'],
+    integrations: ['Lectura ejecutiva', 'Capas sectoriales', 'Trazabilidad transversal'],
     dependencies: ['Se apoya en nucleo, operaciones, ventas y recursos.', 'Conecta con reportes y decision engine.'],
     outcomes: ['Escalabilidad por vertical', 'Mejor discurso de producto por industria', 'Lectura ejecutiva transversal'],
   },
@@ -269,16 +269,16 @@ export const publicDomainDocs: PublicDomainDoc[] = [
 
 export const integrationCatalog = [
   {
-    title: 'Canales y CRM',
-    items: ['Meta lead ads', 'WhatsApp Cloud API', 'Gmail y Outlook como direccion futura', 'Google Calendar', 'Google Sheets'],
+    title: 'Canales comerciales',
+    items: ['WhatsApp y Meta', 'Google', 'Canales digitales', 'Captacion e interaccion'],
   },
   {
-    title: 'Cobro y documentos',
-    items: ['Bold checkout', 'PDFs de cotizacion y factura', 'Documentos verificables', 'DIAN'],
+    title: 'Documentos y cumplimiento',
+    items: ['Documentos comerciales', 'Facturacion', 'DIAN', 'Trazabilidad documental'],
   },
   {
     title: 'Operacion extendida',
-    items: ['OCR worker', 'PWA', 'Push notifications', 'Uploads y almacenamiento documental'],
+    items: ['Automatizacion documental', 'Movilidad operativa', 'Notificaciones', 'Continuidad de servicio'],
   },
 ] as const
 

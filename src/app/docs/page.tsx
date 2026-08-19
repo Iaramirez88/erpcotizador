@@ -7,11 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { integrationCatalog, platformFlowDiagram, publicDocsLastUpdated, publicDomainDocs } from '@/lib/public-docs-content'
 
 export const metadata: Metadata = {
-  title: 'Centro de documentacion | Ordex',
-  description: 'Centro de documentacion publica de Ordex con arquitectura funcional, modulos e integraciones.',
+  title: 'Portal privado de confianza | Ordex',
+  description: 'Portal privado de Ordex para clientes y partners con dominios, integraciones y alcance funcional.',
   robots: {
-    index: true,
-    follow: true,
+    index: false,
+    follow: false,
   },
 }
 
@@ -34,16 +34,16 @@ const stageClasses = {
 
 const documentationTracks = [
   {
-    title: 'Arquitectura de plataforma',
-    body: 'Como se organiza Ordex, que capas existen y que controles sostienen operacion, seguridad y crecimiento.',
+    title: 'Seguridad empresarial',
+    body: 'Acceso seguro, permisos por roles y gobierno de operacion para empresas y sedes.',
   },
   {
-    title: 'Dominios y modulos',
-    body: 'Que resuelve cada dominio, para quien existe, que flujos gobierna y con que piezas se integra.',
+    title: 'Confiabilidad y continuidad',
+    body: 'Respaldos automaticos, monitoreo y practicas de continuidad orientadas a operacion real.',
   },
   {
-    title: 'Integraciones y expansion',
-    body: 'Canales, cobro, DIAN, OCR, PWA y otros puntos que conectan el producto con la operacion real.',
+    title: 'Integraciones y arquitectura modular',
+    body: 'WhatsApp, Meta, Google, DIAN y dominios de negocio conectados sobre una misma plataforma.',
   },
 ] as const
 
@@ -56,16 +56,16 @@ export default function DocsPage() {
             <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10">
               <BookOpenText className="h-6 w-6" />
             </div>
-            <p className="mt-5 text-xs font-semibold uppercase tracking-[0.24em] text-sky-100">Centro de documentacion</p>
+            <p className="mt-5 text-xs font-semibold uppercase tracking-[0.24em] text-sky-100">Portal privado</p>
             <h1 className="mt-3 max-w-4xl text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
-              Documentacion publica para entender la plataforma modulo por modulo
+              Portal privado de confianza para clientes y partners
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-white/82 sm:text-base">
-              Esta es la capa base de documentacion profesional de Ordex. Ordena el producto por dominios, deja clara la responsabilidad de cada modulo y crea una superficie publica para explicar arquitectura, alcance e integraciones sin depender del dashboard interno.
+              Esta capa privada organiza los dominios, integraciones y alcance funcional que se comparten durante procesos de implementacion, habilitacion o evaluacion comercial.
             </p>
             <div className="mt-6 flex flex-wrap gap-3 text-xs text-white/82">
-              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">8 dominios visibles</span>
-              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Rutas publicas: /docs, /plataforma y /producto</span>
+              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Acceso autenticado</span>
+              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Uso para clientes y partners</span>
               <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Ultima actualizacion: {publicDocsLastUpdated}</span>
             </div>
           </div>
@@ -84,10 +84,10 @@ export default function DocsPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Indice de dominios</p>
-              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Navegacion rapida por capas</h2>
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Dominios habilitados en el portal</h2>
             </div>
             <Link href="/plataforma" className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 transition hover:text-sky-900">
-              Ver arquitectura y confiabilidad
+              Ver trust center
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -108,7 +108,7 @@ export default function DocsPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Diagrama ejecutivo</p>
-              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Flujo enterprise entre modulos</h2>
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Relaciones de negocio entre dominios</h2>
             </div>
             <Link href="/producto" className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 transition hover:text-sky-900">
               Ver landing comercial
@@ -189,19 +189,9 @@ export default function DocsPage() {
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Rutas base</div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Capacidades visibles</div>
                       <div className="mt-3 space-y-2">
-                        {domain.routes.map((route) => (
-                          <div key={route} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-                            {route}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Integraciones</div>
-                      <div className="mt-3 space-y-2">
-                        {domain.integrations.map((item) => (
+                        {domain.outcomes.slice(0, 3).map((item) => (
                           <div key={item} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
                             {item}
                           </div>
@@ -211,7 +201,7 @@ export default function DocsPage() {
                   </div>
 
                   <Link href={`/docs/${domain.slug}`} className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 transition hover:text-sky-900">
-                    Abrir documentacion del dominio
+                    Abrir ficha del dominio
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </CardContent>
@@ -222,10 +212,10 @@ export default function DocsPage() {
 
         <section className="rounded-[32px] border border-slate-200 bg-white/95 p-6 shadow-sm sm:p-8">
           <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Catalogo de integraciones</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Puntos de extension de la plataforma</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Integraciones empresariales</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Conexiones visibles para operacion y cumplimiento</h2>
             <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-              La plataforma no depende de un solo caso de uso. La documentacion debe dejar claro como se conecta con canales, cobro, documentos oficiales y operacion extendida.
+              Ordex se conecta con canales, documentos y procesos empresariales sin obligar a fragmentar la operacion en herramientas separadas.
             </p>
           </div>
           <div className="mt-6 grid gap-4 lg:grid-cols-3">
@@ -247,15 +237,15 @@ export default function DocsPage() {
         <section className="rounded-[32px] border border-slate-200 bg-[linear-gradient(135deg,#082032_0%,#12345a_60%,#155e75_100%)] px-6 py-8 text-white shadow-[0_28px_70px_-38px_rgba(15,23,42,0.5)] sm:px-8">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-100">Base creada</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Superficie lista para crecer a guias detalladas</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-100">Ficha tecnica bajo solicitud</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">El portal privado complementa la capa publica con contexto de implementacion.</h2>
               <p className="mt-3 text-sm leading-7 text-white/80 sm:text-base">
-                Desde aqui ya se puede extender cada dominio con paginas dedicadas de APIs, permisos, onboarding, integraciones, playbooks operativos y diagramas de flujo sin volver a empezar la estructura publica.
+                Aqui se concentra la lectura privada por dominios. La capa publica sigue enfocada en confianza comercial, mientras esta capa ayuda a clientes y partners a evaluar alcance e integraciones.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Link href="/plataforma" className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-slate-100">
-                Ver confiabilidad
+              <Link href="/auth/register" className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-slate-100">
+                Solicitar ficha tecnica
               </Link>
               <Link href="/producto" className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/15">
                 Ver landing comercial

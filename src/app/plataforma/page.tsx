@@ -13,7 +13,7 @@ import {
 
 export const metadata: Metadata = {
   title: 'Plataforma y confiabilidad | Ordex',
-  description: 'Arquitectura, confiabilidad operativa, respaldos y stack tecnologico de la plataforma Ordex.',
+  description: 'Centro de confianza de Ordex con seguridad, confiabilidad, integraciones y arquitectura modular.',
   robots: {
     index: true,
     follow: true,
@@ -22,23 +22,23 @@ export const metadata: Metadata = {
 
 const trustHighlights = [
   {
-    title: 'Arquitectura por dominios',
+    title: 'Arquitectura modular',
     body: 'Comercial, operaciones, recursos, finanzas e IA se organizan como capas con dependencias explicitas.',
     icon: Layers3,
   },
   {
-    title: 'Datos y respaldos',
-    body: 'PostgreSQL, Prisma y procedimientos operativos de backup externo para reducir riesgo de perdida.',
+    title: 'Respaldos automaticos',
+    body: 'La plataforma cuenta con politicas de respaldo y recuperacion para sostener continuidad del negocio.',
     icon: Database,
   },
   {
-    title: 'Seguridad aplicada',
-    body: 'Autenticacion centralizada, permisos por rol/sede/modulo y endurecimiento operativo para produccion.',
+    title: 'Seguridad y permisos',
+    body: 'Acceso seguro, permisos por roles y separacion operativa por empresa y sede.',
     icon: ShieldCheck,
   },
   {
-    title: 'Infraestructura preparada',
-    body: 'Despliegue containerizado con proxy reverso y servicios auxiliares listos para separarse por carga.',
+    title: 'Infraestructura escalable',
+    body: 'La operacion esta preparada para crecer con mas carga, mas usuarios y mas procesos.',
     icon: Network,
   },
 ] as const
@@ -49,19 +49,19 @@ export default function PlataformaPage() {
       <div className="mx-auto max-w-7xl space-y-8">
         <section className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_28px_80px_-42px_rgba(15,23,42,0.35)]">
           <div className="border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.22),transparent_32%),linear-gradient(135deg,#082032,#0f4c81_58%,#0ea5e9_100%)] px-6 py-10 text-white sm:px-10 lg:px-12">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-100">Arquitectura publica</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-100">Trust Center</p>
             <h1 className="mt-3 max-w-4xl text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
-              Plataforma, confiabilidad y base tecnica de Ordex
+              Seguridad, confiabilidad e integraciones empresariales de Ordex
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-white/82 sm:text-base">
-              Esta pagina resume como esta pensada la plataforma: arquitectura por dominios, controles operativos,
-              estrategia de respaldos, stack tecnologico y el marco de documentacion que organiza los modulos del producto.
+              Esta pagina resume la capa publica de confianza de la plataforma: seguridad, continuidad operativa,
+              escalabilidad, integraciones empresariales y arquitectura modular para empresas en crecimiento.
             </p>
             <div className="mt-6 flex flex-wrap gap-3 text-xs text-white/82">
               <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Multiempresa y multisede</span>
-              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Despliegue containerizado</span>
-              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Backups y operacion documentada</span>
-              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Landing comercial conectada</span>
+              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Respaldos automaticos</span>
+              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Permisos por roles</span>
+              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Alta disponibilidad</span>
               <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Ultima actualizacion: {publicDocsLastUpdated}</span>
             </div>
           </div>
@@ -85,9 +85,9 @@ export default function PlataformaPage() {
         <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
           <Card className="rounded-[28px] border-slate-200 bg-white/95 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-2xl text-slate-950">Principios de arquitectura</CardTitle>
+              <CardTitle className="text-2xl text-slate-950">Arquitectura modular</CardTitle>
               <CardDescription>
-                La plataforma no se presenta como una coleccion de pantallas: se organiza por responsabilidades de negocio.
+                Ordex se organiza por responsabilidades de negocio para evitar herramientas aisladas y procesos desconectados.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -103,7 +103,7 @@ export default function PlataformaPage() {
             <CardHeader>
               <CardTitle className="text-2xl text-slate-950">Cobertura funcional visible</CardTitle>
               <CardDescription>
-                La documentacion publica ya se puede leer por dominios, con una base pensada para crecer modulo por modulo.
+                La capa publica muestra los dominios de negocio que sostienen la operacion sin exponer el detalle tecnico interno.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2">
@@ -126,10 +126,10 @@ export default function PlataformaPage() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Confiabilidad operativa</p>
-              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Controles y alcances de operacion</h2>
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Seguridad, continuidad e infraestructura</h2>
             </div>
-            <Link href="/docs" className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 transition hover:text-sky-900">
-              Abrir centro de documentacion
+            <Link href="/auth/login?callbackUrl=%2Fdocs" className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 transition hover:text-sky-900">
+              Acceder a documentacion privada
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -155,10 +155,10 @@ export default function PlataformaPage() {
 
         <section className="rounded-[32px] border border-slate-200 bg-white/95 p-6 shadow-sm sm:p-8">
           <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Stack tecnologico</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Capas tecnicas de la plataforma</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Arquitectura y alcance</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Capas de confianza de la plataforma</h2>
             <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-              El stack actual se organizo para soportar producto SaaS, integraciones de negocio y crecimiento por dominios sin mezclar toda la logica en una sola capa.
+              La plataforma combina experiencia moderna, continuidad operativa, integraciones empresariales y una arquitectura modular preparada para crecer con la empresa.
             </p>
           </div>
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -180,18 +180,18 @@ export default function PlataformaPage() {
         <section className="rounded-[32px] border border-slate-200 bg-[linear-gradient(135deg,#0f172a_0%,#122b49_62%,#134e84_100%)] px-6 py-8 text-white shadow-[0_28px_70px_-38px_rgba(15,23,42,0.5)] sm:px-8">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-100">Siguiente capa</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Documentacion profesional de plataforma y modulos</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-100">Ficha tecnica bajo solicitud</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">La informacion detallada se comparte bajo solicitud comercial</h2>
               <p className="mt-3 text-sm leading-7 text-white/80 sm:text-base">
-                Esta base ya deja visible la parte que faltaba: confianza de plataforma, alcances operativos, respaldos y lectura modular del producto. El siguiente crecimiento natural es bajar cada dominio a guias dedicadas, APIs, webhooks, permisos y playbooks por operacion.
+                La capa publica prioriza confianza, alcance e integraciones. Los cuestionarios de seguridad y la ficha tecnica ampliada se entregan en procesos comerciales o de habilitacion con clientes y partners.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
+              <Link href="/auth/register" className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-slate-100">
+                Solicitar ficha tecnica
+              </Link>
               <Link href="/producto" className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/15">
                 Ver landing comercial
-              </Link>
-              <Link href="/docs" className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-slate-100">
-                Ir a documentacion
               </Link>
               <Link href="/auth/login" className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/15">
                 Entrar a la plataforma

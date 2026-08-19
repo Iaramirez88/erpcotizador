@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ArrowRight, BookOpenText, Boxes, BrainCircuit, Building2, Factory, LineChart, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowRight, Boxes, BrainCircuit, Building2, Factory, LineChart, ShieldCheck, Sparkles } from 'lucide-react'
 
 import { PublicArchitectureMap } from '@/components/public/public-architecture-map'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,7 +8,7 @@ import { platformFlowDiagram, publicDomainDocs, trustMetrics } from '@/lib/publi
 
 export const metadata: Metadata = {
   title: 'Ordex | Plataforma empresarial para operar, vender y escalar',
-  description: 'Landing publica comercial de Ordex con modulos, arquitectura visible y enlaces a documentacion profesional.',
+  description: 'Landing publica comercial de Ordex con confianza empresarial, arquitectura modular e integraciones visibles.',
   robots: {
     index: true,
     follow: true,
@@ -20,11 +20,11 @@ const icons = [Building2, Boxes, Factory, LineChart, BrainCircuit, ShieldCheck] 
 const sellingBlocks = [
   {
     title: 'Una sola operacion, no herramientas aisladas',
-    body: 'Ordex conecta CRM, cotizacion, inventario, ordenes, documentos y control financiero sobre una misma base de datos y permisos.',
+    body: 'Ordex conecta CRM, ventas, operaciones, inventario y finanzas dentro de una misma plataforma empresarial.',
   },
   {
     title: 'Confianza visible para clientes y equipos internos',
-    body: 'La capa publica ya expone arquitectura, respaldos, stack, dominios e integraciones sin obligar a entrar al dashboard.',
+    body: 'La capa publica expone seguridad, confiabilidad, arquitectura modular e integraciones sin revelar implementacion interna.',
   },
   {
     title: 'Capas activables por empresa y por industria',
@@ -44,11 +44,11 @@ export default function ProductoPage() {
                 Vender, operar y controlar el negocio desde una sola plataforma
               </h1>
               <p className="mt-5 max-w-2xl text-sm leading-7 text-white/82 sm:text-base">
-                Ordex unifica CRM, cotizaciones, ordenes, inventario, finanzas, documentos y capas de IA sobre una arquitectura que ya puede mostrarse con lenguaje de producto serio, no solo como lista de modulos.
+                Ordex unifica CRM, ventas, operaciones, inventario, finanzas, documentos e inteligencia aplicada sobre una arquitectura modular pensada para empresas que necesitan crecer con control.
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
-                <Link href="/docs" className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-slate-100">
-                  Explorar documentacion
+                <Link href="/plataforma" className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-slate-100">
+                  Explorar trust center
                 </Link>
                 <Link href="/plataforma" className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/15">
                   Ver confiabilidad
@@ -87,8 +87,8 @@ export default function ProductoPage() {
         <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
           <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-2xl text-slate-950">Arquitectura visible para ventas y confianza</CardTitle>
-              <CardDescription>No solo mostramos pantallas. Mostramos como fluye la operacion entre dominios.</CardDescription>
+              <CardTitle className="text-2xl text-slate-950">Arquitectura modular visible</CardTitle>
+              <CardDescription>La operacion se entiende como una cadena conectada entre dominios, no como pantallas aisladas.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {platformFlowDiagram.map((lane) => (
@@ -110,40 +110,42 @@ export default function ProductoPage() {
 
           <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-2xl text-slate-950">Dominios que ya se pueden navegar</CardTitle>
-              <CardDescription>La capa publica ya deja ver el producto por responsabilidades reales del negocio.</CardDescription>
+              <CardTitle className="text-2xl text-slate-950">Dominios de negocio visibles</CardTitle>
+              <CardDescription>La capa publica deja ver el alcance funcional del producto sin abrir el acceso a la documentacion privada.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2">
               {publicDomainDocs.map((domain) => (
-                <Link key={domain.slug} href={`/docs/${domain.slug}`} className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 transition hover:border-slate-300 hover:bg-white">
+                <div key={domain.slug} className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-semibold text-slate-950">{domain.name}</div>
                     <ArrowRight className="h-4 w-4 text-sky-600" />
                   </div>
                   <p className="mt-2 text-sm leading-6 text-slate-600">{domain.tagline}</p>
-                </Link>
+                </div>
               ))}
             </CardContent>
           </Card>
         </section>
 
-        <PublicArchitectureMap highlightSlugs={['crm', 'ventas', 'operaciones', 'inventario']} />
+        <PublicArchitectureMap highlightSlugs={['crm', 'ventas', 'operaciones', 'inventario']} interactive={false} />
 
         <section className="rounded-[32px] border border-slate-200 bg-white/95 p-6 shadow-sm sm:p-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Centro de confianza</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Docs, plataforma y narrativa comercial conectadas</h2>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Trust center, plataforma y narrativa comercial conectadas</h2>
               <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-                Esta landing ya no vende en abstracto. Se conecta directamente con documentacion modular y con una pagina de confiabilidad que sustenta el discurso comercial con arquitectura visible.
+                Esta landing conecta el discurso comercial con una capa publica de confianza. La ficha tecnica ampliada y los cuestionarios de seguridad se entregan bajo solicitud comercial.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Link href="/docs" className="inline-flex items-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
-                <BookOpenText className="mr-2 h-4 w-4" />
-                Centro de documentacion
+              <Link href="/auth/register" className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800">
+                Solicitar ficha tecnica
               </Link>
-              <Link href="/auth/login" className="inline-flex items-center rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800">
+              <Link href="/plataforma" className="inline-flex items-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
+                Ver trust center
+              </Link>
+              <Link href="/auth/login" className="inline-flex items-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
                 Entrar a Ordex
               </Link>
             </div>
