@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { AvatarUploader } from '@/components/profile/avatar-uploader'
 import { ProfileBasicsForm } from '@/components/profile/profile-basics-form'
+import { ProfilePreferencesCard } from '@/components/profile/profile-preferences-card'
 import { LeaveWorkspaceCard } from '@/components/profile/leave-workspace-card'
 import { WorkspaceAccessCard } from '@/components/profile/workspace-access-card'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
@@ -177,7 +178,7 @@ export default async function PerfilPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               <Card className="border-dashed">
                 <CardHeader className="py-3">
                   <CardTitle className="text-sm">{t('profile.section.edit')}</CardTitle>
@@ -204,6 +205,39 @@ export default async function PerfilPage() {
                   <Link className="text-sky-600 hover:underline" href="/auth/change-password">{t('profile.security.changePassword')}</Link>
                   <div className="text-xs text-muted-foreground">
                     {t('profile.security.lastUpdated')}: {fmtDate(user.updatedAt, locale, naText)}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-dashed">
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm">{t('profile.section.preferences')}</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 text-sm">
+                  <div className="space-y-2">
+                    <div className="text-xs text-muted-foreground">{t('common.language')}</div>
+                    <ProfilePreferencesCard />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-dashed">
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm">{t('profile.section.personalSettings')}</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-3 text-sm">
+                  <div className="text-muted-foreground">{t('profile.personalSettings.description')}</div>
+                  <div className="space-y-2">
+                    <Button asChild size="sm" variant="outline" className="w-full justify-start">
+                      <Link href="/dashboard/notificaciones">{t('profile.personalSettings.notifications')}</Link>
+                    </Button>
+                    <Button asChild size="sm" variant="outline" className="w-full justify-start">
+                      <Link href="/dashboard/configuracion/notificaciones">{t('profile.personalSettings.devices')}</Link>
+                    </Button>
+                  </div>
+                  <div className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                    <div className="font-medium text-foreground">{t('profile.personalSettings.customizeMenu')}</div>
+                    <div>{t('profile.personalSettings.customizeMenuHint')}</div>
                   </div>
                 </CardContent>
               </Card>

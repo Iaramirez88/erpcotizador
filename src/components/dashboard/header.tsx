@@ -11,7 +11,7 @@ import Image from 'next/image'
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
-import { ChevronDown, Lock, LogOut } from 'lucide-react'
+import { ChevronDown, LogOut } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog, type SidebarTooltipPrefs } from "@/components/dashboard/nav-settings-dialog"
@@ -254,7 +254,6 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
     ? renderMobileSubmenu({
         keyName: 'configuracion',
         label: 'Configuración',
-        disabled: !canManageBilling,
         icon: (
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
@@ -262,18 +261,30 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
         ),
         children: (
           <>
-            <Link href="/dashboard/configuracion/plan" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
-              Facturación
+            <Link href="/dashboard/configuracion/notificaciones" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
+              Dispositivos
             </Link>
-            <Link href="/dashboard/configuracion/plan?tab=almacenamiento" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
-              Consumo actual de espacio
-            </Link>
+            {navPrefs ? (
+              <button type="button" className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => { setUserMenuOpen(false); setNavSettingsOpen(true) }}>
+                {t('header.customizeMenu')}
+              </button>
+            ) : null}
+            {canManageBilling ? (
+              <>
+                <Link href="/dashboard/configuracion/plan" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
+                  Facturación
+                </Link>
+                <Link href="/dashboard/configuracion/plan?tab=almacenamiento" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
+                  Consumo actual de espacio
+                </Link>
+              </>
+            ) : null}
           </>
         ),
       })
     : (
       <DropdownMenuSub>
-        <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100" disabled={!canManageBilling}>
+        <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
           <div className="flex w-full items-center justify-between gap-3">
             <span className="flex items-center gap-3">
               <MenuIcon>
@@ -288,11 +299,23 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
         </DropdownMenuSubTriggerItem>
         <DropdownMenuSubContentPanel className="w-64 rounded-2xl p-2">
           <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
-            <Link href="/dashboard/configuracion/plan">Facturación</Link>
+            <Link href="/dashboard/configuracion/notificaciones">Dispositivos</Link>
           </DropdownMenuItem>
-          <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
-            <Link href="/dashboard/configuracion/plan?tab=almacenamiento">Consumo actual de espacio</Link>
-          </DropdownMenuItem>
+          {navPrefs ? (
+            <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={() => { setUserMenuOpen(false); setNavSettingsOpen(true) }}>
+              {t('header.customizeMenu')}
+            </DropdownMenuItem>
+          ) : null}
+          {canManageBilling ? (
+            <>
+              <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+                <Link href="/dashboard/configuracion/plan">Facturación</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+                <Link href="/dashboard/configuracion/plan?tab=almacenamiento">Consumo actual de espacio</Link>
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuSubContentPanel>
       </DropdownMenuSub>
     )
@@ -532,19 +555,6 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
                   <MenuChevron />
                 </Link>
               </DropdownMenuItem>
-
-              <DropdownMenuItem asChild className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100">
-                <Link href="/auth/change-password" className="flex w-full items-center justify-between gap-3">
-                  <span className="flex items-center gap-3">
-                    <MenuIcon>
-                      <Lock className="h-5 w-5" />
-                    </MenuIcon>
-                    <span>Cambiar contraseña</span>
-                  </span>
-                  <MenuChevron />
-                </Link>
-              </DropdownMenuItem>
-
               {configMenu}
 
               {themeMenu}
@@ -552,28 +562,6 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
               {languageMenu}
 
               {helpMenu}
-
-              {navPrefs ? (
-                <DropdownMenuItem
-                  className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100"
-                  onSelect={() => {
-                    setUserMenuOpen(false)
-                    setNavSettingsOpen(true)
-                  }}
-                >
-                  <div className="flex w-full items-center justify-between gap-3">
-                    <span className="flex items-center gap-3">
-                      <MenuIcon>
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                        </svg>
-                      </MenuIcon>
-                      <span>Personalizar menú</span>
-                    </span>
-                  </div>
-                </DropdownMenuItem>
-              ) : null}
-
               {user.isImpersonating ? (
                 <>
                   <DropdownMenuSeparator />

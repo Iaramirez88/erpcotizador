@@ -31,8 +31,6 @@ import {
   YAxis,
 } from 'recharts';
 import {
-  ArrowDown,
-  ArrowUp,
   BrainCircuit,
   Calendar,
   Download,
@@ -40,6 +38,7 @@ import {
   FileImage,
   FileSpreadsheet,
   FileText,
+  GripVertical,
   LayoutGrid,
   LineChart as LineChartIcon,
   List,
@@ -243,6 +242,8 @@ type ReportWidget = {
   title: string;
   metric?: KpiMetric;
   limit?: number;
+  width?: number;
+  height?: number;
 };
 
 type ReportTemplate = {
@@ -320,6 +321,18 @@ type ExportSectionSnapshot = {
   rows: ListRow[];
 };
 
+type DragPlacement = 'before' | 'after';
+
+type ResizeState = {
+  widgetId: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startWidth: number;
+  startHeight: number;
+  view: WidgetView;
+};
+
 type ExportSnapshot = {
   title: string;
   subtitle: string;
@@ -360,10 +373,10 @@ const DEFAULT_REPORT_TEMPLATES: ReportTemplate[] = [
 ];
 
 const DEFAULT_REPORT_WIDGETS: ReportWidget[] = [
-  { id: 'widget-kpi-sales', source: 'ventas', view: 'kpi', title: 'Ventas totales', metric: 'ventasTotales' },
-  { id: 'widget-kpi-orders', source: 'ordenes', view: 'kpi', title: 'Órdenes de trabajo', metric: 'ordenesTrabajo' },
-  { id: 'widget-kpi-quotes', source: 'cotizaciones', view: 'kpi', title: 'Cotizaciones', metric: 'cotizacionesTotales' },
-  { id: 'widget-kpi-customers', source: 'clientes', view: 'kpi', title: 'Clientes activos', metric: 'clientesActivos' },
+  { id: 'widget-kpi-sales', source: 'ventas', view: 'kpi', title: 'Ventas totales', metric: 'ventasTotales', width: 1, height: 176 },
+  { id: 'widget-kpi-orders', source: 'ordenes', view: 'kpi', title: 'Órdenes de trabajo', metric: 'ordenesTrabajo', width: 1, height: 176 },
+  { id: 'widget-kpi-quotes', source: 'cotizaciones', view: 'kpi', title: 'Cotizaciones', metric: 'cotizacionesTotales', width: 1, height: 176 },
+  { id: 'widget-kpi-customers', source: 'clientes', view: 'kpi', title: 'Clientes activos', metric: 'clientesActivos', width: 1, height: 176 },
 ];
 
 const DEFAULT_REPORT_PREFS: ReportBuilderState = {
@@ -545,6 +558,40 @@ function buildId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}-${Date.now().toString(36).slice(-5)}`;
 }
 
+function reorderWidgets(widgets: ReportWidget[], fromId: string, toId: string, placement: DragPlacement) {
+  if (!fromId || !toId || fromId === toId) return widgets;
+  const next = [...widgets];
+  const fromIndex = next.findIndex((widget) => widget.id === fromId);
+  const toIndex = next.findIndex((widget) => widget.id === toId);
+  if (fromIndex === -1 || toIndex === -1) return widgets;
+  const [moved] = next.splice(fromIndex, 1);
+  const targetIndex = next.findIndex((widget) => widget.id === toId);
+  if (targetIndex === -1) {
+    next.push(moved);
+    return next;
+  }
+  next.splice(placement === 'after' ? targetIndex + 1 : targetIndex, 0, moved);
+  return next;
+}
+
+function defaultWidgetWidth(view: WidgetView) {
+  return view === 'kpi' ? 1 : 2;
+}
+
+function defaultWidgetHeight(view: WidgetView) {
+  return view === 'kpi' ? 176 : 320;
+}
+
+function clampWidgetWidth(value: number | undefined, view: WidgetView) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return defaultWidgetWidth(view);
+  return Math.max(1, Math.min(4, Math.round(value)));
+}
+
+function clampWidgetHeight(value: number | undefined, view: WidgetView) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return defaultWidgetHeight(view);
+  return Math.max(140, Math.min(720, Math.round(value)));
+}
+
 function getQuoteChannel(quote: Pick<CotizacionResumen, 'emailSentCount' | 'whatsappSentCount'>): ReportChannel {
   if (quote.whatsappSentCount > 0 && quote.emailSentCount > 0) return 'MULTICANAL';
   if (quote.whatsappSentCount > 0) return 'WHATSAPP';
@@ -600,6 +647,8 @@ function normalizeWidget(value: unknown, fallback: ReportWidget): ReportWidget {
     title: typeof value.title === 'string' && value.title.trim() ? value.title : fallback.title,
     metric,
     limit: typeof value.limit === 'number' && Number.isFinite(value.limit) ? Math.max(1, Math.min(20, Math.floor(value.limit))) : fallback.limit,
+    width: clampWidgetWidth(typeof value.width === 'number' ? value.width : fallback.width, view),
+    height: clampWidgetHeight(typeof value.height === 'number' ? value.height : fallback.height, view),
   };
 }
 
@@ -1029,8 +1078,18 @@ export default function ReportesPage() {
 
   const [prefsLoading, setPrefsLoading] = useState(true);
   const [layoutOpen, setLayoutOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [widgetSettingsId, setWidgetSettingsId] = useState<string | null>(null);
+  const [draggingWidgetId, setDraggingWidgetId] = useState<string | null>(null);
+  const [dragOverWidgetId, setDragOverWidgetId] = useState<string | null>(null);
+  const [dragOverPlacement, setDragOverPlacement] = useState<DragPlacement>('before');
+  const [layoutDraggingWidgetId, setLayoutDraggingWidgetId] = useState<string | null>(null);
+  const [layoutDragOverWidgetId, setLayoutDragOverWidgetId] = useState<string | null>(null);
+  const [layoutDragOverPlacement, setLayoutDragOverPlacement] = useState<DragPlacement>('before');
+  const [resizeState, setResizeState] = useState<ResizeState | null>(null);
 
   const [reportPrefs, setReportPrefs] = useState<ReportBuilderState>(clonePrefs(DEFAULT_REPORT_PREFS));
   const [reportPrefsDraft, setReportPrefsDraft] = useState<ReportBuilderState>(clonePrefs(DEFAULT_REPORT_PREFS));
@@ -1064,7 +1123,14 @@ export default function ReportesPage() {
   const [selectedWidgetIds, setSelectedWidgetIds] = useState<string[]>(DEFAULT_REPORT_WIDGETS.map((widget) => widget.id));
 
   const exportPreviewRef = useRef<HTMLDivElement | null>(null);
+  const reportPrefsRef = useRef<ReportBuilderState>(clonePrefs(DEFAULT_REPORT_PREFS));
+  const persistWidgetsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedSedeOption = useMemo(() => sedes.find((sede) => sede.id === selectedSedeId) ?? null, [sedes, selectedSedeId]);
+  const activeWidgetSettings = useMemo(() => reportPrefs.builder.widgets.find((widget) => widget.id === widgetSettingsId) ?? null, [reportPrefs.builder.widgets, widgetSettingsId]);
+
+  useEffect(() => {
+    reportPrefsRef.current = reportPrefs;
+  }, [reportPrefs]);
 
   useEffect(() => {
     const next = defaultRangeForPeriodo(periodo);
@@ -1699,6 +1765,7 @@ export default function ReportesPage() {
   }, [snapshotHistory]);
 
   async function saveReportPrefs(next: ReportBuilderState) {
+    reportPrefsRef.current = next;
     setReportPrefs(next);
     setReportPrefsDraft(clonePrefs(next));
     await fetch('/api/ui-preferences', {
@@ -1707,6 +1774,47 @@ export default function ReportesPage() {
       body: JSON.stringify({ report: next }),
     }).catch(() => null);
   }
+
+  function applyWidgetsLocally(nextWidgets: ReportWidget[]) {
+    setReportPrefs((current) => {
+      const next = {
+        builder: {
+          ...current.builder,
+          widgets: nextWidgets,
+        },
+      };
+      reportPrefsRef.current = next;
+      return next;
+    });
+    setReportPrefsDraft((current) => ({
+      builder: {
+        ...current.builder,
+        widgets: clonePrefs(nextWidgets),
+      },
+    }));
+  }
+
+  function persistCurrentWidgets() {
+    void saveReportPrefs(reportPrefsRef.current);
+  }
+
+  function scheduleWidgetPersist(delay = 320) {
+    if (persistWidgetsTimeoutRef.current) {
+      clearTimeout(persistWidgetsTimeoutRef.current);
+    }
+    persistWidgetsTimeoutRef.current = setTimeout(() => {
+      persistWidgetsTimeoutRef.current = null;
+      persistCurrentWidgets();
+    }, delay);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (persistWidgetsTimeoutRef.current) {
+        clearTimeout(persistWidgetsTimeoutRef.current);
+      }
+    };
+  }, []);
 
   function addWidget(source: WidgetSource, view: WidgetView) {
     const catalog = WIDGET_CATALOG.find((item) => item.source === source);
@@ -1725,10 +1833,31 @@ export default function ReportesPage() {
               ? 'clientesActivos'
               : 'ventasTotales'
         : undefined,
+      width: defaultWidgetWidth(view),
+      height: defaultWidgetHeight(view),
     };
     const next = clonePrefs(reportPrefs);
     next.builder.widgets.push(widget);
     void saveReportPrefs(next);
+  }
+
+  function updateWidget(widgetId: string, changes: Partial<ReportWidget>, draft = false) {
+    const current = draft ? clonePrefs(reportPrefsDraft) : clonePrefs(reportPrefs);
+    current.builder.widgets = current.builder.widgets.map((widget) => {
+      if (widget.id !== widgetId) return widget;
+      const nextView = changes.view ?? widget.view;
+      return {
+        ...widget,
+        ...changes,
+        width: clampWidgetWidth(changes.width ?? widget.width, nextView),
+        height: clampWidgetHeight(changes.height ?? widget.height, nextView),
+      };
+    });
+    if (draft) {
+      setReportPrefsDraft(current);
+      return;
+    }
+    void saveReportPrefs(current);
   }
 
   function removeWidget(widgetId: string, draft = false) {
@@ -1741,20 +1870,130 @@ export default function ReportesPage() {
     void saveReportPrefs(current);
   }
 
-  function moveWidget(widgetId: string, direction: -1 | 1, draft = false) {
-    const current = draft ? clonePrefs(reportPrefsDraft) : clonePrefs(reportPrefs);
-    const index = current.builder.widgets.findIndex((widget) => widget.id === widgetId);
-    if (index === -1) return;
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= current.builder.widgets.length) return;
-    const [moved] = current.builder.widgets.splice(index, 1);
-    current.builder.widgets.splice(targetIndex, 0, moved);
-    if (draft) {
-      setReportPrefsDraft(current);
+  function handleWidgetDragStart(widgetId: string, event: React.DragEvent<HTMLButtonElement>) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', widgetId);
+    setDraggingWidgetId(widgetId);
+    setDragOverWidgetId(widgetId);
+    setDragOverPlacement('before');
+  }
+
+  function handleWidgetDragOver(widgetId: string, event: React.DragEvent<HTMLDivElement>) {
+    if (!draggingWidgetId || draggingWidgetId === widgetId) return;
+    event.preventDefault();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const placement = event.clientY - bounds.top < bounds.height / 2 ? 'before' : 'after';
+    setDragOverWidgetId(widgetId);
+    setDragOverPlacement(placement);
+  }
+
+  function clearWidgetDragState() {
+    setDraggingWidgetId(null);
+    setDragOverWidgetId(null);
+    setDragOverPlacement('before');
+  }
+
+  function handleDraftWidgetDragStart(widgetId: string, event: React.DragEvent<HTMLButtonElement>) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', widgetId);
+    setLayoutDraggingWidgetId(widgetId);
+    setLayoutDragOverWidgetId(widgetId);
+    setLayoutDragOverPlacement('before');
+  }
+
+  function handleDraftWidgetDragOver(widgetId: string, event: React.DragEvent<HTMLDivElement>) {
+    if (!layoutDraggingWidgetId || layoutDraggingWidgetId === widgetId) return;
+    event.preventDefault();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const placement = event.clientY - bounds.top < bounds.height / 2 ? 'before' : 'after';
+    setLayoutDragOverWidgetId(widgetId);
+    setLayoutDragOverPlacement(placement);
+  }
+
+  function clearDraftWidgetDragState() {
+    setLayoutDraggingWidgetId(null);
+    setLayoutDragOverWidgetId(null);
+    setLayoutDragOverPlacement('before');
+  }
+
+  function handleDraftWidgetDrop(widgetId: string, event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const sourceId = layoutDraggingWidgetId || event.dataTransfer.getData('text/plain');
+    if (!sourceId || sourceId === widgetId) {
+      clearDraftWidgetDragState();
       return;
     }
-    void saveReportPrefs(current);
+    setReportPrefsDraft((current) => ({
+      builder: {
+        ...current.builder,
+        widgets: reorderWidgets(current.builder.widgets, sourceId, widgetId, layoutDragOverPlacement),
+      },
+    }));
+    clearDraftWidgetDragState();
   }
+
+  function handleWidgetDrop(widgetId: string, event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const sourceId = draggingWidgetId || event.dataTransfer.getData('text/plain');
+    if (!sourceId || sourceId === widgetId) {
+      clearWidgetDragState();
+      return;
+    }
+    const nextWidgets = reorderWidgets(reportPrefsRef.current.builder.widgets, sourceId, widgetId, dragOverPlacement);
+    applyWidgetsLocally(nextWidgets);
+    clearWidgetDragState();
+    scheduleWidgetPersist();
+  }
+
+  function handleResizeStart(widget: ReportWidget, event: React.PointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    const nextResizeState: ResizeState = {
+      widgetId: widget.id,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: clampWidgetWidth(widget.width, widget.view),
+      startHeight: clampWidgetHeight(widget.height, widget.view),
+      view: widget.view,
+    };
+    setResizeState(nextResizeState);
+  }
+
+  useEffect(() => {
+    if (!resizeState) return;
+    const activeResize = resizeState;
+
+    function handlePointerMove(event: PointerEvent) {
+      if (event.pointerId !== activeResize.pointerId) return;
+      const deltaX = event.clientX - activeResize.startX;
+      const deltaY = event.clientY - activeResize.startY;
+      const nextWidth = clampWidgetWidth(activeResize.startWidth + deltaX / 170, activeResize.view);
+      const nextHeight = clampWidgetHeight(activeResize.startHeight + deltaY, activeResize.view);
+      const nextWidgets = reportPrefsRef.current.builder.widgets.map((widget) => (
+        widget.id === activeResize.widgetId
+          ? { ...widget, width: nextWidth, height: nextHeight }
+          : widget
+      ));
+      applyWidgetsLocally(nextWidgets);
+    }
+
+    function finishPointer(event?: PointerEvent) {
+      if (event && event.pointerId !== activeResize.pointerId) return;
+      setResizeState(null);
+      scheduleWidgetPersist();
+    }
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', finishPointer);
+    window.addEventListener('pointercancel', finishPointer);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', finishPointer);
+      window.removeEventListener('pointercancel', finishPointer);
+    };
+  }, [resizeState]);
 
   function updateTemplate(templateId: string, field: keyof ReportTemplate, value: string | boolean) {
     setReportPrefsDraft((current) => ({
@@ -1910,14 +2149,25 @@ export default function ReportesPage() {
     const totalPages = Math.max(1, Math.ceil(listRows.length / limit));
     const visibleRows = listRows.slice((currentPage - 1) * limit, currentPage * limit);
     const compact = activeTemplate.density === 'compact' || mode === 'preview';
+    const widgetWidth = clampWidgetWidth(widget.width, widget.view);
+    const widgetHeight = clampWidgetHeight(widget.height, widget.view);
+    const spanClass = widgetWidth >= 4
+      ? 'md:col-span-2 xl:col-span-4'
+      : widgetWidth === 3
+        ? 'md:col-span-2 xl:col-span-3'
+        : widgetWidth === 2
+          ? 'md:col-span-2 xl:col-span-2'
+          : '';
     const shellClass = widget.view === 'kpi'
-      ? 'rounded-[24px] border-slate-200 bg-white shadow-sm'
-      : 'rounded-[24px] border-slate-200 bg-white shadow-sm md:col-span-2';
+      ? `rounded-[24px] border-slate-200 bg-white shadow-sm ${spanClass}`.trim()
+      : `rounded-[24px] border-slate-200 bg-white shadow-sm md:col-span-2 ${spanClass}`.trim();
+    const chartHeight = Math.max(190, widgetHeight - (compact ? 112 : 126));
+    const isResizingThisWidget = mode === 'page' && resizeState?.widgetId === widget.id;
 
     if (widget.view === 'kpi') {
       return (
-        <Card key={widget.id} className={shellClass}>
-          <CardContent className={compact ? 'p-4' : 'p-5'}>
+        <Card key={widget.id} className={`${shellClass} ${isResizingThisWidget ? 'ring-2 ring-sky-300 shadow-[0_0_0_6px_rgba(125,211,252,0.18)]' : ''}`.trim()} style={{ minHeight: `${widgetHeight}px` }}>
+          <CardContent className={`${compact ? 'p-4' : 'p-5'} flex h-full items-center`}>
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm text-slate-500">{widget.title}</p>
@@ -1932,11 +2182,11 @@ export default function ReportesPage() {
 
     if (widget.view === 'list') {
       return (
-        <Card key={widget.id} className={shellClass}>
+        <Card key={widget.id} className={`${shellClass} ${isResizingThisWidget ? 'ring-2 ring-sky-300 shadow-[0_0_0_6px_rgba(125,211,252,0.18)]' : ''}`.trim()} style={{ minHeight: `${widgetHeight}px` }}>
           <CardHeader className={compact ? 'px-4 pb-2 pt-4' : 'px-5 pb-3 pt-5'}>
             <CardTitle className="text-base text-slate-950">{widget.title}</CardTitle>
           </CardHeader>
-          <CardContent className={compact ? 'px-4 pb-4' : 'px-5 pb-5'}>
+          <CardContent className={`${compact ? 'px-4 pb-4' : 'px-5 pb-5'} flex h-full flex-col`}>
             {visibleRows.length ? (
               <div className="space-y-3">
                 {visibleRows.map((row, index) => (
@@ -1968,7 +2218,7 @@ export default function ReportesPage() {
 
     const chartEmpty = chartData.length === 0;
     return (
-      <Card key={widget.id} className={shellClass}>
+      <Card key={widget.id} className={`${shellClass} ${isResizingThisWidget ? 'ring-2 ring-sky-300 shadow-[0_0_0_6px_rgba(125,211,252,0.18)]' : ''}`.trim()} style={{ minHeight: `${widgetHeight}px` }}>
         <CardHeader className={compact ? 'px-4 pb-2 pt-4' : 'px-5 pb-3 pt-5'}>
           <CardTitle className="text-base text-slate-950">{widget.title}</CardTitle>
         </CardHeader>
@@ -1976,7 +2226,7 @@ export default function ReportesPage() {
           {chartEmpty ? (
             <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-10 text-sm text-slate-500">Sin datos suficientes para la visualización.</div>
           ) : (
-            <div className="h-64">
+            <div style={{ height: `${chartHeight}px` }}>
               <ResponsiveContainer width="100%" height="100%">
                 {widget.view === 'pie' ? (
                   <PieChart>
@@ -2127,74 +2377,53 @@ export default function ReportesPage() {
       <Dialog open={layoutOpen} onOpenChange={setLayoutOpen}>
         <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Diseño y plantillas del reporte</DialogTitle>
-            <DialogDescription>Ordena widgets, elimina bloques no deseados y ajusta plantillas de descarga desde el mismo flujo.</DialogDescription>
+            <DialogTitle>Diseño del tablero</DialogTitle>
+            <DialogDescription>Ordena widgets activos, elimina bloques no deseados y deja lista la base del reporte.</DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="space-y-3">
-              <div className="text-sm font-semibold text-slate-900">Widgets activos</div>
-              <div className="space-y-2">
-                {reportPrefsDraft.builder.widgets.map((widget, index) => (
-                  <div key={widget.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
-                    <div>
-                      <div className="text-sm font-medium text-slate-900">{widget.title}</div>
-                      <div className="text-xs text-slate-500">{viewLabel(widget.view)} · fuente {widget.source}</div>
+          <div className="space-y-3">
+            <div className="text-sm font-semibold text-slate-900">Widgets activos</div>
+            <div className="space-y-2">
+              {reportPrefsDraft.builder.widgets.map((widget) => (
+                <div
+                  key={widget.id}
+                  className="space-y-2"
+                  onDragOver={(event) => handleDraftWidgetDragOver(widget.id, event)}
+                  onDrop={(event) => handleDraftWidgetDrop(widget.id, event)}
+                >
+                  {layoutDragOverWidgetId === widget.id && layoutDraggingWidgetId && layoutDraggingWidgetId !== widget.id && layoutDragOverPlacement === 'before' ? (
+                    <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/80 px-4 py-3 text-center text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
+                      Soltar aquí para insertar antes
+                    </div>
+                  ) : null}
+                  <div className={`flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 transition ${layoutDraggingWidgetId === widget.id ? 'opacity-60' : 'shadow-sm'}`}>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        draggable
+                        onDragStart={(event) => handleDraftWidgetDragStart(widget.id, event)}
+                        onDragEnd={clearDraftWidgetDragState}
+                        className="inline-flex h-9 w-9 cursor-grab items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-sky-300 hover:text-sky-700 active:cursor-grabbing"
+                        title="Arrastrar bloque"
+                        aria-label="Arrastrar bloque"
+                      >
+                        <GripVertical className="h-4 w-4" />
+                      </button>
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">{widget.title}</div>
+                        <div className="text-xs text-slate-500">{viewLabel(widget.view)} · fuente {widget.source} · ancho {clampWidgetWidth(widget.width, widget.view)} columnas · alto {clampWidgetHeight(widget.height, widget.view)} px</div>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button type="button" variant="outline" size="icon" onClick={() => moveWidget(widget.id, -1, true)} disabled={index === 0}><ArrowUp className="h-4 w-4" /></Button>
-                      <Button type="button" variant="outline" size="icon" onClick={() => moveWidget(widget.id, 1, true)} disabled={index === reportPrefsDraft.builder.widgets.length - 1}><ArrowDown className="h-4 w-4" /></Button>
                       <Button type="button" variant="outline" size="icon" onClick={() => removeWidget(widget.id, true)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="text-sm font-semibold text-slate-900">Plantillas de descarga</div>
-              {reportPrefsDraft.builder.templates.map((template) => (
-                <Card key={template.id} className={selectedTemplateId === template.id ? 'rounded-[24px] border-sky-300 shadow-sm' : 'rounded-[24px] border-slate-200 shadow-sm'}>
-                  <CardContent className="space-y-3 p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <Input value={template.name} onChange={(e) => updateTemplate(template.id, 'name', e.target.value)} />
-                      <Button type="button" variant="outline" size="sm" onClick={() => duplicateTemplate(template.id)}>Duplicar</Button>
+                  {layoutDragOverWidgetId === widget.id && layoutDraggingWidgetId && layoutDraggingWidgetId !== widget.id && layoutDragOverPlacement === 'after' ? (
+                    <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/80 px-4 py-3 text-center text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
+                      Soltar aquí para insertar después
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <Label>Tamaño</Label>
-                        <select className="w-full rounded-md border px-3 py-2" value={template.pageSize} onChange={(e) => updateTemplate(template.id, 'pageSize', e.target.value)}>
-                          <option value="A4">A4</option>
-                          <option value="LETTER">Letter</option>
-                          <option value="LEGAL">Legal</option>
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Orientación</Label>
-                        <select className="w-full rounded-md border px-3 py-2" value={template.orientation} onChange={(e) => updateTemplate(template.id, 'orientation', e.target.value)}>
-                          <option value="landscape">Horizontal</option>
-                          <option value="portrait">Vertical</option>
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Densidad</Label>
-                        <select className="w-full rounded-md border px-3 py-2" value={template.density} onChange={(e) => updateTemplate(template.id, 'density', e.target.value)}>
-                          <option value="comfortable">Cómoda</option>
-                          <option value="compact">Compacta</option>
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Acento</Label>
-                        <Input type="color" value={template.accentColor} onChange={(e) => updateTemplate(template.id, 'accentColor', e.target.value)} />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                      <label className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"><input type="checkbox" checked={template.includeMetrics} onChange={(e) => updateTemplate(template.id, 'includeMetrics', e.target.checked)} />Incluir métricas</label>
-                      <label className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"><input type="checkbox" checked={template.showHeader} onChange={(e) => updateTemplate(template.id, 'showHeader', e.target.checked)} />Header</label>
-                      <label className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"><input type="checkbox" checked={template.showFooter} onChange={(e) => updateTemplate(template.id, 'showFooter', e.target.checked)} />Footer</label>
-                    </div>
-                  </CardContent>
-                </Card>
+                  ) : null}
+                </div>
               ))}
             </div>
           </div>
@@ -2203,6 +2432,140 @@ export default function ReportesPage() {
             <Button type="button" variant="outline" onClick={() => setLayoutOpen(false)}>{t('common.cancel')}</Button>
             <Button type="button" onClick={() => { void saveReportPrefs({ builder: { ...reportPrefsDraft.builder, lastTemplateId: selectedTemplateId } }); setLayoutOpen(false); }}>{t('common.save')}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={templatesOpen} onOpenChange={setTemplatesOpen}>
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Plantillas de descarga</DialogTitle>
+            <DialogDescription>Configura formatos reutilizables para exportar sin ocupar espacio fijo en la pantalla.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {reportPrefsDraft.builder.templates.map((template) => (
+              <Card key={template.id} className={selectedTemplateId === template.id ? 'rounded-[24px] border-sky-300 shadow-sm' : 'rounded-[24px] border-slate-200 shadow-sm'}>
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <Input value={template.name} onChange={(e) => updateTemplate(template.id, 'name', e.target.value)} />
+                    <Button type="button" variant="outline" size="sm" onClick={() => duplicateTemplate(template.id)}>Duplicar</Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label>Tamaño</Label>
+                      <select className="w-full rounded-md border px-3 py-2" value={template.pageSize} onChange={(e) => updateTemplate(template.id, 'pageSize', e.target.value)}>
+                        <option value="A4">A4</option>
+                        <option value="LETTER">Letter</option>
+                        <option value="LEGAL">Legal</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Orientación</Label>
+                      <select className="w-full rounded-md border px-3 py-2" value={template.orientation} onChange={(e) => updateTemplate(template.id, 'orientation', e.target.value)}>
+                        <option value="landscape">Horizontal</option>
+                        <option value="portrait">Vertical</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Densidad</Label>
+                      <select className="w-full rounded-md border px-3 py-2" value={template.density} onChange={(e) => updateTemplate(template.id, 'density', e.target.value)}>
+                        <option value="comfortable">Cómoda</option>
+                        <option value="compact">Compacta</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Acento</Label>
+                      <Input type="color" value={template.accentColor} onChange={(e) => updateTemplate(template.id, 'accentColor', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <label className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"><input type="checkbox" checked={template.includeMetrics} onChange={(e) => updateTemplate(template.id, 'includeMetrics', e.target.checked)} />Incluir métricas</label>
+                    <label className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"><input type="checkbox" checked={template.showHeader} onChange={(e) => updateTemplate(template.id, 'showHeader', e.target.checked)} />Header</label>
+                    <label className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"><input type="checkbox" checked={template.showFooter} onChange={(e) => updateTemplate(template.id, 'showFooter', e.target.checked)} />Footer</label>
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm">
+                    <span>{template.pageSize} · {template.orientation === 'landscape' ? 'Horizontal' : 'Vertical'} · {template.density === 'compact' ? 'Compacta' : 'Cómoda'}</span>
+                    <Button type="button" variant={selectedTemplateId === template.id ? 'default' : 'outline'} size="sm" onClick={() => setSelectedTemplateId(template.id)}>Usar</Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setTemplatesOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="button" onClick={() => { void saveReportPrefs({ builder: { ...reportPrefsDraft.builder, lastTemplateId: selectedTemplateId } }); setTemplatesOpen(false); }}>{t('common.save')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={sourcesOpen} onOpenChange={setSourcesOpen}>
+        <DialogContent className="max-h-[90vh] max-w-6xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Fuentes del negocio para insertar</DialogTitle>
+            <DialogDescription>Abre el catálogo, elige la visualización y cada bloque se inserta en el tablero para seguirlo configurando después.</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {WIDGET_CATALOG.map((item) => (
+              <div key={item.source} className={`rounded-[26px] border border-slate-200 bg-gradient-to-br ${item.accentClass} p-4`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-base font-semibold text-slate-950">{item.title}</div>
+                    <div className="mt-1 text-sm text-slate-600">{item.description}</div>
+                  </div>
+                  <Plus className="mt-1 h-4 w-4 text-slate-500" />
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {item.supportedViews.map((view) => (
+                    <Button key={`${item.source}-${view}`} type="button" variant="outline" size="sm" onClick={() => addWidget(item.source, view)}>
+                      {view === 'list' ? <List className="mr-1.5 h-3.5 w-3.5" /> : view === 'bar' ? <LayoutGrid className="mr-1.5 h-3.5 w-3.5" /> : view === 'pie' ? <PieChartIcon className="mr-1.5 h-3.5 w-3.5" /> : view === 'line' ? <LineChartIcon className="mr-1.5 h-3.5 w-3.5" /> : <Plus className="mr-1.5 h-3.5 w-3.5" />}
+                      {viewLabel(view)}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(activeWidgetSettings)} onOpenChange={(open) => { if (!open) setWidgetSettingsId(null); }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Tamaño del bloque</DialogTitle>
+            <DialogDescription>Define ancho y alto del widget como en un tablero configurable. El cambio se guarda sobre ese bloque.</DialogDescription>
+          </DialogHeader>
+
+          {activeWidgetSettings ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="font-medium text-slate-950">{activeWidgetSettings.title}</div>
+                <div className="mt-1 text-sm text-slate-500">{viewLabel(activeWidgetSettings.view)} · fuente {activeWidgetSettings.source}</div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Ancho en columnas</Label>
+                  <Input type="number" min={1} max={4} value={clampWidgetWidth(activeWidgetSettings.width, activeWidgetSettings.view)} onChange={(e) => updateWidget(activeWidgetSettings.id, { width: Number(e.target.value) || 1 })} />
+                  <div className="text-xs text-slate-500">1 a 4 columnas en escritorio amplio.</div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Alto del bloque</Label>
+                  <Input type="number" min={140} max={720} step={10} value={clampWidgetHeight(activeWidgetSettings.height, activeWidgetSettings.view)} onChange={(e) => updateWidget(activeWidgetSettings.id, { height: Number(e.target.value) || defaultWidgetHeight(activeWidgetSettings.view) })} />
+                  <div className="text-xs text-slate-500">Entre 140 y 720 px.</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[1, 2, 3, 4].map((width) => (
+                  <Button key={width} type="button" variant={clampWidgetWidth(activeWidgetSettings.width, activeWidgetSettings.view) === width ? 'default' : 'outline'} onClick={() => updateWidget(activeWidgetSettings.id, { width })}>
+                    {width} col
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 
@@ -2344,24 +2707,84 @@ export default function ReportesPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <Card className="rounded-[28px] border-slate-200 shadow-sm">
           <CardHeader>
-            <CardTitle>Constructor del reporte</CardTitle>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>Constructor del reporte</CardTitle>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setSourcesOpen(true)}>
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  Insertar fuente
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => { setReportPrefsDraft(clonePrefs(reportPrefs)); setLayoutOpen(true); }} disabled={prefsLoading}>
+                  <Settings2 className="mr-1.5 h-4 w-4" />
+                  Ordenar bloques
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-600">
-              El panel deja por defecto las cuatro métricas base del negocio. Todo lo demás se inserta solo si tú lo eliges, con vista tipo lista, barras, circular o línea según el módulo.
-            </div>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {reportPrefs.builder.widgets.map((widget) => (
-                <div key={widget.id} className="relative">
+                <div
+                  key={widget.id}
+                  className={['relative space-y-2 transition-all', draggingWidgetId === widget.id ? 'opacity-60' : ''].filter(Boolean).join(' ')}
+                  onDragOver={(event) => handleWidgetDragOver(widget.id, event)}
+                  onDrop={(event) => handleWidgetDrop(widget.id, event)}
+                >
+                  {dragOverWidgetId === widget.id && draggingWidgetId && draggingWidgetId !== widget.id && dragOverPlacement === 'before' ? (
+                    <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/85 px-4 py-3 text-center text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 shadow-[0_0_0_6px_rgba(125,211,252,0.16)]">
+                      Soltar aquí para insertar antes del bloque
+                    </div>
+                  ) : null}
                   {renderWidgetCard(widget)}
-                  <div className="absolute right-3 top-3 flex items-center gap-1">
-                    <Button type="button" variant="outline" size="icon" onClick={() => moveWidget(widget.id, -1)} title="Subir bloque"><ArrowUp className="h-4 w-4" /></Button>
-                    <Button type="button" variant="outline" size="icon" onClick={() => moveWidget(widget.id, 1)} title="Bajar bloque"><ArrowDown className="h-4 w-4" /></Button>
+                  {resizeState?.widgetId === widget.id ? (
+                    <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-[24px]">
+                      <div className="absolute inset-0 bg-sky-50/22" />
+                      <div className="absolute inset-y-0 left-1/4 border-l border-dashed border-sky-300/90" />
+                      <div className="absolute inset-y-0 left-2/4 border-l border-dashed border-sky-300/90" />
+                      <div className="absolute inset-y-0 left-3/4 border-l border-dashed border-sky-300/90" />
+                      <div className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full border border-sky-200 bg-white/95 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700 shadow-sm">
+                        Snap: {clampWidgetWidth(widget.width, widget.view)} col · {clampWidgetHeight(widget.height, widget.view)} px
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="absolute left-3 top-3 z-10 flex items-center gap-1">
+                    <button
+                      type="button"
+                      draggable
+                      onDragStart={(event) => handleWidgetDragStart(widget.id, event)}
+                      onDragEnd={clearWidgetDragState}
+                      className="inline-flex h-9 w-9 cursor-grab items-center justify-center rounded-xl border border-slate-200 bg-white/95 text-slate-500 shadow-sm transition hover:border-sky-300 hover:text-sky-700 active:cursor-grabbing"
+                      title="Arrastrar bloque"
+                      aria-label="Arrastrar bloque"
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
+                    <Button type="button" variant="outline" size="icon" onClick={() => setWidgetSettingsId(widget.id)} title="Configurar tamaño"><Settings2 className="h-4 w-4" /></Button>
                     <Button type="button" variant="outline" size="icon" onClick={() => removeWidget(widget.id)} title="Quitar bloque"><Trash2 className="h-4 w-4" /></Button>
                   </div>
+                  <button
+                    type="button"
+                    onPointerDown={(event) => handleResizeStart(widget, event)}
+                    className="absolute bottom-3 right-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white/95 text-slate-500 shadow-sm transition hover:border-sky-300 hover:text-sky-700"
+                    title="Redimensionar bloque"
+                    aria-label="Redimensionar bloque"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                      <path d="M5 11L11 5" />
+                      <path d="M8 11L11 8" />
+                      <path d="M11 11L11 11" />
+                    </svg>
+                  </button>
+                  {dragOverWidgetId === widget.id && draggingWidgetId && draggingWidgetId !== widget.id && dragOverPlacement === 'after' ? (
+                    <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/85 px-4 py-3 text-center text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 shadow-[0_0_0_6px_rgba(125,211,252,0.16)]">
+                      Soltar aquí para insertar después del bloque
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -2370,53 +2793,64 @@ export default function ReportesPage() {
 
         <Card className="rounded-[28px] border-slate-200 shadow-sm">
           <CardHeader>
-            <CardTitle>Plantillas de descarga</CardTitle>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>Plantillas de descarga</CardTitle>
+              <Button type="button" variant="outline" size="sm" onClick={() => { setReportPrefsDraft(clonePrefs(reportPrefs)); setTemplatesOpen(true); }}>
+                <Settings2 className="mr-1.5 h-4 w-4" />
+                Configurar
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {reportPrefs.builder.templates.map((template) => (
-              <div key={template.id} className={selectedTemplateId === template.id ? 'rounded-[22px] border border-sky-300 bg-sky-50/50 p-4' : 'rounded-[22px] border border-slate-200 bg-slate-50/50 p-4'}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-medium text-slate-950">{template.name}</div>
-                    <div className="mt-1 text-sm text-slate-500">{template.pageSize} · {template.orientation === 'landscape' ? 'Horizontal' : 'Vertical'} · {template.density === 'compact' ? 'Compacta' : 'Cómoda'}</div>
-                  </div>
-                  <Button type="button" variant={selectedTemplateId === template.id ? 'default' : 'outline'} size="sm" onClick={() => setSelectedTemplateId(template.id)}>Usar</Button>
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50/60 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-medium text-slate-950">{activeTemplate.name}</div>
+                  <div className="mt-1 text-sm text-slate-500">{activeTemplate.pageSize} · {activeTemplate.orientation === 'landscape' ? 'Horizontal' : 'Vertical'} · {activeTemplate.density === 'compact' ? 'Compacta' : 'Cómoda'}</div>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-                  <span className="rounded-full border border-slate-200 bg-white px-2 py-1">Métricas {template.includeMetrics ? 'ON' : 'OFF'}</span>
-                  <span className="rounded-full border border-slate-200 bg-white px-2 py-1">Header {template.showHeader ? 'ON' : 'OFF'}</span>
-                  <span className="rounded-full border border-slate-200 bg-white px-2 py-1">Footer {template.showFooter ? 'ON' : 'OFF'}</span>
-                </div>
+                <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">Activa</div>
               </div>
-            ))}
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-1">Métricas {activeTemplate.includeMetrics ? 'ON' : 'OFF'}</span>
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-1">Header {activeTemplate.showHeader ? 'ON' : 'OFF'}</span>
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-1">Footer {activeTemplate.showFooter ? 'ON' : 'OFF'}</span>
+              </div>
+            </div>
+            <div className="rounded-[24px] border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-500">
+              {reportPrefs.builder.templates.length} plantillas guardadas. La configuración completa queda dentro del botón Configurar.
+            </div>
           </CardContent>
         </Card>
       </div>
 
       <Card className="rounded-[28px] border-slate-200 shadow-sm">
         <CardHeader>
-          <CardTitle>Fuentes del negocio para insertar</CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>Fuentes del negocio para insertar</CardTitle>
+            <Button type="button" variant="outline" size="sm" onClick={() => setSourcesOpen(true)}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              Abrir catálogo
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {WIDGET_CATALOG.map((item) => (
-            <div key={item.source} className={`rounded-[26px] border border-slate-200 bg-gradient-to-br ${item.accentClass} p-4`}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-base font-semibold text-slate-950">{item.title}</div>
-                  <div className="mt-1 text-sm text-slate-600">{item.description}</div>
-                </div>
-                <Plus className="mt-1 h-4 w-4 text-slate-500" />
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {item.supportedViews.map((view) => (
-                  <Button key={`${item.source}-${view}`} type="button" variant="outline" size="sm" onClick={() => addWidget(item.source, view)}>
-                    {view === 'list' ? <List className="mr-1.5 h-3.5 w-3.5" /> : view === 'bar' ? <LayoutGrid className="mr-1.5 h-3.5 w-3.5" /> : view === 'pie' ? <PieChartIcon className="mr-1.5 h-3.5 w-3.5" /> : view === 'line' ? <LineChartIcon className="mr-1.5 h-3.5 w-3.5" /> : <Plus className="mr-1.5 h-3.5 w-3.5" />}
-                    {viewLabel(view)}
-                  </Button>
-                ))}
-              </div>
+        <CardContent className="space-y-4">
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-600">
+            El catálogo de fuentes ahora se abre bajo demanda para no dejar opciones fijas ocupando el tablero. Inserta un bloque, luego ajusta su tamaño desde el icono de configuración del widget.
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-[22px] border border-slate-200 bg-white p-4">
+              <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Fuentes disponibles</div>
+              <div className="mt-2 text-2xl font-semibold text-slate-950">{WIDGET_CATALOG.length}</div>
             </div>
-          ))}
+            <div className="rounded-[22px] border border-slate-200 bg-white p-4">
+              <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Bloques activos</div>
+              <div className="mt-2 text-2xl font-semibold text-slate-950">{reportPrefs.builder.widgets.length}</div>
+            </div>
+            <div className="rounded-[22px] border border-slate-200 bg-white p-4">
+              <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Vista de trabajo</div>
+              <div className="mt-2 text-2xl font-semibold text-slate-950">Modal</div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
