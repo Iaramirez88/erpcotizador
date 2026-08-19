@@ -2300,6 +2300,10 @@ export default function ReportesPage() {
               <option value="trimestre">{t('reports.period.quarter')}</option>
               <option value="año">{t('reports.period.year')}</option>
             </select>
+            <Button type="button" variant="outline" onClick={() => { setReportPrefsDraft(clonePrefs(reportPrefs)); setTemplatesOpen(true); }}>
+              <Settings2 className="mr-2 h-4 w-4" />
+              Plantillas
+            </Button>
           </>
         }
         stats={[
@@ -2707,149 +2711,85 @@ export default function ReportesPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="rounded-[28px] border-slate-200 shadow-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle>Constructor del reporte</CardTitle>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => setSourcesOpen(true)}>
-                  <Plus className="mr-1.5 h-4 w-4" />
-                  Insertar fuente
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => { setReportPrefsDraft(clonePrefs(reportPrefs)); setLayoutOpen(true); }} disabled={prefsLoading}>
-                  <Settings2 className="mr-1.5 h-4 w-4" />
-                  Ordenar bloques
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {reportPrefs.builder.widgets.map((widget) => (
-                <div
-                  key={widget.id}
-                  className={['relative space-y-2 transition-all', draggingWidgetId === widget.id ? 'opacity-60' : ''].filter(Boolean).join(' ')}
-                  onDragOver={(event) => handleWidgetDragOver(widget.id, event)}
-                  onDrop={(event) => handleWidgetDrop(widget.id, event)}
-                >
-                  {dragOverWidgetId === widget.id && draggingWidgetId && draggingWidgetId !== widget.id && dragOverPlacement === 'before' ? (
-                    <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/85 px-4 py-3 text-center text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 shadow-[0_0_0_6px_rgba(125,211,252,0.16)]">
-                      Soltar aquí para insertar antes del bloque
-                    </div>
-                  ) : null}
-                  {renderWidgetCard(widget)}
-                  {resizeState?.widgetId === widget.id ? (
-                    <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-[24px]">
-                      <div className="absolute inset-0 bg-sky-50/22" />
-                      <div className="absolute inset-y-0 left-1/4 border-l border-dashed border-sky-300/90" />
-                      <div className="absolute inset-y-0 left-2/4 border-l border-dashed border-sky-300/90" />
-                      <div className="absolute inset-y-0 left-3/4 border-l border-dashed border-sky-300/90" />
-                      <div className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full border border-sky-200 bg-white/95 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700 shadow-sm">
-                        Snap: {clampWidgetWidth(widget.width, widget.view)} col · {clampWidgetHeight(widget.height, widget.view)} px
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="absolute left-3 top-3 z-10 flex items-center gap-1">
-                    <button
-                      type="button"
-                      draggable
-                      onDragStart={(event) => handleWidgetDragStart(widget.id, event)}
-                      onDragEnd={clearWidgetDragState}
-                      className="inline-flex h-9 w-9 cursor-grab items-center justify-center rounded-xl border border-slate-200 bg-white/95 text-slate-500 shadow-sm transition hover:border-sky-300 hover:text-sky-700 active:cursor-grabbing"
-                      title="Arrastrar bloque"
-                      aria-label="Arrastrar bloque"
-                    >
-                      <GripVertical className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
-                    <Button type="button" variant="outline" size="icon" onClick={() => setWidgetSettingsId(widget.id)} title="Configurar tamaño"><Settings2 className="h-4 w-4" /></Button>
-                    <Button type="button" variant="outline" size="icon" onClick={() => removeWidget(widget.id)} title="Quitar bloque"><Trash2 className="h-4 w-4" /></Button>
-                  </div>
-                  <button
-                    type="button"
-                    onPointerDown={(event) => handleResizeStart(widget, event)}
-                    className="absolute bottom-3 right-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white/95 text-slate-500 shadow-sm transition hover:border-sky-300 hover:text-sky-700"
-                    title="Redimensionar bloque"
-                    aria-label="Redimensionar bloque"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                      <path d="M5 11L11 5" />
-                      <path d="M8 11L11 8" />
-                      <path d="M11 11L11 11" />
-                    </svg>
-                  </button>
-                  {dragOverWidgetId === widget.id && draggingWidgetId && draggingWidgetId !== widget.id && dragOverPlacement === 'after' ? (
-                    <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/85 px-4 py-3 text-center text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 shadow-[0_0_0_6px_rgba(125,211,252,0.16)]">
-                      Soltar aquí para insertar después del bloque
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-[28px] border-slate-200 shadow-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle>Plantillas de descarga</CardTitle>
-              <Button type="button" variant="outline" size="sm" onClick={() => { setReportPrefsDraft(clonePrefs(reportPrefs)); setTemplatesOpen(true); }}>
-                <Settings2 className="mr-1.5 h-4 w-4" />
-                Configurar
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50/60 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-medium text-slate-950">{activeTemplate.name}</div>
-                  <div className="mt-1 text-sm text-slate-500">{activeTemplate.pageSize} · {activeTemplate.orientation === 'landscape' ? 'Horizontal' : 'Vertical'} · {activeTemplate.density === 'compact' ? 'Compacta' : 'Cómoda'}</div>
-                </div>
-                <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">Activa</div>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-1">Métricas {activeTemplate.includeMetrics ? 'ON' : 'OFF'}</span>
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-1">Header {activeTemplate.showHeader ? 'ON' : 'OFF'}</span>
-                <span className="rounded-full border border-slate-200 bg-white px-2 py-1">Footer {activeTemplate.showFooter ? 'ON' : 'OFF'}</span>
-              </div>
-            </div>
-            <div className="rounded-[24px] border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-500">
-              {reportPrefs.builder.templates.length} plantillas guardadas. La configuración completa queda dentro del botón Configurar.
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="rounded-[28px] border-slate-200 shadow-sm">
+      <Card className="w-full rounded-[28px] border-slate-200 shadow-sm">
         <CardHeader>
           <div className="flex items-center justify-between gap-3">
-            <CardTitle>Fuentes del negocio para insertar</CardTitle>
-            <Button type="button" variant="outline" size="sm" onClick={() => setSourcesOpen(true)}>
-              <Plus className="mr-1.5 h-4 w-4" />
-              Abrir catálogo
-            </Button>
+            <CardTitle>Constructor del reporte</CardTitle>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setSourcesOpen(true)}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                Insertar fuente
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => { setReportPrefsDraft(clonePrefs(reportPrefs)); setLayoutOpen(true); }} disabled={prefsLoading}>
+                <Settings2 className="mr-1.5 h-4 w-4" />
+                Ordenar bloques
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-[24px] border border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-600">
-            El catálogo de fuentes ahora se abre bajo demanda para no dejar opciones fijas ocupando el tablero. Inserta un bloque, luego ajusta su tamaño desde el icono de configuración del widget.
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-[22px] border border-slate-200 bg-white p-4">
-              <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Fuentes disponibles</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-950">{WIDGET_CATALOG.length}</div>
-            </div>
-            <div className="rounded-[22px] border border-slate-200 bg-white p-4">
-              <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Bloques activos</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-950">{reportPrefs.builder.widgets.length}</div>
-            </div>
-            <div className="rounded-[22px] border border-slate-200 bg-white p-4">
-              <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Vista de trabajo</div>
-              <div className="mt-2 text-2xl font-semibold text-slate-950">Modal</div>
-            </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {reportPrefs.builder.widgets.map((widget) => (
+              <div
+                key={widget.id}
+                className={['relative space-y-2 transition-all', draggingWidgetId === widget.id ? 'opacity-60' : ''].filter(Boolean).join(' ')}
+                onDragOver={(event) => handleWidgetDragOver(widget.id, event)}
+                onDrop={(event) => handleWidgetDrop(widget.id, event)}
+              >
+                {dragOverWidgetId === widget.id && draggingWidgetId && draggingWidgetId !== widget.id && dragOverPlacement === 'before' ? (
+                  <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/85 px-4 py-3 text-center text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 shadow-[0_0_0_6px_rgba(125,211,252,0.16)]">
+                    Soltar aquí para insertar antes del bloque
+                  </div>
+                ) : null}
+                {renderWidgetCard(widget)}
+                {resizeState?.widgetId === widget.id ? (
+                  <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-[24px]">
+                    <div className="absolute inset-0 bg-sky-50/22" />
+                    <div className="absolute inset-y-0 left-1/4 border-l border-dashed border-sky-300/90" />
+                    <div className="absolute inset-y-0 left-2/4 border-l border-dashed border-sky-300/90" />
+                    <div className="absolute inset-y-0 left-3/4 border-l border-dashed border-sky-300/90" />
+                    <div className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full border border-sky-200 bg-white/95 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700 shadow-sm">
+                      Snap: {clampWidgetWidth(widget.width, widget.view)} col · {clampWidgetHeight(widget.height, widget.view)} px
+                    </div>
+                  </div>
+                ) : null}
+                <div className="absolute left-3 top-3 z-10 flex items-center gap-1">
+                  <button
+                    type="button"
+                    draggable
+                    onDragStart={(event) => handleWidgetDragStart(widget.id, event)}
+                    onDragEnd={clearWidgetDragState}
+                    className="inline-flex h-9 w-9 cursor-grab items-center justify-center rounded-xl border border-slate-200 bg-white/95 text-slate-500 shadow-sm transition hover:border-sky-300 hover:text-sky-700 active:cursor-grabbing"
+                    title="Arrastrar bloque"
+                    aria-label="Arrastrar bloque"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
+                  <Button type="button" variant="outline" size="icon" onClick={() => setWidgetSettingsId(widget.id)} title="Configurar tamaño"><Settings2 className="h-4 w-4" /></Button>
+                  <Button type="button" variant="outline" size="icon" onClick={() => removeWidget(widget.id)} title="Quitar bloque"><Trash2 className="h-4 w-4" /></Button>
+                </div>
+                <button
+                  type="button"
+                  onPointerDown={(event) => handleResizeStart(widget, event)}
+                  className="absolute bottom-3 right-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white/95 text-slate-500 shadow-sm transition hover:border-sky-300 hover:text-sky-700"
+                  title="Redimensionar bloque"
+                  aria-label="Redimensionar bloque"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                    <path d="M5 11L11 5" />
+                    <path d="M8 11L11 8" />
+                    <path d="M11 11L11 11" />
+                  </svg>
+                </button>
+                {dragOverWidgetId === widget.id && draggingWidgetId && draggingWidgetId !== widget.id && dragOverPlacement === 'after' ? (
+                  <div className="rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/85 px-4 py-3 text-center text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 shadow-[0_0_0_6px_rgba(125,211,252,0.16)]">
+                    Soltar aquí para insertar después del bloque
+                  </div>
+                ) : null}
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
