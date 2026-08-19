@@ -45,6 +45,12 @@ type ReportPrefs = {
       lastOpenedAt?: string | null
     }
   }
+  builder?: {
+    widgets?: unknown[]
+    templates?: unknown[]
+    history?: unknown[]
+    lastTemplateId?: string | null
+  }
 }
 
 type TutorialPrefs = {
@@ -162,6 +168,7 @@ function defaultPrefs() {
     chat: { mutedCrmConversationIds: [], mutedTeamThreadIds: [] },
     tasks: { pinnedTaskIds: [] },
     intelligence: { recommendations: { openedCount: 0, uniqueActionIds: [], lastOpenedAt: null } },
+    builder: { widgets: [], templates: [], history: [], lastTemplateId: null },
   }
   const tutorial: TutorialPrefs = { seen: {} }
   const dataView: DataViewPrefs = {}

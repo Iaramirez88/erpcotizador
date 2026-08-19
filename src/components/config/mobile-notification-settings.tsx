@@ -185,14 +185,14 @@ export function MobileNotificationSettings() {
   return (
     <div className="space-y-6 pb-6">
       <ErpPageHero
-        breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Configuracion', href: '/dashboard/configuracion/empresa' }, { label: 'Notificaciones moviles' }]}
+        breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Configuracion', href: '/dashboard/configuracion/empresa' }, { label: 'Dispositivos' }]}
         eyebrow="Configuracion personal"
-        title="Notificaciones moviles"
-        description="Decide si este dispositivo puede recibir avisos push de Ordex y revisa en que dispositivos de tu usuario hay suscripciones activas."
+        title="Dispositivos"
+        description="Administra este dispositivo, activa notificaciones push y revisa en que equipos de tu usuario hay suscripciones activas."
         actions={
           <>
             <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white/90">
-              <Link href="/dashboard/notificaciones">Abrir centro de notificaciones</Link>
+              <Link href="/dashboard/notificaciones">Abrir notificaciones</Link>
             </Button>
             <Button onClick={() => void loadState()} variant="outline" className="rounded-xl border-slate-200 bg-white/90" disabled={loading || busy}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}

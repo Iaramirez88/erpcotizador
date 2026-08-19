@@ -100,7 +100,7 @@ const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard/configuracion/usuarios": "Crea usuarios y administra roles, permisos y acceso al sistema.",
   "/dashboard/configuracion/respaldo": "Genera copias por empresa, controla accesos exclusivos y restaura respaldos seguros.",
   "/dashboard/configuracion/empresa": "Configura datos, imagen y parametros de la empresa.",
-  "/dashboard/configuracion/notificaciones": "Activa o desactiva notificaciones push y revisa los dispositivos vinculados a tu usuario.",
+  "/dashboard/configuracion/notificaciones": "Administra dispositivos vinculados y el estado de notificaciones push de tu usuario.",
   "/dashboard/configuracion/servicios-web": "Administra servicios web y modulos conectados.",
   "/dashboard/configuracion/plan": "Consulta tu plan, limites y opciones de actualizacion.",
   "/dashboard/configuracion/super-admin/modulos-por-plan": "Configura modulos y alcances por tipo de plan.",
@@ -219,7 +219,7 @@ function getSectionIcon(title: string) {
       return <BarChart3 className="h-4 w-4" />
     case 'IA':
       return <Sparkles className="h-4 w-4" />
-    case 'Plataforma':
+    case 'Administración':
     case 'Otros':
       return <Shield className="h-4 w-4" />
     default:
@@ -287,7 +287,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Notificaciones moviles',
+    name: 'Dispositivos',
     href: "/dashboard/configuracion/notificaciones",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

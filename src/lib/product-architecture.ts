@@ -8,7 +8,7 @@ export type ProductLayer =
   | 'Analítica'
   | 'IA'
   | 'Verticales'
-  | 'Plataforma'
+  | 'Administración'
 
 export type DashboardSectionTitle =
   | 'Inicio'
@@ -20,7 +20,7 @@ export type DashboardSectionTitle =
   | 'Analítica'
   | 'IA'
   | 'Verticales'
-  | 'Plataforma'
+  | 'Administración'
   | 'Otros'
 
 export type DashboardNavCatalogItem = {
@@ -44,7 +44,7 @@ export const DASHBOARD_SECTION_ORDER: DashboardSectionTitle[] = [
   'Analítica',
   'IA',
   'Verticales',
-  'Plataforma',
+  'Administración',
   'Otros',
 ]
 
@@ -111,16 +111,16 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/odontologia', label: 'Odontología', section: 'Verticales', layer: 'Verticales', domain: 'Odontología', moduleKey: 'CLIENTES', onboardingScoped: true },
   { href: '/dashboard/dotaciones', label: 'Dotaciones', section: 'Verticales', layer: 'Verticales', domain: 'Dotaciones', moduleKey: 'COTIZADOR', onboardingScoped: true },
 
-  { href: '/dashboard/configuracion/empresa', label: 'Empresa', labelKey: 'nav.company', section: 'Plataforma', layer: 'Plataforma', domain: 'Empresa', moduleKey: 'CONFIG' },
-  { href: '/dashboard/configuracion/sedes', label: 'Sedes', labelKey: 'nav.branches', section: 'Plataforma', layer: 'Plataforma', domain: 'Sedes', moduleKey: 'CONFIG' },
-  { href: '/dashboard/configuracion/usuarios', label: 'Usuarios', labelKey: 'nav.users', section: 'Plataforma', layer: 'Plataforma', domain: 'Usuarios', moduleKey: 'CONFIG' },
-  { href: '/dashboard/configuracion/respaldo', label: 'Respaldo', section: 'Plataforma', layer: 'Plataforma', domain: 'Respaldo por empresa', moduleKey: 'CONFIG' },
-  { href: '/dashboard/configuracion/notificaciones', label: 'Notificaciones moviles', section: 'Plataforma', layer: 'Plataforma', domain: 'Preferencias de notificaciones moviles', moduleKey: null },
-  { href: '/dashboard/configuracion/servicios-web', label: 'Servicios web', section: 'Plataforma', layer: 'Plataforma', domain: 'Servicios web', moduleKey: null },
-  { href: '/dashboard/configuracion/plan', label: 'Plan', labelKey: 'nav.plan', section: 'Plataforma', layer: 'Plataforma', domain: 'Plan y suscripción', moduleKey: 'CONFIG' },
-  { href: '/dashboard/configuracion/super-admin/empresas', label: 'Super Admin Empresas', section: 'Plataforma', layer: 'Plataforma', domain: 'Tenant management', moduleKey: 'CONFIG' },
-  { href: '/dashboard/configuracion/super-admin/usuarios', label: 'Super Admin Usuarios', section: 'Plataforma', layer: 'Plataforma', domain: 'Tenant management', moduleKey: 'CONFIG' },
-  { href: '/dashboard/configuracion/super-admin/modulos-por-plan', label: 'Super Admin', section: 'Plataforma', layer: 'Plataforma', domain: 'Packaging SaaS', moduleKey: 'CONFIG' },
+  { href: '/dashboard/configuracion/empresa', label: 'Empresa', labelKey: 'nav.company', section: 'Administración', layer: 'Administración', domain: 'Empresa', moduleKey: 'CONFIG' },
+  { href: '/dashboard/configuracion/sedes', label: 'Sedes', labelKey: 'nav.branches', section: 'Administración', layer: 'Administración', domain: 'Sedes', moduleKey: 'CONFIG' },
+  { href: '/dashboard/configuracion/usuarios', label: 'Usuarios', labelKey: 'nav.users', section: 'Administración', layer: 'Administración', domain: 'Usuarios', moduleKey: 'CONFIG' },
+  { href: '/dashboard/configuracion/respaldo', label: 'Respaldo', section: 'Administración', layer: 'Administración', domain: 'Respaldo por empresa', moduleKey: 'CONFIG' },
+  { href: '/dashboard/configuracion/notificaciones', label: 'Dispositivos', section: 'Administración', layer: 'Administración', domain: 'Dispositivos y notificaciones push', moduleKey: null },
+  { href: '/dashboard/configuracion/servicios-web', label: 'Servicios web', section: 'Administración', layer: 'Administración', domain: 'Servicios web', moduleKey: null },
+  { href: '/dashboard/configuracion/plan', label: 'Plan', labelKey: 'nav.plan', section: 'Administración', layer: 'Administración', domain: 'Plan y suscripción', moduleKey: 'CONFIG' },
+  { href: '/dashboard/configuracion/super-admin/empresas', label: 'Super Admin Empresas', section: 'Administración', layer: 'Administración', domain: 'Tenant management', moduleKey: 'CONFIG' },
+  { href: '/dashboard/configuracion/super-admin/usuarios', label: 'Super Admin Usuarios', section: 'Administración', layer: 'Administración', domain: 'Tenant management', moduleKey: 'CONFIG' },
+  { href: '/dashboard/configuracion/super-admin/modulos-por-plan', label: 'Super Admin', section: 'Administración', layer: 'Administración', domain: 'Packaging SaaS', moduleKey: 'CONFIG' },
 ]
 
 export const DASHBOARD_PATH_MODULE_OVERRIDES: Array<{ prefix: string; moduleKey: string | null }> = [

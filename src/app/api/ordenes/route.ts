@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireApiAccess } from '@/lib/api-rbac';
 import { checkPlanLimit } from '@/lib/plan-limits';
-import { EstadoOrden, ModuleKey, Prioridad } from '@prisma/client';
+import { AccessLevel, EstadoOrden, ModuleKey, Prioridad } from '@prisma/client';
 import { ensureInvoiceFromQuote, QuoteInvoiceError } from '@/lib/quote-invoicing';
 import { ensureWorkOrderFromInvoice, ensureWorkOrderFromQuote, WorkOrderClientResolutionError } from '@/lib/work-orders';
+import { requireSedeAccess } from '@/lib/rbac';
 
 const IN_PROGRESS_ORDER_STATES: EstadoOrden[] = [
   'RECIBIDO',
@@ -30,9 +31,26 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const busqueda = searchParams.get('busqueda');
     const estado = searchParams.get('estado');
+    const requestedSedeId = (searchParams.get('sedeId') || '').trim();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: any = { sedeId: access.sedeId };
+    const where: any = { sedeId: requestedSedeId || access.sedeId };
+
+    if (requestedSedeId && requestedSedeId !== access.sedeId) {
+      try {
+        await requireSedeAccess({
+          userId: access.userId,
+          sedeId: requestedSedeId,
+          module: ModuleKey.ORDENES,
+          minLevel: AccessLevel.READ,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === 'FORBIDDEN') {
+          return NextResponse.json({ success: false, error: 'No tienes acceso a la sede solicitada.' }, { status: 403 });
+        }
+        throw error;
+      }
+    }
 
     if (busqueda) {
       where.OR = [
@@ -62,6 +80,7 @@ export async function GET(request: NextRequest) {
       where,
       select: {
         id: true,
+        sedeId: true,
         numero: true,
         estado: true,
         prioridad: true,

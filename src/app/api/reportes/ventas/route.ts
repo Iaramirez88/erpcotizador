@@ -4,9 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { ModuleKey, PosInvoiceStatus } from "@prisma/client"
+import { AccessLevel, ModuleKey, PosInvoiceStatus } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
+import { requireSedeAccess } from "@/lib/rbac"
 
 export const runtime = "nodejs"
 
@@ -46,14 +47,32 @@ export async function GET(request: NextRequest) {
   const periodo = (searchParams.get("periodo") || "mes") as Periodo
   const fromParam = (searchParams.get("from") || "").trim()
   const toParam = (searchParams.get("to") || "").trim()
+  const requestedSedeId = (searchParams.get("sedeId") || "").trim()
 
   const from = parseDateOnlyUtc(fromParam, false) ?? startDateFor(periodo)
   const to = parseDateOnlyUtc(toParam, true) ?? new Date()
+  const sedeId = requestedSedeId || access.sedeId
+
+  if (requestedSedeId && requestedSedeId !== access.sedeId) {
+    try {
+      await requireSedeAccess({
+        userId: access.userId,
+        sedeId: requestedSedeId,
+        module: ModuleKey.REPORTES,
+        minLevel: AccessLevel.READ,
+      })
+    } catch (error) {
+      if (error instanceof Error && error.message === 'FORBIDDEN') {
+        return NextResponse.json({ success: false, error: 'No tienes acceso a la sede solicitada.' }, { status: 403 })
+      }
+      throw error
+    }
+  }
 
   const invoices = await prisma.posInvoice.findMany({
     where: {
       empresaId: access.empresaId,
-      sedeId: access.sedeId,
+      sedeId,
       status: {
         in: [PosInvoiceStatus.PAID, PosInvoiceStatus.PARTIALLY_REFUNDED, PosInvoiceStatus.REFUNDED],
       },
@@ -68,6 +87,7 @@ export async function GET(request: NextRequest) {
       total: true,
       status: true,
       createdAt: true,
+      sedeId: true,
       clienteNombre: true,
       clienteDocumento: true,
       cliente: {
@@ -97,6 +117,7 @@ export async function GET(request: NextRequest) {
       return {
         id: invoice.id,
         createdAt: invoice.createdAt,
+        sedeId: invoice.sedeId,
         grossTotal,
         returnedTotal,
         netTotal,
@@ -129,6 +150,7 @@ export async function GET(request: NextRequest) {
       sales: sales.map((sale) => ({
         id: sale.id,
         createdAt: sale.createdAt,
+        sedeId: sale.sedeId,
         total: sale.netTotal,
         customerKey: sale.customerKey,
         customerName: sale.customerName,

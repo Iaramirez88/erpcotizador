@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ModuleKey } from '@prisma/client'
+import { AccessLevel, ModuleKey } from '@prisma/client'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { isCompanyIntelligenceEnabledForEmpresa } from '@/lib/company-intelligence'
 import { parseDateOnlyUtc } from '@/lib/decision-engine/dates'
 import { listDecisionEngineSnapshots, persistDecisionEngineSnapshot } from '@/lib/decision-engine/snapshots'
+import { requireSedeAccess } from '@/lib/rbac'
 
 export const runtime = 'nodejs'
 
@@ -17,10 +18,23 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const limit = Number(searchParams.get('limit') || '12')
   const includeBundle = searchParams.get('includeBundle') === 'true'
+  const requestedSedeId = searchParams.get('sedeId')?.trim() || ''
+  const sedeId = requestedSedeId || access.sedeId
+
+  if (requestedSedeId && requestedSedeId !== access.sedeId) {
+    try {
+      await requireSedeAccess({ userId: access.userId, sedeId: requestedSedeId, module: ModuleKey.REPORTES, minLevel: AccessLevel.READ })
+    } catch (error) {
+      if (error instanceof Error && error.message === 'FORBIDDEN') {
+        return NextResponse.json({ success: false, error: 'No tienes acceso a la sede solicitada.' }, { status: 403 })
+      }
+      throw error
+    }
+  }
 
   const data = await listDecisionEngineSnapshots({
     empresaId: access.empresaId,
-    sedeId: access.sedeId,
+    sedeId,
     limit: Number.isFinite(limit) ? limit : 12,
     includeBundle,
   })

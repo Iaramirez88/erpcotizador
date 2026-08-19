@@ -353,7 +353,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   {
     key: 'CORE.COMPANY',
     moduleKey: ModuleKey.CONFIG,
-    section: 'Plataforma',
+    section: 'Administración',
     label: 'Empresa y sedes',
     hrefs: ['/dashboard/configuracion/empresa', '/dashboard/configuracion/sedes'],
     capabilities: [{ domain: 'CORE', subdomain: 'COMPANY' }],
@@ -361,7 +361,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   {
     key: 'CORE.USERS',
     moduleKey: ModuleKey.CONFIG,
-    section: 'Plataforma',
+    section: 'Administración',
     label: 'Usuarios',
     hrefs: ['/dashboard/configuracion/usuarios'],
     capabilities: [{ domain: 'CORE', subdomain: 'USERS' }],
@@ -369,7 +369,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   {
     key: 'CORE.WEB_SERVICES',
     moduleKey: ModuleKey.CONFIG,
-    section: 'Plataforma',
+    section: 'Administración',
     label: 'Servicios web',
     hrefs: ['/dashboard/configuracion/servicios-web'],
     capabilities: [{ domain: 'CORE', subdomain: 'WEB_SERVICES' }],
@@ -377,7 +377,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   {
     key: 'CORE.PLANS',
     moduleKey: ModuleKey.CONFIG,
-    section: 'Plataforma',
+    section: 'Administración',
     label: 'Plan',
     hrefs: ['/dashboard/configuracion/plan'],
     capabilities: [{ domain: 'CORE', subdomain: 'PLANS' }],

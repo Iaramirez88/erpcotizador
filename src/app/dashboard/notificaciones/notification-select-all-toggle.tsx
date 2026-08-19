@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { ListChecks } from 'lucide-react'
 
 function getNotificationCheckboxes() {
   return Array.from(document.querySelectorAll<HTMLInputElement>('input[name="ids"]'))
@@ -38,11 +39,18 @@ export default function NotificationSelectAllToggle() {
   }, [])
 
   return (
-    <label className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+    <label
+      className={checked
+        ? 'inline-flex h-7.5 w-7.5 cursor-pointer items-center justify-center rounded-md border border-sky-200 bg-sky-50 text-sky-700 transition-colors'
+        : 'inline-flex h-7.5 w-7.5 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900'}
+      title="Seleccionar todas"
+      aria-label="Seleccionar todas"
+    >
       <input
         ref={inputRef}
         type="checkbox"
         checked={checked}
+        className="sr-only"
         onChange={(event) => {
           const next = event.target.checked
           setChecked(next)
@@ -52,7 +60,7 @@ export default function NotificationSelectAllToggle() {
           })
         }}
       />
-      Seleccionar todas
+      <ListChecks className="h-4 w-4" />
     </label>
   )
 }

@@ -28,7 +28,7 @@ export default async function RespaldoPage() {
           { label: 'Configuración', href: '/dashboard/configuracion/empresa' },
           { label: 'Respaldo' },
         ]}
-        eyebrow="Plataforma"
+        eyebrow="Administración"
         title="Respaldo"
         description="Genera copias por empresa, filtra por período y módulos, descarga en SQL o Excel, revisa el historial y restaura respaldos seguros sobre la base actual."
       />
