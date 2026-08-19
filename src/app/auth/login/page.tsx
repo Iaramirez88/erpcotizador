@@ -233,6 +233,23 @@ export default function LoginPage() {
                 {t('auth.login.registerHere')}
               </Link>
             </div>
+
+            <div className="w-full rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-center text-sm text-slate-600">
+              <div className="font-medium text-slate-900">Conoce la plataforma antes de entrar</div>
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
+                <Link href="/producto" className="text-sky-700 hover:underline">
+                  Landing comercial
+                </Link>
+                <span className="text-slate-300">|</span>
+                <Link href="/plataforma" className="text-sky-700 hover:underline">
+                  Arquitectura y confiabilidad
+                </Link>
+                <span className="text-slate-300">|</span>
+                <Link href="/docs" className="text-sky-700 hover:underline">
+                  Centro de documentacion
+                </Link>
+              </div>
+            </div>
           </CardFooter>
         </form>
     </Card>

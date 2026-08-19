@@ -92,6 +92,12 @@ export default function PoliticaDePrivacidadPage() {
           </div>
 
           <div className="mt-10 flex flex-wrap gap-3 border-t border-slate-100 pt-6">
+            <Link href="/plataforma" className="inline-flex items-center rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
+              Ver plataforma
+            </Link>
+            <Link href="/docs" className="inline-flex items-center rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
+              Ver documentacion
+            </Link>
             <Link href="/auth/login" className="inline-flex items-center rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
               Ir a iniciar sesión
             </Link>
