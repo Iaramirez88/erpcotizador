@@ -1007,7 +1007,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const userStrongText = isDark ? "text-slate-100" : "text-slate-900"
   const badgeSurface = isDark ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-600"
 
-  function handleSectionDragStart(event: DragEvent<HTMLButtonElement>, sectionTitle: string) {
+  function handleSectionDragStart(event: DragEvent<HTMLElement>, sectionTitle: string) {
     if (isMobileViewport) return
     setDraggingSectionTitle(sectionTitle)
     setDragOverSectionTitle(sectionTitle)
@@ -1127,7 +1127,39 @@ export default function Sidebar({ user }: SidebarProps) {
               const isBlocked = isPersonal && blockedModules.has(item.href)
 
               return (
-                <div key={section.title} className="pt-1.5">
+                <div
+                  key={section.title}
+                  className={cn(
+                    "space-y-0.5 pt-1.5 transition-[padding] duration-300 ease-out",
+                    draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before' ? 'pt-7' : '',
+                    draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after' ? 'pb-6' : ''
+                  )}
+                  draggable={!isMobileViewport}
+                  onDragStart={(event) => handleSectionDragStart(event, section.title)}
+                  onDragEnd={() => {
+                    setDraggingSectionTitle(null)
+                    setDragOverSectionTitle(null)
+                  }}
+                  onDragOver={(event) => handleSectionDragOver(event, section.title)}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    handleSectionDrop(section.title)
+                  }}
+                >
+                  <div
+                    className={cn(
+                      "rounded-full transition-all duration-300 ease-out",
+                      draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before'
+                        ? 'mb-3 border-2 border-dashed border-sky-300 bg-sky-100/75 shadow-[0_0_0_6px_rgba(125,211,252,0.14)] animate-[pulse_1.6s_ease-in-out_infinite]'
+                        : 'mb-0 border-0 bg-transparent shadow-none'
+                    )}
+                    aria-hidden="true"
+                  >
+                    <div className={cn(
+                      "rounded-full transition-all duration-300 ease-out",
+                      draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'before' ? 'h-4 bg-sky-400/80' : 'h-0'
+                    )} />
+                  </div>
                   <SidebarNavTooltip item={item} isBlocked={isBlocked} upgradePlanLabel={upgradePlanLabel} enabled={areSidebarTooltipsEnabled}>
                     <Link
                       href={item.href}
@@ -1139,7 +1171,7 @@ export default function Sidebar({ user }: SidebarProps) {
                         }
                       }}
                       className={cn(
-                        "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                        "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors md:cursor-grab md:active:cursor-grabbing",
                         isActive ? navActive : cn(navText, navHover),
                         isBlocked ? "opacity-60 cursor-not-allowed" : ""
                       )}
@@ -1151,6 +1183,20 @@ export default function Sidebar({ user }: SidebarProps) {
                       </div>
                     </Link>
                   </SidebarNavTooltip>
+                  <div
+                    className={cn(
+                      "rounded-full transition-all duration-300 ease-out",
+                      draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after'
+                        ? 'mt-3 border-2 border-dashed border-sky-300 bg-sky-100/75 shadow-[0_0_0_6px_rgba(125,211,252,0.14)] animate-[pulse_1.6s_ease-in-out_infinite]'
+                        : 'mt-0 border-0 bg-transparent shadow-none'
+                    )}
+                    aria-hidden="true"
+                  >
+                    <div className={cn(
+                      "rounded-full transition-all duration-300 ease-out",
+                      draggingSectionTitle && dragOverSectionTitle === section.title && dragOverSectionPlacement === 'after' ? 'h-4 bg-sky-400/80' : 'h-0'
+                    )} />
+                  </div>
                 </div>
               )
             }

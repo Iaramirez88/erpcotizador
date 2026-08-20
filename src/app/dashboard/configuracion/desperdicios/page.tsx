@@ -143,7 +143,7 @@ export default function ConfigDesperdiciosPage() {
           { label: 'Inventario', href: '/dashboard/inventario' },
           { label: 'Desperdicios' },
         ]}
-        title="Configuracion de desperdicios"
+        title="Desperdicios"
         description="Ajustes por sede para controlar el porcentaje base y los overrides por material."
         stats={[
           {
