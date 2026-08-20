@@ -15,6 +15,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { useCurrentUserAccess } from '@/hooks/use-current-user-access'
 import { cn, formatUnidadMedidaLabel } from '@/lib/utils'
 
@@ -256,17 +257,18 @@ export default function AbastecimientoInventarioPage() {
 
   return (
     <div className="space-y-6">
-      <CatalogModuleTabs />
+      <ErpPageHero
+        breadcrumbs={[
+          { label: 'Inicio', href: '/dashboard' },
+          { label: 'Inventario', href: '/dashboard/inventario' },
+          { label: 'Abastecimiento' },
+        ]}
+        title="Abastecimiento entre sedes"
+        description="Centraliza solicitudes de las sedes hijas hacia la bodega padre, con prioridad, seguimiento y cumplimiento desde inventario."
+        actions={canManageInventory ? <Button onClick={openNewDialog}>Nueva solicitud</Button> : null}
+      />
 
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Abastecimiento entre sedes</h1>
-          <p className="text-muted-foreground">
-            Centraliza solicitudes de las sedes hijas hacia la bodega padre, con prioridad, seguimiento y cumplimiento desde inventario.
-          </p>
-        </div>
-        {canManageInventory ? <Button onClick={openNewDialog}>Nueva solicitud</Button> : null}
-      </div>
+      <CatalogModuleTabs />
 
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
 

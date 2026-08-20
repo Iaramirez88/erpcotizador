@@ -149,7 +149,11 @@ export default function ProveedoresPage() {
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <ErpPageHero
-        eyebrow="ERP de abastecimiento"
+        breadcrumbs={[
+          { label: 'Inicio', href: '/dashboard' },
+          { label: 'Inventario', href: '/dashboard/inventario' },
+          { label: t('suppliers.title') },
+        ]}
         title={t('suppliers.title')}
         description={t('suppliers.subtitle')}
         actions={

@@ -639,7 +639,10 @@ export default function InventarioPage() {
   return (
     <div className="space-y-6">
       <ErpPageHero
-        eyebrow="ERP operativo"
+        breadcrumbs={[
+          { label: 'Inicio', href: '/dashboard' },
+          { label: t('inventory.title') },
+        ]}
         title={<span data-tour="inventario-title">{t('inventory.title')}</span>}
         description={t('inventory.subtitle')}
         actions={

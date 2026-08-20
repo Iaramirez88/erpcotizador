@@ -523,7 +523,11 @@ export default function ComprasPage() {
   return (
     <div className="space-y-6">
       <ErpPageHero
-        eyebrow="ERP de abastecimiento"
+        breadcrumbs={[
+          { label: 'Inicio', href: '/dashboard' },
+          { label: 'Inventario', href: '/dashboard/inventario' },
+          { label: t('purchases.title') },
+        ]}
         title={t('purchases.title')}
         description={t('purchases.subtitle')}
         actions={

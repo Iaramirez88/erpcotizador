@@ -32,6 +32,7 @@ import {
   type ProductCustomFieldDefinition,
   type ProductTypeOption,
 } from "@/components/materiales/product-config-dialog"
+import { ErpPageHero } from "@/components/dashboard/erp-page-chrome"
 import { CatalogModuleTabs } from "@/components/inventory/catalog-module-tabs"
 import { useCurrentUserAccess } from '@/hooks/use-current-user-access'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
@@ -1230,43 +1231,45 @@ export default function ProductosPage() {
         customFieldDefinitions={customFieldDefinitions}
         onRefresh={fetchConfiguracion}
       />
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight" data-tour="materiales-title">Inventario</h1>
-          <p className="text-muted-foreground">
-            Centro de catálogo, stock y abastecimiento
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {isAdmin ? (
-            <Button variant="outline" type="button" onClick={() => setCustomRequestsOpen(true)}>
-              Solicitudes de personalizados
-            </Button>
-          ) : null}
-          {canManageProducts ? <span data-tour="materiales-import">
-            <ImportDialog
-              module="materiales"
-              title="Importar productos"
-              onSuccess={async () => {
-                await fetchMateriales()
-              }}
-            />
-          </span> : null}
-          {canManageProducts ? <Button variant="outline" onClick={() => setIsExportOpen(true)}>
-            Exportar Excel
-          </Button> : null}
-          {canManageProducts ? <Button variant="outline" type="button" onClick={() => setProductConfigOpen(true)}>
-            Configurar catálogos
-          </Button> : null}
-          {canManageProducts ? <Button onClick={() => { resetForm(); setIsModalOpen(true) }} data-tour="materiales-new">
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Nuevo Producto
-          </Button> : null}
-        </div>
-      </div>
+      <ErpPageHero
+        breadcrumbs={[
+          { label: 'Inicio', href: '/dashboard' },
+          { label: 'Inventario', href: '/dashboard/inventario' },
+          { label: 'Productos' },
+        ]}
+        title={<span data-tour="materiales-title">Productos</span>}
+        description="Catálogo y precios del módulo de inventario."
+        actions={
+          <>
+            {isAdmin ? (
+              <Button variant="outline" type="button" onClick={() => setCustomRequestsOpen(true)}>
+                Solicitudes de personalizados
+              </Button>
+            ) : null}
+            {canManageProducts ? <span data-tour="materiales-import">
+              <ImportDialog
+                module="materiales"
+                title="Importar productos"
+                onSuccess={async () => {
+                  await fetchMateriales()
+                }}
+              />
+            </span> : null}
+            {canManageProducts ? <Button variant="outline" onClick={() => setIsExportOpen(true)}>
+              Exportar Excel
+            </Button> : null}
+            {canManageProducts ? <Button variant="outline" type="button" onClick={() => setProductConfigOpen(true)}>
+              Configurar catálogos
+            </Button> : null}
+            {canManageProducts ? <Button onClick={() => { resetForm(); setIsModalOpen(true) }} data-tour="materiales-new">
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Nuevo Producto
+            </Button> : null}
+          </>
+        }
+      />
 
       <CatalogModuleTabs />
 

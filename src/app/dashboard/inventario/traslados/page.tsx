@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { ErpPageHero } from "@/components/dashboard/erp-page-chrome"
 import { formatUnidadMedidaLabel } from "@/lib/utils"
 import { useI18n } from "@/components/providers/i18n-provider"
 
@@ -216,15 +217,18 @@ export default function TrasladosPage() {
 
   return (
     <div className="space-y-6">
-      <CatalogModuleTabs />
+      <ErpPageHero
+        breadcrumbs={[
+          { label: 'Inicio', href: '/dashboard' },
+          { label: 'Inventario', href: '/dashboard/inventario' },
+          { label: 'Traslados' },
+        ]}
+        title={t('inventoryTransfers.title')}
+        description={t('inventoryTransfers.subtitle')}
+        actions={<Button onClick={openNew}>{t('inventoryTransfers.actions.new')}</Button>}
+      />
 
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{t('inventoryTransfers.title')}</h1>
-          <p className="text-muted-foreground">{t('inventoryTransfers.subtitle')}</p>
-        </div>
-        <Button onClick={openNew}>{t('inventoryTransfers.actions.new')}</Button>
-      </div>
+      <CatalogModuleTabs />
 
       <Card>
         <CardContent className="pt-6">
