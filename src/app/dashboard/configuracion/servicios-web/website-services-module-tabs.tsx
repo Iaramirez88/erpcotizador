@@ -4,17 +4,36 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const tabs = [
-  { href: '/dashboard/configuracion/servicios-web', label: 'Servicios' },
-  { href: '/dashboard/configuracion/servicios-web/plantillas', label: 'Plantillas automáticas' },
+  {
+    href: '/dashboard/configuracion/servicios-web',
+    label: 'Servicios',
+    match: (pathname: string) => pathname === '/dashboard/configuracion/servicios-web',
+  },
+  {
+    href: '/dashboard/configuracion/servicios-web/sitios',
+    label: 'Sitios',
+    match: (pathname: string) => pathname === '/dashboard/configuracion/servicios-web/sitios',
+  },
+  {
+    href: '/dashboard/configuracion/servicios-web/builder',
+    label: 'Builder visual',
+    match: (pathname: string) => pathname === '/dashboard/configuracion/servicios-web/builder' || pathname.endsWith('/builder'),
+  },
+  {
+    href: '/dashboard/configuracion/servicios-web/plantillas',
+    label: 'Plantillas automáticas',
+    match: (pathname: string) => pathname.startsWith('/dashboard/configuracion/servicios-web/plantillas'),
+  },
 ]
 
 export default function WebsiteServicesModuleTabs() {
   const pathname = usePathname()
+  const safePathname = pathname ?? ''
 
   return (
     <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
       {tabs.map((tab) => {
-        const active = pathname === tab.href
+        const active = tab.match(safePathname)
         return (
           <Link
             key={tab.href}

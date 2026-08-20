@@ -135,8 +135,6 @@ export default function ConfigDesperdiciosPage() {
 
   return (
     <div className="space-y-6">
-      <CatalogModuleTabs />
-
       <ErpPageHero
         breadcrumbs={[
           { label: 'Inicio', href: '/dashboard' },
@@ -160,6 +158,8 @@ export default function ConfigDesperdiciosPage() {
           },
         ]}
       />
+
+      <CatalogModuleTabs />
 
       <Card>
         <CardHeader>

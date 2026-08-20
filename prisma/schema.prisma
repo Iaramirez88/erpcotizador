@@ -134,6 +134,9 @@ model User {
   websiteServicesCreated WebsiteService[] @relation("WebsiteServiceCreatedBy")
   websiteServicesUpdated WebsiteService[] @relation("WebsiteServiceUpdatedBy")
   websiteServiceModuleAccesses WebsiteServiceModuleAccess[]
+  websiteProjectsCreated WebsiteProject[] @relation("WebsiteProjectCreatedBy")
+  websiteProjectsUpdated WebsiteProject[] @relation("WebsiteProjectUpdatedBy")
+  websiteProjectPageVersionsCreated WebsiteProjectPageVersion[] @relation("WebsiteProjectPageVersionCreatedBy")
 
   // Inventario
   inventoryMovements InventoryMovement[]
@@ -796,6 +799,7 @@ model Empresa {
   websiteServiceReminderSetting WebsiteServiceReminderSetting?
   websiteServiceReminderLogs WebsiteServiceReminderLog[]
   websiteServiceMessageTemplates WebsiteServiceMessageTemplate[]
+  websiteProjects WebsiteProject[]
 
   // Tarifario global de Litografía (misma configuración para todas las sedes)
   litografiaPrintProfiles LitografiaPrintProfile[]
@@ -2175,6 +2179,7 @@ model WebsiteService {
   updatedByUser   User? @relation("WebsiteServiceUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
 
   reminderLogs WebsiteServiceReminderLog[]
+  websiteProjects WebsiteProject[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2184,6 +2189,88 @@ model WebsiteService {
   @@index([empresaId, hostingExpiresAt])
   @@index([empresaId, isCancelled])
   @@map("website_services")
+}
+
+model WebsiteProject {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  websiteServiceId String?
+  websiteService   WebsiteService? @relation(fields: [websiteServiceId], references: [id], onDelete: SetNull)
+
+  nombre String
+  slug   String
+  subdomain String?
+  primaryDomain String?
+  status String @default("DRAFT")
+  templateKey String?
+  themeJson Json @default("{}")
+  seoJson Json @default("{}")
+
+  createdByUserId String?
+  createdByUser   User? @relation("WebsiteProjectCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  updatedByUserId String?
+  updatedByUser   User? @relation("WebsiteProjectUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  pages WebsiteProjectPage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, slug])
+  @@unique([empresaId, subdomain])
+  @@index([empresaId, status])
+  @@index([websiteServiceId])
+  @@map("website_projects")
+}
+
+model WebsiteProjectPage {
+  id String @id @default(cuid())
+
+  websiteProjectId String
+  websiteProject   WebsiteProject @relation(fields: [websiteProjectId], references: [id], onDelete: Cascade)
+
+  nombre String
+  slug   String
+  isHome Boolean @default(false)
+  seoTitle String?
+  seoDescription String? @db.Text
+  status String @default("DRAFT")
+  draftData Json @default("{}")
+
+  versions WebsiteProjectPageVersion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([websiteProjectId, slug])
+  @@index([websiteProjectId, isHome])
+  @@index([websiteProjectId, status])
+  @@map("website_project_pages")
+}
+
+model WebsiteProjectPageVersion {
+  id String @id @default(cuid())
+
+  websiteProjectPageId String
+  websiteProjectPage   WebsiteProjectPage @relation(fields: [websiteProjectPageId], references: [id], onDelete: Cascade)
+
+  versionNumber Int
+  editorJson Json @default("{}")
+  renderedSnapshotJson Json?
+  isPublished Boolean @default(false)
+
+  createdByUserId String?
+  createdByUser   User? @relation("WebsiteProjectPageVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@unique([websiteProjectPageId, versionNumber])
+  @@index([websiteProjectPageId, isPublished, createdAt])
+  @@map("website_project_page_versions")
 }
 
 model WebsiteServiceReminderSetting {
