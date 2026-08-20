@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { CatalogModuleTabs } from '@/components/inventory/catalog-module-tabs'
 
 type ApiResponse =
   | {
@@ -134,6 +135,8 @@ export default function ConfigDesperdiciosPage() {
 
   return (
     <div className="space-y-6">
+      <CatalogModuleTabs />
+
       <ErpPageHero
         eyebrow="Configuracion"
         title="Configuracion de desperdicios"

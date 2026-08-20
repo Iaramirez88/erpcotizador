@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { CatalogModuleTabs } from '@/components/inventory/catalog-module-tabs'
 import { useCurrentUserAccess } from '@/hooks/use-current-user-access'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { useI18n } from '@/components/providers/i18n-provider'
@@ -548,6 +549,8 @@ export default function ComprasPage() {
           { label: 'Formulario activo', value: formatCOP(totals.total, locale), hint: activeMode === 'order' ? t('purchases.modes.order') : t('purchases.modes.purchase'), tone: 'sky' },
         ]}
       />
+
+      <CatalogModuleTabs />
 
       <Tabs
         value={activeMode}

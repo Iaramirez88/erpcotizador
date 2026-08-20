@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CatalogModuleTabs } from "@/components/inventory/catalog-module-tabs"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -215,6 +216,8 @@ export default function TrasladosPage() {
 
   return (
     <div className="space-y-6">
+      <CatalogModuleTabs />
+
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{t('inventoryTransfers.title')}</h1>

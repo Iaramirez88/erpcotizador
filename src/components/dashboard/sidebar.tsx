@@ -54,6 +54,18 @@ interface NavSection {
   items: NavItem[]
 }
 
+const INVENTORY_HUB_ROUTES = [
+  '/dashboard/productos',
+  '/dashboard/materiales',
+  '/dashboard/terminados',
+  '/dashboard/inventario',
+  '/dashboard/inventario/abastecimiento',
+  '/dashboard/inventario/traslados',
+  '/dashboard/compras',
+  '/dashboard/proveedores',
+  '/dashboard/configuracion/desperdicios',
+] as const
+
 const DEFAULT_SIDEBAR_TOOLTIP_PREFS: SidebarTooltipPrefs = { desktop: true, mobile: true }
 
 const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
@@ -90,7 +102,7 @@ const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard/imagenes-ia/generador": "Genera imagenes de apoyo para ventas y produccion.",
   "/dashboard/imagenes-ia/vectorizador": "Convierte imagenes en vectores listos para produccion.",
   "/dashboard/escaneos": "Digitaliza documentos y extrae informacion util.",
-  "/dashboard/productos": "Catalogo de productos, precios y configuraciones.",
+  "/dashboard/productos": "Centro de inventario con catalogo, stock, compras y abastecimiento.",
   "/dashboard/inventario": "Existencias, movimientos y control de stock.",
   "/dashboard/inventario/traslados": "Mueve inventario entre sedes o bodegas.",
   "/dashboard/compras": "Gestiona compras, abastecimiento y costos.",
@@ -113,6 +125,10 @@ const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
 
 function getNavItemDescription(item: NavItem) {
   return item.description ?? NAV_ITEM_DESCRIPTIONS[item.href] ?? item.name
+}
+
+function isInventoryHubPath(pathname: string) {
+  return INVENTORY_HUB_ROUTES.some((route) => pathname === route || pathname.startsWith(route + '/'))
 }
 
 function normalizeSidebarTooltipPrefs(value: Partial<SidebarTooltipPrefs> | null | undefined): SidebarTooltipPrefs {
@@ -211,6 +227,7 @@ function getSectionIcon(title: string) {
       return <ShoppingCart className="h-4 w-4" />
     case 'Operaciones':
       return <Boxes className="h-4 w-4" />
+    case 'Inventario':
     case 'Recursos':
       return <Layers3 className="h-4 w-4" />
     case 'Finanzas':
@@ -493,18 +510,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: t('nav.products'),
-    href: "/dashboard/productos",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-      </svg>
-    ),
-  },
-
-  // Inventario
-  {
-    name: t('nav.inventory'),
+    name: 'Inventario',
     href: "/dashboard/inventario",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -517,46 +523,6 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
       </svg>
     ),
   },
-  {
-    name: t('nav.transfers'),
-    href: "/dashboard/inventario/traslados",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l4 5-4 5" />
-      </svg>
-    ),
-  },
-
-  // Logística
-  {
-    name: t('nav.purchases'),
-    href: "/dashboard/compras",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.5 7.5M17 13l1.5 7.5M9 21h6" />
-      </svg>
-    ),
-  },
-  {
-    name: t('nav.suppliers'),
-    href: "/dashboard/proveedores",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21h18M4 21V7a1 1 0 011-1h14a1 1 0 011 1v14M8 10h8M8 14h8M8 18h8" />
-      </svg>
-    ),
-  },
-  {
-    name: t('nav.waste'),
-    href: "/dashboard/configuracion/desperdicios",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-8 0l1 14h8l1-14" />
-      </svg>
-    ),
-  },
-
   // Gestión
   {
     name: t('nav.branches'),
@@ -713,6 +679,7 @@ export default function Sidebar({ user }: SidebarProps) {
   }, [hydrateSidebarCollapsed])
 
   function isNavActive(href: string) {
+    if (href === '/dashboard/inventario' && isInventoryHubPath(pathname)) return true
     if (href === '/dashboard') return pathname === '/dashboard'
     if (pathname === href) return true
     return pathname.startsWith(href + '/')
@@ -1023,17 +990,17 @@ export default function Sidebar({ user }: SidebarProps) {
   const sectionBorder = isDark ? "border-white/10" : "border-slate-200/80"
   const sectionTitleText = isDark ? "text-slate-400" : "text-slate-500"
   const navText = isDark ? "text-slate-200" : "text-slate-700"
-  const navHover = isDark ? "hover:bg-white/8" : "hover:bg-slate-100"
+  const navHover = isDark ? "hover:bg-[#f0dcc7]/20 hover:text-white" : "hover:bg-[#f0dcc7] hover:text-slate-950"
   const navActive = isDark
-    ? "bg-[#608194] text-white shadow-[0_12px_18px_-18px_rgba(96,129,148,0.55)]"
-    : "bg-[#608194] text-white ring-1 ring-[#608194] shadow-[0_10px_18px_-18px_rgba(96,129,148,0.5)]"
+    ? "bg-[#FF9800] text-white shadow-[0_12px_18px_-18px_rgba(255,152,0,0.55)]"
+    : "bg-[#FF9800] text-white ring-1 ring-[#FF9800] shadow-[0_10px_18px_-18px_rgba(255,152,0,0.5)]"
   const sectionHeaderOpen = isDark
-    ? "bg-white/8 text-slate-100"
-    : "bg-slate-100 text-slate-900"
+    ? "bg-[#f0dcc7]/20 text-slate-100"
+    : "bg-[#f0dcc7] text-slate-900"
   const sectionHeaderActive = isDark
-    ? "bg-white/14 text-white ring-1 ring-white/10 shadow-[0_12px_18px_-18px_rgba(148,163,184,0.45)]"
-    : "bg-sky-100/90 text-sky-950 ring-1 ring-sky-200 shadow-[0_12px_18px_-18px_rgba(14,165,233,0.28)]"
-  const sectionHeaderTextActive = isDark ? "text-slate-100" : "text-sky-900"
+    ? "bg-[#FF9800] text-white ring-1 ring-[#FF9800] shadow-[0_12px_18px_-18px_rgba(255,152,0,0.45)]"
+    : "bg-[#FF9800] text-white ring-1 ring-[#FF9800] shadow-[0_12px_18px_-18px_rgba(255,152,0,0.28)]"
+  const sectionHeaderTextActive = "text-white"
   const sectionHeaderTextOpen = isDark ? "text-slate-300" : "text-slate-700"
   const softButton = isDark ? "border-white/10 text-slate-200 hover:bg-white/10" : "border-slate-200 text-slate-600 hover:bg-slate-100"
   const userSecondaryText = isDark ? "text-slate-400" : "text-slate-500"
@@ -1154,6 +1121,40 @@ export default function Sidebar({ user }: SidebarProps) {
             const visibleItems = section.items.filter((it) => visibleHrefs.has(it.href))
             if (!visibleItems.length) return null
 
+            if ((section.title === 'Inventario' || section.title === 'Recursos') && visibleItems.length === 1) {
+              const item = visibleItems[0]
+              const isActive = isNavActive(item.href)
+              const isBlocked = isPersonal && blockedModules.has(item.href)
+
+              return (
+                <div key={section.title} className="pt-1.5">
+                  <SidebarNavTooltip item={item} isBlocked={isBlocked} upgradePlanLabel={upgradePlanLabel} enabled={areSidebarTooltipsEnabled}>
+                    <Link
+                      href={item.href}
+                      onClick={e => {
+                        if (isBlocked) e.preventDefault()
+                        else {
+                          beginRouteLoadingIfNeeded(item.href)
+                          setMobileNavOpen(false)
+                        }
+                      }}
+                      className={cn(
+                        "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                        isActive ? navActive : cn(navText, navHover),
+                        isBlocked ? "opacity-60 cursor-not-allowed" : ""
+                      )}
+                    >
+                      <div className="flex items-center space-x-2.5">
+                        {item.icon}
+                        <span className="text-[12px] font-medium leading-4">Inventario</span>
+                        {isBlocked ? <Lock className={cn("ml-1.5 h-3.5 w-3.5", sectionTitleText)} /> : null}
+                      </div>
+                    </Link>
+                  </SidebarNavTooltip>
+                </div>
+              )
+            }
+
             // Sidebar colapsada: se mantiene lista directa (sin dropdown) para no romper UX.
             if (sidebarCollapsed) {
               return (
@@ -1254,7 +1255,7 @@ export default function Sidebar({ user }: SidebarProps) {
                     <span className={cn(
                       "text-[10px] font-semibold uppercase tracking-[0.12em]",
                       isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : sectionTitleText
-                    )}>{section.title === 'Captación' ? 'CRM' : section.title}</span>
+                    )}>{section.title === 'Captación' ? 'CRM' : section.title === 'Recursos' ? 'Inventario' : section.title}</span>
                   </span>
                   <svg
                     className={cn(

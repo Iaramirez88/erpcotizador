@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { CatalogModuleTabs } from '@/components/inventory/catalog-module-tabs'
 import { useCurrentUserAccess } from '@/hooks/use-current-user-access'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { useI18n } from '@/components/providers/i18n-provider'
@@ -174,6 +175,8 @@ export default function ProveedoresPage() {
           { label: 'Nuevo proveedor', value: nombre.trim() || naText, hint: 'Formulario actual', tone: 'amber' },
         ]}
       />
+
+      <CatalogModuleTabs />
 
       <Dialog
         open={createOpen}

@@ -62,7 +62,7 @@ export const SYSTEM_SUITE_PARENTS: SuiteParentModule[] = [
   },
   {
     code: 'RES',
-    title: 'Recursos, Inventario y Compras',
+    title: 'Inventario, productos y compras',
     description: 'Abastecimiento, existencias y reposición conectados con la operación.',
     monthlyBundlePriceCOP: 309000,
     audience: 'Para empresas que necesitan control real sobre stock, bodegas y compras.',

@@ -1233,9 +1233,9 @@ export default function ProductosPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight" data-tour="materiales-title">Productos</h1>
+          <h1 className="text-3xl font-bold tracking-tight" data-tour="materiales-title">Inventario</h1>
           <p className="text-muted-foreground">
-            Catálogo de productos y precios
+            Centro de catálogo, stock y abastecimiento
           </p>
         </div>
         <div className="flex items-center gap-2">

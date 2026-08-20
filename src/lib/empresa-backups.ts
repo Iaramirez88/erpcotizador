@@ -10,7 +10,7 @@ export const BACKUP_MODULES = [
   { id: 'VENTAS', label: 'Ventas', description: 'Clientes, cotizaciones, remisiones, POS y DIAN.' },
   { id: 'CRM', label: 'CRM', description: 'Leads, oportunidades, conversaciones, tareas y canales.' },
   { id: 'OPERACIONES', label: 'Operaciones', description: 'Órdenes, producción, escaneos, chats internos e IA operativa.' },
-  { id: 'RECURSOS', label: 'Recursos', description: 'Materiales, inventario, proveedores, compras y catálogos.' },
+  { id: 'RECURSOS', label: 'Inventario', description: 'Materiales, inventario, proveedores, compras y catalogos.' },
   { id: 'CONTABILIDAD', label: 'Contabilidad', description: 'Contabilidad, nómina, tesorería y cierres financieros.' },
   { id: 'VERTICALES', label: 'Verticales', description: 'Odontología, dotaciones y restaurante.' },
   { id: 'COTIZADOR', label: 'Litografía', description: 'Tarifarios y configuración especializada de litografía.' },

@@ -225,7 +225,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   {
     key: 'RECURSOS.PRODUCTS',
     moduleKey: ModuleKey.MATERIALES,
-    section: 'Recursos',
+    section: 'Inventario',
     label: 'Productos',
     hrefs: ['/dashboard/productos'],
     capabilities: [{ domain: 'RECURSOS', subdomain: 'PRODUCTS' }],
@@ -233,7 +233,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   {
     key: 'RECURSOS.MATERIALS',
     moduleKey: ModuleKey.MATERIALES,
-    section: 'Recursos',
+    section: 'Inventario',
     label: 'Materiales',
     hrefs: ['/dashboard/materiales', '/dashboard/terminados'],
     capabilities: [{ domain: 'RECURSOS', subdomain: 'MATERIALS' }],
@@ -241,7 +241,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   {
     key: 'RECURSOS.INVENTORY',
     moduleKey: ModuleKey.INVENTARIO,
-    section: 'Recursos',
+    section: 'Inventario',
     label: 'Inventario',
     hrefs: ['/dashboard/inventario', '/dashboard/bodegas'],
     capabilities: [{ domain: 'RECURSOS', subdomain: 'INVENTORY' }],
@@ -249,7 +249,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   {
     key: 'RECURSOS.TRANSFERS',
     moduleKey: ModuleKey.INVENTARIO,
-    section: 'Recursos',
+    section: 'Inventario',
     label: 'Traslados',
     hrefs: ['/dashboard/inventario/traslados'],
     capabilities: [{ domain: 'RECURSOS', subdomain: 'TRANSFERS' }],
@@ -257,7 +257,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   {
     key: 'RECURSOS.PURCHASES',
     moduleKey: ModuleKey.COMPRAS,
-    section: 'Recursos',
+    section: 'Inventario',
     label: 'Compras',
     hrefs: ['/dashboard/compras'],
     capabilities: [{ domain: 'RECURSOS', subdomain: 'PURCHASES' }],
@@ -265,7 +265,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   {
     key: 'RECURSOS.SUPPLIERS',
     moduleKey: ModuleKey.PROVEEDORES,
-    section: 'Recursos',
+    section: 'Inventario',
     label: 'Proveedores',
     hrefs: ['/dashboard/proveedores'],
     capabilities: [{ domain: 'RECURSOS', subdomain: 'SUPPLIERS' }],
