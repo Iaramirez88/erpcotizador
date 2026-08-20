@@ -12,6 +12,8 @@ import { useToast } from '@/hooks/use-toast'
 import { websiteBuilderPuckConfig } from '@/components/website-builder/puck-config'
 import { buildWebsitePublicPath } from '@/lib/website-builder'
 
+const ENABLED_BLOCKS = ['Hero', 'Sección', 'Texto', 'Imagen', 'Columnas', 'CTA'] as const
+
 type BuilderVersion = {
   id: string
   versionNumber: number
@@ -146,43 +148,28 @@ export default function WebsitePageBuilderClient({
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_320px]">
-        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-          <Puck
-            config={websiteBuilderPuckConfig}
-            data={data}
-            onChange={(nextData) => setData(nextData)}
-            onPublish={(nextData) => handlePublish(nextData)}
-            headerTitle={`${projectName} · ${pageName}`}
-          />
-        </div>
-
+      <div className="space-y-4">
         <Card className="rounded-[26px] border-slate-200 shadow-sm">
-          <CardContent className="space-y-4 p-5">
+          <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="text-sm font-semibold text-slate-950">Estado del slice</div>
-              <div className="mt-1 text-sm leading-6 text-slate-600">
-                Este primer builder ya persiste JSON de Puck en borrador y crea versiones publicadas sobre los modelos nuevos.
-              </div>
-            </div>
-
-            <div className="space-y-2">
               <div className="text-sm font-semibold text-slate-950">Bloques habilitados</div>
-              <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Hero</span>
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Texto</span>
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">CTA</span>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
+                {ENABLED_BLOCKS.map((block) => (
+                  <span key={block} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                    {block}
+                  </span>
+                ))}
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="min-w-0 lg:max-w-[520px] lg:flex-1">
               <div className="text-sm font-semibold text-slate-950">Versiones publicadas</div>
               {publishedVersions.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-4 text-sm text-slate-500">
+                <div className="mt-2 rounded-2xl border border-dashed border-slate-300 px-4 py-4 text-sm text-slate-500">
                   Aún no hay versiones publicadas para esta página.
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                   {publishedVersions.map((version) => (
                     <div key={version.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                       <div className="font-semibold text-slate-900">Versión {version.versionNumber}</div>
@@ -194,6 +181,16 @@ export default function WebsitePageBuilderClient({
             </div>
           </CardContent>
         </Card>
+
+        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <Puck
+            config={websiteBuilderPuckConfig}
+            data={data}
+            onChange={(nextData) => setData(nextData)}
+            onPublish={(nextData) => handlePublish(nextData)}
+            headerTitle={`${projectName} · ${pageName}`}
+          />
+        </div>
       </div>
     </div>
   )
