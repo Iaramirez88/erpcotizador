@@ -17,6 +17,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { CrmFileLibraryPicker } from '@/components/crm/crm-file-library-picker'
 import { useToast } from '@/hooks/use-toast'
 import type { CrmFileItem } from '@/components/crm/crm-files-types'
+import { subscribeToNotificationReceivedEvent } from '@/lib/notification-browser-events'
 
 type WorkspaceScope = 'SEDE' | 'USER'
 type WorkspaceVisibility = 'PUBLIC' | 'PRIVATE' | 'HIDDEN'
@@ -417,6 +418,7 @@ const TASK_PRIORITY_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-priority-colu
 const TASK_CREATED_AT_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-created-at-column-visible'
 const TASK_PAGE_SIZE_STORAGE_KEY = 'crm-task-workspaces:task-page-size'
 const LAST_WORKSPACE_STORAGE_KEY = 'crm-task-workspaces:last-workspace-id'
+const TASK_AUTO_REFRESH_MS = 15_000
 
 function normalizePinnedTaskIds(value: unknown) {
   if (!Array.isArray(value)) return [] as string[]
@@ -649,6 +651,27 @@ export function CrmTaskWorkspacesClient() {
 
   useEffect(() => { void loadBase() }, [])
   useEffect(() => { void loadTasks(selectedWorkspaceId, taskViewMode) }, [loadTasks, selectedWorkspaceId, taskViewMode])
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void loadTasks(selectedWorkspaceId, taskViewMode)
+      if (selectedTask?.id) {
+        void loadTaskDetail(selectedTask.id)
+      }
+    }, TASK_AUTO_REFRESH_MS)
+
+    const unsubscribe = subscribeToNotificationReceivedEvent(() => {
+      void loadTasks(selectedWorkspaceId, taskViewMode)
+      if (selectedTask?.id) {
+        void loadTaskDetail(selectedTask.id)
+      }
+    })
+
+    return () => {
+      window.clearInterval(intervalId)
+      unsubscribe()
+    }
+  }, [loadTasks, selectedTask?.id, selectedWorkspaceId, taskViewMode])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

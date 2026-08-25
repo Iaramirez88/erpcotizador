@@ -277,6 +277,30 @@ export async function POST(request: Request) {
     }
 
     const materialMap = new Map(materials.map((material) => [material.id, material]))
+    const stockRows = await prisma.inventoryStock.findMany({
+      where: {
+        warehouseId: supplyWarehouse.id,
+        materialId: { in: materialIds },
+      },
+      select: { materialId: true, quantity: true },
+    })
+    const availableByMaterialId = new Map(stockRows.map((row) => [row.materialId, row.quantity]))
+    const requestedByMaterialId = new Map<string, number>()
+
+    for (const item of items) {
+      requestedByMaterialId.set(item.materialId, (requestedByMaterialId.get(item.materialId) ?? 0) + (item.quantity ?? 0))
+    }
+
+    for (const [materialId, requestedQuantity] of requestedByMaterialId.entries()) {
+      const material = materialMap.get(materialId)
+      const availableQuantity = availableByMaterialId.get(materialId) ?? 0
+      if (!material || availableQuantity <= 0) {
+        return NextResponse.json({ error: `El producto ${material ? material.nombre : 'seleccionado'} no tiene stock disponible en la bodega abastecedora.` }, { status: 400 })
+      }
+      if (requestedQuantity > availableQuantity) {
+        return NextResponse.json({ error: `La cantidad solicitada de ${material.nombre} supera el stock disponible en la bodega abastecedora (${availableQuantity}).` }, { status: 400 })
+      }
+    }
 
     const created = await prisma.$transaction(async (tx) => {
       const count = await tx.inventorySupplyRequest.count({ where: { empresaId: access.empresaId } })

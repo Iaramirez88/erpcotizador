@@ -133,7 +133,7 @@ export default function LoginPage() {
                 {needsVerification && (
                   <div className="mt-2">
                     <Link
-                      href={`/auth/verify?email=${encodeURIComponent(formData.email)}`}
+                      href={`/auth/verify?email=${encodeURIComponent(formData.email)}${callbackUrl !== '/dashboard' ? `&callbackUrl=${encodeURIComponent(callbackUrl)}` : ''}`}
                       className="text-blue-600 hover:underline"
                     >
                       {t('auth.login.verifyAccount')}
@@ -205,7 +205,7 @@ export default function LoginPage() {
 
             <div className="flex items-center justify-between text-sm">
               <Link 
-                href="/auth/forgot-password" 
+                href={callbackUrl !== '/dashboard' ? `/auth/forgot-password?callbackUrl=${encodeURIComponent(callbackUrl)}` : "/auth/forgot-password"} 
                 className="text-blue-600 hover:underline"
               >
                 {t('auth.login.forgotPassword')}

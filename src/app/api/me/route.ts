@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getActiveSedeForUser, getEffectiveAccessMap, NAV_MODULES } from '@/lib/rbac'
@@ -10,6 +11,7 @@ import { getWebsiteServicesAccessForUser } from '@/lib/website-services'
 import { randomDigits, sha256Hex } from '@/lib/auth-tokens'
 import { sendEmail } from '@/lib/email'
 import { renderEmail, renderEmailCode } from '@/lib/email-template'
+import { EXTERNAL_DASHBOARD_SCOPE_COOKIE, isModuleAllowedForExternalDashboardScope } from '@/lib/external-dashboard-scope'
 
 export const runtime = 'nodejs'
 
@@ -27,6 +29,9 @@ export async function GET() {
 
   const userId = await resolveUserIdFromSession(session)
   if (!userId) return NextResponse.json({ success: false, error: 'Sesión inválida' }, { status: 401 })
+
+  const cookieStore = await cookies()
+  const externalDashboardScope = cookieStore.get(EXTERNAL_DASHBOARD_SCOPE_COOKIE)?.value ?? null
 
   const [user, websiteServicesAccess] = await Promise.all([
     prisma.user.findUnique({
@@ -74,28 +79,33 @@ export async function GET() {
   }
 
   const order: Record<AccessLevel, number> = { NONE: 0, READ: 1, WRITE: 2, ADMIN: 3 }
-  const canConfigWrite = order[configAccess] >= order.WRITE
-  const canDeleteOrders = order[ordersAccess] >= order.ADMIN
+  const externalScopedAccessMap = externalDashboardScope
+    ? Object.fromEntries(
+        Object.entries(accessMap).filter(([moduleKey]) => isModuleAllowedForExternalDashboardScope({ moduleKey, scope: externalDashboardScope }))
+      ) as Partial<Record<ModuleKey, AccessLevel>>
+    : accessMap
+  const canConfigWrite = !externalDashboardScope && order[configAccess] >= order.WRITE
+  const canDeleteOrders = !externalDashboardScope && order[ordersAccess] >= order.ADMIN
 
   const empresaId = user?.empresaId ?? null
   const isSystemSuperAdmin = isSuperAdminEmail(user?.email)
   const isPlanOwner = Boolean(empresaId && user?.id ? await isPlanOwnerForEmpresa({ empresaId, userId: user.id }) : false)
-  const canManageBilling = isSystemSuperAdmin || isPlanOwner
+  const canManageBilling = !externalDashboardScope && (isSystemSuperAdmin || isPlanOwner)
 
   return NextResponse.json({
     success: true,
     data: user
       ? {
           ...user,
-          access: accessMap,
+          access: externalScopedAccessMap,
           canConfigWrite,
           canDeleteOrders,
-          canManageCustomProductRequests,
+          canManageCustomProductRequests: !externalDashboardScope && canManageCustomProductRequests,
           empresaId,
-          isPlanOwner,
+          isPlanOwner: !externalDashboardScope && isPlanOwner,
           canManageBilling,
-          canAccessWebsiteServices: websiteServicesAccess.canAccess,
-          canManageWebsiteServicesAssignments: websiteServicesAccess.canManageAssignments,
+          canAccessWebsiteServices: !externalDashboardScope && websiteServicesAccess.canAccess,
+          canManageWebsiteServicesAssignments: !externalDashboardScope && websiteServicesAccess.canManageAssignments,
         }
       : null,
   })

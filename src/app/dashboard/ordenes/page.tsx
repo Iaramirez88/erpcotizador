@@ -54,6 +54,51 @@ type ResponsableOption = {
   email: string | null;
 };
 
+type RopServiceCatalogItem = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+type RopDiscoveryItem = {
+  companyId: string;
+  title: string;
+  subtitle: string | null;
+  city: string | null;
+  region: string | null;
+  trustScore: number | null;
+  coverageScope: 'LOCAL' | 'REGIONAL' | 'NATIONAL' | 'EXPORT' | null;
+  capacityStatus: 'AVAILABLE' | 'LIMITED' | 'SATURATED' | 'OFFLINE' | null;
+  serviceName: string | null;
+  reason: string;
+};
+
+type RopOrderContext = {
+  orderId: string;
+  orderNumber: string;
+  customerName: string;
+  status: string;
+  total: number;
+  items: Array<{ descripcion: string; cantidad: number }>;
+  pressureReason: string;
+};
+
+type OrderSaveTrustImpact = {
+  overallScore: number;
+  deltaFromPrevious: number | null;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  computedAt: string;
+  sourceRef: string;
+  note: string;
+  evidence: {
+    totalTerminalOrders: number;
+    successfulOrders: number;
+    cancelledOrders: number;
+    onTimeOrders: number;
+    ratedSamples: number;
+  };
+};
+
 interface OrdenTrabajo {
   id: string;
   numero: string;
@@ -150,6 +195,20 @@ function normalizeVisibleStatus(estado: string): OrdenEstadoVisible {
   return 'PENDIENTE';
 }
 
+function formatTrustRiskLabel(value: OrderSaveTrustImpact['riskLevel']) {
+  if (value === 'LOW') return 'riesgo bajo';
+  if (value === 'MEDIUM') return 'riesgo medio';
+  if (value === 'HIGH') return 'riesgo alto';
+  return 'riesgo crítico';
+}
+
+function buildTrustImpactDescription(impact: OrderSaveTrustImpact) {
+  const delta = impact.deltaFromPrevious !== null
+    ? `${impact.deltaFromPrevious >= 0 ? '+' : ''}${impact.deltaFromPrevious}`
+    : 'sin histórico previo';
+  return `Trust ${impact.overallScore} (${delta}), ${formatTrustRiskLabel(impact.riskLevel)}. ${impact.evidence.successfulOrders}/${impact.evidence.totalTerminalOrders} cierres exitosos y ${impact.evidence.onTimeOrders} entregas a tiempo.`;
+}
+
 function toDateTimeLocal(dateString?: string | null) {
   if (!dateString) return '';
   const date = new Date(dateString);
@@ -157,6 +216,94 @@ function toDateTimeLocal(dateString?: string | null) {
   const offset = date.getTimezoneOffset();
   const local = new Date(date.getTime() - offset * 60_000);
   return local.toISOString().slice(0, 16);
+}
+
+function normalizeText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function inferRopServiceFromOrder(items: OrdenTrabajo['itemsSnapshot'], catalog: RopServiceCatalogItem[]) {
+  if (!Array.isArray(items) || !items.length || !catalog.length) return null;
+
+  const descriptions = items
+    .map((item) => normalizeText(String(item?.descripcion || '')))
+    .filter(Boolean)
+    .join(' ');
+
+  if (!descriptions) return null;
+
+  let bestMatch: { item: RopServiceCatalogItem; score: number } | null = null;
+
+  for (const item of catalog) {
+    const tokens = normalizeText(`${item.code} ${item.name}`)
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length >= 4);
+
+    const score = tokens.reduce((acc, token) => (descriptions.includes(token) ? acc + 1 : acc), 0);
+    if (score <= 0) continue;
+    if (!bestMatch || score > bestMatch.score) {
+      bestMatch = { item, score };
+    }
+  }
+
+  return bestMatch?.item ?? null;
+}
+
+function isActiveOrderStatus(estado: string) {
+  const visible = normalizeVisibleStatus(estado);
+  return visible === 'PENDIENTE' || visible === 'EN_PROCESO';
+}
+
+function getOrderCapacityPressureReason(orden: OrdenTrabajo) {
+  if (!isActiveOrderStatus(orden.estado)) return null;
+
+  if (!orden.assignedTo?.id) {
+    return 'La orden sigue activa y todavía no tiene un responsable asignado.';
+  }
+
+  if (!orden.fechaEntrega) {
+    return 'La orden está activa sin una fecha de entrega comprometida visible.';
+  }
+
+  const dueAt = new Date(orden.fechaEntrega);
+  if (Number.isNaN(dueAt.getTime())) return null;
+
+  const hoursUntilDue = (dueAt.getTime() - Date.now()) / 36e5;
+  if (hoursUntilDue < 0) {
+    return 'La orden ya superó la fecha de entrega y conviene buscar apoyo operativo adicional.';
+  }
+  if (hoursUntilDue <= 48) {
+    return 'La fecha compromiso está muy próxima y esta orden puede requerir capacidad adicional.';
+  }
+
+  return null;
+}
+
+function buildRopNeedFromOrderHref(args: {
+  orderId: string;
+  orderNumber: string;
+  customerName: string;
+  items: Array<{ descripcion: string; cantidad: number }>;
+  pressureReason: string;
+  serviceCatalogId?: string | null;
+}) {
+  const params = new URLSearchParams();
+  params.set('title', `Apoyo operativo para ${args.orderNumber}`);
+  params.set(
+    'descriptionPublic',
+    `Orden de trabajo ${args.orderNumber} para ${args.customerName}. Se requiere apoyo por capacidad para avanzar o proteger la entrega. Ítems iniciales: ${args.items.slice(0, 3).map((item) => `${item.cantidad > 0 ? `${item.cantidad} x ` : ''}${item.descripcion}`).join(', ')}.`
+  );
+  params.set(
+    'requirementsPrivate',
+    `Origen ERP: orden ${args.orderId}. Señal operativa: ${args.pressureReason}`
+  );
+  params.set('sourceRef', `orden:${args.orderId}`);
+  params.set('sourceType', 'OPS_SIGNAL');
+  if (args.serviceCatalogId) params.set('serviceCatalogId', args.serviceCatalogId);
+  return `/dashboard/rop/necesidades/nueva?${params.toString()}`;
 }
 
 export default function OrdenesPage() {
@@ -182,6 +329,11 @@ export default function OrdenesPage() {
     fechaEntrega: '',
     notas: '',
   });
+  const [ropDialogOpen, setRopDialogOpen] = useState(false);
+  const [ropLoading, setRopLoading] = useState(false);
+  const [ropRecommendations, setRopRecommendations] = useState<RopDiscoveryItem[]>([]);
+  const [ropMatchedService, setRopMatchedService] = useState<RopServiceCatalogItem | null>(null);
+  const [ropOrderContext, setRopOrderContext] = useState<RopOrderContext | null>(null);
 
   useEffect(() => {
     void cargarPermisos();
@@ -405,13 +557,17 @@ export default function OrdenesPage() {
         }),
       });
       const json = await res.json().catch(() => null);
+      const trustImpact = (json?.trustImpact ?? null) as OrderSaveTrustImpact | null;
 
       if (!res.ok || !json?.success) {
         toast({ title: t('orders.save.error'), description: json?.error || undefined, variant: 'destructive' });
         return;
       }
 
-      toast({ title: t('orders.save.success') });
+      toast({
+        title: trustImpact ? 'Orden actualizada y Trust recalculado' : t('orders.save.success'),
+        description: trustImpact ? buildTrustImpactDescription(trustImpact) : undefined,
+      });
       setEditingOrder(null);
       await cargarOrdenes();
     } catch {
@@ -445,6 +601,64 @@ export default function OrdenesPage() {
       window.alert(t('orders.delete.error'));
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const openRopCapacitySupport = async (orden: OrdenTrabajo) => {
+    const pressureReason = getOrderCapacityPressureReason(orden);
+    if (!pressureReason) return;
+
+    setRopDialogOpen(true);
+    setRopLoading(true);
+    setRopRecommendations([]);
+    setRopMatchedService(null);
+    setRopOrderContext({
+      orderId: orden.id,
+      orderNumber: orden.numero,
+      customerName: orden.cliente.nombre,
+      status: orden.estado,
+      total: orden.total,
+      items: Array.isArray(orden.itemsSnapshot)
+        ? orden.itemsSnapshot.map((item) => ({
+            descripcion: String(item?.descripcion || 'Ítem sin detalle').trim() || 'Ítem sin detalle',
+            cantidad: Number(item?.cantidad || 0),
+          }))
+        : [],
+      pressureReason,
+    });
+
+    try {
+      const catalogRes = await fetch('/api/rop/v1/catalog/services', { cache: 'no-store' });
+      const catalogJson = await catalogRes.json().catch(() => null);
+      if (!catalogRes.ok || !catalogJson?.data?.items) {
+        throw new Error(catalogJson?.error || 'No se pudo cargar el catálogo ROP.');
+      }
+
+      const catalog = (catalogJson.data.items as RopServiceCatalogItem[]) ?? [];
+      const matchedService = inferRopServiceFromOrder(orden.itemsSnapshot, catalog);
+      setRopMatchedService(matchedService);
+
+      const params = new URLSearchParams();
+      if (matchedService?.id) params.set('serviceCatalogId', matchedService.id);
+      params.set('limit', '6');
+
+      const discoveryRes = await fetch(`/api/rop/v1/discovery/companies?${params.toString()}`, { cache: 'no-store' });
+      const discoveryJson = await discoveryRes.json().catch(() => null);
+      if (!discoveryRes.ok || !discoveryJson?.data?.items) {
+        throw new Error(discoveryJson?.error || 'No se pudo cargar discovery ROP.');
+      }
+
+      setRopRecommendations((discoveryJson.data.items as RopDiscoveryItem[]) ?? []);
+    } catch (error) {
+      console.error('ROP order capacity support error:', error);
+      toast({
+        title: 'No se pudo abrir ROP',
+        description: error instanceof Error ? error.message : 'Intenta nuevamente.',
+        variant: 'destructive',
+      });
+      setRopDialogOpen(false);
+    } finally {
+      setRopLoading(false);
     }
   };
 
@@ -605,6 +819,26 @@ export default function OrdenesPage() {
                         <p className="mt-1 text-xs text-slate-500">{getItemsCount(orden)} {t('orders.columns.items').toLowerCase()}</p>
                       </div>
                     </div>
+
+                    {getOrderCapacityPressureReason(orden) ? (
+                      <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Alerta de capacidad</p>
+                            <p className="mt-1 text-sm font-medium text-amber-950">{getOrderCapacityPressureReason(orden)}</p>
+                            <p className="mt-1 text-xs text-amber-800">Puedes buscar aliados en ROP antes de que la presión operativa se convierta en incumplimiento.</p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                            onClick={() => void openRopCapacitySupport(orden)}
+                          >
+                            Buscar apoyo ROP
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="flex shrink-0 flex-wrap items-center gap-2 xl:ml-4 xl:flex-col xl:items-stretch">
@@ -728,6 +962,114 @@ export default function OrdenesPage() {
               {saving ? 'Guardando...' : t('orders.actions.save')}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={ropDialogOpen}
+        onOpenChange={(open) => {
+          setRopDialogOpen(open);
+          if (open) return;
+          setRopLoading(false);
+          setRopRecommendations([]);
+          setRopMatchedService(null);
+          setRopOrderContext(null);
+        }}
+      >
+        <DialogContent className="left-auto right-0 top-0 h-screen max-w-xl translate-x-0 translate-y-0 gap-0 overflow-y-auto rounded-none border-l border-slate-200 p-0 sm:rounded-none">
+          <DialogHeader className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.18),_transparent_34%),linear-gradient(135deg,_#fffbeb_0%,_#fff7ed_100%)] px-6 py-6 text-left">
+            <DialogTitle>Aliados por capacidad</DialogTitle>
+            <DialogDescription>
+              Usa ORDEX ROP para buscar apoyo operativo cuando una orden activa muestra presión de entrega o asignación.
+            </DialogDescription>
+          </DialogHeader>
+
+          {ropLoading ? (
+            <div className="flex min-h-[40vh] items-center justify-center">
+              <div className="h-7 w-7 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" />
+            </div>
+          ) : ropOrderContext ? (
+            <div className="space-y-5 px-6 py-6">
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contexto de la orden</p>
+                <h3 className="mt-2 text-xl font-semibold text-slate-950">{ropOrderContext.orderNumber}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">Cliente: {ropOrderContext.customerName}</p>
+                <p className="text-sm leading-6 text-slate-600">Estado: {getEstadoLabel(ropOrderContext.status)}</p>
+                <p className="text-sm leading-6 text-slate-600">Total: {formatCurrency(ropOrderContext.total)}</p>
+              </div>
+
+              <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-5">
+                <h3 className="text-sm font-semibold text-amber-950">Señal operativa detectada</h3>
+                <p className="mt-3 text-sm leading-6 text-amber-900">{ropOrderContext.pressureReason}</p>
+                <p className="mt-2 text-xs text-amber-800">
+                  {ropMatchedService ? `Servicio ROP inferido: ${ropMatchedService.name}.` : 'No encontramos un servicio exacto; discovery se abre con el catálogo general visible.'}
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
+                <h3 className="text-sm font-semibold text-slate-950">Ítems usados como señal</h3>
+                <div className="mt-4 space-y-2 text-sm text-slate-600">
+                  {ropOrderContext.items.slice(0, 4).map((item, index) => (
+                    <div key={`${item.descripcion}-${index}`} className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                      {item.cantidad > 0 ? `${item.cantidad} x ` : ''}{item.descripcion}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {ropRecommendations.length ? (
+                <div className="space-y-3">
+                  {ropRecommendations.map((candidate) => (
+                    <div key={candidate.companyId} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-base font-semibold text-slate-950">{candidate.title}</h3>
+                          <p className="mt-1 text-sm text-slate-600">{candidate.subtitle || candidate.serviceName || 'Empresa visible en la red operativa'}</p>
+                        </div>
+                        {candidate.trustScore !== null ? (
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                            Trust {candidate.trustScore}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                        {candidate.city || candidate.region ? <span>{candidate.city || candidate.region}</span> : null}
+                        {candidate.coverageScope ? <span>{candidate.coverageScope}</span> : null}
+                        {candidate.capacityStatus ? <span>Capacidad {candidate.capacityStatus}</span> : null}
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-slate-600">{candidate.reason}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
+                  No encontramos aliados visibles con la heurística actual para esta orden. Aun así puedes publicar la necesidad y abrir el flujo de invitaciones desde ROP.
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-1">
+                <Button asChild className="rounded-full px-5">
+                  <Link
+                    href={buildRopNeedFromOrderHref({
+                      orderId: ropOrderContext.orderId,
+                      orderNumber: ropOrderContext.orderNumber,
+                      customerName: ropOrderContext.customerName,
+                      items: ropOrderContext.items,
+                      pressureReason: ropOrderContext.pressureReason,
+                      serviceCatalogId: ropMatchedService?.id ?? null,
+                    })}
+                  >
+                    Publicar necesidad en ROP
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" className="rounded-full px-5">
+                  <Link href="/dashboard/rop/empresas">Abrir discovery ROP</Link>
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="px-6 py-6 text-sm text-slate-600">No fue posible construir el contexto ROP para esta orden.</div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

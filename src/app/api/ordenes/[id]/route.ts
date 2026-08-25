@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireApiAccess } from '@/lib/api-rbac';
 import { EstadoOrden, ModuleKey, Prisma } from '@prisma/client';
+import { recomputeRopTrustScoreForEmpresa } from '@/lib/rop-trust';
 import { syncInternalTaskForWorkOrder } from '@/lib/work-order-task-sync';
+
+const TERMINAL_ORDER_STATES = new Set<EstadoOrden>([
+  EstadoOrden.LISTA_ENTREGA,
+  EstadoOrden.ENTREGADA,
+  EstadoOrden.FACTURADO,
+  EstadoOrden.CERRADO,
+  EstadoOrden.CANCELADA,
+])
 
 function normalizeOptionalString(value: unknown) {
   if (typeof value !== 'string') return null
@@ -223,7 +232,18 @@ export async function PUT(
       actorUserId: access.userId,
     })
 
-    return NextResponse.json({ success: true, data: orden });
+    let trustImpact: Awaited<ReturnType<typeof recomputeRopTrustScoreForEmpresa>>['summary'] | null = null;
+
+    if (hasEstado && estado && estado !== before.estado && TERMINAL_ORDER_STATES.has(estado)) {
+      const recompute = await recomputeRopTrustScoreForEmpresa({
+        empresaId: access.empresaId,
+        reason: 'WORK_ORDER_CLOSED',
+        sourceRef: `orden:${before.id}`,
+      });
+      trustImpact = recompute.summary;
+    }
+
+    return NextResponse.json({ success: true, data: orden, trustImpact });
   } catch (error) {
     console.error('Error al actualizar orden:', error);
     return NextResponse.json(

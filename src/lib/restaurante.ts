@@ -6,6 +6,7 @@ export type Priority = 'ALTA' | 'NORMAL'
 export type KitchenTicket = {
   id: string
   dishName: string
+  materialId: string | null
   qty: number
   station: Station
   priority: Priority
@@ -130,6 +131,7 @@ export function sanitizeRestaurantBoard(value: unknown): RestaurantBoardState {
                   return {
                     id: cleanText(ticket.id) || `ticket-${index + 1}-${ticketIndex + 1}`,
                     dishName: cleanText(ticket.dishName) || 'Sin nombre',
+                    materialId: cleanText(ticket.materialId) || null,
                     qty: cleanPositiveNumber(ticket.qty, 1),
                     station: normalizeStation(ticket.station),
                     priority: normalizePriority(ticket.priority),

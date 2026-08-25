@@ -9,9 +9,14 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useI18n } from "@/components/providers/i18n-provider"
 
-export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
+function normalizeCallbackUrl(value: string): string {
+  return value.startsWith('/') && !value.startsWith('//') ? value : '/dashboard'
+}
+
+export default function VerifyForm({ initialEmail, callbackUrl }: { initialEmail: string; callbackUrl?: string }) {
   const { t } = useI18n()
   const router = useRouter()
+  const nextCallbackUrl = normalizeCallbackUrl(callbackUrl || '/dashboard')
 
   const [email, setEmail] = useState(initialEmail)
   const [code, setCode] = useState("")
@@ -42,7 +47,11 @@ export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
 
       setMessage(t('auth.verify.success'))
       setTimeout(() => {
-        router.push("/auth/login")
+        const params = new URLSearchParams()
+        if (nextCallbackUrl !== '/dashboard') {
+          params.set('callbackUrl', nextCallbackUrl)
+        }
+        router.push(params.size ? `/auth/login?${params.toString()}` : "/auth/login")
       }, 1000)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('auth.common.genericError'))

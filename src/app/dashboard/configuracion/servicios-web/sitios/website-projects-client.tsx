@@ -32,6 +32,28 @@ type WebsiteProjectItem = {
   pages: WebsiteProjectPageItem[]
 }
 
+function buildRopInviteHref(project: WebsiteProjectItem) {
+  const params = new URLSearchParams()
+  const pagesSummary = project.pages
+    .slice(0, 3)
+    .map((page) => page.nombre)
+    .filter(Boolean)
+    .join(', ')
+
+  params.set('title', `Aliados para proyecto ${project.nombre}`)
+  params.set(
+    'descriptionPublic',
+    `Proyecto digital ${project.nombre} en estado ${project.status}. Buscamos aliados para acelerar entrega, contenido o ejecución complementaria${pagesSummary ? `. Páginas iniciales: ${pagesSummary}.` : '.'}`
+  )
+  params.set(
+    'requirementsPrivate',
+    `Origen ERP: proyecto web ${project.id}. Dominio base: ${project.subdomain || project.slug}. Páginas registradas: ${project.pages.length}.`
+  )
+  params.set('sourceRef', `website-project:${project.id}`)
+  params.set('sourceType', 'OPS_SIGNAL')
+  return `/dashboard/rop/necesidades/nueva?${params.toString()}`
+}
+
 function formatDate(value: string) {
   try {
     return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -207,6 +229,15 @@ export default function WebsiteProjectsClient() {
                   <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">
                     {project.status}
                   </span>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button asChild size="sm" className="rounded-full px-4">
+                    <Link href={buildRopInviteHref(project)}>Invitar empresas</Link>
+                  </Button>
+                  <Button asChild size="sm" variant="outline" className="rounded-full px-4">
+                    <Link href="/dashboard/rop/empresas">Explorar red ROP</Link>
+                  </Button>
                 </div>
 
                 <div className="mt-4 space-y-3">

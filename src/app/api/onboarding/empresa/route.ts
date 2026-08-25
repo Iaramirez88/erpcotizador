@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { resolveUserIdFromSession } from '@/lib/session-user'
@@ -14,6 +15,7 @@ import { ensureBusinessTypeSeedsForEmpresa } from '@/lib/business-type-seeds'
 import { getActiveSedeForUser } from '@/lib/rbac'
 import { buildAllowedDashboardHrefsForUser } from '@/lib/dashboard-access'
 import { getVisibleOnboardingBusinessTypes } from '@/lib/onboarding-business-type-settings'
+import { EXTERNAL_DASHBOARD_SCOPE_COOKIE, intersectDashboardHrefsWithExternalScope } from '@/lib/external-dashboard-scope'
 
 export const runtime = 'nodejs'
 
@@ -62,6 +64,8 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 401 })
     }
 
+    const cookieStore = await cookies()
+    const externalDashboardScope = cookieStore.get(EXTERNAL_DASHBOARD_SCOPE_COOKIE)?.value ?? null
     const data = parseCompanyOnboardingData(context.empresa.onboardingData)
     const dashboard = resolveDashboardConfig({
       dashboardConfig: context.empresa.dashboardConfig,
@@ -78,6 +82,10 @@ export async function GET() {
       sedeId: sede.id,
       baseAllowedHrefs: scopedDashboard?.allowedHrefs ?? null,
     })
+    const scopedPermissionAllowedHrefs = intersectDashboardHrefsWithExternalScope({
+      hrefs: permissionAllowedHrefs,
+      scope: externalDashboardScope,
+    }) ?? []
     const locked = Boolean(context.empresa.onboardingCompletedAt)
     const availableBusinessTypes = await getVisibleOnboardingBusinessTypes()
 
@@ -96,10 +104,10 @@ export async function GET() {
         ? {
             ...scopedDashboard,
             allowedHrefs: scopedDashboard.allowedHrefs.length
-              ? scopedDashboard.allowedHrefs.filter((href) => permissionAllowedHrefs.includes(href))
-              : permissionAllowedHrefs,
+              ? scopedDashboard.allowedHrefs.filter((href) => scopedPermissionAllowedHrefs.includes(href))
+              : scopedPermissionAllowedHrefs,
           }
-        : { allowedHrefs: permissionAllowedHrefs },
+        : { allowedHrefs: scopedPermissionAllowedHrefs },
     })
   } catch (error) {
     console.error('GET /api/onboarding/empresa error:', error)

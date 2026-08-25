@@ -124,6 +124,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasDotacionPedidoItemDelegate = typeof (prismaClient as any)?.dotacionPedidoItem?.findMany === 'function'
   const hasRestauranteTurnoDelegate = typeof (prismaClient as any)?.restauranteTurno?.findMany === 'function'
   const hasWebPushSubscriptionDelegate = typeof (prismaClient as any)?.webPushSubscription?.findMany === 'function'
+  const hasRopCompanyDelegate = typeof (prismaClient as any)?.ropCompany?.findMany === 'function'
 
   if (
     !hasTrialTier ||
@@ -203,7 +204,8 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasDotacionPedidoDelegate ||
     !hasDotacionPedidoItemDelegate ||
     !hasRestauranteTurnoDelegate ||
-    !hasWebPushSubscriptionDelegate
+    !hasWebPushSubscriptionDelegate ||
+    !hasRopCompanyDelegate
   ) {
     prismaClient = undefined
   }

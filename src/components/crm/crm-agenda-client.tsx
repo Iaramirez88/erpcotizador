@@ -16,7 +16,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { subscribeToNotificationReceivedEvent } from '@/lib/notification-browser-events'
 import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
+
+const TASK_AUTO_REFRESH_MS = 15_000
 
 type TaskStatus = 'OPEN' | 'DONE' | 'CANCELED'
 type TaskPriority = 'LOW' | 'NORMAL' | 'HIGH'
@@ -248,6 +251,21 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
 
   useEffect(() => {
     void loadData()
+  }, [])
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void loadTasks()
+    }, TASK_AUTO_REFRESH_MS)
+
+    const unsubscribe = subscribeToNotificationReceivedEvent(() => {
+      void loadTasks()
+    })
+
+    return () => {
+      window.clearInterval(intervalId)
+      unsubscribe()
+    }
   }, [])
 
   useEffect(() => {

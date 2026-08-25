@@ -29,6 +29,7 @@ type IconName =
   | 'quotes'
   | 'clients'
   | 'crm'
+  | 'network'
   | 'repository'
   | 'tasks'
   | 'orders'
@@ -70,9 +71,20 @@ const ICONS: Record<IconName, React.ComponentType<{ className?: string }>> = {
   hr: BriefcaseBusiness,
   reports: BarChart3,
   deliveries: ShieldAlert,
+  network: Users2,
 }
 
 const START_CARDS: StartCardDefinition[] = [
+  {
+    title: 'Red operativa ROP',
+    description: 'Descubre aliados, publica capacidad y empieza a mover colaboración interempresarial desde el ERP.',
+    href: '/dashboard/rop',
+    cta: 'Abrir red operativa',
+    moduleKey: 'DASHBOARD',
+    icon: 'network',
+    tone: 'text-teal-950',
+    surface: 'border-teal-200 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.24),transparent_34%),linear-gradient(180deg,#f4fffd,#e8fffb)]',
+  },
   {
     title: 'Cotizar y vender',
     description: 'Calcula productos y abre propuestas comerciales sin pasar por reportes ni configuración.',

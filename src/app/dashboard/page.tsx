@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { cookies } from 'next/headers'
 import { BarChart3, BrainCircuit } from 'lucide-react'
 import type { ModuleKey } from '@prisma/client'
 import { auth } from '@/lib/auth'
@@ -21,6 +22,7 @@ import { resolveDashboardConfig } from '@/lib/company-onboarding'
 import { redirect } from 'next/navigation'
 import { buildAllowedDashboardHrefsForUser, getAllowedModulesFromDashboardHrefs } from '@/lib/dashboard-access'
 import { isCompanyIntelligenceEnabled, removeIntelligenceHrefFromDashboardConfig } from '@/lib/company-intelligence'
+import { EXTERNAL_DASHBOARD_SCOPE_COOKIE, shouldApplyExternalDashboardScope } from '@/lib/external-dashboard-scope'
 
 function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0 B'
@@ -37,6 +39,12 @@ function getStorageLevel(percentage: number) {
 }
 
 export default async function DashboardPage() {
+  const cookieStore = await cookies()
+  const externalDashboardScope = cookieStore.get(EXTERNAL_DASHBOARD_SCOPE_COOKIE)?.value ?? null
+  if (shouldApplyExternalDashboardScope(externalDashboardScope)) {
+    redirect('/dashboard/rop/activar')
+  }
+
   const session = await auth()
   if (!session?.user) {
     redirect('/auth/login')

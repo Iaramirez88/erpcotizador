@@ -27,6 +27,7 @@ import Link from 'next/link';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -85,6 +86,14 @@ interface Cotizacion {
     } | null;
   }[];
 }
+
+type CotizacionRopDetail = Cotizacion & {
+  cliente: Cotizacion['cliente'] & {
+    ciudad?: string | null;
+    departamento?: string | null;
+    direccion?: string | null;
+  };
+};
 
 type AuditEvent = {
   id: string;
@@ -151,6 +160,9 @@ export default function CotizacionesPage() {
   const [diffEvent, setDiffEvent] = useState<AuditEvent | null>(null);
 
   const [ventaRealizadaBusy, setVentaRealizadaBusy] = useState(false);
+  const [ropDialogOpen, setRopDialogOpen] = useState(false);
+  const [ropLoading, setRopLoading] = useState(false);
+  const [ropCotizacion, setRopCotizacion] = useState<CotizacionRopDetail | null>(null);
 
   useEffect(() => {
     cargarCotizaciones({ page: 1 });
@@ -688,6 +700,45 @@ export default function CotizacionesPage() {
       .join('\n');
   };
 
+  const buildRopItemSummary = (cotizacion: Cotizacion | CotizacionRopDetail) => {
+    return (cotizacion.items || [])
+      .slice(0, 3)
+      .map((item) => item.material?.nombre || item.descripcion || 'Ítem sin detalle')
+      .join(', ');
+  };
+
+  const buildRopNeedHref = (cotizacion: CotizacionRopDetail) => {
+    const params = new URLSearchParams();
+    params.set('title', `Apoyo para ${cotizacion.numero} · ${cotizacion.cliente.nombre}`);
+    params.set('descriptionPublic', `Necesidad derivada de la cotización ${cotizacion.numero} para ${cotizacion.cliente.nombre}. Alcance inicial: ${buildRopItemSummary(cotizacion)}.`);
+    params.set('requirementsPrivate', `Origen ERP: cotización ${cotizacion.numero}. Total estimado ${formatCurrency(cotizacion.total)}.`);
+    params.set('sourceRef', `cotizacion:${cotizacion.id}`);
+    params.set('sourceType', 'CRM');
+    if (cotizacion.cliente.ciudad) params.set('city', cotizacion.cliente.ciudad);
+    if (cotizacion.cliente.departamento) params.set('region', cotizacion.cliente.departamento);
+    return `/dashboard/rop/necesidades/nueva?${params.toString()}`;
+  };
+
+  const abrirBuscarAliado = async (cotizacion: Cotizacion) => {
+    setRopDialogOpen(true);
+    setRopLoading(true);
+    setRopCotizacion(null);
+
+    try {
+      const res = await fetch(`/api/cotizaciones/${cotizacion.id}`, { cache: 'no-store' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.data) {
+        throw new Error(data?.error || 'No se pudo cargar el contexto ROP de la cotización.');
+      }
+      setRopCotizacion(data.data as CotizacionRopDetail);
+    } catch (error) {
+      console.error('ROP quote context error:', error);
+      setRopDialogOpen(false);
+    } finally {
+      setRopLoading(false);
+    }
+  };
+
   const getEstadoColor = (estado: string) => {
     const colores: Record<string, string> = {
       BORRADOR: 'bg-gray-100 text-gray-800',
@@ -894,6 +945,12 @@ export default function CotizacionesPage() {
                       }}>
                         Trazabilidad
                       </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={(e) => {
+                        e.preventDefault();
+                        void abrirBuscarAliado(cot);
+                      }}>
+                        Buscar aliado
+                      </DropdownMenuItem>
                       {!cot.orden ? (
                         <DropdownMenuItem asChild>
                           <Link href={`/dashboard/cotizador?id=${cot.id}`}>Editar</Link>
@@ -1056,6 +1113,16 @@ export default function CotizacionesPage() {
                           title="Trazabilidad"
                         >
                           <History className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-9 rounded-full px-3"
+                          onClick={() => void abrirBuscarAliado(cot)}
+                          title="Buscar aliado en ORDEX ROP"
+                        >
+                          <Search className="w-4 h-4 sm:mr-1" />
+                          <span className="hidden sm:inline">Buscar aliado</span>
                         </Button>
                         {!cot.orden ? (
                           <Link href={`/dashboard/cotizador?id=${cot.id}`}>
@@ -1395,6 +1462,66 @@ export default function CotizacionesPage() {
               )}
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={ropDialogOpen}
+        onOpenChange={(open) => {
+          setRopDialogOpen(open);
+          if (open) return;
+          setRopCotizacion(null);
+          setRopLoading(false);
+        }}
+      >
+        <DialogContent className="left-auto right-0 top-0 h-screen max-w-xl translate-x-0 translate-y-0 gap-0 overflow-y-auto rounded-none border-l border-slate-200 p-0 sm:rounded-none">
+          <DialogHeader className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.16),_transparent_34%),linear-gradient(135deg,_#f8fafc_0%,_#f0fdfa_100%)] px-6 py-6 text-left">
+            <DialogTitle>Buscar aliado</DialogTitle>
+            <DialogDescription>
+              Convierte la cotización en una necesidad operativa ROP sin perder el contexto comercial.
+            </DialogDescription>
+          </DialogHeader>
+
+          {ropLoading ? (
+            <div className="flex min-h-[40vh] items-center justify-center">
+              <div className="h-7 w-7 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
+            </div>
+          ) : ropCotizacion ? (
+            <div className="space-y-5 px-6 py-6">
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contexto ERP</p>
+                <h3 className="mt-2 text-xl font-semibold text-slate-950">{ropCotizacion.numero}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">Cliente: {ropCotizacion.cliente.nombre}</p>
+                <p className="text-sm leading-6 text-slate-600">Total: {formatCurrency(ropCotizacion.total)}</p>
+                <p className="text-sm leading-6 text-slate-600">Ubicación: {ropCotizacion.cliente.ciudad || ropCotizacion.cliente.departamento || 'Sin ubicación estructurada'}</p>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
+                <h3 className="text-sm font-semibold text-slate-950">Señales para abrir la necesidad</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  Se usará la cotización como origen CRM, se precargará el cliente y se resumirán los primeros ítems para acelerar el brief operativo.
+                </p>
+                <div className="mt-4 space-y-2 text-sm text-slate-600">
+                  {(ropCotizacion.items || []).slice(0, 4).map((item) => (
+                    <div key={item.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                      {item.material?.nombre || item.descripcion || 'Ítem sin detalle'}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-1">
+                <Button asChild className="rounded-full px-5">
+                  <Link href={buildRopNeedHref(ropCotizacion)}>Abrir en ORDEX ROP</Link>
+                </Button>
+                <Button variant="outline" className="rounded-full px-5" onClick={() => setRopDialogOpen(false)}>
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="px-6 py-6 text-sm text-slate-600">No fue posible cargar el contexto de esta cotización.</div>
+          )}
         </DialogContent>
       </Dialog>
 

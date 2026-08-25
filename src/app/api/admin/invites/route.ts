@@ -6,6 +6,7 @@ import { randomDigits, sha256Hex } from '@/lib/auth-tokens'
 import { sendEmail } from '@/lib/email'
 import { escapeHtml, renderEmail, renderEmailCode, renderEmailLink } from '@/lib/email-template'
 import { checkPlanLimit } from '@/lib/plan-limits'
+import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
 
 export const runtime = 'nodejs'
 
@@ -158,15 +159,16 @@ export async function POST(request: Request) {
 
   const subject = `Invitación · ${empresa.nombre} · Ordex`
   const baseUrl = getBaseUrl(request)
-  const registerUrlObj = baseUrl ? new URL('/auth/register', baseUrl) : new URL('http://localhost/auth/register')
-  registerUrlObj.searchParams.set('empresaId', empresa.id)
+  const workspaceCode = await ensureWorkspaceCodeForEmpresa(empresa.id)
+  const registerUrlObj = baseUrl ? new URL('/rop/unirse', baseUrl) : new URL('http://localhost/rop/unirse')
+  registerUrlObj.searchParams.set('empresaId', workspaceCode)
   if (sedeForInvite?.id) {
     registerUrlObj.searchParams.set('sedeId', sedeForInvite.id)
   }
   registerUrlObj.searchParams.set('email', email)
   const registerUrl = baseUrl
     ? registerUrlObj.toString()
-    : `/auth/register?empresaId=${encodeURIComponent(empresa.id)}&email=${encodeURIComponent(email)}`
+    : `/rop/unirse?empresaId=${encodeURIComponent(workspaceCode)}&email=${encodeURIComponent(email)}`
 
   const html = renderEmail({
     title: `Invitación a ${empresa.nombre}`,
@@ -174,11 +176,11 @@ export async function POST(request: Request) {
     intro: 'Usa este código para crear tu cuenta:',
     bodyHtml: `
       ${renderEmailCode(code, { size: 'lg' })}
-      <p style="margin:0 0 12px; color:#374151;">Abre el enlace de registro y pega este código en el campo <b>“Código de acceso”</b>.</p>
+      <p style="margin:0 0 12px; color:#374151;">Abre el portal de acceso y pega este código en el campo <b>“Código de acceso”</b>.</p>
       <p style="margin:0 0 12px; color:#374151;">Registro: ${renderEmailLink(registerUrl, 'Abrir registro')}</p>
       <p style="margin:0; color:#6B7280; font-size:12px;">Este código expira en 7 días.</p>
     `,
-    cta: { label: 'Crear cuenta', href: registerUrl },
+    cta: { label: 'Abrir portal de acceso', href: registerUrl },
   })
 
   const send = await sendEmail({ to: email, subject, html })

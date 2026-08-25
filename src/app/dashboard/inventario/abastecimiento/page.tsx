@@ -14,10 +14,13 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SearchableNativeSelect, type SearchableNativeSelectOption } from '@/components/ui/searchable-native-select'
 import { Textarea } from '@/components/ui/textarea'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { useCurrentUserAccess } from '@/hooks/use-current-user-access'
+import { subscribeToNotificationReceivedEvent } from '@/lib/notification-browser-events'
 import { cn, formatUnidadMedidaLabel } from '@/lib/utils'
+import { useToast } from '@/hooks/use-toast'
 
 type Warehouse = {
   id: string
@@ -33,6 +36,10 @@ type Material = {
   nombre: string
   externalId?: string | null
   unidadMedida: string
+}
+
+type AvailableMaterial = Material & {
+  availableQuantity: number
 }
 
 type SupplyRequest = {
@@ -64,23 +71,34 @@ type RequestItemForm = {
   note: string
 }
 
+const AUTO_REFRESH_MS = 15_000
+
 function formatMaterialName(material: Material | SupplyRequest['items'][number]['material']) {
   const code = String(material.externalId ?? '').trim()
   return code ? `(${code}) ${material.nombre}` : material.nombre
 }
 
+function describeSupplyRequest(request: SupplyRequest) {
+  const totalItems = request.items.length
+  const totalUnits = request.items.reduce((sum, item) => sum + item.quantity, 0)
+  return `${request.requestingWarehouse.nombre} -> ${request.supplyWarehouse.nombre}. ${totalItems} referencia(s), ${totalUnits.toLocaleString('es-CO')} unidad(es) solicitadas.`
+}
+
 export default function AbastecimientoInventarioPage() {
   const { hasWriteAccess } = useCurrentUserAccess()
   const canManageInventory = hasWriteAccess('INVENTARIO')
+  const { toast } = useToast()
 
   const [loading, setLoading] = useState(true)
   const [savingHub, setSavingHub] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [fulfillingId, setFulfillingId] = useState<string | null>(null)
+  const [cancelingId, setCancelingId] = useState<string | null>(null)
+  const [loadingAvailableMaterials, setLoadingAvailableMaterials] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
-  const [materials, setMaterials] = useState<Material[]>([])
+  const [availableMaterials, setAvailableMaterials] = useState<AvailableMaterial[]>([])
   const [requests, setRequests] = useState<SupplyRequest[]>([])
 
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDIENTE' | 'COMPLETADO' | 'CANCELADO'>('ALL')
@@ -96,26 +114,26 @@ export default function AbastecimientoInventarioPage() {
     items: [{ materialId: '', quantity: '1', note: '' }] as RequestItemForm[],
   })
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) {
+      setLoading(true)
+    }
     try {
       const query = new URLSearchParams()
       if (statusFilter !== 'ALL') query.set('status', statusFilter)
       if (requestingWarehouseFilter) query.set('requestingWarehouseId', requestingWarehouseFilter)
 
-      const [warehousesRes, materialsRes, requestsRes] = await Promise.all([
+      const [warehousesRes, requestsRes] = await Promise.all([
         fetch('/api/bodegas', { cache: 'no-store' }),
-        fetch('/api/materiales?activo=true', { cache: 'no-store' }),
         fetch(`/api/inventario/abastecimiento${query.toString() ? `?${query.toString()}` : ''}`, { cache: 'no-store' }),
       ])
 
       const warehousesJson = (await warehousesRes.json().catch(() => ({}))) as ApiResponse<Warehouse[]>
-      const materialsJson = (await materialsRes.json().catch(() => ({}))) as ApiResponse<Material[]>
       const requestsJson = (await requestsRes.json().catch(() => ({}))) as ApiResponse<SupplyRequest[]>
+      const nextErrors: string[] = []
 
       if (!warehousesRes.ok || !warehousesJson.success || !Array.isArray(warehousesJson.data)) {
-        setError(warehousesJson.error || 'No se pudieron cargar las bodegas.')
+        nextErrors.push(warehousesJson.error || 'No se pudieron cargar las bodegas.')
         setWarehouses([])
       } else {
         setWarehouses(warehousesJson.data)
@@ -123,32 +141,104 @@ export default function AbastecimientoInventarioPage() {
         setHubWarehouseId(currentHub?.id ?? '')
       }
 
-      if (materialsRes.ok && materialsJson.success && Array.isArray(materialsJson.data)) {
-        setMaterials(materialsJson.data)
-      } else {
-        setMaterials([])
-      }
-
       if (requestsRes.ok && requestsJson.success && Array.isArray(requestsJson.data)) {
         setRequests(requestsJson.data)
-      } else if (!error) {
-        setError(requestsJson.error || 'No se pudieron cargar las solicitudes.')
+      } else {
+        nextErrors.push(requestsJson.error || 'No se pudieron cargar las solicitudes.')
         setRequests([])
       }
+
+      setError(nextErrors[0] ?? null)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Error inesperado')
     } finally {
-      setLoading(false)
+      if (!silent) {
+        setLoading(false)
+      }
     }
-  }, [error, requestingWarehouseFilter, statusFilter])
+  }, [requestingWarehouseFilter, statusFilter])
+
+  const effectiveSupplyWarehouseId = form.supplyWarehouseId || hubWarehouseId
+
+  const loadAvailableMaterials = useCallback(async (warehouseId: string) => {
+    if (!warehouseId) {
+      setAvailableMaterials([])
+      return
+    }
+
+    setLoadingAvailableMaterials(true)
+    try {
+      const query = new URLSearchParams({
+        activo: 'true',
+        warehouseId,
+        stockMin: '0.000001',
+        pageSize: 'all',
+      })
+      const response = await fetch(`/api/materiales?${query.toString()}`, { cache: 'no-store' })
+      const json = (await response.json().catch(() => ({}))) as ApiResponse<Array<Material & { stocks?: Array<{ quantity?: number | null }> }>>
+
+      if (!response.ok || !json.success || !Array.isArray(json.data)) {
+        setAvailableMaterials([])
+        setError(json.error || 'No se pudo cargar el stock disponible de la bodega abastecedora.')
+        return
+      }
+
+      setAvailableMaterials(
+        json.data
+          .map((material) => ({
+            id: material.id,
+            nombre: material.nombre,
+            externalId: material.externalId ?? null,
+            unidadMedida: material.unidadMedida,
+            availableQuantity: Number(material.stocks?.[0]?.quantity ?? 0),
+          }))
+          .filter((material) => Number.isFinite(material.availableQuantity) && material.availableQuantity > 0)
+      )
+    } catch (loadError) {
+      setAvailableMaterials([])
+      setError(loadError instanceof Error ? loadError.message : 'Error inesperado')
+    } finally {
+      setLoadingAvailableMaterials(false)
+    }
+  }, [])
 
   useEffect(() => {
     void load()
   }, [load])
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void load({ silent: true })
+    }, AUTO_REFRESH_MS)
+
+    const unsubscribe = subscribeToNotificationReceivedEvent((notification) => {
+      if ((notification.actionUrl || '').startsWith('/dashboard/inventario/abastecimiento')) {
+        void load({ silent: true })
+      }
+    })
+
+    return () => {
+      window.clearInterval(intervalId)
+      unsubscribe()
+    }
+  }, [load])
+
   const childWarehouses = useMemo(
     () => warehouses.filter((warehouse) => !warehouse.isSupplyHub),
     [warehouses]
+  )
+
+  const availableMaterialMap = useMemo(
+    () => new Map(availableMaterials.map((material) => [material.id, material])),
+    [availableMaterials]
+  )
+
+  const availableMaterialOptions = useMemo<SearchableNativeSelectOption[]>(
+    () => availableMaterials.map((material) => ({
+      value: material.id,
+      label: `${formatMaterialName(material)} · Disponible ${material.availableQuantity.toLocaleString('es-CO')} ${formatUnidadMedidaLabel(material.unidadMedida)}`,
+    })),
+    [availableMaterials]
   )
 
   useEffect(() => {
@@ -162,6 +252,28 @@ export default function AbastecimientoInventarioPage() {
       supplyWarehouseId: current.supplyWarehouseId || hubId,
     }))
   }, [childWarehouses, dialogOpen, form.requestingWarehouseId, hubWarehouseId, warehouses])
+
+  useEffect(() => {
+    if (!dialogOpen) return
+    if (!effectiveSupplyWarehouseId) {
+      setAvailableMaterials([])
+      return
+    }
+    void loadAvailableMaterials(effectiveSupplyWarehouseId)
+  }, [dialogOpen, effectiveSupplyWarehouseId, loadAvailableMaterials])
+
+  useEffect(() => {
+    if (!dialogOpen) return
+    const validMaterialIds = new Set(availableMaterials.map((material) => material.id))
+    setForm((current) => ({
+      ...current,
+      items: current.items.map((item) => (
+        item.materialId && !validMaterialIds.has(item.materialId)
+          ? { ...item, materialId: '' }
+          : item
+      )),
+    }))
+  }, [availableMaterials, dialogOpen])
 
   function openNewDialog() {
     setForm({
@@ -208,7 +320,39 @@ export default function AbastecimientoInventarioPage() {
     }))
   }
 
+  function validateRequestedStock() {
+    const totals = new Map<string, number>()
+    for (const item of form.items) {
+      const materialId = item.materialId.trim()
+      const quantity = Number(item.quantity)
+      if (!materialId || !Number.isFinite(quantity) || quantity <= 0) continue
+      totals.set(materialId, (totals.get(materialId) ?? 0) + quantity)
+    }
+
+    for (const [materialId, quantity] of totals.entries()) {
+      const material = availableMaterialMap.get(materialId)
+      if (!material) {
+        const message = 'Uno de los productos ya no tiene stock disponible en la bodega abastecedora.'
+        setError(message)
+        toast({ title: 'Stock no disponible', description: message, variant: 'destructive' })
+        return false
+      }
+      if (quantity > material.availableQuantity) {
+        const message = `La cantidad solicitada de ${formatMaterialName(material)} supera el stock disponible (${material.availableQuantity.toLocaleString('es-CO')} ${formatUnidadMedidaLabel(material.unidadMedida)}).`
+        setError(message)
+        toast({ title: 'Cantidad superior al stock', description: message, variant: 'destructive' })
+        return false
+      }
+    }
+
+    return true
+  }
+
   async function submitRequest() {
+    if (!validateRequestedStock()) {
+      return
+    }
+
     setSubmitting(true)
     setError(null)
     try {
@@ -225,13 +369,23 @@ export default function AbastecimientoInventarioPage() {
       })
       const json = (await response.json().catch(() => ({}))) as ApiResponse<SupplyRequest>
       if (!response.ok || !json.success) {
-        setError(json.error || 'No se pudo crear la solicitud.')
+        const message = json.error || 'No se pudo crear la solicitud.'
+        setError(message)
+        toast({ title: 'No se creó la solicitud', description: message, variant: 'destructive' })
         return
       }
       setDialogOpen(false)
+      if (json.data) {
+        toast({
+          title: `Solicitud creada ${json.data.numero}`,
+          description: describeSupplyRequest(json.data),
+        })
+      }
       await load()
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Error inesperado')
+      const message = submitError instanceof Error ? submitError.message : 'Error inesperado'
+      setError(message)
+      toast({ title: 'No se creó la solicitud', description: message, variant: 'destructive' })
     } finally {
       setSubmitting(false)
     }
@@ -244,14 +398,61 @@ export default function AbastecimientoInventarioPage() {
       const response = await fetch(`/api/inventario/abastecimiento/${requestId}/fulfill`, { method: 'POST' })
       const json = (await response.json().catch(() => ({}))) as ApiResponse<SupplyRequest>
       if (!response.ok || !json.success) {
-        setError(json.error || 'No se pudo completar la solicitud.')
+        const message = json.error || 'No se pudo completar la solicitud.'
+        setError(message)
+        toast({ title: 'No se pudo cumplir la solicitud', description: message, variant: 'destructive' })
         return
+      }
+      if (json.data) {
+        toast({
+          title: `Solicitud cumplida ${json.data.numero}`,
+          description: describeSupplyRequest(json.data),
+        })
       }
       await load()
     } catch (fulfillError) {
-      setError(fulfillError instanceof Error ? fulfillError.message : 'Error inesperado')
+      const message = fulfillError instanceof Error ? fulfillError.message : 'Error inesperado'
+      setError(message)
+      toast({ title: 'No se pudo cumplir la solicitud', description: message, variant: 'destructive' })
     } finally {
       setFulfillingId(null)
+    }
+  }
+
+  async function cancelRequest(requestId: string) {
+    const reason = window.prompt('Motivo opcional para marcar esta solicitud como no posible:')
+    if (reason === null) return
+
+    setCancelingId(requestId)
+    setError(null)
+    try {
+      const response = await fetch(`/api/inventario/abastecimiento/${requestId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() || null }),
+      })
+      const json = (await response.json().catch(() => ({}))) as ApiResponse<SupplyRequest>
+      if (!response.ok || !json.success) {
+        const message = json.error || 'No se pudo marcar la solicitud como no posible.'
+        setError(message)
+        toast({ title: 'No se actualizó la solicitud', description: message, variant: 'destructive' })
+        return
+      }
+      if (json.data) {
+        toast({
+          title: `Solicitud cancelada ${json.data.numero}`,
+          description: reason.trim()
+            ? `Se marcó como no posible. Motivo: ${reason.trim()}`
+            : 'Se marcó como no posible y quedó trazabilidad en el historial.',
+        })
+      }
+      await load()
+    } catch (cancelError) {
+      const message = cancelError instanceof Error ? cancelError.message : 'Error inesperado'
+      setError(message)
+      toast({ title: 'No se actualizó la solicitud', description: message, variant: 'destructive' })
+    } finally {
+      setCancelingId(null)
     }
   }
 
@@ -391,9 +592,14 @@ export default function AbastecimientoInventarioPage() {
                     </div>
 
                     {canManageInventory && request.status === 'PENDIENTE' ? (
-                      <Button onClick={() => void fulfillRequest(request.id)} disabled={fulfillingId === request.id}>
-                        {fulfillingId === request.id ? 'Cumpliendo…' : 'Cumplir solicitud'}
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button onClick={() => void fulfillRequest(request.id)} disabled={fulfillingId === request.id || cancelingId === request.id}>
+                          {fulfillingId === request.id ? 'Cumpliendo…' : 'Cumplir solicitud'}
+                        </Button>
+                        <Button variant="outline" onClick={() => void cancelRequest(request.id)} disabled={cancelingId === request.id || fulfillingId === request.id}>
+                          {cancelingId === request.id ? 'Actualizando…' : 'No es posible'}
+                        </Button>
+                      </div>
                     ) : null}
                   </div>
 
@@ -501,21 +707,33 @@ export default function AbastecimientoInventarioPage() {
                 <div key={`${index}-${item.materialId}`} className="grid gap-3 rounded-2xl border border-slate-200 p-4 md:grid-cols-[minmax(0,1.4fr)_150px_minmax(0,1fr)_auto]">
                   <div className="space-y-2">
                     <Label>Producto</Label>
-                    <select
+                    <SearchableNativeSelect
                       value={item.materialId}
-                      onChange={(event) => updateItem(index, { materialId: event.target.value })}
-                      className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
-                    >
-                      <option value="">Selecciona un producto…</option>
-                      {materials.map((material) => (
-                        <option key={material.id} value={material.id}>{formatMaterialName(material)}</option>
-                      ))}
-                    </select>
+                      onChange={(value) => updateItem(index, { materialId: value })}
+                      options={availableMaterialOptions}
+                      disabled={loadingAvailableMaterials || !effectiveSupplyWarehouseId}
+                      includeAllOption={{ value: '', label: loadingAvailableMaterials ? 'Cargando productos…' : 'Selecciona un producto…' }}
+                      emptyText="No hay referencias con stock para esta bodega"
+                      searchPlaceholder="Buscar por nombre o código…"
+                      searchClassName="h-10"
+                      selectClassName="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
+                    />
+                    {item.materialId && availableMaterialMap.get(item.materialId) ? (
+                      <p className="text-xs text-slate-500">
+                        Disponible actual: {availableMaterialMap.get(item.materialId)!.availableQuantity.toLocaleString('es-CO')} {formatUnidadMedidaLabel(availableMaterialMap.get(item.materialId)!.unidadMedida)}
+                      </p>
+                    ) : null}
+                    {!item.materialId && !loadingAvailableMaterials && effectiveSupplyWarehouseId && availableMaterialOptions.length === 0 ? (
+                      <p className="text-xs text-amber-700">La bodega abastecedora no tiene referencias con stock disponible.</p>
+                    ) : null}
                   </div>
 
                   <div className="space-y-2">
                     <Label>Cantidad</Label>
                     <Input value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} inputMode="decimal" />
+                    {item.materialId && availableMaterialMap.get(item.materialId) && Number(item.quantity) > availableMaterialMap.get(item.materialId)!.availableQuantity ? (
+                      <p className="text-xs text-red-600">La cantidad supera el disponible actual.</p>
+                    ) : null}
                   </div>
 
                   <div className="space-y-2">

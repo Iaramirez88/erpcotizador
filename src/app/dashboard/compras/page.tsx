@@ -19,6 +19,38 @@ import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { parsePurchaseOrderPrefillParam, type PurchaseWorkbenchMode } from '@/lib/purchase-order-prefill'
 
+type RopServiceCatalogItem = {
+  id: string
+  name: string
+  code: string
+  subcategory: {
+    id: string
+    name: string
+    category: {
+      id: string
+      name: string
+    }
+  }
+}
+
+type RopDiscoveryItem = {
+  companyId: string
+  title: string
+  subtitle: string | null
+  city: string | null
+  region: string | null
+  trustScore: number | null
+  serviceName: string | null
+  reason: string
+}
+
+type RopOrderContext = {
+  compraId: string
+  supplierName: string
+  documentLabel: string
+  items: Array<{ id: string; descripcion: string }>
+}
+
 type CompraItem = {
   id?: string
   descripcion: string
@@ -123,6 +155,53 @@ function compraPdfFilename(compra: Pick<Compra, 'id' | 'numeroFactura' | 'numero
   return compra.numeroOrden || compra.numeroFactura || compra.numeroPedido || compra.id
 }
 
+function normalizeText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function inferRopServiceFromOrder(items: Compra['items'], catalog: RopServiceCatalogItem[]) {
+  const sourceText = normalizeText(items.map((item) => item.descripcion).join(' '))
+  if (!sourceText) return null
+
+  const sourceTokens = new Set(sourceText.split(' ').filter((token) => token.length >= 4))
+  let bestMatch: { score: number; item: RopServiceCatalogItem } | null = null
+
+  for (const item of catalog) {
+    const candidateText = normalizeText(`${item.name} ${item.code} ${item.subcategory.name} ${item.subcategory.category.name}`)
+    const candidateTokens = candidateText.split(' ').filter((token) => token.length >= 4)
+    const score = candidateTokens.reduce((acc, token) => acc + (sourceTokens.has(token) ? 1 : 0), 0)
+    if (!score) continue
+    if (!bestMatch || score > bestMatch.score) {
+      bestMatch = { score, item }
+    }
+  }
+
+  return bestMatch?.item ?? null
+}
+
+function buildRopNeedFromCompraHref(args: {
+  compraId: string
+  documentLabel: string
+  supplierName: string
+  items: Array<{ descripcion: string }>
+  serviceCatalogId?: string | null
+}) {
+  const params = new URLSearchParams()
+  params.set('title', `Abastecimiento para ${args.documentLabel}`)
+  params.set('descriptionPublic', `Necesidad de compra derivada de ${args.documentLabel}. Proveedor actual: ${args.supplierName}. Ítems iniciales: ${args.items.slice(0, 3).map((item) => item.descripcion).filter(Boolean).join(', ')}.`)
+  params.set('requirementsPrivate', `Origen ERP: compra ${args.compraId}. Contexto de abastecimiento en módulo de compras.`)
+  params.set('sourceRef', `compra:${args.compraId}`)
+  params.set('sourceType', 'PURCHASE')
+  if (args.serviceCatalogId) params.set('serviceCatalogId', args.serviceCatalogId)
+  return `/dashboard/rop/necesidades/nueva?${params.toString()}`
+}
+
 export default function ComprasPage() {
   const { t, language } = useI18n()
   const router = useRouter()
@@ -189,6 +268,11 @@ export default function ComprasPage() {
   const [sede, setSede] = useState('')
   const [observaciones, setObservaciones] = useState('')
   const [items, setItems] = useState<CompraItem[]>([{ descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0, iva: 0 }])
+  const [ropDialogOpen, setRopDialogOpen] = useState(false)
+  const [ropLoading, setRopLoading] = useState(false)
+  const [ropRecommendations, setRopRecommendations] = useState<RopDiscoveryItem[]>([])
+  const [ropContext, setRopContext] = useState<RopOrderContext | null>(null)
+  const [ropMatchedService, setRopMatchedService] = useState<RopServiceCatalogItem | null>(null)
 
   const query = useMemo(() => search.trim(), [search])
   const filteredCompras = useMemo(
@@ -518,6 +602,47 @@ export default function ComprasPage() {
 
   function openCompraPdf(compra: Compra) {
     window.open(`/api/compras/${compra.id}/pdf`, '_blank', 'noopener,noreferrer')
+  }
+
+  async function openRopSuppliers(compra: Compra) {
+    setRopDialogOpen(true)
+    setRopLoading(true)
+    setRopRecommendations([])
+    setRopMatchedService(null)
+    setRopContext({
+      compraId: compra.id,
+      supplierName: compra.proveedorNombre,
+      documentLabel: getListDocumentValue(compra),
+      items: compra.items.map((item) => ({ id: item.id, descripcion: item.descripcion })),
+    })
+
+    try {
+      const catalogRes = await fetch('/api/rop/v1/catalog/services', { cache: 'no-store' })
+      const catalogJson = await catalogRes.json().catch(() => null)
+      if (!catalogRes.ok || !Array.isArray(catalogJson?.data)) {
+        throw new Error('No se pudo cargar el catálogo ROP.')
+      }
+
+      const catalog = catalogJson.data as RopServiceCatalogItem[]
+      const matchedService = inferRopServiceFromOrder(compra.items, catalog)
+      setRopMatchedService(matchedService)
+
+      const params = new URLSearchParams()
+      if (matchedService?.id) params.set('serviceCatalogId', matchedService.id)
+      const discoveryUrl = params.toString() ? `/api/rop/v1/discovery/companies?${params.toString()}` : '/api/rop/v1/discovery/companies'
+      const discoveryRes = await fetch(discoveryUrl, { cache: 'no-store' })
+      const discoveryJson = await discoveryRes.json().catch(() => null)
+      if (!discoveryRes.ok || !Array.isArray(discoveryJson?.data)) {
+        throw new Error('No se pudieron cargar proveedores sugeridos.')
+      }
+
+      setRopRecommendations((discoveryJson.data as RopDiscoveryItem[]).slice(0, 6))
+    } catch (error) {
+      console.error('ROP purchase suggestions error:', error)
+      setRopRecommendations([])
+    } finally {
+      setRopLoading(false)
+    }
   }
 
   return (
@@ -909,6 +1034,7 @@ export default function ComprasPage() {
                       </div>
 
                       <div className="mt-4 flex flex-wrap justify-end gap-2">
+                        {canManagePurchases && c.estado === 'BORRADOR' ? <Button variant="outline" size="sm" onClick={() => void openRopSuppliers(c)}>Proveedores sugeridos</Button> : null}
                         {canManagePurchases && c.estado !== 'BORRADOR' ? <Button variant="outline" size="sm" onClick={() => openPagos(c)}>{t('purchases.actions.payments')}</Button> : null}
                         <Button variant="outline" size="sm" onClick={() => openCompraPdf(c)}>{t('purchases.actions.print')}</Button>
                         <Button variant="outline" size="sm" onClick={() => void downloadCompraPdf(c)}>{t('purchases.actions.downloadPdf')}</Button>
@@ -946,6 +1072,7 @@ export default function ComprasPage() {
                       <td className="py-2 whitespace-nowrap">{formatCOP(n(c.saldo, n(c.total, 0) - n(c.pagado, 0)), locale)}</td>
                       <td className="py-2">{c.autorizado ? t('common.yes') : t('common.no')}</td>
                       <td className="py-2 text-right space-x-2">
+                        {canManagePurchases && c.estado === 'BORRADOR' ? <Button variant="outline" onClick={() => void openRopSuppliers(c)}>Proveedores sugeridos</Button> : null}
                         {canManagePurchases && c.estado !== 'BORRADOR' ? <Button variant="outline" onClick={() => openPagos(c)}>{t('purchases.actions.payments')}</Button> : null}
                         <Button variant="outline" onClick={() => openCompraPdf(c)}>{t('purchases.actions.print')}</Button>
                         <Button variant="outline" onClick={() => void downloadCompraPdf(c)}>{t('purchases.actions.downloadPdf')}</Button>
@@ -1081,6 +1208,90 @@ export default function ComprasPage() {
           </CardContent>
         </Card>
       </Tabs>
+
+      <Dialog open={ropDialogOpen} onOpenChange={setRopDialogOpen}>
+        <DialogContent className="left-auto right-0 top-0 h-screen max-w-xl translate-x-0 translate-y-0 gap-0 overflow-y-auto rounded-none border-l border-slate-200 p-0 sm:rounded-none">
+          <DialogHeader className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.16),_transparent_34%),linear-gradient(135deg,_#f8fafc_0%,_#f0fdfa_100%)] px-6 py-6 text-left">
+            <DialogTitle>Proveedores sugeridos</DialogTitle>
+            <DialogDescription>
+              Sugerencias ROP para órdenes en borrador, usando los ítems de compra como señal inicial de matching.
+            </DialogDescription>
+          </DialogHeader>
+
+          {ropLoading ? (
+            <div className="flex min-h-[40vh] items-center justify-center">
+              <div className="h-7 w-7 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
+            </div>
+          ) : (
+            <div className="space-y-5 px-6 py-6">
+              {ropContext ? (
+                <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contexto de orden</p>
+                  <h3 className="mt-2 text-lg font-semibold text-slate-950">{ropContext.documentLabel}</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">Proveedor actual: {ropContext.supplierName}</p>
+                  <p className="text-sm leading-6 text-slate-600">Ítems considerados: {ropContext.items.length}</p>
+                  {ropMatchedService ? (
+                    <p className="mt-3 text-sm leading-6 text-teal-800">
+                      Servicio ROP inferido: {ropMatchedService.subcategory.category.name} / {ropMatchedService.subcategory.name} / {ropMatchedService.name}
+                    </p>
+                  ) : (
+                    <p className="mt-3 text-sm leading-6 text-amber-800">
+                      No hubo match claro con el catálogo ROP. Se muestran sugerencias abiertas de discovery.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
+              {ropRecommendations.length ? (
+                <div className="space-y-3">
+                  {ropRecommendations.map((candidate) => (
+                    <div key={candidate.companyId} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-base font-semibold text-slate-950">{candidate.title}</p>
+                          <p className="mt-1 text-sm text-slate-600">{candidate.city || candidate.region || 'Ubicación no publicada'}{candidate.serviceName ? ` · ${candidate.serviceName}` : ''}</p>
+                        </div>
+                        {candidate.trustScore !== null ? (
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                            Trust {candidate.trustScore}
+                          </span>
+                        ) : null}
+                      </div>
+                      {candidate.subtitle ? <p className="mt-3 text-sm leading-6 text-slate-600">{candidate.subtitle}</p> : null}
+                      <p className="mt-3 text-sm leading-6 text-slate-600">{candidate.reason}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
+                  No encontramos candidatos visibles con la heurística actual para esta orden. Puedes ajustar descripciones o abrir ROP manualmente.
+                </div>
+              )}
+
+              {ropContext ? (
+                <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-1">
+                  <Button asChild className="rounded-full px-5">
+                    <Link
+                      href={buildRopNeedFromCompraHref({
+                        compraId: ropContext.compraId,
+                        documentLabel: ropContext.documentLabel,
+                        supplierName: ropContext.supplierName,
+                        items: ropContext.items,
+                        serviceCatalogId: ropMatchedService?.id ?? null,
+                      })}
+                    >
+                      Publicar necesidad en ROP
+                    </Link>
+                  </Button>
+                  <Button variant="outline" className="rounded-full px-5" onClick={() => setRopDialogOpen(false)}>
+                    Cerrar
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {canManagePurchases ? <Dialog open={pagoOpen} onOpenChange={setPagoOpen}>
         <DialogContent className="max-w-2xl">

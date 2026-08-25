@@ -6029,3 +6029,633 @@ model TreasuryBankMovement {
   @@index([journalEntryId])
   @@map("treasury_bank_movements")
 }
+
+// ============================================
+// ORDEX ROP
+// ============================================
+
+enum RopCompanyType {
+  INTERNAL
+  EXTERNAL
+  PARTNER
+}
+
+enum RopOnboardingStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+}
+
+enum RopVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum RopVisibilityLevel {
+  PRIVATE
+  NETWORK
+  PUBLIC
+}
+
+enum RopCoverageScope {
+  LOCAL
+  REGIONAL
+  NATIONAL
+  EXPORT
+}
+
+enum RopCapacityUnit {
+  HOUR
+  UNIT
+  KG
+  M2
+  ORDER
+}
+
+enum RopCompanyServiceStatus {
+  ACTIVE
+  PAUSED
+  HIDDEN
+}
+
+enum RopCapacityStatus {
+  AVAILABLE
+  LIMITED
+  SATURATED
+  OFFLINE
+}
+
+enum RopCapacitySourceType {
+  MANUAL
+  ERP_EVENT
+  API
+}
+
+enum RopSlotStatus {
+  OPEN
+  BLOCKED
+  RESERVED
+}
+
+enum RopOpportunityStatus {
+  DRAFT
+  OPEN
+  MATCHING
+  INVITED
+  IN_PROGRESS
+  WON
+  LOST
+  CANCELLED
+}
+
+enum RopOpportunitySourceType {
+  MANUAL
+  CRM
+  PURCHASE
+  OPS_SIGNAL
+  API
+}
+
+enum RopOpportunityVisibility {
+  PRIVATE
+  CLUSTER
+  NETWORK
+}
+
+enum RopInvitationStatus {
+  PENDING
+  VIEWED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  WITHDRAWN
+}
+
+enum RopBusinessCellStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum RopConfidentialityLevel {
+  INTERNAL
+  SHARED
+  RESTRICTED
+}
+
+enum RopMemberRole {
+  OWNER
+  COORDINATOR
+  EXECUTOR
+  APPROVER
+  OBSERVER
+}
+
+enum RopMembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  LEFT
+}
+
+enum RopCollaborationOutcome {
+  SUCCESS
+  PARTIAL
+  FAILED
+  DISPUTED
+  CANCELLED
+}
+
+enum RopModerationStatus {
+  PENDING
+  PUBLISHED
+  HIDDEN
+}
+
+enum RopRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RopClusterType {
+  NICHO
+  CIUDAD
+  REGION
+  VERTICAL
+  CAPACIDAD
+  CURADO
+}
+
+enum RopClusterMembershipStatus {
+  ACTIVE
+  SUGGESTED
+  PAUSED
+}
+
+enum RopMatchDecisionStatus {
+  NEW
+  INVITED
+  DISMISSED
+  WON
+  LOST
+}
+
+enum RopVisibilityAudience {
+  OWNER_ONLY
+  INVITED_ONLY
+  CLUSTER
+  NETWORK
+  PUBLIC
+}
+
+model RopCompany {
+  id                    String                      @id @default(cuid())
+  empresaId             String?                     @unique
+  companyType           RopCompanyType
+  legalName             String                      @unique @db.VarChar(180)
+  brandName             String?                     @db.VarChar(180)
+  taxId                 String?                     @unique @db.VarChar(40)
+  countryCode           String                      @db.Char(2)
+  region                String?                     @db.VarChar(120)
+  city                  String?                     @db.VarChar(120)
+  primaryAddress        String?                     @db.VarChar(240)
+  latitude              Decimal?                    @db.Decimal(9, 6)
+  longitude             Decimal?                    @db.Decimal(9, 6)
+  employeeRange         String?                     @db.VarChar(40)
+  timezone              String?                     @db.VarChar(60)
+  currencyCode          String?                     @db.Char(3)
+  websiteUrl            String?                     @db.VarChar(255)
+  phonePublic           String?                     @db.VarChar(40)
+  emailPublic           String?                     @db.VarChar(180)
+  descriptionPublic     String?
+  onboardingStatus      RopOnboardingStatus         @default(DRAFT)
+  verificationStatus    RopVerificationStatus       @default(PENDING)
+  visibilityLevel       RopVisibilityLevel          @default(NETWORK)
+  externalAuthSubject   String?                     @db.VarChar(180)
+  metadata              Json                        @default("{}")
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+  archivedAt            DateTime?
+
+  services              RopCompanyService[]
+  capacities            RopCapacityAvailability[]
+  opportunities         RopOpportunity[]            @relation("RopOpportunityOriginCompany")
+  sentInvitations       RopInvitation[]             @relation("RopInvitationSenderCompany")
+  receivedInvitations   RopInvitation[]             @relation("RopInvitationRecipientCompany")
+  businessCellsOwned    RopBusinessCell[]           @relation("RopBusinessCellOwnerCompany")
+  members               RopMember[]
+  ratingsGiven          RopRating[]                 @relation("RopRatingRaterCompany")
+  ratingsReceived       RopRating[]                 @relation("RopRatingRatedCompany")
+  trustScore            RopTrustScore?
+  trustSnapshots        RopTrustScoreSnapshot[]
+  leadCollaborations    RopCollaborationHistory[]   @relation("RopCollaborationLeadCompany")
+  partnerCollaborations RopCollaborationHistory[]   @relation("RopCollaborationPartnerCompany")
+  clusterMemberships    RopClusterMembership[]
+  matches               RopOpportunityMatch[]
+  visibilityPolicies    RopCompanyVisibilityPolicy[]
+
+  @@index([verificationStatus])
+  @@index([countryCode, city])
+  @@map("rop_companies")
+}
+
+model RopCategory {
+  id            String           @id @default(cuid())
+  slug          String           @unique @db.VarChar(120)
+  name          String           @unique @db.VarChar(120)
+  description   String?
+  sortOrder     Int              @default(0)
+  isActive      Boolean          @default(true)
+  subcategories RopSubcategory[]
+  opportunities RopOpportunity[]
+
+  @@map("rop_categories")
+}
+
+model RopSubcategory {
+  id            String              @id @default(cuid())
+  categoryId    String
+  slug          String              @db.VarChar(120)
+  name          String              @db.VarChar(120)
+  description   String?
+  isActive      Boolean             @default(true)
+
+  category      RopCategory         @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  services      RopServiceCatalog[]
+  opportunities RopOpportunity[]
+
+  @@unique([categoryId, slug])
+  @@unique([categoryId, name])
+  @@index([categoryId])
+  @@map("rop_subcategories")
+}
+
+model RopServiceCatalog {
+  id              String                    @id @default(cuid())
+  subcategoryId   String
+  code            String                    @unique @db.VarChar(80)
+  name            String                    @db.VarChar(160)
+  description     String?
+  unitOfCapacity  RopCapacityUnit
+  isActive        Boolean                   @default(true)
+
+  subcategory     RopSubcategory            @relation(fields: [subcategoryId], references: [id], onDelete: Cascade)
+  companyServices RopCompanyService[]
+  capacities      RopCapacityAvailability[]
+  opportunities   RopOpportunity[]
+  collaborations  RopCollaborationHistory[]
+
+  @@index([subcategoryId])
+  @@map("rop_service_catalog")
+}
+
+model RopCompanyService {
+  id               String                  @id @default(cuid())
+  companyId        String
+  serviceCatalogId String
+  sedeId           String?
+  publicTitle      String?                 @db.VarChar(180)
+  privateNotes     String?
+  minOrderValue    Decimal?                @db.Decimal(14, 2)
+  leadTimeHours    Int?
+  coverageScope    RopCoverageScope?
+  activeStatus     RopCompanyServiceStatus @default(ACTIVE)
+  visibilityLevel  RopVisibilityLevel      @default(NETWORK)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  company          RopCompany              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  serviceCatalog   RopServiceCatalog       @relation(fields: [serviceCatalogId], references: [id], onDelete: Cascade)
+  capacities       RopCapacityAvailability[]
+  availability     RopAvailabilitySlot[]
+
+  @@unique([companyId, serviceCatalogId, sedeId])
+  @@index([serviceCatalogId, activeStatus])
+  @@index([companyId, activeStatus])
+  @@map("rop_company_services")
+}
+
+model RopCapacityAvailability {
+  id                 String                @id @default(cuid())
+  companyServiceId   String
+  companyId          String
+  serviceCatalogId   String
+  availableQuantity  Decimal               @db.Decimal(14, 4)
+  reservedQuantity   Decimal?              @db.Decimal(14, 4)
+  utilizationPercent Decimal?              @db.Decimal(5, 2)
+  status             RopCapacityStatus
+  availableFrom      DateTime
+  availableUntil     DateTime
+  slaHours           Int?
+  freshnessAt        DateTime?
+  sourceType         RopCapacitySourceType
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  companyService     RopCompanyService     @relation(fields: [companyServiceId], references: [id], onDelete: Cascade)
+  company            RopCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  serviceCatalog     RopServiceCatalog     @relation(fields: [serviceCatalogId], references: [id], onDelete: Cascade)
+
+  @@index([serviceCatalogId, status, availableFrom])
+  @@index([companyId, availableFrom])
+  @@index([freshnessAt])
+  @@map("rop_capacity_availability")
+}
+
+model RopAvailabilitySlot {
+  id               String            @id @default(cuid())
+  companyServiceId String
+  dayOfWeek        Int?
+  specificDate     DateTime?         @db.Date
+  startTime        DateTime?         @db.Time(0)
+  endTime          DateTime?         @db.Time(0)
+  timezone         String?           @db.VarChar(60)
+  slotStatus       RopSlotStatus     @default(OPEN)
+  recurrenceRule   String?           @db.VarChar(180)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  companyService   RopCompanyService @relation(fields: [companyServiceId], references: [id], onDelete: Cascade)
+
+  @@index([companyServiceId, dayOfWeek])
+  @@index([companyServiceId, specificDate])
+  @@map("rop_availability_slots")
+}
+
+model RopOpportunity {
+  id                  String                   @id @default(cuid())
+  originCompanyId     String
+  title               String                   @db.VarChar(180)
+  descriptionPublic   String?
+  requirementsPrivate String?
+  categoryId          String
+  subcategoryId       String
+  serviceCatalogId    String
+  locationCountryCode String                   @db.Char(2)
+  locationRegion      String?                  @db.VarChar(120)
+  locationCity        String?                  @db.VarChar(120)
+  expectedQuantity    Decimal?                 @db.Decimal(14, 4)
+  budgetMin           Decimal?                 @db.Decimal(14, 2)
+  budgetMax           Decimal?                 @db.Decimal(14, 2)
+  currencyCode        String?                  @db.Char(3)
+  dueAt               DateTime?
+  status              RopOpportunityStatus     @default(DRAFT)
+  sourceType          RopOpportunitySourceType
+  sourceRef           String?                  @db.VarChar(180)
+  visibilityLevel     RopOpportunityVisibility @default(NETWORK)
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  archivedAt          DateTime?
+
+  originCompany       RopCompany               @relation("RopOpportunityOriginCompany", fields: [originCompanyId], references: [id], onDelete: Cascade)
+  category            RopCategory              @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  subcategory         RopSubcategory           @relation(fields: [subcategoryId], references: [id], onDelete: Restrict)
+  serviceCatalog      RopServiceCatalog        @relation(fields: [serviceCatalogId], references: [id], onDelete: Restrict)
+  invitations         RopInvitation[]
+  businessCells       RopBusinessCell[]
+  matches             RopOpportunityMatch[]
+  collaborations      RopCollaborationHistory[]
+
+  @@index([originCompanyId, status])
+  @@index([categoryId, subcategoryId, status])
+  @@index([serviceCatalogId, dueAt])
+  @@index([locationCountryCode, locationCity])
+  @@map("rop_opportunities")
+}
+
+model RopInvitation {
+  id                 String              @id @default(cuid())
+  opportunityId      String
+  senderCompanyId    String
+  recipientCompanyId String
+  status             RopInvitationStatus @default(PENDING)
+  messagePublic      String?
+  internalNote       String?
+  respondedAt        DateTime?
+  expiresAt          DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  opportunity        RopOpportunity      @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  senderCompany      RopCompany          @relation("RopInvitationSenderCompany", fields: [senderCompanyId], references: [id], onDelete: Cascade)
+  recipientCompany   RopCompany          @relation("RopInvitationRecipientCompany", fields: [recipientCompanyId], references: [id], onDelete: Cascade)
+
+  @@unique([opportunityId, recipientCompanyId])
+  @@index([recipientCompanyId, status])
+  @@index([senderCompanyId, status])
+  @@map("rop_invitations")
+}
+
+model RopBusinessCell {
+  id                   String                   @id @default(cuid())
+  opportunityId        String?
+  ownerCompanyId       String
+  name                 String                   @db.VarChar(180)
+  purpose              String?
+  status               RopBusinessCellStatus    @default(DRAFT)
+  confidentialityLevel RopConfidentialityLevel  @default(SHARED)
+  workspaceRef         String?                  @db.VarChar(180)
+  startedAt            DateTime?
+  closedAt             DateTime?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  opportunity          RopOpportunity?          @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  ownerCompany         RopCompany               @relation("RopBusinessCellOwnerCompany", fields: [ownerCompanyId], references: [id], onDelete: Cascade)
+  members              RopMember[]
+  collaborations       RopCollaborationHistory[]
+
+  @@index([ownerCompanyId, status])
+  @@index([opportunityId])
+  @@map("rop_business_cells")
+}
+
+model RopMember {
+  id               String               @id @default(cuid())
+  businessCellId   String
+  companyId        String
+  userId           String?
+  role             RopMemberRole
+  membershipStatus RopMembershipStatus  @default(INVITED)
+  joinedAt         DateTime?
+  leftAt           DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  businessCell     RopBusinessCell      @relation(fields: [businessCellId], references: [id], onDelete: Cascade)
+  company          RopCompany           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, membershipStatus])
+  @@map("rop_members")
+}
+
+model RopCollaborationHistory {
+  id                String                    @id @default(cuid())
+  businessCellId    String?
+  opportunityId     String?
+  leadCompanyId     String
+  partnerCompanyId  String
+  serviceCatalogId  String
+  startedAt         DateTime?
+  completedAt       DateTime?
+  outcomeStatus     RopCollaborationOutcome
+  deliveredQuantity Decimal?                  @db.Decimal(14, 4)
+  grossValue        Decimal?                  @db.Decimal(14, 2)
+  currencyCode      String?                   @db.Char(3)
+  slaMet            Boolean?
+  issueCount        Int?                      @default(0)
+  summaryPublic     String?
+  summaryPrivate    String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  businessCell      RopBusinessCell?          @relation(fields: [businessCellId], references: [id], onDelete: SetNull)
+  opportunity       RopOpportunity?           @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  leadCompany       RopCompany                @relation("RopCollaborationLeadCompany", fields: [leadCompanyId], references: [id], onDelete: Cascade)
+  partnerCompany    RopCompany                @relation("RopCollaborationPartnerCompany", fields: [partnerCompanyId], references: [id], onDelete: Cascade)
+  serviceCatalog    RopServiceCatalog         @relation(fields: [serviceCatalogId], references: [id], onDelete: Restrict)
+  ratings           RopRating[]
+
+  @@index([leadCompanyId, completedAt])
+  @@index([partnerCompanyId, completedAt])
+  @@index([serviceCatalogId, completedAt])
+  @@index([outcomeStatus])
+  @@map("rop_collaboration_history")
+}
+
+model RopRating {
+  id                     String                  @id @default(cuid())
+  collaborationHistoryId String
+  raterCompanyId         String
+  ratedCompanyId         String
+  qualityScore           Int
+  timelinessScore        Int
+  communicationScore     Int
+  overallScore           Decimal                 @db.Decimal(3, 2)
+  commentPublic          String?
+  disputeFlag            Boolean                 @default(false)
+  moderationStatus       RopModerationStatus     @default(PENDING)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  collaborationHistory   RopCollaborationHistory @relation(fields: [collaborationHistoryId], references: [id], onDelete: Cascade)
+  raterCompany           RopCompany              @relation("RopRatingRaterCompany", fields: [raterCompanyId], references: [id], onDelete: Cascade)
+  ratedCompany           RopCompany              @relation("RopRatingRatedCompany", fields: [ratedCompanyId], references: [id], onDelete: Cascade)
+
+  @@unique([collaborationHistoryId, raterCompanyId, ratedCompanyId])
+  @@index([ratedCompanyId, moderationStatus])
+  @@map("rop_ratings")
+}
+
+model RopTrustScore {
+  id                  String       @id @default(cuid())
+  companyId           String       @unique
+  version             Int
+  overallScore        Decimal      @db.Decimal(5, 2)
+  reliabilityScore    Decimal      @db.Decimal(5, 2)
+  responsivenessScore Decimal      @db.Decimal(5, 2)
+  qualityScore        Decimal      @db.Decimal(5, 2)
+  recurrenceScore     Decimal      @db.Decimal(5, 2)
+  disputePenalty      Decimal?     @db.Decimal(5, 2)
+  riskLevel           RopRiskLevel
+  explainabilityJson  Json?
+  computedAt          DateTime
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  company             RopCompany   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([overallScore(sort: Desc)])
+  @@index([riskLevel])
+  @@map("rop_trust_scores")
+}
+
+model RopTrustScoreSnapshot {
+  id            String      @id @default(cuid())
+  companyId     String
+  version       Int
+  overallScore  Decimal     @db.Decimal(5, 2)
+  breakdownJson Json?
+  computedAt    DateTime
+  createdAt     DateTime    @default(now())
+
+  company       RopCompany  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, computedAt(sort: Desc)])
+  @@map("rop_trust_score_snapshots")
+}
+
+model RopCluster {
+  id              String                 @id @default(cuid())
+  slug            String                 @unique @db.VarChar(120)
+  name            String                 @db.VarChar(160)
+  clusterType     RopClusterType
+  geographyScope  String?                @db.VarChar(120)
+  rulesJson       Json                   @default("{}")
+  isSystemManaged Boolean                @default(true)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  memberships     RopClusterMembership[]
+
+  @@map("rop_clusters")
+}
+
+model RopClusterMembership {
+  id              String                       @id @default(cuid())
+  clusterId       String
+  companyId       String
+  membershipScore Decimal?                     @db.Decimal(5, 2)
+  status          RopClusterMembershipStatus   @default(ACTIVE)
+  joinedAt        DateTime?                    @default(now())
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+
+  cluster         RopCluster                   @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  company         RopCompany                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([clusterId, companyId])
+  @@index([companyId, status])
+  @@map("rop_cluster_memberships")
+}
+
+model RopOpportunityMatch {
+  id                 String                 @id @default(cuid())
+  opportunityId      String
+  companyId          String
+  matchScore         Decimal                @db.Decimal(5, 2)
+  scoreBreakdownJson Json                   @default("{}")
+  rankPosition       Int
+  decisionStatus     RopMatchDecisionStatus @default(NEW)
+  generatedAt        DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  opportunity        RopOpportunity         @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  company            RopCompany             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([opportunityId, companyId])
+  @@index([opportunityId, rankPosition])
+  @@index([companyId, decisionStatus])
+  @@map("rop_opportunity_matches")
+}
+
+model RopCompanyVisibilityPolicy {
+  id        String                @id @default(cuid())
+  companyId String
+  fieldName String                @db.VarChar(120)
+  audience  RopVisibilityAudience
+  isEnabled Boolean               @default(true)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  company   RopCompany            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, fieldName, audience])
+  @@index([companyId])
+  @@map("rop_company_visibility_policies")
+}

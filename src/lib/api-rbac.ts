@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getActiveSedeForUser, getEffectiveAccess, requireSedeAccess } from '@/lib/rbac'
@@ -12,6 +13,11 @@ import { isSuperAdminEmail } from '@/lib/super-admin'
 import type { Session } from 'next-auth'
 import { AccessLevel, ModuleKey, SedeRole } from '@prisma/client'
 import { resolveUserIdFromSession } from '@/lib/session-user'
+import {
+  EXTERNAL_DASHBOARD_SCOPE_COOKIE,
+  EXTERNAL_DASHBOARD_SCOPE_ROP_ONBOARDING,
+  isModuleAllowedForExternalDashboardScope,
+} from '@/lib/external-dashboard-scope'
 
 export type ApiAccessOk = {
   ok: true
@@ -151,6 +157,35 @@ function buildPlanCapabilityDeniedMessage(args: ApiCapabilityAccessArgs, moduleK
 
 function buildSedeMembershipDeniedMessage() {
   return 'No tienes acceso a esta sede. Pídele a tu administrador que te habilite la sede o el módulo correspondiente para continuar.'
+}
+
+function buildExternalScopeDeniedMessage() {
+  return 'Tu cuenta está en onboarding externo de ROP. Mientras terminas la activación solo puedes usar la superficie operativa de ROP, perfil, ayuda y notificaciones.'
+}
+
+async function getExternalDashboardScope() {
+  const cookieStore = await cookies()
+  return cookieStore.get(EXTERNAL_DASHBOARD_SCOPE_COOKIE)?.value ?? null
+}
+
+async function assertExternalModuleScope(moduleKey: ModuleKey): Promise<ApiAccessFail | null> {
+  const externalScope = await getExternalDashboardScope()
+  if (!isModuleAllowedForExternalDashboardScope({ moduleKey, scope: externalScope })) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: buildExternalScopeDeniedMessage(),
+          code: 'EXTERNAL_SCOPE_RESTRICTED',
+          scope: EXTERNAL_DASHBOARD_SCOPE_ROP_ONBOARDING,
+          module: moduleKey,
+        },
+        { status: 403 }
+      ),
+    }
+  }
+
+  return null
 }
 
 async function resolveApiAccessContext(sedeIdOverride?: string): Promise<ApiAccessOk | ApiAccessFail> {
@@ -390,6 +425,9 @@ export async function requireApiAccess(
   const accessContext = await resolveApiAccessContext()
   if (!accessContext.ok) return accessContext
 
+  const externalScopeRestriction = await assertExternalModuleScope(moduleKey)
+  if (externalScopeRestriction) return externalScopeRestriction
+
   try {
     await requireSedeAccess({
       userId: accessContext.userId,
@@ -422,6 +460,22 @@ export async function canAccessCapability(
 ): Promise<ApiCapabilityAccessOk | ApiAccessFail> {
   const accessContext = await resolveApiAccessContext(args.sedeId)
   if (!accessContext.ok) return accessContext
+
+  const externalScope = await getExternalDashboardScope()
+  if (externalScope === EXTERNAL_DASHBOARD_SCOPE_ROP_ONBOARDING) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: buildExternalScopeDeniedMessage(),
+          code: 'EXTERNAL_SCOPE_RESTRICTED',
+          scope: externalScope,
+          capability: `${args.domain}.${args.subdomain}.${args.action}`,
+        },
+        { status: 403 }
+      ),
+    }
+  }
 
   if (accessContext.isSystemSuperAdmin) {
     return {

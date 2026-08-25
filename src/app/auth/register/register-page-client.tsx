@@ -18,6 +18,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/components/providers/i18n-provider"
 
+type RegisterPageClientProps = {
+  defaultCallbackUrl?: string
+}
+
 function isWorkspaceCode(code: string): boolean {
   const raw = code.trim()
   if (!raw) return false
@@ -37,7 +41,7 @@ function validatePassword(password: string, t: (key: string) => string): string 
   return null
 }
 
-export function RegisterPageClient() {
+export function RegisterPageClient({ defaultCallbackUrl }: RegisterPageClientProps = {}) {
   const { t } = useI18n()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -47,6 +51,12 @@ export function RegisterPageClient() {
   const [debugCode, setDebugCode] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const requestedCallbackUrl = searchParams?.get('callbackUrl')
+  const callbackUrl = requestedCallbackUrl && requestedCallbackUrl.startsWith('/') && !requestedCallbackUrl.startsWith('//')
+    ? requestedCallbackUrl
+    : defaultCallbackUrl && defaultCallbackUrl.startsWith('/') && !defaultCallbackUrl.startsWith('//')
+      ? defaultCallbackUrl
+      : '/dashboard'
 
   const [registerMode, setRegisterMode] = useState<'individual' | 'empresa'>('individual')
 
@@ -170,7 +180,11 @@ export function RegisterPageClient() {
 
       // Redirigir al login después de 2 segundos
       setTimeout(() => {
-        router.push(`/auth/verify?email=${encodeURIComponent(formData.email)}`)
+        const params = new URLSearchParams({ email: formData.email })
+        if (callbackUrl !== '/dashboard') {
+          params.set('callbackUrl', callbackUrl)
+        }
+        router.push(`/auth/verify?${params.toString()}`)
       }, 2000)
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : t('auth.common.tryAgain')

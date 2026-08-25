@@ -5,6 +5,7 @@
  */
 
 import { auth } from "@/lib/auth"
+import { cookies } from 'next/headers'
 import { redirect } from "next/navigation"
 import Sidebar from "@/components/dashboard/sidebar"
 import { TourProvider } from "@/components/tour/tour-provider"
@@ -26,6 +27,7 @@ import { buildAllowedDashboardHrefsForUser, buildAllowedDashboardPermissionKeysF
 import { isCompanyIntelligenceEnabledForEmpresa } from '@/lib/company-intelligence'
 import { getBackupAccess } from '@/lib/empresa-backups'
 import { nominaHref } from '@/lib/nomina-routes'
+import { EXTERNAL_DASHBOARD_SCOPE_COOKIE, intersectDashboardHrefsWithExternalScope } from '@/lib/external-dashboard-scope'
 
 export default async function DashboardLayout({
   children,
@@ -38,6 +40,9 @@ export default async function DashboardLayout({
   if (!session || !session.user) {
     redirect("/auth/login")
   }
+
+  const cookieStore = await cookies()
+  const externalDashboardScope = cookieStore.get(EXTERNAL_DASHBOARD_SCOPE_COOKIE)?.value ?? null
 
   const userId = await resolveUserIdFromSession(session)
   let allowedModules: string[] | null = null
@@ -104,6 +109,11 @@ export default async function DashboardLayout({
       if (!intelligenceEnabled) {
         allowedNavHrefs = allowedNavHrefs.filter((href) => href !== '/dashboard/inteligencia')
       }
+
+      allowedNavHrefs = intersectDashboardHrefsWithExternalScope({
+        hrefs: allowedNavHrefs,
+        scope: externalDashboardScope,
+      })
 
       const isSystemSuperAdmin = isSuperAdminEmail(layoutUser?.email)
       const isPlanOwner = Boolean(
