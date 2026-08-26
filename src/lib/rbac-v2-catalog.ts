@@ -50,6 +50,7 @@ export const RBAC_V2_CAPABILITY_CATALOG: RbacV2CapabilityDefinition[] = [
   { domain: 'CORE', subdomain: 'DASHBOARD', actions: ['READ'], recommendedScopes: ['EMPRESA', 'SEDE'] },
   { domain: 'CORE', subdomain: 'PRODUCT_MAP', actions: ['READ'], recommendedScopes: ['EMPRESA', 'SEDE'] },
   { domain: 'CORE', subdomain: 'TEMPLATES', actions: ['READ'], recommendedScopes: ['EMPRESA', 'SEDE'] },
+  { domain: 'CORE', subdomain: 'ROP', actions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'], recommendedScopes: ['EMPRESA', 'SEDE'] },
   { domain: 'CORE', subdomain: 'COMPANY', actions: ['READ', 'UPDATE', 'CONFIGURE'], recommendedScopes: ['EMPRESA'] },
   { domain: 'CORE', subdomain: 'USERS', actions: ['READ', 'CREATE', 'UPDATE', 'CONFIGURE'], recommendedScopes: ['EMPRESA', 'SEDE'] },
   { domain: 'CORE', subdomain: 'ROLES', actions: ['READ', 'CREATE', 'UPDATE', 'CONFIGURE'], recommendedScopes: ['EMPRESA', 'SEDE'] },

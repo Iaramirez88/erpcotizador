@@ -1,8 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
-import { resolveUserIdFromSession } from '@/lib/session-user'
 import { getRopHomeForUser } from '@/lib/rop'
+import { canAccessRopModule } from '@/lib/rop-access'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -22,13 +21,10 @@ function actionHref(type: 'PUBLISH_NEED' | 'VIEW_RECOMMENDATIONS' | 'COMPLETE_PR
 }
 
 export default async function RopPage() {
-  const session = await auth()
-  if (!session?.user) redirect('/auth/login')
+  const access = await canAccessRopModule()
+  if (!access.ok) redirect('/dashboard')
 
-  const userId = await resolveUserIdFromSession(session)
-  if (!userId) redirect('/dashboard')
-
-  const home = await getRopHomeForUser(userId)
+  const home = await getRopHomeForUser(access.userId)
 
   return (
     <div className="space-y-6">

@@ -6,6 +6,7 @@ import { requireEmpresaIdForUser } from '@/lib/rbac'
 import { capabilityActionToAccessLevel, getCapabilityDefinition } from '@/lib/dashboard-access'
 import { detachPermissionProfileAssignment, publishPermissionUpdateNotification } from '@/lib/rbac-permission-sync'
 import type { RbacV2Domain } from '@/lib/rbac-v2-catalog'
+import { isSuperAdminEmail } from '@/lib/super-admin'
 
 export const runtime = 'nodejs'
 
@@ -13,6 +14,11 @@ const ACCESS_LEVELS: Array<AccessLevel | 'INHERIT'> = ['INHERIT', 'NONE', 'READ'
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isProtectedCapability(domain: RbacV2Domain, subdomain: string) {
+  return (domain === 'VERTICALES' && (subdomain === 'ODONTOLOGIA' || subdomain === 'RESTAURANTE' || subdomain === 'DOTACIONES'))
+    || (domain === 'CORE' && subdomain === 'ROP')
 }
 
 export async function PATCH(request: Request) {
@@ -37,6 +43,10 @@ export async function PATCH(request: Request) {
   const definition = getCapabilityDefinition(domain, subdomain)
   if (!definition) {
     return NextResponse.json({ success: false, error: 'Capacidad inválida' }, { status: 400 })
+  }
+
+  if (isProtectedCapability(domain, subdomain) && !isSuperAdminEmail(session.user.email ?? null)) {
+    return NextResponse.json({ success: false, error: 'Solo el Super Admin puede asignar este acceso.' }, { status: 403 })
   }
 
   const empresaId = await requireEmpresaIdForUser(session.user.id)

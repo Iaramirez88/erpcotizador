@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireRopReadAccess } from '@/lib/rop-access'
 
 export const runtime = 'nodejs'
 
 export async function GET() {
   try {
+    const access = await requireRopReadAccess()
+    if (!access.ok) return access.response
+
     const data = await prisma.ropServiceCatalog.findMany({
       where: { isActive: true },
       select: {

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { resolveUserIdFromSession } from '@/lib/session-user'
 import { listRopDiscoveryCompaniesForUser } from '@/lib/rop'
+import { requireRopReadAccess } from '@/lib/rop-access'
 
 export const runtime = 'nodejs'
 
@@ -13,18 +12,11 @@ function parseNumber(value: string | null) {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'No autorizado' } }, { status: 401 })
-    }
-
-    const userId = await resolveUserIdFromSession(session)
-    if (!userId) {
-      return NextResponse.json({ error: { code: 'INVALID_SESSION', message: 'Sesión inválida' } }, { status: 401 })
-    }
+    const access = await requireRopReadAccess()
+    if (!access.ok) return access.response
 
     const { searchParams } = new URL(request.url)
-    const data = await listRopDiscoveryCompaniesForUser(userId, {
+    const data = await listRopDiscoveryCompaniesForUser(access.userId, {
       serviceCatalogId: searchParams.get('serviceCatalogId') || undefined,
       city: searchParams.get('city') || undefined,
       coverageScope: (searchParams.get('coverageScope') as 'LOCAL' | 'REGIONAL' | 'NATIONAL' | 'EXPORT' | null) || undefined,

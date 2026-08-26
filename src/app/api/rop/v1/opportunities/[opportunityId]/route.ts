@@ -1,23 +1,18 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { getRopOpportunityDetailForUser } from '@/lib/rop'
-import { resolveUserIdFromSession } from '@/lib/session-user'
+import { requireRopReadAccess } from '@/lib/rop-access'
 
 export const runtime = 'nodejs'
 
-async function resolveUserId() {
-  const session = await auth()
-  if (!session?.user) return { error: NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'No autorizado' } }, { status: 401 }) }
-
-  const userId = await resolveUserIdFromSession(session)
-  if (!userId) return { error: NextResponse.json({ error: { code: 'INVALID_SESSION', message: 'Sesión inválida' } }, { status: 401 }) }
-
-  return { userId }
+async function resolveUserAccess() {
+  const access = await requireRopReadAccess()
+  if (!access.ok) return { error: access.response }
+  return { userId: access.userId }
 }
 
 export async function GET(_: Request, props: { params: Promise<{ opportunityId: string }> }) {
   try {
-    const context = await resolveUserId()
+    const context = await resolveUserAccess()
     if ('error' in context) return context.error
 
     const { opportunityId } = await props.params

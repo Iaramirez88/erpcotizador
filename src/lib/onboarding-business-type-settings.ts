@@ -6,6 +6,7 @@ import {
   getBusinessTypeCardDescription,
   getBusinessTypeLabel,
   isBusinessType,
+  RESTRICTED_SELF_ONBOARDING_BUSINESS_TYPES,
   type BusinessType,
 } from '@/lib/company-onboarding'
 
@@ -27,6 +28,12 @@ export type OnboardingBusinessTypeSettingRow = {
 
 let setupPromise: Promise<void> | null = null
 
+const RESTRICTED_SELF_ONBOARDING_SET = new Set<BusinessType>(RESTRICTED_SELF_ONBOARDING_BUSINESS_TYPES)
+
+function canSelfOnboardBusinessType(businessType: BusinessType) {
+  return !RESTRICTED_SELF_ONBOARDING_SET.has(businessType)
+}
+
 async function ensureOnboardingBusinessTypeSettingsTable() {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS onboarding_business_type_settings (
@@ -41,9 +48,15 @@ async function ensureOnboardingBusinessTypeSettingsTable() {
   for (const [index, businessType] of BUSINESS_TYPES.entries()) {
     await prisma.$executeRaw`
       INSERT INTO onboarding_business_type_settings (business_type, active, sort_order)
-      VALUES (${businessType}, true, ${index * 10})
+      VALUES (${businessType}, ${canSelfOnboardBusinessType(businessType)}, ${index * 10})
       ON CONFLICT (business_type)
-      DO UPDATE SET sort_order = EXCLUDED.sort_order
+      DO UPDATE SET
+        active = CASE
+          WHEN onboarding_business_type_settings.business_type IN ('ODONTOLOGIA', 'RESTAURANTE', 'DOTACIONES')
+            THEN FALSE
+          ELSE onboarding_business_type_settings.active
+        END,
+        sort_order = EXCLUDED.sort_order
     `
   }
 }
@@ -90,7 +103,7 @@ export async function listOnboardingBusinessTypeSettings(args?: { includeInactiv
 
 export async function getVisibleOnboardingBusinessTypes() {
   const rows = await listOnboardingBusinessTypeSettings()
-  return rows.map((row) => row.businessType)
+  return rows.filter((row) => canSelfOnboardBusinessType(row.businessType)).map((row) => row.businessType)
 }
 
 export async function saveOnboardingBusinessTypeSetting(args: {
@@ -104,7 +117,7 @@ export async function saveOnboardingBusinessTypeSetting(args: {
 
   await prisma.$executeRaw`
     INSERT INTO onboarding_business_type_settings (business_type, active, sort_order, updated_at)
-    VALUES (${args.businessType}, ${args.active}, ${normalizedSortOrder}, NOW())
+    VALUES (${args.businessType}, ${canSelfOnboardBusinessType(args.businessType) ? args.active : false}, ${normalizedSortOrder}, NOW())
     ON CONFLICT (business_type)
     DO UPDATE SET
       active = EXCLUDED.active,

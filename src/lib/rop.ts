@@ -1,8 +1,10 @@
 import {
+  Prisma,
   RopCapacitySourceType,
   RopCapacityStatus,
   RopCompanyType,
   RopCoverageScope,
+  RopModerationStatus,
   RopOpportunitySourceType,
   RopOpportunityStatus,
   RopOpportunityVisibility,
@@ -11,6 +13,7 @@ import {
 } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
+import { recomputeRopTrustScoreForCompany } from '@/lib/rop-trust'
 
 type ProfileServiceItem = {
   companyServiceId: string
@@ -243,9 +246,36 @@ export type CreateRopInvitationsInput = {
   expiresAt?: string | null
 }
 
+type CreateRopRatingInput = {
+  qualityScore: number
+  timelinessScore: number
+  communicationScore: number
+  commentPublic?: string | null
+}
+
+type DisputeRopRatingInput = {
+  reason?: string | null
+}
+
 function normalizeNullableText(value: string | null | undefined) {
   const normalized = typeof value === 'string' ? value.trim() : ''
   return normalized ? normalized : null
+}
+
+function clampFivePointScore(value: number, fieldName: string) {
+  if (!Number.isFinite(value) || value < 1 || value > 5) {
+    throw new Error(`INVALID_SCORE:${fieldName}`)
+  }
+  return Math.round(value)
+}
+
+function computeOverallRatingScore(input: CreateRopRatingInput) {
+  const average = (input.qualityScore + input.timelinessScore + input.communicationScore) / 3
+  return new Prisma.Decimal(Number(average.toFixed(2)))
+}
+
+function formatTrustSourceRef(kind: 'rating' | 'dispute' | 'moderation', id: string) {
+  return `rop:${kind}:${id}`
 }
 
 function computeProfileCompletion(args: {
@@ -514,6 +544,40 @@ export async function getRopProfileForUser(userId: string) {
   const empresaId = await requireEmpresaIdForUser(userId)
   const company = await getRopCompanyRecord(empresaId)
   return buildProfileResponse(company)
+}
+
+export async function getRopProfilePrefillForUser(userId: string) {
+  const empresaId = await requireEmpresaIdForUser(userId)
+  const [empresa, company] = await Promise.all([
+    prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: {
+        id: true,
+        nombre: true,
+        nit: true,
+        direccion: true,
+        telefono: true,
+        email: true,
+        businessType: true,
+      },
+    }),
+    getRopCompanyRecord(empresaId),
+  ])
+
+  if (!empresa?.id) throw new Error('EMPRESA_NOT_FOUND')
+
+  return {
+    empresa: {
+      id: empresa.id,
+      nombre: empresa.nombre,
+      nit: empresa.nit ?? null,
+      direccion: empresa.direccion ?? null,
+      telefono: empresa.telefono ?? null,
+      email: empresa.email ?? null,
+      businessType: empresa.businessType ?? null,
+    },
+    company: buildProfileResponse(company),
+  }
 }
 
 export async function upsertRopProfileForUser(userId: string, input: UpsertRopCompanyProfileInput) {
@@ -1331,4 +1395,173 @@ export async function listRopDiscoveryCompaniesForUser(userId: string, filters: 
       reason: reasons.length ? `Aparece porque ${reasons.join(', ')}.` : 'Aparece como candidato inicial para ampliar tu red operativa.',
     } satisfies RopDiscoveryCompany
   })
+}
+
+export async function createRopRatingForUser(userId: string, collaborationId: string, input: CreateRopRatingInput) {
+  const empresaId = await requireEmpresaIdForUser(userId)
+  const raterCompany = await ensureRopCompanyForEmpresa(empresaId)
+  const collaboration = await prisma.ropCollaborationHistory.findUnique({
+    where: { id: collaborationId },
+    select: {
+      id: true,
+      leadCompanyId: true,
+      partnerCompanyId: true,
+      completedAt: true,
+      outcomeStatus: true,
+    },
+  })
+
+  if (!collaboration) throw new Error('ROP_COLLABORATION_NOT_FOUND')
+  if (!collaboration.completedAt) throw new Error('ROP_COLLABORATION_NOT_COMPLETED')
+  if (collaboration.outcomeStatus === 'CANCELLED') throw new Error('ROP_COLLABORATION_NOT_RATEABLE')
+
+  const involvedCompanyIds = [collaboration.leadCompanyId, collaboration.partnerCompanyId]
+  if (!involvedCompanyIds.includes(raterCompany.id)) throw new Error('ROP_COLLABORATION_FORBIDDEN')
+  if (collaboration.leadCompanyId === collaboration.partnerCompanyId) throw new Error('ROP_SELF_RATING_NOT_ALLOWED')
+
+  const ratedCompanyId = collaboration.leadCompanyId === raterCompany.id
+    ? collaboration.partnerCompanyId
+    : collaboration.leadCompanyId
+
+  if (ratedCompanyId === raterCompany.id) throw new Error('ROP_SELF_RATING_NOT_ALLOWED')
+
+  const qualityScore = clampFivePointScore(input.qualityScore, 'qualityScore')
+  const timelinessScore = clampFivePointScore(input.timelinessScore, 'timelinessScore')
+  const communicationScore = clampFivePointScore(input.communicationScore, 'communicationScore')
+  const overallScore = computeOverallRatingScore({ qualityScore, timelinessScore, communicationScore })
+
+  const rating = await prisma.ropRating.upsert({
+    where: {
+      collaborationHistoryId_raterCompanyId_ratedCompanyId: {
+        collaborationHistoryId: collaboration.id,
+        raterCompanyId: raterCompany.id,
+        ratedCompanyId,
+      },
+    },
+    create: {
+      collaborationHistoryId: collaboration.id,
+      raterCompanyId: raterCompany.id,
+      ratedCompanyId,
+      qualityScore,
+      timelinessScore,
+      communicationScore,
+      overallScore,
+      commentPublic: normalizeNullableText(input.commentPublic),
+      disputeFlag: false,
+      moderationStatus: 'PUBLISHED',
+    },
+    update: {
+      qualityScore,
+      timelinessScore,
+      communicationScore,
+      overallScore,
+      commentPublic: normalizeNullableText(input.commentPublic),
+      disputeFlag: false,
+      moderationStatus: 'PUBLISHED',
+    },
+    select: {
+      id: true,
+      ratedCompanyId: true,
+      disputeFlag: true,
+      moderationStatus: true,
+      overallScore: true,
+    },
+  })
+
+  const trustImpact = await recomputeRopTrustScoreForCompany({
+    companyId: rating.ratedCompanyId,
+    reason: 'RATING_UPDATED',
+    sourceRef: formatTrustSourceRef('rating', rating.id),
+  })
+
+  return {
+    ratingId: rating.id,
+    disputeFlag: rating.disputeFlag,
+    moderationStatus: rating.moderationStatus,
+    overallScore: Number(rating.overallScore),
+    trustImpact: trustImpact.summary,
+  }
+}
+
+export async function disputeRopRatingForUser(userId: string, ratingId: string, input: DisputeRopRatingInput) {
+  const empresaId = await requireEmpresaIdForUser(userId)
+  const company = await ensureRopCompanyForEmpresa(empresaId)
+  const rating = await prisma.ropRating.findUnique({
+    where: { id: ratingId },
+    select: {
+      id: true,
+      ratedCompanyId: true,
+      disputeFlag: true,
+      moderationStatus: true,
+    },
+  })
+
+  if (!rating) throw new Error('ROP_RATING_NOT_FOUND')
+  if (rating.ratedCompanyId !== company.id) throw new Error('ROP_RATING_FORBIDDEN')
+
+  const updated = await prisma.ropRating.update({
+    where: { id: rating.id },
+    data: {
+      disputeFlag: true,
+      moderationStatus: 'HIDDEN',
+      commentPublic: undefined,
+    },
+    select: {
+      id: true,
+      ratedCompanyId: true,
+      disputeFlag: true,
+      moderationStatus: true,
+    },
+  })
+
+  const trustImpact = await recomputeRopTrustScoreForCompany({
+    companyId: updated.ratedCompanyId,
+    reason: 'RATING_DISPUTED',
+    sourceRef: formatTrustSourceRef('dispute', updated.id),
+  })
+
+  return {
+    ratingId: updated.id,
+    disputeFlag: updated.disputeFlag,
+    moderationStatus: updated.moderationStatus,
+    disputeReason: normalizeNullableText(input.reason),
+    trustImpact: trustImpact.summary,
+  }
+}
+
+export async function moderateRopRating(args: {
+  ratingId: string
+  moderationStatus: 'PUBLISHED' | 'HIDDEN'
+  note?: string | null
+}) {
+  const moderationStatus = args.moderationStatus as RopModerationStatus
+  const rating = await prisma.ropRating.findUnique({
+    where: { id: args.ratingId },
+    select: { id: true, ratedCompanyId: true, disputeFlag: true, moderationStatus: true },
+  })
+
+  if (!rating) throw new Error('ROP_RATING_NOT_FOUND')
+
+  const updated = await prisma.ropRating.update({
+    where: { id: rating.id },
+    data: {
+      moderationStatus,
+      disputeFlag: moderationStatus === 'HIDDEN' ? true : rating.disputeFlag,
+    },
+    select: { id: true, ratedCompanyId: true, disputeFlag: true, moderationStatus: true },
+  })
+
+  const trustImpact = await recomputeRopTrustScoreForCompany({
+    companyId: updated.ratedCompanyId,
+    reason: 'RATING_MODERATED',
+    sourceRef: formatTrustSourceRef('moderation', updated.id),
+  })
+
+  return {
+    ratingId: updated.id,
+    disputeFlag: updated.disputeFlag,
+    moderationStatus: updated.moderationStatus,
+    moderationNote: normalizeNullableText(args.note),
+    trustImpact: trustImpact.summary,
+  }
 }

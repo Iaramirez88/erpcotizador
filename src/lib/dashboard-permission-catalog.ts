@@ -70,6 +70,15 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     capabilities: [{ domain: 'CORE', subdomain: 'TEMPLATES' }],
   },
   {
+    key: 'CORE.ROP',
+    moduleKey: ModuleKey.DASHBOARD,
+    section: 'Inicio',
+    label: 'Red operativa',
+    hrefs: ['/dashboard/rop', '/dashboard/rop/activar', '/dashboard/rop/perfil', '/dashboard/rop/empresas', '/dashboard/rop/necesidades', '/dashboard/rop/necesidades/nueva'],
+    capabilities: [{ domain: 'CORE', subdomain: 'ROP' }],
+    directGrantOnly: true,
+  },
+  {
     key: 'CORE.NOTIFICATIONS',
     moduleKey: ModuleKey.NOTIFICACIONES,
     section: 'Inicio',
@@ -333,6 +342,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     label: 'Restaurante',
     hrefs: ['/dashboard/restaurante'],
     capabilities: [{ domain: 'VERTICALES', subdomain: 'RESTAURANTE' }],
+    directGrantOnly: true,
   },
   {
     key: 'VERTICALES.ODONTOLOGIA',
@@ -341,6 +351,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     label: 'Odontología',
     hrefs: ['/dashboard/odontologia'],
     capabilities: [{ domain: 'VERTICALES', subdomain: 'ODONTOLOGIA' }],
+    directGrantOnly: true,
   },
   {
     key: 'VERTICALES.DOTACIONES',
@@ -349,6 +360,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     label: 'Dotaciones',
     hrefs: ['/dashboard/dotaciones'],
     capabilities: [{ domain: 'VERTICALES', subdomain: 'DOTACIONES' }],
+    directGrantOnly: true,
   },
   {
     key: 'CORE.COMPANY',

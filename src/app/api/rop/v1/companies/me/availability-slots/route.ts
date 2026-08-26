@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { auth } from '@/lib/auth'
-import { resolveUserIdFromSession } from '@/lib/session-user'
 import { upsertRopAvailabilitySlotsForUser } from '@/lib/rop'
+import { requireRopAccess } from '@/lib/rop-access'
 
 export const runtime = 'nodejs'
 
@@ -18,19 +17,15 @@ const requestSchema = z.object({
   })).max(200),
 })
 
-async function resolveUserId() {
-  const session = await auth()
-  if (!session?.user) return { error: NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'No autorizado' } }, { status: 401 }) }
-
-  const userId = await resolveUserIdFromSession(session)
-  if (!userId) return { error: NextResponse.json({ error: { code: 'INVALID_SESSION', message: 'Sesión inválida' } }, { status: 401 }) }
-
-  return { userId }
+async function resolveUserAccess() {
+  const access = await requireRopAccess('UPDATE')
+  if (!access.ok) return { error: access.response }
+  return { userId: access.userId }
 }
 
 export async function PUT(request: NextRequest) {
   try {
-    const context = await resolveUserId()
+    const context = await resolveUserAccess()
     if ('error' in context) return context.error
 
     const body = await request.json().catch(() => null)

@@ -1,23 +1,15 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { resolveUserIdFromSession } from '@/lib/session-user'
 import { getRopHomeForUser } from '@/lib/rop'
+import { requireRopReadAccess } from '@/lib/rop-access'
 
 export const runtime = 'nodejs'
 
 export async function GET() {
   try {
-    const session = await auth()
-    if (!session?.user) {
-      return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'No autorizado' } }, { status: 401 })
-    }
+    const access = await requireRopReadAccess()
+    if (!access.ok) return access.response
 
-    const userId = await resolveUserIdFromSession(session)
-    if (!userId) {
-      return NextResponse.json({ error: { code: 'INVALID_SESSION', message: 'Sesión inválida' } }, { status: 401 })
-    }
-
-    const data = await getRopHomeForUser(userId)
+    const data = await getRopHomeForUser(access.userId)
     return NextResponse.json({ data, meta: { version: 'v1', timestamp: new Date().toISOString() }, error: null })
   } catch (error) {
     return NextResponse.json(

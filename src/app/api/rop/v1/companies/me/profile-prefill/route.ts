@@ -1,23 +1,18 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { resolveUserIdFromSession } from '@/lib/session-user'
 import { getRopProfilePrefillForUser } from '@/lib/rop'
+import { requireRopReadAccess } from '@/lib/rop-access'
 
 export const runtime = 'nodejs'
 
-async function resolveUserId() {
-  const session = await auth()
-  if (!session?.user) return { error: NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'No autorizado' } }, { status: 401 }) }
-
-  const userId = await resolveUserIdFromSession(session)
-  if (!userId) return { error: NextResponse.json({ error: { code: 'INVALID_SESSION', message: 'Sesión inválida' } }, { status: 401 }) }
-
-  return { userId }
+async function resolveUserAccess() {
+  const access = await requireRopReadAccess()
+  if (!access.ok) return { error: access.response }
+  return { userId: access.userId }
 }
 
 export async function GET() {
   try {
-    const context = await resolveUserId()
+    const context = await resolveUserAccess()
     if ('error' in context) return context.error
 
     const data = await getRopProfilePrefillForUser(context.userId)

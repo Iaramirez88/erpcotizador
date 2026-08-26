@@ -249,8 +249,11 @@ export async function buildAllowedDashboardPermissionKeysForUser(args: {
   const keys = new Set<string>()
 
   for (const rule of DASHBOARD_PERMISSION_RULES) {
-    if (baseSet && !rule.hrefs.some((href) => href === '/dashboard' || baseSet.has(href))) continue
-    if (canAccessDashboardRuleFromContext({ context, rule })) {
+    const canRead = canAccessDashboardRuleFromContext({ context, rule })
+    if (!canRead) continue
+
+    const allowedByBase = !baseSet || rule.hrefs.some((href) => href === '/dashboard' || baseSet.has(href))
+    if (allowedByBase || rule.directGrantOnly) {
       keys.add(rule.key)
     }
   }
@@ -269,10 +272,12 @@ export async function buildAllowedDashboardHrefsForUser(args: {
   const hrefs = new Set<string>()
 
   for (const item of DASHBOARD_NAV_CATALOG) {
-    if (baseSet && item.href !== '/dashboard' && !baseSet.has(item.href)) continue
-
     const rules = DASHBOARD_PERMISSION_RULES.filter((entry) => entry.hrefs.includes(item.href))
+    const allowedByBase = !baseSet || item.href === '/dashboard' || baseSet.has(item.href)
+
     if (!rules.length) {
+      if (!allowedByBase) continue
+
       const moduleKey = moduleForDashboardHref(item.href)
       if (!moduleKey) {
         hrefs.add(item.href)
@@ -283,9 +288,11 @@ export async function buildAllowedDashboardHrefsForUser(args: {
       continue
     }
 
-    const canRead = rules.some((rule) => canAccessDashboardRuleFromContext({ context, rule }))
+    const canReadRules = rules.filter((rule) => canAccessDashboardRuleFromContext({ context, rule }))
+    if (!canReadRules.length) continue
+    if (!allowedByBase && !canReadRules.some((rule) => rule.directGrantOnly)) continue
 
-    if (canRead) hrefs.add(item.href)
+    hrefs.add(item.href)
   }
 
   hrefs.add('/dashboard')

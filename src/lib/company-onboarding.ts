@@ -12,6 +12,12 @@ export const BUSINESS_TYPES = [
   'SERVICIOS',
 ] as const
 
+export const RESTRICTED_SELF_ONBOARDING_BUSINESS_TYPES = [
+  'ODONTOLOGIA',
+  'RESTAURANTE',
+  'DOTACIONES',
+] as const
+
 export const OPTIONAL_ADDONS = ['CRM', 'CONTABILIDAD', 'NOMINA'] as const
 
 export const ONBOARDING_GOALS = [
@@ -213,7 +219,6 @@ const GOAL_LABELS: Record<OnboardingGoal, string> = {
 
 const COMMON_ALLOWED_HREFS = [
   '/dashboard',
-  '/dashboard/rop',
   '/dashboard/perfil',
   '/dashboard/notificaciones',
   '/dashboard/ayuda',
@@ -249,15 +254,15 @@ const BUSINESS_TYPE_ALLOWED_HREFS: Record<BusinessType, string[]> = {
 }
 
 const BUSINESS_TYPE_PRIORITIES: Record<BusinessType, string[]> = {
-  ODONTOLOGIA: ['/dashboard/rop', '/dashboard/odontologia', '/dashboard/clientes', '/dashboard/pos'],
-  RESTAURANTE: ['/dashboard/rop', '/dashboard/restaurante', '/dashboard/pos', '/dashboard/inventario', '/dashboard/compras'],
-  ABOGADOS: ['/dashboard/rop', '/dashboard/clientes', '/dashboard/cotizaciones'],
-  CLINICA: ['/dashboard/rop', '/dashboard/clientes', '/dashboard/pos'],
-  CONTABILIDAD: ['/dashboard/rop', '/dashboard/contabilidad', '/dashboard/nomina', '/dashboard/clientes'],
-  DOTACIONES: ['/dashboard/rop', '/dashboard/dotaciones', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/remisiones'],
-  LITOGRAFIA: ['/dashboard/rop', '/dashboard/litografia', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/ordenes'],
-  COMERCIO: ['/dashboard/rop', '/dashboard/pos', '/dashboard/inventario', '/dashboard/remisiones'],
-  SERVICIOS: ['/dashboard/rop', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/clientes'],
+  ODONTOLOGIA: ['/dashboard/odontologia', '/dashboard/clientes', '/dashboard/pos'],
+  RESTAURANTE: ['/dashboard/restaurante', '/dashboard/pos', '/dashboard/inventario', '/dashboard/compras'],
+  ABOGADOS: ['/dashboard/clientes', '/dashboard/cotizaciones'],
+  CLINICA: ['/dashboard/clientes', '/dashboard/pos'],
+  CONTABILIDAD: ['/dashboard/contabilidad', '/dashboard/nomina', '/dashboard/clientes'],
+  DOTACIONES: ['/dashboard/dotaciones', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/remisiones'],
+  LITOGRAFIA: ['/dashboard/litografia', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/ordenes'],
+  COMERCIO: ['/dashboard/pos', '/dashboard/inventario', '/dashboard/remisiones'],
+  SERVICIOS: ['/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/clientes'],
 }
 
 const ADDON_DEFINITIONS: Record<OptionalAddon, OnboardingAddonDefinition> = {

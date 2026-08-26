@@ -1,9 +1,8 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { CheckCircle2, ChevronRight, Radar, ShieldCheck, Sparkles } from 'lucide-react'
-import { auth } from '@/lib/auth'
-import { resolveUserIdFromSession } from '@/lib/session-user'
 import { getRopProfileForUser } from '@/lib/rop'
+import { canAccessRopModule } from '@/lib/rop-access'
 import { RopModuleChrome } from '@/components/dashboard/rop-module-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,13 +29,10 @@ const activationSignals = [
 ] as const
 
 export default async function RopActivatePage() {
-  const session = await auth()
-  if (!session?.user) redirect('/auth/login')
+  const access = await canAccessRopModule()
+  if (!access.ok) redirect('/dashboard')
 
-  const userId = await resolveUserIdFromSession(session)
-  if (!userId) redirect('/dashboard/rop')
-
-  const profile = await getRopProfileForUser(userId)
+  const profile = await getRopProfileForUser(access.userId)
   const isActivated = profile.onboardingStatus === 'ACTIVE' && profile.profileCompletionPercent >= 70
 
   return (
