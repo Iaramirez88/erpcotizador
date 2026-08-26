@@ -3,6 +3,15 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Loader2, Radar, RefreshCcw } from 'lucide-react'
+import {
+  formatRopCapacityLabel,
+  formatRopVerificationLabel,
+  getRopCapacityTone,
+  getRopVerificationTone,
+  RopCompanyAvatar,
+  RopQuickContactActions,
+  RopTrustStars,
+} from '@/components/rop/rop-visuals'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -14,9 +23,15 @@ import { useToast } from '@/hooks/use-toast'
 type RecommendationItem = {
   companyId: string
   companyName: string
+  logoUrl: string | null
   city: string | null
   serviceName: string | null
   trustScore: number | null
+  verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED'
+  capacityStatus: 'AVAILABLE' | 'LIMITED' | 'SATURATED' | 'OFFLINE' | null
+  availabilityLabel: string | null
+  phonePublic: string | null
+  emailPublic: string | null
   score: number
   tier: 'PRIORITARIO' | 'FUERTE' | 'VIABLE' | 'EXPLORATORIO'
   positives: string[]
@@ -235,18 +250,38 @@ export default function RopOpportunityDetailClient({ opportunityId }: { opportun
                 data.recommendations.candidates.map((candidate) => (
                   <div key={candidate.companyId} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-lg font-semibold text-slate-950">{candidate.companyName}</p>
-                          <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${tierClassName(candidate.tier)}`}>{candidate.tier}</span>
+                      <div className="flex items-start gap-3">
+                        <RopCompanyAvatar label={candidate.companyName} logoUrl={candidate.logoUrl} size="lg" className="ring-4 ring-teal-100" />
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-lg font-semibold text-slate-950">{candidate.companyName}</p>
+                            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${tierClassName(candidate.tier)}`}>{candidate.tier}</span>
+                          </div>
+                          <p className="mt-1 text-sm text-slate-600">{candidate.city || 'Ubicación sin publicar'}{candidate.serviceName ? ` · ${candidate.serviceName}` : ''}</p>
+                          <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium">
+                            <span className={`rounded-full border px-2.5 py-1 ${getRopVerificationTone(candidate.verificationStatus)}`}>
+                              {formatRopVerificationLabel(candidate.verificationStatus)}
+                            </span>
+                            <span className={`rounded-full border px-2.5 py-1 ${getRopCapacityTone(candidate.capacityStatus)}`}>
+                              {formatRopCapacityLabel(candidate.capacityStatus)}
+                            </span>
+                            {candidate.availabilityLabel ? (
+                              <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-teal-700">
+                                {candidate.availabilityLabel}
+                              </span>
+                            ) : null}
+                          </div>
+                          {candidate.trustScore !== null ? <div className="mt-3"><RopTrustStars score={candidate.trustScore} /></div> : null}
                         </div>
-                        <p className="mt-1 text-sm text-slate-600">{candidate.city || 'Ubicación sin publicar'}{candidate.serviceName ? ` · ${candidate.serviceName}` : ''}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-900">Score {candidate.score}</span>
-                        {candidate.trustScore !== null ? <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">Trust {candidate.trustScore}</span> : null}
                         {candidate.invitationStatus ? <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-semibold text-teal-700">Invitación {candidate.invitationStatus}</span> : null}
                       </div>
+                    </div>
+
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                      <RopQuickContactActions phone={candidate.phonePublic} email={candidate.emailPublic} companyName={candidate.companyName} />
                     </div>
 
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -344,10 +379,14 @@ export default function RopOpportunityDetailClient({ opportunityId }: { opportun
                         onChange={(event) => toggleCompany(candidate.companyId, event.target.checked)}
                         className="mt-1 h-4 w-4 rounded border-slate-300"
                       />
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium text-slate-950">{candidate.companyName}</span>
-                        <span className="block text-xs text-slate-500">{candidate.city || 'Ubicación sin publicar'} · Score {candidate.score}</span>
-                        {candidate.invitationStatus ? <span className="mt-1 block text-xs font-medium text-teal-700">Ya tiene invitación {candidate.invitationStatus}.</span> : null}
+                      <span className="min-w-0 flex flex-1 items-start gap-3">
+                        <RopCompanyAvatar label={candidate.companyName} logoUrl={candidate.logoUrl} size="sm" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-slate-950">{candidate.companyName}</span>
+                          <span className="block text-xs text-slate-500">{candidate.city || 'Ubicación sin publicar'} · Score {candidate.score}</span>
+                          {candidate.trustScore !== null ? <span className="mt-1 block"><RopTrustStars score={candidate.trustScore} /></span> : null}
+                          {candidate.invitationStatus ? <span className="mt-1 block text-xs font-medium text-teal-700">Ya tiene invitación {candidate.invitationStatus}.</span> : null}
+                        </span>
                       </span>
                     </label>
                   )

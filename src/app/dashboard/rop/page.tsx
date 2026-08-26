@@ -1,9 +1,19 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { getRopHomeForUser } from '@/lib/rop'
-import { canAccessRopModule } from '@/lib/rop-access'
+import {
+  formatRopCapacityLabel,
+  formatRopCoverageLabel,
+  formatRopVerificationLabel,
+  getRopCapacityTone,
+  getRopVerificationTone,
+  RopCompanyAvatar,
+  RopQuickContactActions,
+  RopTrustStars,
+} from '@/components/rop/rop-visuals'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { getRopHomeForUser } from '@/lib/rop'
+import { canAccessRopModule } from '@/lib/rop-access'
 
 function actionHref(type: 'PUBLISH_NEED' | 'VIEW_RECOMMENDATIONS' | 'COMPLETE_PROFILE' | 'VIEW_CLUSTER' | 'EDIT_PROFILE') {
   switch (type) {
@@ -17,6 +27,19 @@ function actionHref(type: 'PUBLISH_NEED' | 'VIEW_RECOMMENDATIONS' | 'COMPLETE_PR
     case 'VIEW_RECOMMENDATIONS':
     default:
       return '/dashboard/rop/empresas'
+  }
+}
+
+function railActionHref(type: 'INVITE' | 'VIEW_COMPATIBILITY' | 'OPEN_PROFILE' | 'OPEN_CELL', title: string) {
+  switch (type) {
+    case 'INVITE':
+      return '/dashboard/rop/necesidades/nueva'
+    case 'VIEW_COMPATIBILITY':
+    case 'OPEN_PROFILE':
+      return `/dashboard/rop/empresas?search=${encodeURIComponent(title)}`
+    case 'OPEN_CELL':
+    default:
+      return '/dashboard/rop'
   }
 }
 
@@ -65,21 +88,47 @@ export default async function RopPage() {
               {rail.items.length ? (
                 rail.items.map((item) => (
                   <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-slate-950">{item.title}</p>
-                        {item.subtitle ? <p className="mt-1 text-sm text-slate-600">{item.subtitle}</p> : null}
+                    <div className="flex items-start gap-3">
+                      <RopCompanyAvatar label={item.title} logoUrl={item.logoUrl} size="md" className="ring-4 ring-white" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-950">{item.title}</p>
+                            {item.subtitle ? <p className="mt-1 text-sm text-slate-600">{item.subtitle}</p> : null}
+                          </div>
+                          {item.trustScore !== null ? <RopTrustStars score={item.trustScore} /> : null}
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium">
+                          {item.verificationStatus ? (
+                            <span className={`rounded-full border px-2.5 py-1 ${getRopVerificationTone(item.verificationStatus)}`}>
+                              {formatRopVerificationLabel(item.verificationStatus)}
+                            </span>
+                          ) : null}
+                          {item.coverageScope ? (
+                            <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-sky-700">
+                              {formatRopCoverageLabel(item.coverageScope)}
+                            </span>
+                          ) : null}
+                          {item.capacityStatus ? (
+                            <span className={`rounded-full border px-2.5 py-1 ${getRopCapacityTone(item.capacityStatus)}`}>
+                              {formatRopCapacityLabel(item.capacityStatus)}
+                            </span>
+                          ) : null}
+                          {item.availabilityLabel ? (
+                            <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-teal-700">
+                              {item.availabilityLabel}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
-                      {item.trustScore !== null ? (
-                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                          Trust {item.trustScore}
-                        </span>
-                      ) : null}
                     </div>
                     <p className="mt-3 text-sm leading-6 text-slate-600">{item.reason}</p>
-                    {item.availabilityLabel ? (
-                      <p className="mt-2 text-xs font-medium uppercase tracking-wide text-teal-700">{item.availabilityLabel}</p>
-                    ) : null}
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                      <RopQuickContactActions phone={item.phonePublic} email={item.emailPublic} companyName={item.title} />
+                      <Button asChild variant="outline" size="sm" className="rounded-full bg-white/80 px-4">
+                        <Link href={railActionHref(item.primaryAction.type, item.title)}>{item.primaryAction.label}</Link>
+                      </Button>
+                    </div>
                   </div>
                 ))
               ) : (

@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  Bike,
   CheckCircle2,
   ChefHat,
   ChevronRight,
@@ -18,14 +19,17 @@ import {
   Eye,
   Flame,
   GripVertical,
+  HandCoins,
   LayoutGrid,
   Loader2,
   Plus,
+  Printer,
   ReceiptText,
   Settings2,
   ShoppingBasket,
   TimerReset,
   Trash2,
+  Undo2,
   Users2,
   Warehouse,
 } from "lucide-react";
@@ -65,8 +69,11 @@ import {
   type Priority,
   type RecipeComponent,
   RESTAURANT_STATION_OPTIONS,
+  type RestaurantActivityLog,
   type RestaurantBoardState,
   type RestaurantBoardSummary,
+  type RestaurantCourierType,
+  type RestaurantServiceMode,
   type Station,
   type TableStatus,
 } from "@/lib/restaurante";
@@ -96,12 +103,15 @@ type OverviewData = {
       numero: string;
       createdAt: string;
       clienteNombre: string;
+      status: "PAID" | "PARTIALLY_REFUNDED" | "REFUNDED";
+      returnedTotal: number;
       total: number;
       items: Array<{
         id: string;
         materialId: string | null;
         descripcion: string;
         quantity: number;
+        unitPrice: number;
         total: number;
       }>;
     }>;
@@ -131,6 +141,7 @@ type OverviewData = {
     id: string;
     nombre: string;
     categoria: string | null;
+    imagenUrl: string | null;
     unidadMedida: string;
     stockActual: number;
     stockMinimo: number;
@@ -203,10 +214,55 @@ type MenuShortcut = {
   averagePrice: number | null;
   soldQty: number;
   note: string | null;
-  source: "recipe" | "top-product" | "inventory";
+  source: "recipe" | "top-product" | "inventory" | "manual";
   category: string | null;
+  imageUrl: string | null;
   stockActual: number | null;
   unitLabel: string | null;
+};
+
+type RestaurantCheckoutPaymentMethod =
+  | "CASH"
+  | "CARD"
+  | "TRANSFER"
+  | "OTHER";
+
+type TableTicketLineItem = KitchenTicket & {
+  unitPrice: number | null;
+  total: number | null;
+  imageUrl: string | null;
+};
+
+type TableSaleLineItem = {
+  key: string;
+  ticketIds: string[];
+  dishName: string;
+  materialId: string | null;
+  recipeId: string | null;
+  qty: number;
+  station: Station;
+  note: string;
+  unitPrice: number | null;
+  total: number | null;
+  imageUrl: string | null;
+};
+
+type ManualChargeDraft = {
+  name: string;
+  price: string;
+  qty: number;
+  station: Station;
+  note: string;
+};
+
+type RestaurantTransactionDialogState = {
+  open: boolean;
+  mode: "VOID" | "REFUND" | null;
+  invoiceId: string;
+  invoiceNumber: string;
+  invoiceTotal: number;
+  invoiceStatus: OverviewData["salesToday"]["tickets"][number]["status"] | null;
+  items: OverviewData["salesToday"]["tickets"][number]["items"];
 };
 
 type LayoutPrefs = Record<
@@ -398,6 +454,118 @@ function getMenuInitials(name: string) {
   const first = parts[0]?.[0] ?? "R";
   const second = parts.length > 1 ? (parts[1]?.[0] ?? "") : "";
   return `${first}${second}`.toUpperCase();
+}
+
+function getRestaurantPaymentMethodLabel(
+  method: RestaurantCheckoutPaymentMethod,
+) {
+  if (method === "CARD") return "Tarjeta / datáfono";
+  if (method === "TRANSFER") return "Transferencia";
+  if (method === "OTHER") return "Otro";
+  return "Efectivo";
+}
+
+function getRestaurantPaymentFlow(method: RestaurantCheckoutPaymentMethod) {
+  if (method === "CARD") return "DATAPHONE" as const;
+  if (method === "TRANSFER") return "QR" as const;
+  if (method === "OTHER") return "LINK" as const;
+  return "CASH" as const;
+}
+
+function formatRestaurantServiceModeLabel(value: RestaurantServiceMode) {
+  if (value === "TAKEAWAY") return "Para llevar";
+  if (value === "DELIVERY") return "Domicilio";
+  return "En mesa";
+}
+
+function formatRestaurantCourierLabel(value: RestaurantCourierType, customLabel?: string) {
+  if (value === "INTERNAL") return "Repartidor interno";
+  if (value === "RAPPI") return "Rappi";
+  if (value === "DIDI") return "Didi Food";
+  if (value === "UBER_EATS") return "Uber Eats";
+  if (value === "OTHER") return customLabel?.trim() || "Repartidor externo";
+  return "Sin repartidor";
+}
+
+function formatRestaurantActivityKindLabel(value: RestaurantActivityLog["kind"]) {
+  if (value === "VOIDED") return "Anulada";
+  if (value === "REFUNDED") return "Devuelta";
+  if (value === "PRINTED") return "Comanda impresa";
+  return "Cancelada";
+}
+
+function getRestaurantQuickCashOptions(total: number) {
+  const normalized = Math.max(0, Math.round(total));
+  const baseOptions = [1000, 2000, 5000, 10000, 20000, 50000, 100000]
+    .filter((value) => value >= normalized)
+    .slice(0, 4);
+  const roundedHundred = Math.ceil(normalized / 100) * 100;
+  const roundedThousand = Math.ceil(normalized / 1000) * 1000;
+  return Array.from(new Set([normalized, roundedHundred, roundedThousand, ...baseOptions])).filter((value) => value > 0);
+}
+
+function roundRestaurantAmount(value: number, step: number) {
+  if (!step || step <= 0) return value;
+  return Math.round(value / step) * step;
+}
+
+function buildRestaurantInvoiceNote(args: {
+  tableName: string;
+  serviceMode: RestaurantServiceMode;
+  courierType: RestaurantCourierType;
+  courierLabel: string;
+  tableNote: string;
+  splitCount: number;
+}) {
+  const parts = [
+    `Restaurante · ${args.tableName}`,
+    `Modo ${formatRestaurantServiceModeLabel(args.serviceMode)}`,
+    args.serviceMode === "DELIVERY" || args.serviceMode === "TAKEAWAY"
+      ? `Despacho ${formatRestaurantCourierLabel(args.courierType, args.courierLabel)}`
+      : null,
+    args.splitCount > 1 ? `División ${args.splitCount} personas` : null,
+    args.tableNote.trim() ? `Nota ${args.tableNote.trim()}` : null,
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+function getTicketGroupingKey(ticket: {
+  materialId: string | null;
+  recipeId: string | null;
+  dishName: string;
+  note?: string | null;
+}) {
+  const baseKey = ticket.materialId
+    ? `material:${ticket.materialId}`
+    : ticket.recipeId
+      ? `recipe:${ticket.recipeId}`
+      : `name:${normalizeRestaurantText(ticket.dishName)}`;
+  const noteKey = normalizeRestaurantText(ticket.note ?? "");
+  return `${baseKey}|note:${noteKey}`;
+}
+
+function formatRestaurantStockError(details: {
+  materialId?: string;
+  materialNombre?: string | null;
+  required?: number;
+  warehouseNombre?: string | null;
+  warehouseAvailable?: number | null;
+  globalAvailable?: number | null;
+}) {
+  const material = details.materialNombre || details.materialId || "Producto";
+  const required =
+    typeof details.required === "number" ? formatNumber(details.required) : "N/D";
+  const warehouseName = details.warehouseNombre || "bodega principal";
+  const warehouseAvailable =
+    typeof details.warehouseAvailable === "number"
+      ? formatNumber(details.warehouseAvailable)
+      : "N/D";
+  const globalAvailable =
+    typeof details.globalAvailable === "number"
+      ? formatNumber(details.globalAvailable)
+      : "N/D";
+
+  return `Stock insuficiente para ${material}. Requiere ${required}, disponible en ${warehouseName}: ${warehouseAvailable}, stock global: ${globalAvailable}.`;
 }
 
 function guessStationFromCategory(category: string | null): Station {
@@ -602,6 +770,36 @@ export default function RestauranteClient() {
   const [selectedTableId, setSelectedTableId] = useState("m1");
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [activeProductCategory, setActiveProductCategory] = useState("TODOS");
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [customerNotificationsEnabled, setCustomerNotificationsEnabled] =
+    useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] =
+    useState<RestaurantCheckoutPaymentMethod>("CASH");
+  const [cashReceivedInput, setCashReceivedInput] = useState("");
+  const [tipInput, setTipInput] = useState("");
+  const [roundingStep, setRoundingStep] = useState<0 | 100 | 1000>(0);
+  const [splitCount, setSplitCount] = useState(1);
+  const [manualChargeDraft, setManualChargeDraft] = useState<ManualChargeDraft>({
+    name: "",
+    price: "",
+    qty: 1,
+    station: "COCINA",
+    note: "",
+  });
+  const [cancelOrderDialogOpen, setCancelOrderDialogOpen] = useState(false);
+  const [cancelOrderReason, setCancelOrderReason] = useState("");
+  const [transactionDialogState, setTransactionDialogState] =
+    useState<RestaurantTransactionDialogState>({
+      open: false,
+      mode: null,
+      invoiceId: "",
+      invoiceNumber: "",
+      invoiceTotal: 0,
+      invoiceStatus: null,
+      items: [],
+    });
+  const [transactionReason, setTransactionReason] = useState("");
+  const [submittingTransaction, setSubmittingTransaction] = useState(false);
   const [customerPhoneInput, setCustomerPhoneInput] = useState("");
   const [customerEmailInput, setCustomerEmailInput] = useState("");
   const [finalizingSale, setFinalizingSale] = useState(false);
@@ -609,6 +807,19 @@ export default function RestauranteClient() {
     kind: "idle" | "info" | "success" | "error";
     message: string;
   }>({ kind: "idle", message: "" });
+  const [saleSuccessState, setSaleSuccessState] = useState<{
+    open: boolean;
+    invoiceNumber: string;
+    total: number;
+    paymentMethod: RestaurantCheckoutPaymentMethod;
+    warnings: string[];
+  }>({
+    open: false,
+    invoiceNumber: "",
+    total: 0,
+    paymentMethod: "CASH",
+    warnings: [],
+  });
   const [ticketForm, setTicketForm] = useState<TicketFormState>({
     tableId: "m1",
     guestName: "",
@@ -626,6 +837,49 @@ export default function RestauranteClient() {
   const [shortageDraft, setShortageDraft] = useState({ label: "", note: "" });
   const lastPersistedSnapshotRef = useRef(EMPTY_BOARD_SNAPSHOT);
   const skipNextAutosaveRef = useRef(true);
+
+  async function loadOverview() {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch("/api/restaurante/overview", {
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok)
+        throw new Error(
+          payload?.error ?? "No se pudo cargar el panel restaurante",
+        );
+
+      const data = payload.data as OverviewData;
+      const nextBoard = data.currentTurno?.board ?? createEmptyRestaurantBoard();
+      setOverview(data);
+      setBoard(nextBoard);
+      setCurrentTurnoId(data.currentTurno?.id ?? null);
+      setCurrentTurnoStatus(data.currentTurno?.status ?? null);
+      setSelectedTableId((current) =>
+        nextBoard.tables.some((table) => table.id === current)
+          ? current
+          : (nextBoard.tables[0]?.id ?? "m1"),
+      );
+      setTicketForm((current) => ({
+        ...current,
+        tableId: nextBoard.tables[0]?.id ?? current.tableId ?? "m1",
+      }));
+      lastPersistedSnapshotRef.current = JSON.stringify(nextBoard);
+      skipNextAutosaveRef.current = true;
+      setBoardReady(true);
+      setAutosaveState("idle");
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "No se pudo cargar el panel restaurante",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -647,48 +901,10 @@ export default function RestauranteClient() {
 
   useEffect(() => {
     let cancelled = false;
-    async function loadOverview() {
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await fetch("/api/restaurante/overview", {
-          cache: "no-store",
-        });
-        const payload = await response.json().catch(() => null);
-        if (!response.ok || !payload?.ok)
-          throw new Error(
-            payload?.error ?? "No se pudo cargar el panel restaurante",
-          );
-        if (!cancelled) {
-          const data = payload.data as OverviewData;
-          const nextBoard =
-            data.currentTurno?.board ?? createEmptyRestaurantBoard();
-          setOverview(data);
-          setBoard(nextBoard);
-          setCurrentTurnoId(data.currentTurno?.id ?? null);
-          setCurrentTurnoStatus(data.currentTurno?.status ?? null);
-          setSelectedTableId(nextBoard.tables[0]?.id ?? "m1");
-          setTicketForm((current) => ({
-            ...current,
-            tableId: nextBoard.tables[0]?.id ?? "m1",
-          }));
-          lastPersistedSnapshotRef.current = JSON.stringify(nextBoard);
-          skipNextAutosaveRef.current = true;
-          setBoardReady(true);
-          setAutosaveState("idle");
-        }
-      } catch (loadError) {
-        if (!cancelled)
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "No se pudo cargar el panel restaurante",
-          );
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void loadOverview();
+    void (async () => {
+      await loadOverview();
+      if (cancelled) return;
+    })();
     return () => {
       cancelled = true;
     };
@@ -949,6 +1165,7 @@ export default function RestauranteClient() {
       dishName: ticketForm.dishName.trim(),
       materialId: null,
       qty: Math.max(1, Number(ticketForm.qty) || 1),
+      unitPrice: null,
       station: ticketForm.station,
       priority: ticketForm.priority,
       status: "PENDIENTE",
@@ -1194,6 +1411,9 @@ export default function RestauranteClient() {
         : baseCost > 0
           ? Number((baseCost * 2.4).toFixed(2))
           : null;
+      const recipeLeadMaterial = recipe.components
+        .map((component) => materialsById.get(component.materialId))
+        .find((material) => Boolean(material?.imagenUrl));
       return {
         id: recipe.id,
         name: recipe.name,
@@ -1205,6 +1425,12 @@ export default function RestauranteClient() {
         note: recipe.notes || null,
         source: "recipe",
         category: null,
+        imageUrl:
+          (matchedProduct?.materialId
+            ? materialsById.get(matchedProduct.materialId)?.imagenUrl
+            : null) ??
+          recipeLeadMaterial?.imagenUrl ??
+          null,
         stockActual: null,
         unitLabel: null,
       };
@@ -1229,6 +1455,9 @@ export default function RestauranteClient() {
         note: "Desde histórico POS",
         source: "top-product",
         category: null,
+        imageUrl: product.materialId
+          ? materialsById.get(product.materialId)?.imagenUrl ?? null
+          : null,
         stockActual: null,
         unitLabel: null,
       }));
@@ -1250,6 +1479,7 @@ export default function RestauranteClient() {
           : "Inventario disponible",
         source: "inventory",
         category: material.categoria,
+        imageUrl: material.imagenUrl,
         stockActual: material.stockActual,
         unitLabel: material.unidadMedida,
       }));
@@ -1297,7 +1527,7 @@ export default function RestauranteClient() {
           ),
     [activeProductCategory, menuShortcuts],
   );
-  const selectedTableLineItems = useMemo(
+  const selectedTableTicketLineItems = useMemo<TableTicketLineItem[]>(
     () =>
       !selectedTable
         ? []
@@ -1309,12 +1539,14 @@ export default function RestauranteClient() {
                 normalizeRestaurantText(item.name) ===
                   normalizeRestaurantText(ticket.dishName),
             );
-            const unitPrice = matchedShortcut?.averagePrice ?? null;
+            const unitPrice =
+              ticket.unitPrice ?? matchedShortcut?.averagePrice ?? null;
             return {
               ...ticket,
               materialId:
                 ticket.materialId ?? matchedShortcut?.materialId ?? null,
               unitPrice,
+              imageUrl: matchedShortcut?.imageUrl ?? null,
               total:
                 unitPrice !== null
                   ? Number((unitPrice * ticket.qty).toFixed(2))
@@ -1323,10 +1555,80 @@ export default function RestauranteClient() {
           }),
     [menuShortcuts, selectedTable],
   );
+  const selectedTableSaleItems = useMemo<TableSaleLineItem[]>(() => {
+    const grouped = new Map<string, TableSaleLineItem>();
+
+    for (const item of selectedTableTicketLineItems) {
+      const key = getTicketGroupingKey(item);
+      const current = grouped.get(key);
+      if (current) {
+        current.qty += item.qty;
+        current.ticketIds.push(item.id);
+        current.total =
+          current.unitPrice !== null
+            ? Number((current.qty * current.unitPrice).toFixed(2))
+            : null;
+        continue;
+      }
+
+      grouped.set(key, {
+        key,
+        ticketIds: [item.id],
+        dishName: item.dishName,
+        materialId: item.materialId,
+        recipeId: item.recipeId,
+        qty: item.qty,
+        station: item.station,
+        note: item.note,
+        unitPrice: item.unitPrice,
+        total: item.total,
+        imageUrl: item.imageUrl,
+      });
+    }
+
+    return Array.from(grouped.values());
+  }, [selectedTableTicketLineItems]);
+  const selectedTableItemCount = useMemo(
+    () => selectedTableSaleItems.reduce((sum, item) => sum + item.qty, 0),
+    [selectedTableSaleItems],
+  );
   const selectedTableEstimatedTotal = useMemo(
     () =>
-      selectedTableLineItems.reduce((sum, item) => sum + (item.total ?? 0), 0),
-    [selectedTableLineItems],
+      selectedTableSaleItems.reduce((sum, item) => sum + (item.total ?? 0), 0),
+    [selectedTableSaleItems],
+  );
+  const tipAmount = useMemo(() => {
+    const parsed = Number(tipInput);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }, [tipInput]);
+  const totalBeforeRounding = useMemo(
+    () => selectedTableEstimatedTotal + tipAmount,
+    [selectedTableEstimatedTotal, tipAmount],
+  );
+  const roundedCheckoutTotal = useMemo(
+    () => roundRestaurantAmount(totalBeforeRounding, roundingStep),
+    [roundingStep, totalBeforeRounding],
+  );
+  const roundingAdjustment = useMemo(
+    () => roundedCheckoutTotal - totalBeforeRounding,
+    [roundedCheckoutTotal, totalBeforeRounding],
+  );
+  const checkoutTotal = useMemo(
+    () => Math.max(0, roundedCheckoutTotal),
+    [roundedCheckoutTotal],
+  );
+  const selectedSplitCount = Math.max(1, Number(splitCount) || 1);
+  const splitPerPerson = useMemo(
+    () => (selectedSplitCount > 0 ? checkoutTotal / selectedSplitCount : checkoutTotal),
+    [checkoutTotal, selectedSplitCount],
+  );
+  const cashReceivedAmount = useMemo(() => {
+    const parsed = Number(cashReceivedInput);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }, [cashReceivedInput]);
+  const cashChangeDue = useMemo(
+    () => Math.max(0, cashReceivedAmount - checkoutTotal),
+    [cashReceivedAmount, checkoutTotal],
   );
   const wasteAveragePct = useMemo(
     () =>
@@ -1341,25 +1643,114 @@ export default function RestauranteClient() {
     const targetTableId =
       selectedTable?.id ?? visibleTables[0]?.id ?? board.tables[0]?.id;
     if (!targetTableId) return;
-    const newTicket: KitchenTicket = {
-      id: crypto.randomUUID(),
-      dishName: shortcut.name,
-      materialId: shortcut.materialId,
-      qty: 1,
-      station: shortcut.station,
-      priority: "NORMAL",
-      status: "PENDIENTE",
-      recipeId: shortcut.recipeId,
-      note: "",
-      createdAt: new Date().toISOString(),
-    };
     setSelectedTableId(targetTableId);
     updateTable(targetTableId, (table) => ({
       ...table,
       status: "ESPERANDO_COCINA",
       guests: table.guests || 1,
-      tickets: [...table.tickets, newTicket],
+      tickets: (() => {
+        const incomingKey = getTicketGroupingKey({
+          materialId: shortcut.materialId,
+          recipeId: shortcut.recipeId,
+          dishName: shortcut.name,
+          note: "",
+        });
+        const existingIndex = table.tickets.findIndex(
+          (ticket) =>
+            ticket.status === "PENDIENTE" &&
+            ticket.priority === "NORMAL" &&
+            !ticket.note.trim() &&
+            getTicketGroupingKey(ticket) === incomingKey,
+        );
+
+        if (existingIndex === -1) {
+          return [
+            ...table.tickets,
+            {
+              id: crypto.randomUUID(),
+              dishName: shortcut.name,
+              materialId: shortcut.materialId,
+              qty: 1,
+              station: shortcut.station,
+              priority: "NORMAL",
+              status: "PENDIENTE",
+              recipeId: shortcut.recipeId,
+              note: "",
+              unitPrice: shortcut.averagePrice,
+              createdAt: new Date().toISOString(),
+            },
+          ];
+        }
+
+        return table.tickets.map((ticket, index) =>
+          index === existingIndex ? { ...ticket, qty: ticket.qty + 1 } : ticket,
+        );
+      })(),
     }));
+  }
+
+  function updateSelectedTableMeta(changes: Partial<DiningTable>) {
+    if (!selectedTable) return;
+    updateTable(selectedTable.id, (table) => ({ ...table, ...changes }));
+  }
+
+  function appendRestaurantActivity(entry: Omit<RestaurantActivityLog, "id" | "createdAt">) {
+    setBoard((current) => ({
+      ...current,
+      activityLog: [
+        {
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          ...entry,
+        },
+        ...current.activityLog,
+      ].slice(0, 40),
+    }));
+  }
+
+  function addManualChargeToSelectedTable() {
+    const targetTableId =
+      selectedTable?.id ?? visibleTables[0]?.id ?? board.tables[0]?.id;
+    const unitPrice = Number(manualChargeDraft.price);
+    const qty = Math.max(1, Number(manualChargeDraft.qty) || 1);
+    if (!targetTableId || !manualChargeDraft.name.trim() || !Number.isFinite(unitPrice) || unitPrice <= 0) {
+      setSaleSubmitState({
+        kind: "error",
+        message: "Escribe un concepto y un valor válido para agregarlo como Otros.",
+      });
+      return;
+    }
+
+    setSelectedTableId(targetTableId);
+    updateTable(targetTableId, (table) => ({
+      ...table,
+      status: "ESPERANDO_COCINA",
+      guests: table.guests || 1,
+      tickets: [
+        ...table.tickets,
+        {
+          id: crypto.randomUUID(),
+          dishName: manualChargeDraft.name.trim(),
+          materialId: null,
+          qty,
+          station: manualChargeDraft.station,
+          priority: "NORMAL",
+          status: "PENDIENTE",
+          recipeId: null,
+          note: manualChargeDraft.note.trim(),
+          unitPrice,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    }));
+    setManualChargeDraft({
+      name: "",
+      price: "",
+      qty: 1,
+      station: "COCINA",
+      note: "",
+    });
+    setSaleSubmitState({ kind: "idle", message: "" });
   }
 
   function openProductPickerForTable(tableId?: string) {
@@ -1377,11 +1768,266 @@ export default function RestauranteClient() {
       guestName: table?.guestName ?? current.guestName,
       guests: table?.guests || current.guests || 1,
     }));
+    setPaymentDialogOpen(false);
+    setCustomerNotificationsEnabled(false);
+    setSelectedPaymentMethod("CASH");
+    setCashReceivedInput("");
+    setTipInput("");
+    setRoundingStep(0);
+    setSplitCount(Math.max(1, table?.guests || 1));
     setCustomerPhoneInput("");
     setCustomerEmailInput("");
     setSaleSubmitState({ kind: "idle", message: "" });
     setActiveProductCategory("TODOS");
     setProductPickerOpen(true);
+  }
+
+  function removeSelectedTableTickets(ticketIds: string[]) {
+    if (!selectedTable || !ticketIds.length) return;
+    const ids = new Set(ticketIds);
+    updateTable(selectedTable.id, (table) => {
+      const tickets = table.tickets.filter((ticket) => !ids.has(ticket.id));
+      const hasPendingKitchen = tickets.some(
+        (ticket) => ticket.status !== "ENTREGADO",
+      );
+      const hasReadyToCharge = tickets.some(
+        (ticket) => ticket.status === "ENTREGADO",
+      );
+      return {
+        ...table,
+        status: tickets.length
+          ? hasPendingKitchen
+            ? "ESPERANDO_COCINA"
+            : hasReadyToCharge
+              ? "LISTA_PARA_COBRO"
+              : "ATENDIENDO"
+          : "LIBRE",
+        tickets,
+      };
+    });
+  }
+
+  function openSaleCheckout() {
+    if (!selectedTable) {
+      setSaleSubmitState({
+        kind: "error",
+        message: "Selecciona una mesa antes de registrar la venta.",
+      });
+      return;
+    }
+
+    if (!selectedTableSaleItems.length) {
+      setSaleSubmitState({
+        kind: "error",
+        message: "Agrega al menos un producto antes de registrar la venta.",
+      });
+      return;
+    }
+
+    const itemsWithoutPrice = selectedTableSaleItems.filter(
+      (item) => item.unitPrice === null,
+    );
+    if (itemsWithoutPrice.length) {
+      setSaleSubmitState({
+        kind: "error",
+        message: `Faltan precios para: ${itemsWithoutPrice
+          .slice(0, 3)
+          .map((item) => item.dishName)
+          .join(", ")}.`,
+      });
+      return;
+    }
+
+    setSaleSubmitState({ kind: "idle", message: "" });
+    setSplitCount(Math.max(1, selectedTable.guests || 1));
+    if (selectedPaymentMethod === "CASH" && !cashReceivedInput.trim()) {
+      setCashReceivedInput(String(Math.max(0, Math.round(checkoutTotal))));
+    }
+    setPaymentDialogOpen(true);
+  }
+
+  function printKitchenTickets(scope: "selected" | "all") {
+    const tickets = scope === "selected"
+      ? selectedTableTicketLineItems.map((ticket) => ({
+          ...ticket,
+          tableName: selectedTable?.name ?? "Mesa",
+          guestName: selectedTable?.guestName ?? "",
+          tableNote: selectedTable?.note ?? "",
+        }))
+      : kitchenQueue.map((ticket) => ({
+          ...ticket,
+          tableNote: board.tables.find((table) => table.id === ticket.tableId)?.note ?? "",
+        }));
+
+    if (!tickets.length) {
+      setSaleSubmitState({
+        kind: "error",
+        message: "No hay comandas para imprimir.",
+      });
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=860,height=900");
+    if (!printWindow) {
+      setSaleSubmitState({ kind: "error", message: "Tu navegador bloqueó la ventana de impresión." });
+      return;
+    }
+
+    const rows = tickets
+      .map(
+        (ticket) => `
+          <article style="border:1px solid #e2e8f0;border-radius:16px;padding:16px;margin-bottom:16px;page-break-inside:avoid;">
+            <div style="display:flex;justify-content:space-between;gap:12px;">
+              <div>
+                <div style="font-size:12px;text-transform:uppercase;letter-spacing:.18em;color:#64748b;">${ticket.tableName}</div>
+                <h2 style="margin:6px 0 0;font-size:24px;color:#0f172a;">${ticket.qty} x ${ticket.dishName}</h2>
+                <p style="margin:8px 0 0;color:#334155;">${ticket.guestName || "Sin nombre"}</p>
+              </div>
+              <div style="text-align:right;">
+                <div style="display:inline-block;background:#fff7ed;color:#c2410c;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700;">${ticket.station}</div>
+                <div style="margin-top:8px;font-size:12px;color:#64748b;">${formatDateTime(ticket.createdAt)}</div>
+              </div>
+            </div>
+            ${ticket.note ? `<div style="margin-top:12px;padding:12px;border-radius:12px;background:#f8fafc;color:#0f172a;"><strong>Nota:</strong> ${ticket.note}</div>` : ""}
+            ${ticket.tableNote ? `<div style="margin-top:12px;padding:12px;border-radius:12px;background:#fff7ed;color:#9a3412;"><strong>Pedido:</strong> ${ticket.tableNote}</div>` : ""}
+          </article>`,
+      )
+      .join("");
+
+    printWindow.document.write(`<!doctype html><html><head><title>Comanda cocina</title></head><body style="font-family:Arial,sans-serif;padding:24px;background:#fff;"><h1 style="margin:0 0 20px;">Comandas cocina</h1>${rows}<script>window.onload=function(){window.print();}</script></body></html>`);
+    printWindow.document.close();
+    appendRestaurantActivity({
+      kind: "PRINTED",
+      tableName: scope === "selected" ? selectedTable?.name ?? "Mesa" : "Cocina",
+      invoiceId: null,
+      invoiceNumber: null,
+      reason: scope === "selected" ? "Comanda de mesa impresa" : "Comandas pendientes impresas",
+      amount: null,
+    });
+  }
+
+  function cancelSelectedOrder() {
+    if (!selectedTable || !cancelOrderReason.trim()) {
+      setSaleSubmitState({ kind: "error", message: "Escribe el motivo de cancelación." });
+      return;
+    }
+
+    appendRestaurantActivity({
+      kind: "CANCELLED",
+      tableName: selectedTable.name,
+      invoiceId: null,
+      invoiceNumber: null,
+      reason: cancelOrderReason.trim(),
+      amount: selectedTableEstimatedTotal,
+    });
+    closeTable(selectedTable.id);
+    setCancelOrderReason("");
+    setCancelOrderDialogOpen(false);
+    setProductPickerOpen(false);
+    setPaymentDialogOpen(false);
+    setSaleSubmitState({ kind: "success", message: "Pedido cancelado y mesa liberada." });
+  }
+
+  function openTransactionDialog(
+    mode: "VOID" | "REFUND",
+    ticket: OverviewData["salesToday"]["tickets"][number],
+  ) {
+    setTransactionDialogState({
+      open: true,
+      mode,
+      invoiceId: ticket.id,
+      invoiceNumber: ticket.numero,
+      invoiceTotal: ticket.total,
+      invoiceStatus: ticket.status,
+      items: ticket.items,
+    });
+    setTransactionReason("");
+  }
+
+  async function submitTransactionAction() {
+    if (!transactionDialogState.mode || !transactionDialogState.invoiceId || !transactionReason.trim()) {
+      setSaleSubmitState({ kind: "error", message: "Escribe un motivo para continuar." });
+      return;
+    }
+
+    setSubmittingTransaction(true);
+    try {
+      if (transactionDialogState.mode === "VOID") {
+        const response = await fetch(`/api/pos/facturas/${transactionDialogState.invoiceId}/anular`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ note: transactionReason.trim() }),
+        });
+        const payload = (await response.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.error ?? "No se pudo anular la factura.");
+        }
+        appendRestaurantActivity({
+          kind: "VOIDED",
+          tableName: "POS restaurante",
+          invoiceId: transactionDialogState.invoiceId,
+          invoiceNumber: transactionDialogState.invoiceNumber,
+          reason: transactionReason.trim(),
+          amount: transactionDialogState.invoiceTotal,
+        });
+      } else {
+        const response = await fetch("/api/pos/devoluciones", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            invoiceId: transactionDialogState.invoiceId,
+            motivo: transactionReason.trim(),
+            items: transactionDialogState.items.map((item) => ({
+              materialId: item.materialId,
+              descripcion: item.descripcion,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+            })),
+          }),
+        });
+        const payload = (await response.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.error ?? "No se pudo registrar la devolución.");
+        }
+        appendRestaurantActivity({
+          kind: "REFUNDED",
+          tableName: "POS restaurante",
+          invoiceId: transactionDialogState.invoiceId,
+          invoiceNumber: transactionDialogState.invoiceNumber,
+          reason: transactionReason.trim(),
+          amount: transactionDialogState.invoiceTotal,
+        });
+      }
+
+      await loadOverview();
+      setTransactionDialogState({
+        open: false,
+        mode: null,
+        invoiceId: "",
+        invoiceNumber: "",
+        invoiceTotal: 0,
+        invoiceStatus: null,
+        items: [],
+      });
+      setTransactionReason("");
+      setSaleSubmitState({
+        kind: "success",
+        message:
+          transactionDialogState.mode === "VOID"
+            ? `Factura ${transactionDialogState.invoiceNumber} anulada.`
+            : `Devolución registrada sobre ${transactionDialogState.invoiceNumber}.`,
+      });
+    } catch (transactionError) {
+      setSaleSubmitState({
+        kind: "error",
+        message:
+          transactionError instanceof Error
+            ? transactionError.message
+            : "No se pudo ejecutar la acción sobre la venta.",
+      });
+    } finally {
+      setSubmittingTransaction(false);
+    }
   }
 
   async function finalizeSelectedTableSale() {
@@ -1393,7 +2039,7 @@ export default function RestauranteClient() {
       return;
     }
 
-    if (!selectedTableLineItems.length) {
+    if (!selectedTableSaleItems.length) {
       setSaleSubmitState({
         kind: "error",
         message: "Agrega al menos un producto antes de registrar la venta.",
@@ -1401,7 +2047,7 @@ export default function RestauranteClient() {
       return;
     }
 
-    const itemsWithoutPrice = selectedTableLineItems.filter(
+    const itemsWithoutPrice = selectedTableSaleItems.filter(
       (item) => item.unitPrice === null,
     );
     if (itemsWithoutPrice.length) {
@@ -1419,11 +2065,18 @@ export default function RestauranteClient() {
       ticketForm.guestName.trim() ||
       selectedTable.guestName.trim() ||
       selectedTable.name;
+    if (selectedPaymentMethod === "CASH" && cashReceivedAmount + 0.001 < checkoutTotal) {
+      setSaleSubmitState({
+        kind: "error",
+        message: "El efectivo recibido debe cubrir el total de la cuenta.",
+      });
+      return;
+    }
     const soldAt = new Date().toISOString();
     setFinalizingSale(true);
     setSaleSubmitState({
       kind: "info",
-      message: "Registrando venta y disparando notificaciones...",
+      message: "Registrando venta y procesando el pago...",
     });
 
     try {
@@ -1432,26 +2085,46 @@ export default function RestauranteClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clienteNombre: customerName,
-          note: `Restaurante · ${selectedTable.name}`,
-          items: selectedTableLineItems.map((item) => ({
-            materialId: item.materialId,
-            descripcion: item.dishName,
-            quantity: item.qty,
-            unitPrice: item.unitPrice ?? 0,
-          })),
-          payments:
-            selectedTableEstimatedTotal > 0
+          note: buildRestaurantInvoiceNote({
+            tableName: selectedTable.name,
+            serviceMode: selectedTable.serviceMode,
+            courierType: selectedTable.courierType,
+            courierLabel: selectedTable.courierLabel,
+            tableNote: selectedTable.note,
+            splitCount: selectedSplitCount,
+          }),
+          asDraft: true,
+          items: [
+            ...selectedTableSaleItems.map((item) => ({
+              materialId: item.materialId,
+              descripcion: item.dishName,
+              quantity: item.qty,
+              unitPrice: item.unitPrice ?? 0,
+            })),
+            ...(tipAmount > 0
               ? [
                   {
-                    method: "CASH",
-                    amount: selectedTableEstimatedTotal,
-                    provider: "MANUAL",
-                    status: "PAID",
-                    flow: "CASH",
-                    source: "NONE",
+                    materialId: null,
+                    descripcion: "Propina voluntaria",
+                    quantity: 1,
+                    unitPrice: tipAmount,
                   },
                 ]
-              : undefined,
+              : []),
+            ...(Math.abs(roundingAdjustment) >= 0.01
+              ? [
+                  {
+                    materialId: null,
+                    descripcion:
+                      roundingAdjustment > 0
+                        ? "Ajuste por redondeo"
+                        : "Descuento por redondeo",
+                    quantity: 1,
+                    unitPrice: roundingAdjustment,
+                  },
+                ]
+              : []),
+          ],
         }),
       });
       const salePayload = (await saleResponse.json().catch(() => null)) as {
@@ -1467,6 +2140,67 @@ export default function RestauranteClient() {
       }
 
       const invoiceData = salePayload.data;
+
+      const finalizeResponse = await fetch(
+        `/api/pos/facturas/${invoiceData.id}/finalizar`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            payments:
+              checkoutTotal > 0
+                ? [
+                    {
+                      method: selectedPaymentMethod,
+                      amount: checkoutTotal,
+                      provider: "MANUAL",
+                      status: "PAID",
+                      flow: getRestaurantPaymentFlow(selectedPaymentMethod),
+                      source: "NONE",
+                      metadata: {
+                        cashReceived:
+                          selectedPaymentMethod === "CASH"
+                            ? cashReceivedAmount
+                            : null,
+                        cashChangeDue:
+                          selectedPaymentMethod === "CASH"
+                            ? cashChangeDue
+                            : null,
+                        tipAmount,
+                        roundingAdjustment,
+                        splitCount: selectedSplitCount,
+                        serviceMode: selectedTable.serviceMode,
+                        courierType: selectedTable.courierType,
+                        courierLabel: selectedTable.courierLabel || null,
+                      },
+                    },
+                  ]
+                : [],
+          }),
+        },
+      );
+      const finalizePayload = (await finalizeResponse
+        .json()
+        .catch(() => null)) as {
+        success?: boolean;
+        error?: string;
+        details?: {
+          materialId?: string;
+          materialNombre?: string | null;
+          required?: number;
+          warehouseNombre?: string | null;
+          warehouseAvailable?: number | null;
+          globalAvailable?: number | null;
+        };
+      } | null;
+      if (!finalizeResponse.ok || !finalizePayload?.success) {
+        if (finalizePayload?.details) {
+          throw new Error(formatRestaurantStockError(finalizePayload.details));
+        }
+        throw new Error(
+          finalizePayload?.error ?? "No se pudo finalizar la venta POS.",
+        );
+      }
 
       const warnings: string[] = [];
 
@@ -1484,8 +2218,10 @@ export default function RestauranteClient() {
       if (!notifyResponse.ok)
         warnings.push("No se pudo avisar internamente a cocina/operación.");
 
-      const normalizedEmail = customerEmailInput.trim();
-      if (normalizedEmail) {
+      const normalizedEmail = customerNotificationsEnabled
+        ? customerEmailInput.trim()
+        : "";
+      if (customerNotificationsEnabled && normalizedEmail) {
         const emailResponse = await fetch(
           `/api/pos/facturas/${salePayload.data.id}/enviar`,
           {
@@ -1501,8 +2237,10 @@ export default function RestauranteClient() {
           warnings.push("No se pudo enviar el correo al cliente.");
       }
 
-      const normalizedPhone = customerPhoneInput.trim();
-      if (normalizedPhone) {
+      const normalizedPhone = customerNotificationsEnabled
+        ? customerPhoneInput.trim()
+        : "";
+      if (customerNotificationsEnabled && normalizedPhone) {
         const shareResponse = await fetch(
           `/api/pos/facturas/${invoiceData.id}/share`,
           {
@@ -1547,14 +2285,31 @@ export default function RestauranteClient() {
                     numero: invoiceData.numero,
                     createdAt: soldAt,
                     clienteNombre: customerName,
+                    status: "PAID" as const,
+                    returnedTotal: 0,
                     total: invoiceData.total,
-                    items: selectedTableLineItems.map((item) => ({
-                      id: item.id,
-                      materialId: item.materialId,
-                      descripcion: item.dishName,
-                      quantity: item.qty,
-                      total: item.total ?? 0,
-                    })),
+                    items: [
+                      ...selectedTableSaleItems.map((item) => ({
+                        id: item.key,
+                        materialId: item.materialId,
+                        descripcion: item.dishName,
+                        quantity: item.qty,
+                        unitPrice: item.unitPrice ?? 0,
+                        total: item.total ?? 0,
+                      })),
+                      ...(tipAmount > 0
+                        ? [
+                            {
+                              id: `tip-${invoiceData.id}`,
+                              materialId: null,
+                              descripcion: "Propina voluntaria",
+                              quantity: 1,
+                              unitPrice: tipAmount,
+                              total: tipAmount,
+                            },
+                          ]
+                        : []),
+                    ],
                   },
                   ...current.salesToday.tickets,
                 ].slice(0, 12),
@@ -1564,9 +2319,21 @@ export default function RestauranteClient() {
       );
 
       closeTable(selectedTable.id);
+      setPaymentDialogOpen(false);
       setProductPickerOpen(false);
+      setCustomerNotificationsEnabled(false);
+      setCashReceivedInput("");
+      setTipInput("");
+      setRoundingStep(0);
       setCustomerPhoneInput("");
       setCustomerEmailInput("");
+      setSaleSuccessState({
+        open: true,
+        invoiceNumber: invoiceData.numero,
+        total: invoiceData.total,
+        paymentMethod: selectedPaymentMethod,
+        warnings,
+      });
       setSaleSubmitState({
         kind: warnings.length ? "info" : "success",
         message: warnings.length
@@ -1997,7 +2764,7 @@ export default function RestauranteClient() {
                 Items
               </div>
               <div className="mt-2 text-xl font-semibold text-white">
-                {selectedTableLineItems.length}
+                {selectedTableItemCount}
               </div>
             </div>
             <div className="rounded-[22px] bg-white/8 px-4 py-3">
@@ -2021,17 +2788,131 @@ export default function RestauranteClient() {
             <Button
               variant="outline"
               className="h-11 rounded-2xl border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+              onClick={() => printKitchenTickets("selected")}
+              disabled={!selectedTableSaleItems.length}
+            >
+              <Printer className="mr-2 h-4 w-4" /> Imprimir comanda
+            </Button>
+            <Button
+              variant="outline"
+              className="h-11 rounded-2xl border-rose-400/30 bg-rose-500/10 text-rose-100 hover:bg-rose-500/20 hover:text-white"
+              onClick={() => setCancelOrderDialogOpen(true)}
+              disabled={!selectedTable || !selectedTableSaleItems.length}
+            >
+              Cancelar pedido
+            </Button>
+            <Button
+              variant="outline"
+              className="h-11 rounded-2xl border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white"
               onClick={() => selectedTable && closeTable(selectedTable.id)}
               disabled={!selectedTable || selectedTable.status === "LIBRE"}
             >
               Liberar mesa
             </Button>
           </div>
+          <div className="mt-5 grid gap-3 lg:grid-cols-2">
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-300">Cliente o referencia</span>
+              <Input
+                value={selectedTable?.guestName ?? ticketForm.guestName}
+                onChange={(event) => {
+                  setTicketForm((current) => ({ ...current, guestName: event.target.value }));
+                  updateSelectedTableMeta({ guestName: event.target.value });
+                }}
+                placeholder="Mesa Gómez / Pedido Ana"
+                className="rounded-2xl border-white/10 bg-white text-slate-950"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-300">Comensales / personas</span>
+              <Input
+                type="number"
+                min={1}
+                value={selectedTable?.guests || ticketForm.guests || 1}
+                onChange={(event) => {
+                  const guests = Math.max(1, Number(event.target.value) || 1);
+                  setTicketForm((current) => ({ ...current, guests }));
+                  updateSelectedTableMeta({ guests });
+                  setSplitCount(guests);
+                }}
+                className="rounded-2xl border-white/10 bg-white text-slate-950"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-300">Modo de servicio</span>
+              <Select
+                value={selectedTable?.serviceMode ?? "DINE_IN"}
+                onValueChange={(value) =>
+                  updateSelectedTableMeta({
+                    serviceMode: value as RestaurantServiceMode,
+                    courierType:
+                      value === "DELIVERY"
+                        ? selectedTable?.courierType ?? "INTERNAL"
+                        : "NONE",
+                    courierLabel: value === "DELIVERY" ? selectedTable?.courierLabel ?? "" : "",
+                  })
+                }
+              >
+                <SelectTrigger className="rounded-2xl border-white/10 bg-white text-slate-950">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DINE_IN">En mesa</SelectItem>
+                  <SelectItem value="TAKEAWAY">Para llevar</SelectItem>
+                  <SelectItem value="DELIVERY">Domicilio</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-300">Despacho / repartidor</span>
+              <Select
+                value={selectedTable?.courierType ?? "NONE"}
+                onValueChange={(value) =>
+                  updateSelectedTableMeta({ courierType: value as RestaurantCourierType })
+                }
+                disabled={!selectedTable || selectedTable.serviceMode === "DINE_IN"}
+              >
+                <SelectTrigger className="rounded-2xl border-white/10 bg-white text-slate-950 disabled:opacity-60">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">Sin repartidor</SelectItem>
+                  <SelectItem value="INTERNAL">Repartidor interno</SelectItem>
+                  <SelectItem value="RAPPI">Rappi</SelectItem>
+                  <SelectItem value="DIDI">Didi Food</SelectItem>
+                  <SelectItem value="UBER_EATS">Uber Eats</SelectItem>
+                  <SelectItem value="OTHER">Otro externo</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
+            {selectedTable && selectedTable.serviceMode !== "DINE_IN" && selectedTable.courierType === "OTHER" ? (
+              <label className="space-y-1 text-sm lg:col-span-2">
+                <span className="text-slate-300">Nombre del repartidor o plataforma</span>
+                <Input
+                  value={selectedTable.courierLabel}
+                  onChange={(event) =>
+                    updateSelectedTableMeta({ courierLabel: event.target.value })
+                  }
+                  placeholder="Ej. aliado externo"
+                  className="rounded-2xl border-white/10 bg-white text-slate-950"
+                />
+              </label>
+            ) : null}
+            <label className="space-y-1 text-sm lg:col-span-2">
+              <span className="text-slate-300">Notas del pedido</span>
+              <Textarea
+                value={selectedTable?.note ?? ""}
+                onChange={(event) => updateSelectedTableMeta({ note: event.target.value })}
+                placeholder="Alergias, observaciones de mesa, punto de entrega..."
+                className="min-h-[88px] rounded-2xl border-white/10 bg-white text-slate-950"
+              />
+            </label>
+          </div>
           <div className="mt-5 max-h-[320px] space-y-3 overflow-auto pr-1">
-            {selectedTableLineItems.length ? (
-              selectedTableLineItems.map((item) => (
+            {selectedTableSaleItems.length ? (
+              selectedTableSaleItems.map((item) => (
                 <div
-                  key={item.id}
+                  key={item.key}
                   className="rounded-[22px] border border-white/10 bg-white/6 px-4 py-3"
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -2048,12 +2929,7 @@ export default function RestauranteClient() {
                         >
                           {item.station}
                         </span>
-                        <span>{formatKitchenStatusLabel(item.status)}</span>
-                        {item.priority === "ALTA" ? (
-                          <span className="rounded-full bg-rose-500/20 px-2.5 py-1 font-semibold text-rose-200">
-                            Alta
-                          </span>
-                        ) : null}
+                        <span>Consolidado</span>
                       </div>
                     </div>
                     <div className="text-right">
@@ -2062,16 +2938,26 @@ export default function RestauranteClient() {
                           ? formatCurrency(item.total)
                           : "Sin precio"}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          selectedTable &&
-                          advanceTicket(selectedTable.id, item.id)
-                        }
-                        className="mt-2 rounded-full bg-orange-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-orange-600"
-                      >
-                        Avanzar
-                      </button>
+                      <div className="mt-2 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => removeSelectedTableTickets(item.ticketIds)}
+                          className="rounded-full border border-white/15 px-2.5 py-1 text-xs font-semibold text-slate-200 transition hover:bg-white/10"
+                        >
+                          X
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            selectedTable &&
+                            advanceTicket(selectedTable.id, item.ticketIds[0] ?? "")
+                          }
+                          className="rounded-full bg-orange-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-orange-600"
+                          disabled={!item.ticketIds[0]}
+                        >
+                          Avanzar
+                        </button>
+                      </div>
                     </div>
                   </div>
                   {item.note ? (
@@ -2087,180 +2973,20 @@ export default function RestauranteClient() {
               </div>
             )}
           </div>
-          <div className="mt-5 grid gap-3">
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-300">Cliente o referencia</span>
-              <Input
-                value={ticketForm.guestName}
-                onChange={(event) =>
-                  setTicketForm((current) => ({
-                    ...current,
-                    guestName: event.target.value,
-                  }))
-                }
-                placeholder="Mesa Gómez / Pedido Ana"
-                className="rounded-2xl border-white/10 bg-white text-slate-950"
-              />
-            </label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-1 text-sm">
-                <span className="text-slate-300">Mesa / canal</span>
-                <Select
-                  value={ticketForm.tableId}
-                  onValueChange={(value) => {
-                    setSelectedTableId(value);
-                    setTicketForm((current) => ({
-                      ...current,
-                      tableId: value,
-                    }));
-                  }}
-                >
-                  <SelectTrigger className="rounded-2xl border-white/10 bg-white text-slate-950">
-                    <SelectValue placeholder="Selecciona mesa" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {board.tables.map((table) => (
-                      <SelectItem key={table.id} value={table.id}>
-                        {table.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-slate-300">Comensales</span>
-                <Input
-                  type="number"
-                  min={1}
-                  value={ticketForm.guests}
-                  onChange={(event) =>
-                    setTicketForm((current) => ({
-                      ...current,
-                      guests: Number(event.target.value) || 1,
-                    }))
-                  }
-                  className="rounded-2xl border-white/10 bg-white text-slate-950"
-                />
-              </label>
-              <label className="space-y-1 text-sm sm:col-span-2">
-                <span className="text-slate-300">Producto manual</span>
-                <Input
-                  value={ticketForm.dishName}
-                  onChange={(event) =>
-                    setTicketForm((current) => ({
-                      ...current,
-                      dishName: event.target.value,
-                    }))
-                  }
-                  placeholder="O escribe un plato que no esté en la carta rápida"
-                  className="rounded-2xl border-white/10 bg-white text-slate-950"
-                />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-slate-300">Cantidad</span>
-                <Input
-                  type="number"
-                  min={1}
-                  value={ticketForm.qty}
-                  onChange={(event) =>
-                    setTicketForm((current) => ({
-                      ...current,
-                      qty: Number(event.target.value) || 1,
-                    }))
-                  }
-                  className="rounded-2xl border-white/10 bg-white text-slate-950"
-                />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-slate-300">Prioridad</span>
-                <Select
-                  value={ticketForm.priority}
-                  onValueChange={(value) =>
-                    setTicketForm((current) => ({
-                      ...current,
-                      priority: value as Priority,
-                    }))
-                  }
-                >
-                  <SelectTrigger className="rounded-2xl border-white/10 bg-white text-slate-950">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="NORMAL">Normal</SelectItem>
-                    <SelectItem value="ALTA">Alta</SelectItem>
-                  </SelectContent>
-                </Select>
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-slate-300">Estación</span>
-                <Select
-                  value={ticketForm.station}
-                  onValueChange={(value) =>
-                    setTicketForm((current) => ({
-                      ...current,
-                      station: value as Station,
-                    }))
-                  }
-                >
-                  <SelectTrigger className="rounded-2xl border-white/10 bg-white text-slate-950">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RESTAURANT_STATION_OPTIONS.map((station) => (
-                      <SelectItem key={station} value={station}>
-                        {station}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-slate-300">Receta</span>
-                <Select
-                  value={ticketForm.recipeId || "__none__"}
-                  onValueChange={(value) =>
-                    setTicketForm((current) => ({
-                      ...current,
-                      recipeId: value === "__none__" ? "" : value,
-                    }))
-                  }
-                >
-                  <SelectTrigger className="rounded-2xl border-white/10 bg-white text-slate-950">
-                    <SelectValue placeholder="Opcional" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Sin receta</SelectItem>
-                    {board.recipes.map((recipe) => (
-                      <SelectItem key={recipe.id} value={recipe.id}>
-                        {recipe.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-            </div>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-300">Nota de cocina</span>
-              <Textarea
-                value={ticketForm.note}
-                onChange={(event) =>
-                  setTicketForm((current) => ({
-                    ...current,
-                    note: event.target.value,
-                  }))
-                }
-                placeholder="Sin hielo, salsa aparte, empaque doble..."
-                className="min-h-[88px] rounded-2xl border-white/10 bg-white text-slate-950"
-              />
-            </label>
-            <div className="grid gap-2 sm:grid-cols-1">
-              <Button
-                className="h-12 rounded-2xl bg-orange-500 text-white hover:bg-orange-600"
-                onClick={submitTicket}
-              >
-                <Plus className="mr-2 h-4 w-4" /> Agregar pedido manual
-              </Button>
-            </div>
+          <div className="mt-5 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+            <span className="rounded-full bg-white/10 px-3 py-1">
+              {formatRestaurantServiceModeLabel(selectedTable?.serviceMode ?? "DINE_IN")}
+            </span>
+            {selectedTable && selectedTable.serviceMode !== "DINE_IN" ? (
+              <span className="rounded-full bg-white/10 px-3 py-1">
+                {formatRestaurantCourierLabel(selectedTable.courierType, selectedTable.courierLabel)}
+              </span>
+            ) : null}
+            {selectedSplitCount > 1 ? (
+              <span className="rounded-full bg-white/10 px-3 py-1">
+                División sugerida {formatCurrency(splitPerPerson)} por persona
+              </span>
+            ) : null}
           </div>
         </div>
       );
@@ -2293,57 +3019,59 @@ export default function RestauranteClient() {
               </div>
             </div>
           </div>
-          <div className="grid gap-3 lg:grid-cols-2">
-            {kitchenQueue.map((ticket) => (
-              <div
-                key={ticket.id}
-                className="rounded-[24px] border border-slate-200 bg-slate-50 p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-base font-semibold text-slate-950">
-                      {ticket.qty} x {ticket.dishName}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-950">Pantalla de cocina</div>
+              <div className="text-xs text-slate-500">Más visual por estación, prioridad y hora de entrada.</div>
+            </div>
+            <Button variant="outline" className="rounded-2xl" onClick={() => printKitchenTickets("all")}>
+              <Printer className="mr-2 h-4 w-4" /> Imprimir pendientes
+            </Button>
+          </div>
+          <div className="grid gap-4 xl:grid-cols-3">
+            {RESTAURANT_STATION_OPTIONS.map((station) => {
+              const stationTickets = kitchenQueue.filter((ticket) => ticket.station === station);
+              return (
+                <div key={station} className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Estación</div>
+                      <div className="mt-1 text-lg font-semibold text-slate-950">{station}</div>
                     </div>
-                    <div className="mt-1 text-sm text-slate-500">
-                      {ticket.tableName} · {ticket.guestName || "Sin nombre"}
-                    </div>
+                    <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", getStationBadgeTone(station))}>{stationTickets.length} activas</span>
                   </div>
-                  <span
-                    className={cn(
-                      "rounded-full px-3 py-1 text-[11px] font-semibold",
-                      ticket.priority === "ALTA"
-                        ? "bg-rose-100 text-rose-700"
-                        : "bg-slate-200 text-slate-700",
-                    )}
-                  >
-                    {ticket.priority}
-                  </span>
-                </div>
-                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-                  <span
-                    className={cn(
-                      "rounded-full px-2.5 py-1 font-semibold",
-                      getStationBadgeTone(ticket.station),
-                    )}
-                  >
-                    {ticket.station}
-                  </span>
-                  <span className="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">
-                    {formatKitchenStatusLabel(ticket.status)}
-                  </span>
-                  <span className="text-slate-500">
-                    {formatDateTime(ticket.createdAt)}
-                  </span>
-                </div>
-                {ticket.note ? (
-                  <div className="mt-3 text-xs text-slate-500">
-                    {ticket.note}
+                  <div className="mt-4 space-y-3">
+                    {stationTickets.map((ticket) => (
+                      <div key={ticket.id} className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-base font-semibold text-slate-950">{ticket.qty} x {ticket.dishName}</div>
+                            <div className="mt-1 text-sm text-slate-500">{ticket.tableName} · {ticket.guestName || "Sin nombre"}</div>
+                          </div>
+                          <span className={cn("rounded-full px-3 py-1 text-[11px] font-semibold", ticket.priority === "ALTA" ? "bg-rose-100 text-rose-700" : "bg-slate-200 text-slate-700")}>{ticket.priority}</span>
+                        </div>
+                        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+                          <span className="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">{formatKitchenStatusLabel(ticket.status)}</span>
+                          <span className="rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-700">{formatDateTime(ticket.createdAt)}</span>
+                        </div>
+                        {ticket.note ? (
+                          <div className="mt-3 rounded-2xl bg-white px-3 py-2 text-xs text-slate-600">
+                            {ticket.note}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                    {!stationTickets.length ? (
+                      <div className="rounded-[20px] border border-dashed border-slate-200 px-4 py-8 text-sm text-slate-500">
+                        Sin comandas en esta estación.
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-            ))}
+                </div>
+              );
+            })}
             {!kitchenQueue.length ? (
-              <div className="rounded-[24px] border border-dashed border-slate-200 px-4 py-10 text-sm text-slate-500 lg:col-span-2">
+              <div className="rounded-[24px] border border-dashed border-slate-200 px-4 py-10 text-sm text-slate-500 xl:col-span-3">
                 No hay comandas pendientes.
               </div>
             ) : null}
@@ -2398,6 +3126,40 @@ export default function RestauranteClient() {
                       {ticket.clienteNombre || "Consumidor final"} ·{" "}
                       {formatDateTime(ticket.createdAt)}
                     </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                        {ticket.status === "PAID"
+                          ? "Pagada"
+                          : ticket.status === "PARTIALLY_REFUNDED"
+                            ? "Parcialmente devuelta"
+                            : "Devuelta"}
+                      </span>
+                      {ticket.returnedTotal > 0 ? (
+                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                          Devuelto {formatCurrency(ticket.returnedTotal)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-2xl"
+                        onClick={() => openTransactionDialog("VOID", ticket)}
+                        disabled={ticket.status !== "PAID" || ticket.returnedTotal > 0}
+                      >
+                        <Undo2 className="mr-2 h-4 w-4" /> Anular
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-2xl"
+                        onClick={() => openTransactionDialog("REFUND", ticket)}
+                        disabled={ticket.status === "REFUNDED"}
+                      >
+                        <HandCoins className="mr-2 h-4 w-4" /> Devolución
+                      </Button>
+                    </div>
                   </div>
                 ))}
               {!(overview?.salesToday.tickets ?? []).length ? (
@@ -2405,6 +3167,22 @@ export default function RestauranteClient() {
                   Todavía no hay tickets pagados hoy.
                 </div>
               ) : null}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Informes imprimibles
+            </div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              <Button asChild variant="outline" className="justify-start rounded-2xl">
+                <Link href="/dashboard/reportes?periodo=hoy">Día</Link>
+              </Button>
+              <Button asChild variant="outline" className="justify-start rounded-2xl">
+                <Link href="/dashboard/reportes?periodo=7d">Semana</Link>
+              </Button>
+              <Button asChild variant="outline" className="justify-start rounded-2xl">
+                <Link href="/dashboard/reportes?periodo=30d">Mes</Link>
+              </Button>
             </div>
           </div>
         </div>
@@ -2928,6 +3706,13 @@ export default function RestauranteClient() {
                       >
                         <Link href="/dashboard/compras">Compras</Link>
                       </Button>
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="justify-start rounded-2xl border-slate-200 bg-white"
+                      >
+                        <Link href="/dashboard/reportes?periodo=hoy">Informe del día</Link>
+                      </Button>
                     </div>
                   </section>
                   <section className="rounded-[26px] border border-slate-200 bg-white p-4">
@@ -3086,7 +3871,10 @@ export default function RestauranteClient() {
           open={productPickerOpen}
           onOpenChange={(open) => {
             setProductPickerOpen(open);
-            if (!open) setSaleSubmitState({ kind: "idle", message: "" });
+            if (!open) {
+              setPaymentDialogOpen(false);
+              setSaleSubmitState({ kind: "idle", message: "" });
+            }
           }}
         >
           <DialogContent className="max-h-[90vh] overflow-hidden rounded-[30px] border-slate-200 p-0 sm:max-w-6xl">
@@ -3101,7 +3889,7 @@ export default function RestauranteClient() {
               </DialogDescription>
             </DialogHeader>
             <div className="grid max-h-[90vh] min-h-[680px] gap-0 lg:grid-cols-[360px_minmax(0,1fr)]">
-              <aside className="flex flex-col border-r border-slate-200 bg-slate-950 text-white">
+              <aside className="flex min-h-0 flex-col overflow-hidden border-r border-slate-200 bg-slate-950 text-white">
                 <div className="border-b border-white/10 px-6 py-5">
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-300">
                     Mesa seleccionada
@@ -3126,7 +3914,7 @@ export default function RestauranteClient() {
                         Items
                       </div>
                       <div className="mt-1 text-lg font-semibold">
-                        {selectedTableLineItems.length}
+                        {selectedTableItemCount}
                       </div>
                     </div>
                     <div className="rounded-2xl bg-white/10 px-3 py-2">
@@ -3158,50 +3946,246 @@ export default function RestauranteClient() {
                       className="border-white/10 bg-white/10 text-white placeholder:text-slate-400"
                     />
                   </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+                        Comensales
+                      </Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={selectedTable?.guests || 1}
+                        onChange={(event) => {
+                          const guests = Math.max(1, Number(event.target.value) || 1);
+                          setTicketForm((current) => ({ ...current, guests }));
+                          updateSelectedTableMeta({ guests });
+                          setSplitCount(guests);
+                        }}
+                        className="border-white/10 bg-white/10 text-white placeholder:text-slate-400"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+                        Modo
+                      </Label>
+                      <Select
+                        value={selectedTable?.serviceMode ?? "DINE_IN"}
+                        onValueChange={(value) =>
+                          updateSelectedTableMeta({
+                            serviceMode: value as RestaurantServiceMode,
+                            courierType:
+                              value === "DELIVERY"
+                                ? selectedTable?.courierType ?? "INTERNAL"
+                                : "NONE",
+                            courierLabel:
+                              value === "DELIVERY"
+                                ? selectedTable?.courierLabel ?? ""
+                                : "",
+                          })
+                        }
+                      >
+                        <SelectTrigger className="border-white/10 bg-white/10 text-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="DINE_IN">En mesa</SelectItem>
+                          <SelectItem value="TAKEAWAY">Para llevar</SelectItem>
+                          <SelectItem value="DELIVERY">Domicilio</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {selectedTable && selectedTable.serviceMode !== "DINE_IN" ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+                          Repartidor
+                        </Label>
+                        <Select
+                          value={selectedTable.courierType}
+                          onValueChange={(value) =>
+                            updateSelectedTableMeta({ courierType: value as RestaurantCourierType })
+                          }
+                        >
+                          <SelectTrigger className="border-white/10 bg-white/10 text-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="NONE">Sin repartidor</SelectItem>
+                            <SelectItem value="INTERNAL">Interno</SelectItem>
+                            <SelectItem value="RAPPI">Rappi</SelectItem>
+                            <SelectItem value="DIDI">Didi Food</SelectItem>
+                            <SelectItem value="UBER_EATS">Uber Eats</SelectItem>
+                            <SelectItem value="OTHER">Otro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+                          Etiqueta entrega
+                        </Label>
+                        <Input
+                          value={selectedTable.courierLabel}
+                          onChange={(event) => updateSelectedTableMeta({ courierLabel: event.target.value })}
+                          placeholder="Nombre o apoyo externo"
+                          className="border-white/10 bg-white/10 text-white placeholder:text-slate-400"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
-                      WhatsApp
+                      Nota general del pedido
                     </Label>
-                    <Input
-                      value={customerPhoneInput}
-                      onChange={(event) => setCustomerPhoneInput(event.target.value)}
-                      placeholder="573001112233"
-                      className="border-white/10 bg-white/10 text-white placeholder:text-slate-400"
+                    <Textarea
+                      value={selectedTable?.note ?? ""}
+                      onChange={(event) => updateSelectedTableMeta({ note: event.target.value })}
+                      placeholder="Observaciones de cocina o entrega"
+                      className="min-h-[84px] border-white/10 bg-white/10 text-white placeholder:text-slate-400"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
-                      Correo
-                    </Label>
-                    <Input
-                      type="email"
-                      value={customerEmailInput}
-                      onChange={(event) => setCustomerEmailInput(event.target.value)}
-                      placeholder="cliente@correo.com"
-                      className="border-white/10 bg-white/10 text-white placeholder:text-slate-400"
+                  <label className="flex items-center gap-3 rounded-[18px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100">
+                    <input
+                      type="checkbox"
+                      checked={customerNotificationsEnabled}
+                      onChange={(event) =>
+                        setCustomerNotificationsEnabled(event.target.checked)
+                      }
+                      className="h-4 w-4 rounded border-white/20 bg-transparent"
                     />
-                  </div>
+                    <span>Notificar al cliente</span>
+                  </label>
+                  {customerNotificationsEnabled ? (
+                    <>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+                          WhatsApp
+                        </Label>
+                        <Input
+                          value={customerPhoneInput}
+                          onChange={(event) => setCustomerPhoneInput(event.target.value)}
+                          placeholder="573001112233"
+                          className="border-white/10 bg-white/10 text-white placeholder:text-slate-400"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+                          Correo
+                        </Label>
+                        <Input
+                          type="email"
+                          value={customerEmailInput}
+                          onChange={(event) => setCustomerEmailInput(event.target.value)}
+                          placeholder="cliente@correo.com"
+                          className="border-white/10 bg-white/10 text-white placeholder:text-slate-400"
+                        />
+                      </div>
+                    </>
+                  ) : null}
                 </div>
                 <div className="flex-1 space-y-3 overflow-auto px-6 py-5">
-                  {selectedTableLineItems.length ? (
-                    selectedTableLineItems.map((item) => (
+                  <div className="rounded-[20px] border border-dashed border-white/10 bg-white/5 p-4">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                      <Bike className="h-4 w-4 text-orange-300" /> Otros cargos o productos fuera de lista
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <Input
+                        value={manualChargeDraft.name}
+                        onChange={(event) => setManualChargeDraft((current) => ({ ...current, name: event.target.value }))}
+                        placeholder="Ej. recargo, bebida especial"
+                        className="border-white/10 bg-white/10 text-white placeholder:text-slate-400 sm:col-span-2"
+                      />
+                      <Input
+                        type="number"
+                        min={1}
+                        value={manualChargeDraft.price}
+                        onChange={(event) => setManualChargeDraft((current) => ({ ...current, price: event.target.value }))}
+                        placeholder="Valor"
+                        className="border-white/10 bg-white/10 text-white placeholder:text-slate-400"
+                      />
+                      <Input
+                        type="number"
+                        min={1}
+                        value={manualChargeDraft.qty}
+                        onChange={(event) => setManualChargeDraft((current) => ({ ...current, qty: Math.max(1, Number(event.target.value) || 1) }))}
+                        placeholder="Cantidad"
+                        className="border-white/10 bg-white/10 text-white placeholder:text-slate-400"
+                      />
+                      <Select
+                        value={manualChargeDraft.station}
+                        onValueChange={(value) => setManualChargeDraft((current) => ({ ...current, station: value as Station }))}
+                      >
+                        <SelectTrigger className="border-white/10 bg-white/10 text-white sm:col-span-2">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RESTAURANT_STATION_OPTIONS.map((station) => (
+                            <SelectItem key={station} value={station}>
+                              {station}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Textarea
+                        value={manualChargeDraft.note}
+                        onChange={(event) => setManualChargeDraft((current) => ({ ...current, note: event.target.value }))}
+                        placeholder="Nota opcional"
+                        className="min-h-[72px] border-white/10 bg-white/10 text-white placeholder:text-slate-400 sm:col-span-2"
+                      />
+                      <Button type="button" className="rounded-2xl bg-white text-slate-950 hover:bg-slate-100 sm:col-span-2" onClick={addManualChargeToSelectedTable}>
+                        <Plus className="mr-2 h-4 w-4" /> Agregar como Otros
+                      </Button>
+                    </div>
+                  </div>
+                  {selectedTableSaleItems.length ? (
+                    selectedTableSaleItems.map((item) => (
                       <div
-                        key={item.id}
+                        key={item.key}
                         className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-semibold text-white">
-                              {item.qty} x {item.dishName}
+                        <div className="flex items-start gap-3">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={item.imageUrl || "/placeholder-product.svg"}
+                            alt={item.dishName}
+                            className="h-14 w-14 rounded-2xl border border-white/10 bg-white object-cover"
+                            onError={(event) => {
+                              event.currentTarget.src = "/placeholder-product.svg";
+                            }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-white">
+                                  {item.dishName}
+                                </div>
+                                <div className="mt-1 text-xs text-slate-400">
+                                  {item.qty} unidad{item.qty === 1 ? "" : "es"}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    removeSelectedTableTickets(item.ticketIds)
+                                  }
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 text-xs font-semibold text-slate-200 transition hover:bg-white/10"
+                                  aria-label={`Quitar ${item.dishName}`}
+                                >
+                                  X
+                                </button>
+                                <div className="text-right text-sm font-semibold text-white">
+                                  {item.total !== null
+                                    ? formatCurrency(item.total)
+                                    : "Sin precio"}
+                                </div>
+                              </div>
                             </div>
-                            <div className="mt-1 text-xs text-slate-400">
-                              {formatKitchenStatusLabel(item.status)}
-                            </div>
-                          </div>
-                          <div className="text-right text-sm font-semibold text-white">
-                            {item.total !== null
-                              ? formatCurrency(item.total)
-                              : "Sin precio"}
+                            {item.note ? (
+                              <div className="mt-2 text-xs text-slate-400">
+                                {item.note}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -3229,8 +4213,8 @@ export default function RestauranteClient() {
                 <div className="border-t border-white/10 px-6 py-4">
                   <Button
                     className="w-full rounded-2xl bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-70"
-                    onClick={finalizeSelectedTableSale}
-                    disabled={finalizingSale || !selectedTableLineItems.length}
+                    onClick={openSaleCheckout}
+                    disabled={finalizingSale || !selectedTableSaleItems.length}
                   >
                     {finalizingSale ? (
                       <>
@@ -3240,7 +4224,7 @@ export default function RestauranteClient() {
                     ) : (
                       <>
                         <ReceiptText className="mr-2 h-4 w-4" />
-                        Confirmar venta y notificar
+                        Confirmar venta
                       </>
                     )}
                   </Button>
@@ -3342,9 +4326,15 @@ export default function RestauranteClient() {
                                   </Tooltip>
                                 </div>
                                 <div className="flex flex-1 items-center justify-center">
-                                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white text-2xl font-semibold text-slate-800 shadow-sm">
-                                    {getMenuInitials(shortcut.name)}
-                                  </div>
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={shortcut.imageUrl || "/placeholder-product.svg"}
+                                    alt={shortcut.name}
+                                    className="h-20 w-20 rounded-[20px] border border-white/60 bg-white object-cover shadow-sm"
+                                    onError={(event) => {
+                                      event.currentTarget.src = "/placeholder-product.svg";
+                                    }}
+                                  />
                                 </div>
                                 <div className="text-xs text-slate-600">
                                   {shortcut.stockActual !== null
@@ -3372,6 +4362,345 @@ export default function RestauranteClient() {
                 </div>
               </section>
             </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+          <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden rounded-[28px] border-slate-200 p-0 sm:max-w-5xl">
+            <DialogHeader>
+              <div className="border-b border-slate-200 px-6 py-5">
+                <DialogTitle>Metodo de pago</DialogTitle>
+                <DialogDescription>
+                Confirma como se pagara esta venta antes de descontar inventario.
+                </DialogDescription>
+              </div>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
+                <div className="space-y-4">
+                  <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Total a cobrar
+                    </div>
+                    <div className="mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
+                      {formatCurrency(checkoutTotal)}
+                    </div>
+                    <div className="mt-2 text-sm text-slate-500">
+                      {selectedTableItemCount} item{selectedTableItemCount === 1 ? "" : "s"} en {selectedTable?.name ?? "la mesa"}
+                    </div>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-[20px] border border-slate-200 bg-white px-4 py-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Servicio</div>
+                      <div className="mt-2 text-base font-semibold text-slate-950">{formatRestaurantServiceModeLabel(selectedTable?.serviceMode ?? "DINE_IN")}</div>
+                      {selectedTable && selectedTable.serviceMode !== "DINE_IN" ? (
+                        <div className="mt-1 text-xs text-slate-500">{formatRestaurantCourierLabel(selectedTable.courierType, selectedTable.courierLabel)}</div>
+                      ) : null}
+                    </div>
+                    <div className="rounded-[20px] border border-slate-200 bg-white px-4 py-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">División sugerida</div>
+                      <div className="mt-2 text-base font-semibold text-slate-950">{formatCurrency(splitPerPerson)}</div>
+                      <div className="mt-1 text-xs text-slate-500">entre {selectedSplitCount} persona{selectedSplitCount === 1 ? "" : "s"}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-2 rounded-[24px] border border-slate-200 bg-white px-4 py-4">
+                    <Label>Metodo</Label>
+                    <Select
+                      value={selectedPaymentMethod}
+                      onValueChange={(value) =>
+                        setSelectedPaymentMethod(
+                          value as RestaurantCheckoutPaymentMethod,
+                        )
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona un metodo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CASH">Efectivo</SelectItem>
+                        <SelectItem value="CARD">Tarjeta / datáfono</SelectItem>
+                        <SelectItem value="TRANSFER">Transferencia</SelectItem>
+                        <SelectItem value="OTHER">Otro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {selectedPaymentMethod === "CASH" ? (
+                    <div className="space-y-3 rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-4">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+                        <HandCoins className="h-4 w-4" /> Efectivo recibido y cambio
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {getRestaurantQuickCashOptions(checkoutTotal).map((value) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setCashReceivedInput(String(value))}
+                            className="rounded-full border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                          >
+                            {formatCurrency(value)}
+                          </button>
+                        ))}
+                      </div>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={cashReceivedInput}
+                        onChange={(event) => setCashReceivedInput(event.target.value)}
+                        placeholder="Cuánto entrega el cliente"
+                        className="bg-white"
+                      />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl bg-white px-4 py-3">
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recibido</div>
+                          <div className="mt-1 text-xl font-semibold text-slate-950">{cashReceivedAmount > 0 ? formatCurrency(cashReceivedAmount) : "--"}</div>
+                        </div>
+                        <div className="rounded-2xl bg-white px-4 py-3">
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Cambio</div>
+                          <div className="mt-1 text-xl font-semibold text-slate-950">{formatCurrency(cashChangeDue)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-2 rounded-[24px] border border-slate-200 bg-white px-4 py-4">
+                    <Label>Propina voluntaria</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {[0, 2000, 5000, 10000].map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setTipInput(value ? String(value) : "")}
+                          className={cn(
+                            "rounded-full border px-3 py-2 text-sm font-semibold transition",
+                            (Number(tipInput) || 0) === value
+                              ? "border-orange-300 bg-orange-50 text-orange-700"
+                              : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                          )}
+                        >
+                          {value ? formatCurrency(value) : "Sin propina"}
+                        </button>
+                      ))}
+                    </div>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={tipInput}
+                      onChange={(event) => setTipInput(event.target.value)}
+                      placeholder="Otro valor de propina"
+                    />
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2 rounded-[24px] border border-slate-200 bg-white px-4 py-4">
+                      <Label>Dividir cuenta</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={selectedSplitCount}
+                        onChange={(event) => setSplitCount(Math.max(1, Number(event.target.value) || 1))}
+                      />
+                      <p className="text-xs text-slate-500">
+                        {formatCurrency(splitPerPerson)} por persona.
+                      </p>
+                    </div>
+                    <div className="space-y-2 rounded-[24px] border border-slate-200 bg-white px-4 py-4">
+                      <Label>Redondeo</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { value: 0 as const, label: "Sin redondeo" },
+                          { value: 100 as const, label: "A 100" },
+                          { value: 1000 as const, label: "A 1000" },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setRoundingStep(option.value)}
+                            className={cn(
+                              "rounded-full border px-3 py-2 text-sm font-semibold transition",
+                              roundingStep === option.value
+                                ? "border-orange-300 bg-orange-50 text-orange-700"
+                                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Ajuste: {formatCurrency(roundingAdjustment)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5">
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-slate-600">Subtotal productos</span>
+                      <span className="font-semibold text-slate-950">{formatCurrency(selectedTableEstimatedTotal)}</span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                      <span className="text-slate-600">Propina</span>
+                      <span className="font-semibold text-slate-950">{formatCurrency(tipAmount)}</span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                      <span className="text-slate-600">Ajuste redondeo</span>
+                      <span className="font-semibold text-slate-950">{formatCurrency(roundingAdjustment)}</span>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-200 pt-4">
+                      <span className="text-base font-semibold text-slate-950">Total final</span>
+                      <span className="text-3xl font-semibold text-slate-950">{formatCurrency(checkoutTotal)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="border-t border-slate-200 bg-white px-6 py-4 sm:justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPaymentDialogOpen(false)}
+                disabled={finalizingSale}
+              >
+                Volver
+              </Button>
+              <Button
+                type="button"
+                onClick={finalizeSelectedTableSale}
+                disabled={finalizingSale}
+              >
+                {finalizingSale ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Confirmando...
+                  </>
+                ) : (
+                  <>Registrar venta</>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={saleSuccessState.open}
+          onOpenChange={(open) =>
+            setSaleSuccessState((current) => ({ ...current, open }))
+          }
+        >
+          <DialogContent className="rounded-[32px] border-slate-200 sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Venta registrada con exito</DialogTitle>
+              <DialogDescription>
+                La mesa ya quedo liberada y la venta fue enviada al modulo POS.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="flex items-start gap-5 rounded-[28px] bg-emerald-50 px-6 py-6 text-emerald-900">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white/75 shadow-sm">
+                  <CheckCircle2 className="h-10 w-10" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold">
+                    Factura {saleSuccessState.invoiceNumber}
+                  </div>
+                  <div className="mt-1 text-sm text-emerald-800">
+                    Pago: {getRestaurantPaymentMethodLabel(saleSuccessState.paymentMethod)}
+                  </div>
+                  <div className="mt-4 text-[50px] font-semibold leading-none tracking-tight text-emerald-950">
+                    {formatCurrency(saleSuccessState.total)}
+                  </div>
+                  <div className="mt-2 text-sm text-emerald-800">
+                    Valor registrado con éxito
+                  </div>
+                </div>
+              </div>
+              {saleSuccessState.warnings.length ? (
+                <div className="rounded-[18px] bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  {saleSuccessState.warnings.join(" ")}
+                </div>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                onClick={() =>
+                  setSaleSuccessState((current) => ({ ...current, open: false }))
+                }
+              >
+                Cerrar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={cancelOrderDialogOpen} onOpenChange={setCancelOrderDialogOpen}>
+          <DialogContent className="rounded-[28px] border-slate-200 sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Cancelar pedido</DialogTitle>
+              <DialogDescription>
+                Registra el motivo antes de vaciar este pedido.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <Textarea
+                value={cancelOrderReason}
+                onChange={(event) => setCancelOrderReason(event.target.value)}
+                placeholder="Motivo de cancelación"
+                className="min-h-[110px] rounded-2xl"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCancelOrderDialogOpen(false)}>
+                Volver
+              </Button>
+              <Button type="button" variant="destructive" onClick={cancelSelectedOrder}>
+                Confirmar cancelación
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={transactionDialogState.open}
+          onOpenChange={(open) =>
+            setTransactionDialogState((current) => ({ ...current, open }))
+          }
+        >
+          <DialogContent className="rounded-[28px] border-slate-200 sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {transactionDialogState.mode === "VOID" ? "Anular venta" : "Registrar devolución"}
+              </DialogTitle>
+              <DialogDescription>
+                {transactionDialogState.mode === "VOID"
+                  ? `La factura ${transactionDialogState.invoiceNumber} se marcará como anulada.`
+                  : `Se registrará una devolución completa sobre ${transactionDialogState.invoiceNumber}.`}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                Total: {formatCurrency(transactionDialogState.invoiceTotal)}
+              </div>
+              <Textarea
+                value={transactionReason}
+                onChange={(event) => setTransactionReason(event.target.value)}
+                placeholder="Motivo"
+                className="min-h-[110px] rounded-2xl"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setTransactionDialogState((current) => ({ ...current, open: false }))
+                }
+                disabled={submittingTransaction}
+              >
+                Cerrar
+              </Button>
+              <Button type="button" onClick={() => void submitTransactionAction()} disabled={submittingTransaction}>
+                {submittingTransaction
+                  ? "Procesando..."
+                  : transactionDialogState.mode === "VOID"
+                    ? "Anular factura"
+                    : "Registrar devolución"}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
         <Dialog open={sectionsDialogOpen} onOpenChange={setSectionsDialogOpen}>

@@ -53,6 +53,12 @@ export type RopHomeCard = {
   subtitle: string | null
   score: number | null
   trustScore: number | null
+  logoUrl: string | null
+  phonePublic: string | null
+  emailPublic: string | null
+  verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | null
+  coverageScope: 'LOCAL' | 'REGIONAL' | 'NATIONAL' | 'EXPORT' | null
+  capacityStatus: 'AVAILABLE' | 'LIMITED' | 'SATURATED' | 'OFFLINE' | null
   availabilityLabel: string | null
   reason: string
   primaryAction: {
@@ -100,6 +106,7 @@ export type RopDiscoveryCompany = {
   companyId: string
   title: string
   subtitle: string | null
+  logoUrl: string | null
   city: string | null
   region: string | null
   coverageScope: 'LOCAL' | 'REGIONAL' | 'NATIONAL' | 'EXPORT' | null
@@ -107,6 +114,9 @@ export type RopDiscoveryCompany = {
   verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED'
   capacityStatus: 'AVAILABLE' | 'LIMITED' | 'SATURATED' | 'OFFLINE' | null
   availableQuantity: number | null
+  availabilityLabel: string | null
+  phonePublic: string | null
+  emailPublic: string | null
   serviceName: string | null
   serviceCatalogId: string | null
   reason: string
@@ -215,9 +225,15 @@ export type RopOpportunityRecommendationResult = {
   candidates: Array<{
     companyId: string
     companyName: string
+    logoUrl: string | null
     city: string | null
     serviceName: string | null
     trustScore: number | null
+    verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED'
+    capacityStatus: 'AVAILABLE' | 'LIMITED' | 'SATURATED' | 'OFFLINE' | null
+    availabilityLabel: string | null
+    phonePublic: string | null
+    emailPublic: string | null
     score: number
     tier: 'PRIORITARIO' | 'FUERTE' | 'VIABLE' | 'EXPLORATORIO'
     positives: string[]
@@ -304,6 +320,26 @@ function formatAvailabilityLabel(availableFrom: Date, availableUntil: Date) {
   const start = new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short' }).format(availableFrom)
   const end = new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short' }).format(availableUntil)
   return `${start} - ${end}`
+}
+
+async function loadRopCompanyLogoMap(companies: Array<{ id: string; empresaId?: string | null }>) {
+  const entries = companies.filter((company) => company.empresaId).map((company) => ({
+    companyId: company.id,
+    empresaId: company.empresaId as string,
+  }))
+
+  if (!entries.length) return new Map<string, string | null>()
+
+  const empresas = await prisma.empresa.findMany({
+    where: { id: { in: Array.from(new Set(entries.map((entry) => entry.empresaId))) } },
+    select: { id: true, logo: true },
+  })
+
+  const logosByEmpresaId = new Map(
+    empresas.map((empresa) => [empresa.id, typeof empresa.logo === 'string' && empresa.logo.trim() ? empresa.logo.trim() : null]),
+  )
+
+  return new Map(entries.map((entry) => [entry.companyId, logosByEmpresaId.get(entry.empresaId) ?? null]))
 }
 
 function normalizeDateInput(value: string, fieldName: string) {
@@ -442,6 +478,13 @@ async function getOwnedRopOpportunityForUser(userId: string, opportunityId: stri
           company: {
             include: {
               trustScore: true,
+              capacities: {
+                where: {
+                  availableUntil: { gte: new Date() },
+                },
+                take: 1,
+                orderBy: [{ availableFrom: 'asc' }, { createdAt: 'desc' }],
+              },
               services: {
                 where: { activeStatus: 'ACTIVE' },
                 take: 1,
@@ -814,6 +857,9 @@ export async function createRopOpportunityForUser(userId: string, input: CreateR
 
 export async function getRopOpportunityDetailForUser(userId: string, opportunityId: string): Promise<RopOpportunityDetailResponse> {
   const { opportunity } = await getOwnedRopOpportunityForUser(userId, opportunityId)
+  const logoMap = await loadRopCompanyLogoMap(
+    opportunity.matches.map((match) => ({ id: match.company.id, empresaId: match.company.empresaId })),
+  )
 
   const recommendations = opportunity.matches.length
     ? {
@@ -828,9 +874,17 @@ export async function getRopOpportunityDetailForUser(userId: string, opportunity
           return {
             companyId: match.companyId,
             companyName: match.company.brandName || match.company.legalName,
+            logoUrl: logoMap.get(match.company.id) ?? null,
             city: match.company.city || match.company.region || null,
             serviceName: match.company.services[0]?.serviceCatalog.name ?? null,
             trustScore: match.company.trustScore ? Number(match.company.trustScore.overallScore) : null,
+            verificationStatus: match.company.verificationStatus,
+            capacityStatus: match.company.capacities[0]?.status ?? null,
+            availabilityLabel: match.company.capacities[0]
+              ? formatAvailabilityLabel(match.company.capacities[0].availableFrom, match.company.capacities[0].availableUntil)
+              : null,
+            phonePublic: match.company.phonePublic ?? null,
+            emailPublic: match.company.emailPublic ?? null,
             score: Number(match.matchScore),
             tier: buildOpportunityTier(Number(match.matchScore)),
             positives: breakdown?.positives ?? [],
@@ -898,6 +952,9 @@ export async function generateRopOpportunityRecommendationsForUser(userId: strin
 
   const originClusterIds = new Set(originClusters.map((item) => item.clusterId))
   const generatedAt = new Date()
+  const logoMap = await loadRopCompanyLogoMap(
+    candidates.map((candidate) => ({ id: candidate.id, empresaId: candidate.empresaId })),
+  )
 
   const scoredCandidates = candidates
     .map((candidate) => {
@@ -959,9 +1016,15 @@ export async function generateRopOpportunityRecommendationsForUser(userId: strin
       return {
         companyId: candidate.id,
         companyName: candidate.brandName || candidate.legalName,
+        logoUrl: logoMap.get(candidate.id) ?? null,
         city: candidate.city || candidate.region || null,
         serviceName: candidate.services[0]?.serviceCatalog.name ?? null,
         trustScore,
+        verificationStatus: candidate.verificationStatus,
+        capacityStatus: capacity?.status ?? null,
+        availabilityLabel: capacity ? formatAvailabilityLabel(capacity.availableFrom, capacity.availableUntil) : null,
+        phonePublic: candidate.phonePublic ?? null,
+        emailPublic: candidate.emailPublic ?? null,
         score: normalizedScore,
         tier: buildOpportunityTier(normalizedScore),
         positives,
@@ -1196,6 +1259,15 @@ export async function getRopHomeForUser(userId: string): Promise<RopHomeResponse
   ])
 
   const frequentAlliesMap = new Map<string, RopHomeCard>()
+  const logoMap = await loadRopCompanyLogoMap([
+    ...recommendedCompanies.map((item) => ({ id: item.id, empresaId: item.empresaId })),
+    ...nearbyCompanies.map((item) => ({ id: item.id, empresaId: item.empresaId })),
+    ...capacityToday.map((item) => ({ id: item.company.id, empresaId: item.company.empresaId })),
+    ...collaborations.flatMap((collaboration) => {
+      const ally = collaboration.leadCompanyId === company.id ? collaboration.partnerCompany : collaboration.leadCompany
+      return [{ id: ally.id, empresaId: ally.empresaId }]
+    }),
+  ])
   for (const collaboration of collaborations) {
     const ally = collaboration.leadCompanyId === company.id ? collaboration.partnerCompany : collaboration.leadCompany
     if (frequentAlliesMap.has(ally.id)) continue
@@ -1206,6 +1278,12 @@ export async function getRopHomeForUser(userId: string): Promise<RopHomeResponse
       subtitle: ally.city || ally.region || null,
       score: null,
       trustScore: ally.trustScore ? Number(ally.trustScore.overallScore) : null,
+      logoUrl: logoMap.get(ally.id) ?? null,
+      phonePublic: ally.phonePublic ?? null,
+      emailPublic: ally.emailPublic ?? null,
+      verificationStatus: ally.verificationStatus,
+      coverageScope: null,
+      capacityStatus: null,
       availabilityLabel: null,
       reason: 'Ya colaboraron con resultado exitoso dentro de la red.',
       primaryAction: {
@@ -1252,6 +1330,12 @@ export async function getRopHomeForUser(userId: string): Promise<RopHomeResponse
           subtitle: item.services[0]?.serviceCatalog.name || item.city || null,
           score: item.trustScore ? Number(item.trustScore.overallScore) : null,
           trustScore: item.trustScore ? Number(item.trustScore.overallScore) : null,
+          logoUrl: logoMap.get(item.id) ?? null,
+          phonePublic: item.phonePublic ?? null,
+          emailPublic: item.emailPublic ?? null,
+          verificationStatus: item.verificationStatus,
+          coverageScope: (item.services[0]?.coverageScope ?? null) as RopHomeCard['coverageScope'],
+          capacityStatus: null,
           availabilityLabel: null,
           reason: item.city && company.city && item.city === company.city
             ? 'Aparece porque comparte ciudad y ya es visible para la red.'
@@ -1272,6 +1356,12 @@ export async function getRopHomeForUser(userId: string): Promise<RopHomeResponse
           subtitle: item.serviceCatalog.name,
           score: Number(item.availableQuantity),
           trustScore: item.company.trustScore ? Number(item.company.trustScore.overallScore) : null,
+          logoUrl: logoMap.get(item.company.id) ?? null,
+          phonePublic: item.company.phonePublic ?? null,
+          emailPublic: item.company.emailPublic ?? null,
+          verificationStatus: item.company.verificationStatus,
+          coverageScope: null,
+          capacityStatus: item.status,
           availabilityLabel: formatAvailabilityLabel(item.availableFrom, item.availableUntil),
           reason: `Publicó ${item.status === 'AVAILABLE' ? 'capacidad abierta' : 'capacidad limitada'} para ${item.serviceCatalog.name}.`,
           primaryAction: {
@@ -1290,6 +1380,12 @@ export async function getRopHomeForUser(userId: string): Promise<RopHomeResponse
           subtitle: item.city || item.region || null,
           score: null,
           trustScore: item.trustScore ? Number(item.trustScore.overallScore) : null,
+          logoUrl: logoMap.get(item.id) ?? null,
+          phonePublic: item.phonePublic ?? null,
+          emailPublic: item.emailPublic ?? null,
+          verificationStatus: item.verificationStatus,
+          coverageScope: null,
+          capacityStatus: null,
           availabilityLabel: null,
           reason: 'Candidato cercano para reducir fricción logística y tiempos de coordinación.',
           primaryAction: {
@@ -1369,6 +1465,10 @@ export async function listRopDiscoveryCompaniesForUser(userId: string, filters: 
     orderBy: [{ verificationStatus: 'asc' }, { createdAt: 'desc' }],
   })
 
+  const logoMap = await loadRopCompanyLogoMap(
+    companies.map((item) => ({ id: item.id, empresaId: item.empresaId })),
+  )
+
   return companies.map((item) => {
     const primaryService = item.services[0] ?? null
     const capacity = item.capacities[0] ?? null
@@ -1383,6 +1483,7 @@ export async function listRopDiscoveryCompaniesForUser(userId: string, filters: 
       companyId: item.id,
       title: item.brandName || item.legalName,
       subtitle: item.descriptionPublic || null,
+      logoUrl: logoMap.get(item.id) ?? null,
       city: item.city || null,
       region: item.region || null,
       coverageScope: (primaryService?.coverageScope ?? null) as RopDiscoveryCompany['coverageScope'],
@@ -1390,6 +1491,9 @@ export async function listRopDiscoveryCompaniesForUser(userId: string, filters: 
       verificationStatus: item.verificationStatus,
       capacityStatus: capacity?.status ?? null,
       availableQuantity: capacity ? Number(capacity.availableQuantity) : null,
+      availabilityLabel: capacity ? formatAvailabilityLabel(capacity.availableFrom, capacity.availableUntil) : null,
+      phonePublic: item.phonePublic ?? null,
+      emailPublic: item.emailPublic ?? null,
       serviceName: primaryService?.serviceCatalog.name ?? null,
       serviceCatalogId: primaryService?.serviceCatalogId ?? null,
       reason: reasons.length ? `Aparece porque ${reasons.join(', ')}.` : 'Aparece como candidato inicial para ampliar tu red operativa.',

@@ -6,7 +6,7 @@
 "use client"
 
 import Link from "next/link"
-import { Lock, Building2, Home, Briefcase, ShoppingCart, Boxes, Landmark, BarChart3, Sparkles, Layers3, Shield } from "lucide-react"
+import { Lock, Building2, Home, Briefcase, ShoppingCart, Boxes, Landmark, BarChart3, Sparkles, Layers3, Shield, ChefHat } from "lucide-react"
 import { useEffect, useMemo, useState, type DragEvent } from "react"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -80,6 +80,7 @@ const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard/cotizaciones": "Consulta, edita y da seguimiento a cotizaciones creadas.",
   "/dashboard/remisiones": "Gestiona entregas, despachos y soportes de salida.",
   "/dashboard/pos": "Factura, cobra y registra ventas del punto de venta.",
+  "/dashboard/restaurante": "Opera mesas, cocina, domicilios, caja rapida y seguimiento del turno restaurante.",
   "/dashboard/clientes": "Base de clientes con datos, historial y relacion comercial.",
   "/dashboard/odontologia": "Opera pacientes, tratamientos y procesos odontologicos.",
   "/dashboard/crm": "Panel comercial para captar, atender y convertir oportunidades.",
@@ -365,6 +366,11 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M6 11h12M6 15h6M6 19h12" />
       </svg>
     ),
+  },
+  {
+    name: 'Restaurante',
+    href: "/dashboard/restaurante",
+    icon: <ChefHat className="h-5 w-5" />,
   },
   {
     name: t('nav.clients'),

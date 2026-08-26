@@ -3,6 +3,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Loader2, Search } from 'lucide-react'
+import {
+  formatRopCapacityLabel,
+  formatRopCoverageLabel,
+  formatRopVerificationLabel,
+  getRopCapacityTone,
+  getRopVerificationTone,
+  RopCompanyAvatar,
+  RopQuickContactActions,
+  RopTrustStars,
+} from '@/components/rop/rop-visuals'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -14,6 +24,7 @@ type DiscoveryItem = {
   companyId: string
   title: string
   subtitle: string | null
+  logoUrl: string | null
   city: string | null
   region: string | null
   coverageScope: 'LOCAL' | 'REGIONAL' | 'NATIONAL' | 'EXPORT' | null
@@ -21,6 +32,9 @@ type DiscoveryItem = {
   verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED'
   capacityStatus: 'AVAILABLE' | 'LIMITED' | 'SATURATED' | 'OFFLINE' | null
   availableQuantity: number | null
+  availabilityLabel: string | null
+  phonePublic: string | null
+  emailPublic: string | null
   serviceName: string | null
   serviceCatalogId: string | null
   reason: string
@@ -210,16 +224,34 @@ export default function RopDiscoveryClient() {
           {items.map((item) => (
             <Card key={item.companyId} className="rounded-3xl border-slate-200 shadow-sm">
               <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-lg font-semibold text-slate-950">{item.title}</p>
-                    <p className="mt-1 text-sm text-slate-600">{item.city || item.region || 'Ubicación por confirmar'}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    {item.trustScore !== null ? (
-                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Trust {item.trustScore}</span>
-                    ) : null}
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">{item.verificationStatus}</span>
+                <div className="flex items-start gap-3">
+                  <RopCompanyAvatar label={item.title} logoUrl={item.logoUrl} size="lg" className="ring-4 ring-sky-100" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-lg font-semibold text-slate-950">{item.title}</p>
+                        <p className="mt-1 text-sm text-slate-600">{item.city || item.region || 'Ubicación por confirmar'}</p>
+                      </div>
+                      {item.trustScore !== null ? <RopTrustStars score={item.trustScore} /> : null}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium">
+                      <span className={`rounded-full border px-2.5 py-1 ${getRopVerificationTone(item.verificationStatus)}`}>
+                        {formatRopVerificationLabel(item.verificationStatus)}
+                      </span>
+                      {item.coverageScope ? (
+                        <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-sky-700">
+                          {formatRopCoverageLabel(item.coverageScope)}
+                        </span>
+                      ) : null}
+                      <span className={`rounded-full border px-2.5 py-1 ${getRopCapacityTone(item.capacityStatus)}`}>
+                        {formatRopCapacityLabel(item.capacityStatus)}
+                      </span>
+                      {item.availabilityLabel ? (
+                        <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-teal-700">
+                          {item.availabilityLabel}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
 
@@ -232,14 +264,19 @@ export default function RopDiscoveryClient() {
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Capacidad</div>
-                    <div className="mt-1 text-sm font-medium text-slate-900">{item.capacityStatus || 'Sin snapshot'}</div>
+                    <div className="mt-1 text-sm font-medium text-slate-900">{formatRopCapacityLabel(item.capacityStatus)}</div>
                     {item.availableQuantity !== null ? <div className="text-xs text-slate-500">Cantidad {item.availableQuantity}</div> : null}
+                    {item.availabilityLabel ? <div className="text-xs text-slate-500">Ventana {item.availabilityLabel}</div> : null}
                   </div>
                 </div>
 
                 <p className="mt-4 text-sm leading-6 text-slate-600">{item.reason}</p>
 
-                <div className="mt-5 flex items-center gap-2">
+                <div className="mt-5 space-y-3">
+                  <RopQuickContactActions phone={item.phonePublic} email={item.emailPublic} companyName={item.title} />
+                </div>
+
+                <div className="mt-4 flex items-center gap-2">
                   <Button asChild className="rounded-full px-4">
                     <Link href={item.serviceCatalogId ? `/dashboard/rop/necesidades/nueva?serviceCatalogId=${encodeURIComponent(item.serviceCatalogId)}` : '/dashboard/rop/necesidades/nueva'}>Invitar desde necesidad</Link>
                   </Button>

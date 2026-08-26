@@ -2,6 +2,19 @@ export type TableStatus = 'LIBRE' | 'ATENDIENDO' | 'ESPERANDO_COCINA' | 'LISTA_P
 export type KitchenStatus = 'PENDIENTE' | 'EN_PREPARACION' | 'LISTO' | 'ENTREGADO'
 export type Station = 'COCINA' | 'BARRA' | 'EMPAQUE'
 export type Priority = 'ALTA' | 'NORMAL'
+export type RestaurantServiceMode = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY'
+export type RestaurantCourierType = 'NONE' | 'INTERNAL' | 'RAPPI' | 'DIDI' | 'UBER_EATS' | 'OTHER'
+
+export type RestaurantActivityLog = {
+  id: string
+  kind: 'CANCELLED' | 'VOIDED' | 'REFUNDED' | 'PRINTED'
+  tableName: string
+  invoiceId: string | null
+  invoiceNumber: string | null
+  reason: string
+  amount: number | null
+  createdAt: string
+}
 
 export type KitchenTicket = {
   id: string
@@ -13,6 +26,7 @@ export type KitchenTicket = {
   status: KitchenStatus
   recipeId: string | null
   note: string
+  unitPrice: number | null
   createdAt: string
 }
 
@@ -38,6 +52,13 @@ export type DiningTable = {
   guestName: string
   guests: number
   note: string
+  serviceMode: RestaurantServiceMode
+  courierType: RestaurantCourierType
+  courierLabel: string
+  lastInvoiceId: string | null
+  lastInvoiceNumber: string | null
+  lastSaleAt: string | null
+  lastSaleTotal: number | null
   tickets: KitchenTicket[]
 }
 
@@ -52,6 +73,7 @@ export type RestaurantBoardState = {
   tables: DiningTable[]
   recipes: Recipe[]
   shortages: ShortageNote[]
+  activityLog: RestaurantActivityLog[]
   closingNotes: string
 }
 
@@ -62,6 +84,7 @@ export type RestaurantBoardSummary = {
   recipeCount: number
   shortageCount: number
   unresolvedShortageCount: number
+  activityCount: number
 }
 
 export const RESTAURANT_STATION_OPTIONS: Station[] = ['COCINA', 'BARRA', 'EMPAQUE']
@@ -69,14 +92,16 @@ export const RESTAURANT_STATION_OPTIONS: Station[] = ['COCINA', 'BARRA', 'EMPAQU
 const TABLE_STATUS_VALUES: TableStatus[] = ['LIBRE', 'ATENDIENDO', 'ESPERANDO_COCINA', 'LISTA_PARA_COBRO']
 const KITCHEN_STATUS_VALUES: KitchenStatus[] = ['PENDIENTE', 'EN_PREPARACION', 'LISTO', 'ENTREGADO']
 const PRIORITY_VALUES: Priority[] = ['ALTA', 'NORMAL']
+const SERVICE_MODE_VALUES: RestaurantServiceMode[] = ['DINE_IN', 'TAKEAWAY', 'DELIVERY']
+const COURIER_TYPE_VALUES: RestaurantCourierType[] = ['NONE', 'INTERNAL', 'RAPPI', 'DIDI', 'UBER_EATS', 'OTHER']
 
 export const DEFAULT_RESTAURANT_TABLES: DiningTable[] = [
-  { id: 'm1', name: 'Mesa 1', status: 'LIBRE', guestName: '', guests: 0, note: '', tickets: [] },
-  { id: 'm2', name: 'Mesa 2', status: 'LIBRE', guestName: '', guests: 0, note: '', tickets: [] },
-  { id: 'm3', name: 'Mesa 3', status: 'LIBRE', guestName: '', guests: 0, note: '', tickets: [] },
-  { id: 'm4', name: 'Mesa 4', status: 'LIBRE', guestName: '', guests: 0, note: '', tickets: [] },
-  { id: 'barra', name: 'Barra', status: 'LIBRE', guestName: '', guests: 0, note: '', tickets: [] },
-  { id: 'dom', name: 'Domicilios', status: 'LIBRE', guestName: '', guests: 0, note: '', tickets: [] },
+  { id: 'm1', name: 'Mesa 1', status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
+  { id: 'm2', name: 'Mesa 2', status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
+  { id: 'm3', name: 'Mesa 3', status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
+  { id: 'm4', name: 'Mesa 4', status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
+  { id: 'barra', name: 'Barra', status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
+  { id: 'dom', name: 'Domicilios', status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DELIVERY', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
 ]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -90,6 +115,11 @@ function cleanText(value: unknown) {
 function cleanPositiveNumber(value: unknown, fallback: number) {
   const parsed = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function cleanNumberOrNull(value: unknown) {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 function normalizeTableStatus(value: unknown): TableStatus {
@@ -108,11 +138,20 @@ function normalizePriority(value: unknown): Priority {
   return typeof value === 'string' && PRIORITY_VALUES.includes(value as Priority) ? (value as Priority) : 'NORMAL'
 }
 
+function normalizeServiceMode(value: unknown, fallback: RestaurantServiceMode = 'DINE_IN'): RestaurantServiceMode {
+  return typeof value === 'string' && SERVICE_MODE_VALUES.includes(value as RestaurantServiceMode) ? (value as RestaurantServiceMode) : fallback
+}
+
+function normalizeCourierType(value: unknown): RestaurantCourierType {
+  return typeof value === 'string' && COURIER_TYPE_VALUES.includes(value as RestaurantCourierType) ? (value as RestaurantCourierType) : 'NONE'
+}
+
 export function createEmptyRestaurantBoard(): RestaurantBoardState {
   return {
     tables: DEFAULT_RESTAURANT_TABLES.map((table) => ({ ...table, tickets: [] })),
     recipes: [],
     shortages: [],
+    activityLog: [],
     closingNotes: '',
   }
 }
@@ -138,11 +177,14 @@ export function sanitizeRestaurantBoard(value: unknown): RestaurantBoardState {
                     status: normalizeKitchenStatus(ticket.status),
                     recipeId: cleanText(ticket.recipeId) || null,
                     note: cleanText(ticket.note),
+                    unitPrice: cleanNumberOrNull(ticket.unitPrice),
                     createdAt: cleanText(ticket.createdAt) || new Date(0).toISOString(),
                   } satisfies KitchenTicket
                 })
                 .filter(Boolean) as KitchenTicket[]
             : []
+
+          const defaultTable = DEFAULT_RESTAURANT_TABLES[index]
 
           return {
             id: cleanText(table.id) || `table-${index + 1}`,
@@ -151,6 +193,13 @@ export function sanitizeRestaurantBoard(value: unknown): RestaurantBoardState {
             guestName: cleanText(table.guestName),
             guests: Math.max(0, Math.round(cleanPositiveNumber(table.guests, 0))),
             note: cleanText(table.note),
+            serviceMode: normalizeServiceMode(table.serviceMode, defaultTable?.serviceMode ?? 'DINE_IN'),
+            courierType: normalizeCourierType(table.courierType),
+            courierLabel: cleanText(table.courierLabel),
+            lastInvoiceId: cleanText(table.lastInvoiceId) || null,
+            lastInvoiceNumber: cleanText(table.lastInvoiceNumber) || null,
+            lastSaleAt: cleanText(table.lastSaleAt) || null,
+            lastSaleTotal: cleanNumberOrNull(table.lastSaleTotal),
             tickets,
           } satisfies DiningTable
         })
@@ -202,10 +251,31 @@ export function sanitizeRestaurantBoard(value: unknown): RestaurantBoardState {
         .filter(Boolean) as ShortageNote[]
     : []
 
+  const activityLog = Array.isArray(value.activityLog)
+    ? value.activityLog
+        .map((entry, index) => {
+          if (!isRecord(entry)) return null
+          const kind = cleanText(entry.kind)
+          if (!['CANCELLED', 'VOIDED', 'REFUNDED', 'PRINTED'].includes(kind)) return null
+          return {
+            id: cleanText(entry.id) || `activity-${index + 1}`,
+            kind: kind as RestaurantActivityLog['kind'],
+            tableName: cleanText(entry.tableName) || 'Mesa',
+            invoiceId: cleanText(entry.invoiceId) || null,
+            invoiceNumber: cleanText(entry.invoiceNumber) || null,
+            reason: cleanText(entry.reason),
+            amount: cleanNumberOrNull(entry.amount),
+            createdAt: cleanText(entry.createdAt) || new Date(0).toISOString(),
+          } satisfies RestaurantActivityLog
+        })
+        .filter(Boolean) as RestaurantActivityLog[]
+    : []
+
   return {
     tables: tables.length ? tables : createEmptyRestaurantBoard().tables,
     recipes,
     shortages,
+    activityLog,
     closingNotes: cleanText(value.closingNotes),
   }
 }
@@ -219,5 +289,6 @@ export function computeRestaurantBoardSummary(board: RestaurantBoardState): Rest
     recipeCount: board.recipes.length,
     shortageCount: board.shortages.length,
     unresolvedShortageCount: board.shortages.filter((shortage) => !shortage.resolved).length,
+    activityCount: board.activityLog.length,
   }
 }
