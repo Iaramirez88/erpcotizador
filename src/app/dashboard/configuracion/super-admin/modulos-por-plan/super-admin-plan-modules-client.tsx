@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -472,19 +473,23 @@ export default function SuperAdminPlanModulesClient() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Super Admin · Módulos por plan</h1>
-          <p className="text-sm text-gray-600">Habilita o deshabilita módulos para cada plan.</p>
-        </div>
-        <Button asChild variant="outline">
-          <Link href="/dashboard/configuracion/super-admin/empresas">Empresas</Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link href="/dashboard/configuracion/super-admin/usuarios">Usuarios</Link>
-        </Button>
-      </div>
+    <div className="space-y-4 p-3 sm:p-4 lg:p-6">
+      <ErpPageHero
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Administración' }, { label: 'Super Admin · Módulos por plan' }]}
+        eyebrow="Super admin"
+        title="Super Admin · Módulos por plan"
+        description="Habilita o deshabilita módulos para cada plan."
+        actions={
+          <>
+            <Button asChild variant="outline">
+              <Link href="/dashboard/configuracion/super-admin/empresas">Empresas</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/dashboard/configuracion/super-admin/usuarios">Usuarios</Link>
+            </Button>
+          </>
+        }
+      />
 
       <Card>
         <CardHeader>

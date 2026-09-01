@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
@@ -390,11 +391,13 @@ export default function SuperAdminUsersClient() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">{t('superAdmin.users.title')}</h1>
-        <p className="text-sm text-gray-600">{t('superAdmin.users.subtitle')}</p>
-      </div>
+    <div className="space-y-4 p-3 sm:p-4 lg:p-6">
+      <ErpPageHero
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Administración' }, { label: t('superAdmin.users.title') }]}
+        eyebrow="Super admin"
+        title={t('superAdmin.users.title')}
+        description={t('superAdmin.users.subtitle')}
+      />
 
       <Card>
         <CardHeader>

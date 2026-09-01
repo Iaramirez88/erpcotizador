@@ -17,6 +17,7 @@ import {
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { formatUnidadMedidaLabel } from "@/lib/utils"
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import PlantillaRemisionesPage from "./plantilla/page"
@@ -356,20 +357,19 @@ export default function RemisionesPage() {
   }, [materials])
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Remisiones</h1>
-          <p className="text-muted-foreground">Salida de inventario con trazabilidad por documento.</p>
-        </div>
-
-        <div className="flex items-center gap-2">
+    <div className="space-y-4 p-3 sm:p-4 lg:p-6">
+      <ErpPageHero
+        eyebrow="ERP ventas"
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Ventas' }, { label: 'Remisiones' }]}
+        title="Remisiones"
+        description="Salida de inventario con trazabilidad por documento."
+        actions={
           <Button variant="outline" onClick={exportExcel}>
-            <Download className="w-4 h-4 mr-2" />
+            <Download className="mr-2 h-4 w-4" />
             Exportar Excel
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
         <TabsList>

@@ -521,7 +521,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
   const actions = (
     <>
       {/* Actions */}
-      <div className={isSidebarFooter ? 'flex shrink-0 flex-col items-center gap-2' : isMobileFooterProfileOnly ? 'flex shrink-0 items-center justify-center' : 'flex shrink-0 items-center gap-1.5 sm:gap-2'}>
+      <div className={isSidebarFooter ? 'flex w-full shrink-0 flex-col items-stretch gap-2' : isMobileFooterProfileOnly ? 'flex shrink-0 items-center justify-center' : 'flex shrink-0 items-center gap-1.5 sm:gap-2'}>
           {!isMobileFooterProfileOnly ? <NotificationsBell placement={isSidebarFooter ? 'sidebar-footer' : isMobileFooter ? 'mobile-footer' : 'header'} /> : null}
 
           {navPrefs ? (
@@ -544,7 +544,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
                 variant="ghost"
                 size="icon"
                 type="button"
-                className={isMobileFooter ? mobileProfileTriggerClass : profileTriggerClass}
+                className={isSidebarFooter ? 'h-10 w-10 self-start rounded-full p-0 hover:bg-accent/60 dark:hover:bg-[#232323]' : isMobileFooter ? mobileProfileTriggerClass : profileTriggerClass}
                 aria-label={t('header.profile')}
               >
                 <div className={isMobileFooter ? 'relative h-11 w-11 overflow-hidden rounded-full bg-muted' : 'relative h-8 w-8 overflow-hidden rounded-full bg-muted'}>

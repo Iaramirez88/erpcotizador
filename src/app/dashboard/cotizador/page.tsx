@@ -34,6 +34,7 @@ import type { CotizacionTemplateSettings } from "@/lib/cotizacion-template"
 import { useI18n } from "@/components/providers/i18n-provider"
 import { buildWhatsAppWebUrl } from "@/lib/whatsapp-link"
 import { MobilePdfFallback, useIsMobileViewport } from '@/components/pdf/mobile-pdf-fallback'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { LitografiaAiAssistant } from "@/components/litografia/litografia-ai-assistant"
 import type { LitografiaAiHandoff } from "@/lib/litografia-ai-handoff"
 import { CrmFileLibraryPicker } from '@/components/crm/crm-file-library-picker'
@@ -1812,7 +1813,7 @@ export default function CotizadorPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 p-3 sm:p-4 lg:p-6">
       <LitografiaQuoteDialog
         open={litografiaOpen}
         onOpenChange={handleLitografiaOpenChange}
@@ -2541,20 +2542,17 @@ export default function CotizadorPage() {
           )}
         </DialogContent>
       </Dialog>
-      {/* Header */}
-      <div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight" data-tour="cotizador-title">{t('quoteBuilder.page.title')}</h1>
-            <p className="text-muted-foreground">
-              {isLoadingCotizacion
-                ? t('quoteBuilder.page.loadingQuote')
-                : editingId
-                  ? t('quoteBuilder.page.editing', { id: editingId })
-                  : t('quoteBuilder.page.subtitle')}
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+      <ErpPageHero
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Ventas' }, { label: t('quoteBuilder.page.title') }]}
+        eyebrow="ERP ventas"
+        title={<span data-tour="cotizador-title">{t('quoteBuilder.page.title')}</span>}
+        description={isLoadingCotizacion
+          ? t('quoteBuilder.page.loadingQuote')
+          : editingId
+            ? t('quoteBuilder.page.editing', { id: editingId })
+            : t('quoteBuilder.page.subtitle')}
+        actions={
+          <>
             <Button asChild variant="outline" size="sm" type="button">
               <Link href="/dashboard/cotizaciones">{t('quoteBuilder.actions.history')}</Link>
             </Button>
@@ -2574,9 +2572,9 @@ export default function CotizadorPage() {
                 {t('quoteBuilder.actions.cancelEdit')}
               </Button>
             ) : null}
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Formulario principal */}

@@ -921,7 +921,7 @@ export default function Sidebar({ user }: SidebarProps) {
       if (allowedNavHrefSet) return allowedNavHrefSet.has(it.href)
       return !isOnboardingScopedDashboardHref(it.href)
     })
-    return sortNavItemsByOrder(withOnboardingScope, effectiveNavOrder).filter((it) => it.href !== '/dashboard')
+    return sortNavItemsByOrder(withOnboardingScope, effectiveNavOrder)
   }, [navPrefs, enabledModules, isPersonal, user?.role, user.canAccessBackups, user.intelligenceEnabled, user.canAccessPayrollAdmin, user.hasPayrollPortal, user.payrollEntryHref, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation, effectiveNavOrder, allowedNavHrefSet])
 
   const visibleHrefs = useMemo(() => {
@@ -1146,10 +1146,15 @@ export default function Sidebar({ user }: SidebarProps) {
             const visibleItems = section.items.filter((it) => visibleHrefs.has(it.href))
             if (!visibleItems.length) return null
 
-            if ((section.title === 'Inventario' || section.title === 'Recursos') && visibleItems.length === 1) {
+            if ((section.title === 'Inicio' || section.title === 'Inventario' || section.title === 'Recursos') && visibleItems.length === 1) {
               const item = visibleItems[0]
               const isActive = isNavActive(item.href)
               const isBlocked = isPersonal && blockedModules.has(item.href)
+              const singleItemLabel = section.title === 'Inicio'
+                ? 'Inicio'
+                : section.title === 'Inventario' || section.title === 'Recursos'
+                  ? 'Inventario'
+                  : item.name
 
               return (
                 <div
@@ -1204,7 +1209,7 @@ export default function Sidebar({ user }: SidebarProps) {
                     >
                       <div className="flex items-center space-x-2.5">
                         {item.icon}
-                        <span className="text-[12px] font-medium leading-4">Inventario</span>
+                        <span className="text-[12px] font-medium leading-4">{singleItemLabel}</span>
                         {isBlocked ? <Lock className={cn("ml-1.5 h-3.5 w-3.5", sectionTitleText)} /> : null}
                       </div>
                     </Link>
@@ -1412,7 +1417,7 @@ export default function Sidebar({ user }: SidebarProps) {
         </TooltipProvider>
 
         <div className={cn("border-t p-2.5", sectionBorder, sidebarCollapsed ? "px-1.5" : "px-2.5")}>
-          <div className={cn("flex", sidebarCollapsed ? "justify-center" : "justify-end")}>
+          <div className={cn("flex w-full", sidebarCollapsed ? "justify-center" : "justify-start")}>
             <Header user={user} variant="sidebar-footer" />
           </div>
         </div>

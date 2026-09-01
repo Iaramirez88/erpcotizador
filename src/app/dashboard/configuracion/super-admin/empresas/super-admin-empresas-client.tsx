@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Clock3, Sparkles } from 'lucide-react'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -558,22 +559,24 @@ export default function SuperAdminEmpresasClient() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('superAdmin.companies.title')}</h1>
-          <p className="text-sm text-gray-600">{t('superAdmin.companies.subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button onClick={() => setCreateOpen(true)}>{t('superAdmin.companies.actions.create')}</Button>
-          <Button asChild variant="outline">
-            <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">{t('superAdmin.nav.modulesByPlan')}</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/dashboard/configuracion/super-admin/usuarios">{t('superAdmin.nav.users')}</Link>
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-4 p-3 sm:p-4 lg:p-6">
+      <ErpPageHero
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Administración' }, { label: t('superAdmin.companies.title') }]}
+        eyebrow="Super admin"
+        title={t('superAdmin.companies.title')}
+        description={t('superAdmin.companies.subtitle')}
+        actions={
+          <>
+            <Button onClick={() => setCreateOpen(true)}>{t('superAdmin.companies.actions.create')}</Button>
+            <Button asChild variant="outline">
+              <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">{t('superAdmin.nav.modulesByPlan')}</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/dashboard/configuracion/super-admin/usuarios">{t('superAdmin.nav.users')}</Link>
+            </Button>
+          </>
+        }
+      />
 
       <Card>
         <CardHeader>

@@ -20,7 +20,7 @@ export default function NotificationsBell({ onUnreadCountChange, placement = 'he
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const isDark = resolvedTheme === 'dark'
-  const showLabel = placement === 'header' || placement === 'mobile-footer'
+  const showLabel = placement === 'header' || placement === 'mobile-footer' || placement === 'sidebar-footer'
   const buttonClassName = placement === 'mobile-footer'
     ? isDark
       ? 'relative flex h-14 min-w-[5.5rem] flex-col items-center justify-center gap-0.5 rounded-2xl px-2 text-[#e0e0e0] hover:bg-[#232323]'
@@ -29,7 +29,9 @@ export default function NotificationsBell({ onUnreadCountChange, placement = 'he
       ? isDark
         ? 'relative h-9 rounded-full px-3 text-[#e0e0e0] hover:bg-[#232323]'
         : 'relative h-9 rounded-full px-3 text-slate-700 hover:bg-slate-100/80'
-      : 'relative h-9 w-9 rounded-full text-foreground'
+      : isDark
+        ? 'relative flex h-10 w-full items-center justify-start gap-2 rounded-xl px-3 text-[#e0e0e0] hover:bg-[#232323]'
+        : 'relative flex h-10 w-full items-center justify-start gap-2 rounded-xl px-3 text-slate-700 hover:bg-slate-100/80'
   const panelClassName = placement === 'sidebar-footer'
     ? isDark
       ? 'absolute bottom-0 left-full z-50 ml-4 h-[70vh] w-[360px] max-w-[calc(100vw-6rem)] overflow-hidden rounded-[28px] border border-[#444444] bg-[#181818] shadow-[0_24px_60px_-28px_rgba(0,0,0,0.52)]'
@@ -120,7 +122,7 @@ export default function NotificationsBell({ onUnreadCountChange, placement = 'he
           />
         </svg>
         {showLabel ? (
-          <span className={placement === 'mobile-footer' ? 'text-[11px] font-medium leading-none' : 'ml-2 text-sm font-medium'}>
+          <span className={placement === 'mobile-footer' ? 'text-[11px] font-medium leading-none' : 'text-sm font-medium'}>
             Notificaciones
           </span>
         ) : null}
@@ -128,7 +130,9 @@ export default function NotificationsBell({ onUnreadCountChange, placement = 'he
         {badgeText ? (
           <span className={placement === 'mobile-footer'
             ? 'absolute right-1 top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white'
-            : 'absolute -top-2 -right-2 inline-flex items-center rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-semibold text-white'}>
+            : placement === 'sidebar-footer'
+              ? 'absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white'
+              : 'absolute -top-2 -right-2 inline-flex items-center rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-semibold text-white'}>
             {badgeText}
           </span>
         ) : null}

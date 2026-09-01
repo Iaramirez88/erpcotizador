@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ModuleKey } from '@prisma/client'
 import { cn } from "@/lib/utils"
@@ -566,19 +567,18 @@ export default function PlanPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Plan</h1>
-          <p className="text-sm text-gray-600">{isSuperAdmin ? 'Vista extendida del catálogo y estrategia comercial.' : 'Elige el plan que mejor se ajuste a tu operación.'}</p>
-        </div>
-
-        {isSuperAdmin ? (
+    <div className="space-y-4 p-3 sm:p-4 lg:p-6">
+      <ErpPageHero
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Administración' }, { label: 'Plan' }]}
+        eyebrow="ERP administración"
+        title="Plan"
+        description={isSuperAdmin ? 'Vista extendida del catálogo y estrategia comercial.' : 'Elige el plan que mejor se ajuste a tu operación.'}
+        actions={isSuperAdmin ? (
           <Button asChild variant="outline">
             <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">Administrar catálogo</Link>
           </Button>
-        ) : null}
-      </div>
+        ) : undefined}
+      />
 
       {!isSuperAdmin && blockedModule ? (
         <Card>

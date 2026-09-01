@@ -10,6 +10,7 @@ import { useSearchParams } from "next/navigation"
 import { ExternalLink } from "lucide-react"
 import { LitografiaAiAssistant } from "@/components/litografia/litografia-ai-assistant"
 import { LitografiaCalculator } from "@/components/litografia/litografia-calculator"
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { LitografiaAiHandoff } from "@/lib/litografia-ai-handoff"
@@ -27,21 +28,21 @@ export default function LitografiaPage() {
   }, [searchParams])
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Costos</h1>
-          <p className="text-muted-foreground">Alterna entre la configuración clásica y un ingreso asistido para interpretar briefs comerciales y construir costos más rápido.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <div className="space-y-4 p-3 sm:p-4 lg:p-6">
+      <ErpPageHero
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Configuración' }, { label: 'Costos' }]}
+        eyebrow="ERP configuración"
+        title="Costos"
+        description="Alterna entre la configuración clásica y un ingreso asistido para interpretar briefs comerciales y construir costos más rápido."
+        actions={
           <Button asChild variant="outline">
             <Link href="/dashboard/litografia/conocimiento-ia">
               <ExternalLink className="mr-2 h-4 w-4" />
               Conocimiento IA
             </Link>
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "clasico" | "ia" | "json")} className="space-y-4">
         <TabsList className="grid h-auto grid-cols-3 rounded-2xl border border-slate-200 bg-slate-50 p-1">
