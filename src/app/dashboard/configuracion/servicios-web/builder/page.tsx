@@ -56,18 +56,18 @@ export default async function WebsiteBuilderPage() {
 
   return (
     <div className="space-y-4">
-      <WebsiteServicesModuleTabs />
-
       <ErpPageHero
         breadcrumbs={[
           { label: 'Inicio', href: '/dashboard' },
           { label: 'Configuración', href: '/dashboard/configuracion/empresa' },
-          { label: 'Servicios web', href: '/dashboard/configuracion/servicios-web' },
+          { label: 'Sitios web', href: '/dashboard/configuracion/servicios-web' },
           { label: 'Builder visual' },
         ]}
         title="Builder visual con Puck"
         description="Base del editor tipo Wix para construir sitios con bloques, responsive preview y publicación controlada."
       />
+
+      <WebsiteServicesModuleTabs />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.9fr)]">
         <Card className="rounded-[26px] border-slate-200 shadow-sm">

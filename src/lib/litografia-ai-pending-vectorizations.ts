@@ -5,6 +5,7 @@ import path from 'path'
 export type LitografiaAiPendingVectorizationRecord = {
   id: string
   empresaId: string
+  actorUserId: string
   sourceFileName: string
   sourceMimeType: string
   sourceSizeBytes: number

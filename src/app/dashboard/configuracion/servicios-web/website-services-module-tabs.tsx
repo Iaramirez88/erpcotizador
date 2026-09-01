@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { cn } from '@/lib/utils'
 
 const tabs = [
   {
@@ -26,12 +27,13 @@ const tabs = [
   },
 ]
 
-export default function WebsiteServicesModuleTabs() {
+export default function WebsiteServicesModuleTabs({ className }: { className?: string }) {
   const pathname = usePathname()
   const safePathname = pathname ?? ''
 
   return (
-    <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+    <div className={cn('sticky top-[4.9rem] z-20 overflow-x-auto rounded-[26px] border border-[#2b2e401a] bg-white/96 p-1.5 shadow-[0_16px_32px_-28px_rgba(15,23,42,0.18)] backdrop-blur supports-[backdrop-filter]:bg-white/88', className)}>
+      <div className="inline-flex min-w-full gap-1 rounded-2xl bg-slate-50/90 p-1">
       {tabs.map((tab) => {
         const active = tab.match(safePathname)
         return (
@@ -39,13 +41,14 @@ export default function WebsiteServicesModuleTabs() {
             key={tab.href}
             href={tab.href}
             className={active
-              ? 'rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white'
-              : 'rounded-xl px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900'}
+              ? 'rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#101010]/18 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f2f2f4]'
+              : 'rounded-xl px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#101010]/18 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f2f2f4]'}
           >
             {tab.label}
           </Link>
         )
       })}
+      </div>
     </div>
   )
 }

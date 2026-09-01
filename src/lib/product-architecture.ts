@@ -8,6 +8,7 @@ export type ProductLayer =
   | 'Analítica'
   | 'IA'
   | 'Verticales'
+  | 'Configuración'
   | 'Administración'
 
 export type DashboardSectionTitle =
@@ -20,6 +21,7 @@ export type DashboardSectionTitle =
   | 'Analítica'
   | 'IA'
   | 'Verticales'
+  | 'Configuración'
   | 'Administración'
   | 'Otros'
 
@@ -45,26 +47,25 @@ export const DASHBOARD_SECTION_ORDER: DashboardSectionTitle[] = [
   'IA',
   'Verticales',
   'Administración',
+  'Configuración',
   'Otros',
 ]
 
 export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard', label: 'Dashboard', labelKey: 'nav.dashboard', section: 'Inicio', layer: 'Inicio', domain: 'Inicio', moduleKey: 'DASHBOARD' },
-  { href: '/dashboard/inteligencia', label: 'Inteligencia', section: 'Inicio', layer: 'Inicio', domain: 'Motor de inteligencia empresarial', moduleKey: 'REPORTES' },
-  { href: '/dashboard/rop', label: 'Red operativa', section: 'Inicio', layer: 'Inicio', domain: 'ORDEX ROP', moduleKey: 'DASHBOARD' },
-  { href: '/dashboard/perfil', label: 'Mi perfil', labelKey: 'header.profile', section: 'Inicio', layer: 'Inicio', domain: 'Perfil de usuario', moduleKey: null },
-  { href: '/dashboard/mapa-producto', label: 'Mapa de producto', section: 'Inicio', layer: 'Inicio', domain: 'Arquitectura de producto', moduleKey: 'DASHBOARD' },
-  { href: '/dashboard/plantillas', label: 'Plantillas', labelKey: 'nav.templates', section: 'Inicio', layer: 'Inicio', domain: 'Plantillas', moduleKey: 'DASHBOARD' },
-  { href: '/dashboard/notificaciones', label: 'Notificaciones', section: 'Administración', layer: 'Administración', domain: 'Mensajería transversal', moduleKey: 'NOTIFICACIONES' },
-  { href: '/dashboard/notificaciones/crear', label: 'Crear notificación', section: 'Administración', layer: 'Administración', domain: 'Mensajería transversal', moduleKey: 'NOTIFICACIONES' },
-  { href: '/dashboard/ayuda', label: 'Ayuda', section: 'Inicio', layer: 'Inicio', domain: 'Ayuda y documentación', moduleKey: null },
+  { href: '/dashboard/inteligencia', label: 'Inteligencia', section: 'Analítica', layer: 'Analítica', domain: 'Motor de inteligencia empresarial', moduleKey: 'REPORTES' },
+  { href: '/dashboard/rop', label: 'Red operativa', section: 'Operaciones', layer: 'Operaciones', domain: 'ORDEX ROP', moduleKey: 'DASHBOARD' },
+  { href: '/dashboard/perfil', label: 'Mi perfil', labelKey: 'header.profile', section: 'Administración', layer: 'Administración', domain: 'Perfil de usuario', moduleKey: null },
+  { href: '/dashboard/mapa-producto', label: 'Mapa de producto', section: 'Administración', layer: 'Administración', domain: 'Arquitectura de producto', moduleKey: 'DASHBOARD' },
+  { href: '/dashboard/plantillas', label: 'Plantillas', labelKey: 'nav.templates', section: 'Configuración', layer: 'Configuración', domain: 'Plantillas', moduleKey: 'DASHBOARD' },
+  { href: '/dashboard/ayuda', label: 'Ayuda', section: 'Administración', layer: 'Administración', domain: 'Ayuda y documentación', moduleKey: null },
 
-  { href: '/dashboard/crm', label: 'Frente comercial', section: 'Captación', layer: 'Captación', domain: 'CRM', moduleKey: 'CRM' },
-  { href: '/dashboard/crm/negociaciones', label: 'Negociaciones', section: 'Captación', layer: 'Captación', domain: 'Negociaciones', moduleKey: 'CRM' },
+  { href: '/dashboard/crm', label: 'CRM', section: 'Captación', layer: 'Captación', domain: 'CRM', moduleKey: 'CRM' },
+  { href: '/dashboard/crm/negociaciones', label: 'Oportunidades', section: 'Captación', layer: 'Captación', domain: 'Pipeline comercial', moduleKey: 'CRM' },
   { href: '/dashboard/crm/agenda', label: 'Calendario', section: 'Captación', layer: 'Captación', domain: 'Agenda', moduleKey: 'CRM' },
   { href: '/dashboard/crm/chatbot', label: 'Chatbot', section: 'Captación', layer: 'Captación', domain: 'Automatización conversacional', moduleKey: 'CRM' },
   { href: '/dashboard/crm/archivos', label: 'DRIVE', section: 'Captación', layer: 'Captación', domain: 'Drive comercial', moduleKey: 'CRM' },
-  { href: '/dashboard/crm/integraciones', label: 'Canales e integraciones', section: 'Captación', layer: 'Captación', domain: 'Canales', moduleKey: 'CRM' },
+  { href: '/dashboard/crm/integraciones', label: 'Automatización', section: 'Captación', layer: 'Captación', domain: 'Automatización', moduleKey: 'CRM' },
   { href: '/dashboard/crm/leads', label: 'Captación', section: 'Captación', layer: 'Captación', domain: 'Leads', moduleKey: 'CRM' },
   { href: '/dashboard/crm/oportunidades', label: 'Pipeline', section: 'Captación', layer: 'Captación', domain: 'Oportunidades', moduleKey: 'CRM' },
   { href: '/dashboard/crm/tareas', label: 'Actividades', section: 'Captación', layer: 'Captación', domain: 'Tareas comerciales', moduleKey: 'CRM' },
@@ -80,9 +81,9 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
 
   { href: '/dashboard/ordenes', label: 'Órdenes', labelKey: 'nav.orders', section: 'Operaciones', layer: 'Operaciones', domain: 'Órdenes de trabajo', moduleKey: 'ORDENES' },
   { href: '/dashboard/espacios-trabajo', label: 'Tareas y proyectos', section: 'Operaciones', layer: 'Operaciones', domain: 'Proyectos y trabajo', moduleKey: 'ORDENES' },
-  { href: '/dashboard/chat', label: 'Conversaciones', section: 'Operaciones', layer: 'Operaciones', domain: 'Coordinación interna', moduleKey: 'ORDENES' },
-  { href: '/dashboard/litografia', label: 'Litografía', labelKey: 'nav.printshop', section: 'Operaciones', layer: 'Operaciones', domain: 'Producción especializada', moduleKey: 'COTIZADOR' },
-  { href: '/dashboard/escaneos', label: 'Escaneos', labelKey: 'nav.scans', section: 'Operaciones', layer: 'Operaciones', domain: 'Captura documental', moduleKey: 'ESCANEOS' },
+  { href: '/dashboard/chat', label: 'Conversaciones', section: 'Captación', layer: 'Captación', domain: 'Coordinación interna', moduleKey: 'ORDENES' },
+  { href: '/dashboard/litografia', label: 'Costos', section: 'Configuración', layer: 'Configuración', domain: 'Costos y producción especializada', moduleKey: 'COTIZADOR' },
+  { href: '/dashboard/escaneos', label: 'Escaneos', labelKey: 'nav.scans', section: 'Ventas', layer: 'Ventas', domain: 'Captura documental', moduleKey: 'ESCANEOS' },
 
   { href: '/dashboard/productos', label: 'Productos', labelKey: 'nav.products', section: 'Inventario', layer: 'Inventario', domain: 'Productos', moduleKey: 'MATERIALES' },
   { href: '/dashboard/materiales', label: 'Materiales', section: 'Inventario', layer: 'Inventario', domain: 'Materiales', moduleKey: 'MATERIALES' },
@@ -117,7 +118,7 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/configuracion/usuarios', label: 'Usuarios', labelKey: 'nav.users', section: 'Administración', layer: 'Administración', domain: 'Usuarios', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/respaldo', label: 'Respaldo', section: 'Administración', layer: 'Administración', domain: 'Respaldo por empresa', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/notificaciones', label: 'Dispositivos', section: 'Administración', layer: 'Administración', domain: 'Dispositivos y notificaciones push', moduleKey: null },
-  { href: '/dashboard/configuracion/servicios-web', label: 'Servicios web', section: 'Administración', layer: 'Administración', domain: 'Servicios web', moduleKey: null },
+  { href: '/dashboard/configuracion/servicios-web', label: 'Sitios web', section: 'Captación', layer: 'Captación', domain: 'Sitios web', moduleKey: null },
   { href: '/dashboard/configuracion/plan', label: 'Plan', labelKey: 'nav.plan', section: 'Administración', layer: 'Administración', domain: 'Plan y suscripción', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/super-admin/empresas', label: 'Super Admin Empresas', section: 'Administración', layer: 'Administración', domain: 'Tenant management', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/super-admin/usuarios', label: 'Super Admin Usuarios', section: 'Administración', layer: 'Administración', domain: 'Tenant management', moduleKey: 'CONFIG' },

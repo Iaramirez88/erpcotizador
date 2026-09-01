@@ -265,11 +265,12 @@ async function getQuotaBytes(empresaId: string) {
   const empresa = await prisma.empresa.findUnique({
     where: { id: empresaId },
     select: { planTier: true },
-  })
+  }).catch(() => null)
 
   if (!empresa?.planTier) return getQuotaBytesFromEnv()
 
-  const plan = await getManagedPlanByTier(empresa.planTier)
+  const plan = await getManagedPlanByTier(empresa.planTier).catch(() => null)
+  if (!plan) return getQuotaBytesFromEnv()
   return convertStorageLimitGbToBytes(plan.storageLimitGb) ?? getQuotaBytesFromEnv()
 }
 
@@ -466,8 +467,8 @@ function mapEntityTypeToKey(entityType: CrmFileEntityType) {
   return 'opportunities'
 }
 
-function hasUserAccessToPath(index: CrmFilesIndex, entryPath: string, currentUserId?: string | null) {
-  if (!currentUserId || !entryPath) return true
+function hasUserAccessToPath(index: CrmFilesIndex, entryPath: string, currentUserId?: string | null, bypassAccessControl = false) {
+  if (bypassAccessControl || !currentUserId || !entryPath) return true
   const prefixes = pathPrefixes(entryPath)
   for (let position = prefixes.length - 1; position >= 0; position -= 1) {
     const metadata = index.entries[prefixes[position]]
@@ -477,6 +478,12 @@ function hasUserAccessToPath(index: CrmFilesIndex, entryPath: string, currentUse
     if (metadata.sharedWithUserIds.includes(currentUserId)) return true
   }
   return false
+}
+
+function assertUserAccessToPath(index: CrmFilesIndex, entryPath: string, currentUserId: string | null | undefined, message: string, bypassAccessControl = false) {
+  if (!hasUserAccessToPath(index, entryPath, currentUserId, bypassAccessControl)) {
+    throw new Error(message)
+  }
 }
 
 async function buildItemFromSegments(args: { root: string; empresaId: string; itemSegments: string[]; index: CrmFilesIndex; actorForAutoCreate?: CrmFilesActor }) {
@@ -523,7 +530,7 @@ function sanitizeEntryName(currentName: string, requestedName: string, isDirecto
   return normalizeSegment(`${safeBaseName}${effectiveExt}`)
 }
 
-async function buildFolderTree(args: { root: string; index: CrmFilesIndex; currentUserId?: string | null; segments?: string[] }): Promise<CrmFolderNode | null> {
+async function buildFolderTree(args: { root: string; index: CrmFilesIndex; currentUserId?: string | null; bypassAccessControl?: boolean; segments?: string[] }): Promise<CrmFolderNode | null> {
   const segments = args.segments || []
   const currentPath = getAbsolutePathForSegments(args.root, segments)
   const entries = await fs.readdir(currentPath, { withFileTypes: true }).catch(() => [])
@@ -536,12 +543,13 @@ async function buildFolderTree(args: { root: string; index: CrmFilesIndex; curre
     root: args.root,
     index: args.index,
     currentUserId: args.currentUserId,
+    bypassAccessControl: args.bypassAccessControl,
     segments: [...segments, name],
   })))).filter((node): node is CrmFolderNode => Boolean(node))
 
   const entryPath = joinClientPath(segments)
   const isRoot = segments.length === 0
-  const hasDirectAccess = isRoot || hasUserAccessToPath(args.index, entryPath, args.currentUserId)
+  const hasDirectAccess = isRoot || hasUserAccessToPath(args.index, entryPath, args.currentUserId, args.bypassAccessControl)
   if (!isRoot && !hasDirectAccess && children.length === 0) {
     return null
   }
@@ -564,7 +572,7 @@ function treeContainsPath(node: CrmFolderNode, targetPath: string): boolean {
   return node.children.some((child) => treeContainsPath(child, targetPath))
 }
 
-async function listDirectoryItems(args: { root: string; empresaId: string; segments: string[]; index: CrmFilesIndex; currentUserId?: string | null; visibleFolderPaths: Set<string> }) {
+async function listDirectoryItems(args: { root: string; empresaId: string; segments: string[]; index: CrmFilesIndex; currentUserId?: string | null; bypassAccessControl?: boolean; visibleFolderPaths: Set<string> }) {
   const directory = getAbsolutePathForSegments(args.root, args.segments)
   const entries = await fs.readdir(directory, { withFileTypes: true })
   const items = await Promise.all(entries.map((entry) => buildItemFromSegments({
@@ -577,7 +585,7 @@ async function listDirectoryItems(args: { root: string; empresaId: string; segme
   return items
     .filter((item) => item.type === 'folder'
       ? args.visibleFolderPaths.has(item.path)
-      : hasUserAccessToPath(args.index, item.path, args.currentUserId))
+      : hasUserAccessToPath(args.index, item.path, args.currentUserId, args.bypassAccessControl))
     .sort((left, right) => {
       if (left.type === 'folder' && right.type !== 'folder') return -1
       if (left.type !== 'folder' && right.type === 'folder') return 1
@@ -585,7 +593,7 @@ async function listDirectoryItems(args: { root: string; empresaId: string; segme
     })
 }
 
-async function walkUsage(args: { root: string; empresaId: string; index: CrmFilesIndex; currentUserId?: string | null; visibleFolderPaths: Set<string>; segments?: string[] }): Promise<{ usedBytes: number; filesCount: number; foldersCount: number; recentItems: CrmFileItem[] }> {
+async function walkUsage(args: { root: string; empresaId: string; index: CrmFilesIndex; currentUserId?: string | null; bypassAccessControl?: boolean; visibleFolderPaths: Set<string>; segments?: string[] }): Promise<{ usedBytes: number; filesCount: number; foldersCount: number; recentItems: CrmFileItem[] }> {
   const segments = args.segments || []
   const directory = getAbsolutePathForSegments(args.root, segments)
   const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => [])
@@ -611,7 +619,7 @@ async function walkUsage(args: { root: string; empresaId: string; index: CrmFile
       continue
     }
 
-    if (!hasUserAccessToPath(args.index, itemPath, args.currentUserId)) continue
+    if (!hasUserAccessToPath(args.index, itemPath, args.currentUserId, args.bypassAccessControl)) continue
     recentItems.push(await buildItemFromSegments({
       root: args.root,
       empresaId: args.empresaId,
@@ -631,11 +639,11 @@ async function walkUsage(args: { root: string; empresaId: string; index: CrmFile
   }
 }
 
-export async function getCrmFilesSnapshot(args: { empresaId: string; currentPath?: string | null; currentUserId?: string | null }): Promise<CrmFilesSnapshot> {
+export async function getCrmFilesSnapshot(args: { empresaId: string; currentPath?: string | null; currentUserId?: string | null; bypassAccessControl?: boolean }): Promise<CrmFilesSnapshot> {
   const root = await ensureCrmFilesRoot(args.empresaId)
   const index = await readIndex(args.empresaId)
   const currentSegments = normalizeCrmFilesPath(args.currentPath)
-  const tree = await buildFolderTree({ root, index, currentUserId: args.currentUserId })
+  const tree = await buildFolderTree({ root, index, currentUserId: args.currentUserId, bypassAccessControl: args.bypassAccessControl })
   const safeTree = tree || { name: '/', path: '', children: [] }
   const currentClientPath = joinClientPath(currentSegments)
 
@@ -651,8 +659,8 @@ export async function getCrmFilesSnapshot(args: { empresaId: string; currentPath
 
   const visibleFolderPaths = collectVisibleFolderPaths(safeTree)
   const [items, usage] = await Promise.all([
-    listDirectoryItems({ root, empresaId: args.empresaId, segments: currentSegments, index, currentUserId: args.currentUserId, visibleFolderPaths }),
-    walkUsage({ root, empresaId: args.empresaId, index, currentUserId: args.currentUserId, visibleFolderPaths }),
+    listDirectoryItems({ root, empresaId: args.empresaId, segments: currentSegments, index, currentUserId: args.currentUserId, bypassAccessControl: args.bypassAccessControl, visibleFolderPaths }),
+    walkUsage({ root, empresaId: args.empresaId, index, currentUserId: args.currentUserId, bypassAccessControl: args.bypassAccessControl, visibleFolderPaths }),
   ])
 
   const breadcrumbs = [{ label: '/', path: '' }]
@@ -705,14 +713,12 @@ export async function getCrmStorageUsageSummary(args: { empresaId: string }): Pr
   }
 }
 
-export async function getCrmFileItemByPath(args: { empresaId: string; entryPath: string; currentUserId?: string | null }) {
+export async function getCrmFileItemByPath(args: { empresaId: string; entryPath: string; currentUserId?: string | null; bypassAccessControl?: boolean }) {
   const root = await ensureCrmFilesRoot(args.empresaId)
   const index = await readIndex(args.empresaId)
   const externalMetadata = index.entries[String(args.entryPath || '').trim()]
   if (externalMetadata?.kind === 'external') {
-    if (!hasUserAccessToPath(index, String(args.entryPath || '').trim(), args.currentUserId)) {
-      throw new Error('No tienes acceso a ese elemento del repositorio.')
-    }
+    assertUserAccessToPath(index, String(args.entryPath || '').trim(), args.currentUserId, 'No tienes acceso a ese elemento del repositorio.', args.bypassAccessControl)
     await writeIndex(args.empresaId, index)
     return buildExternalItem(String(args.entryPath || '').trim(), externalMetadata)
   }
@@ -720,28 +726,41 @@ export async function getCrmFileItemByPath(args: { empresaId: string; entryPath:
   if (!segments.length) {
     throw new Error('Selecciona un archivo o carpeta válida.')
   }
-  if (!hasUserAccessToPath(index, joinClientPath(segments), args.currentUserId)) {
-    throw new Error('No tienes acceso a ese elemento del repositorio.')
-  }
-  const item = await buildItemFromSegments({ root, empresaId: args.empresaId, itemSegments: segments, index })
+  assertUserAccessToPath(index, joinClientPath(segments), args.currentUserId, 'No tienes acceso a ese elemento del repositorio.', args.bypassAccessControl)
+  const item = await buildItemFromSegments({ root, empresaId: args.empresaId, itemSegments: segments, index }).catch((error) => {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      throw new Error('El elemento no existe.')
+    }
+    throw error
+  })
   await writeIndex(args.empresaId, index)
   return item
 }
 
-export async function createCrmFolder(args: { empresaId: string; currentPath?: string | null; name: string; actor?: CrmFilesActor }) {
+export async function createCrmFolder(args: { empresaId: string; currentPath?: string | null; currentUserId?: string | null; name: string; sharedWithUserIds?: string[]; actor?: CrmFilesActor }) {
   const root = await ensureCrmFilesRoot(args.empresaId)
   const index = await readIndex(args.empresaId)
   const currentSegments = normalizeCrmFilesPath(args.currentPath)
   const folderName = sanitizeFolderName(args.name)
+  const currentClientPath = joinClientPath(currentSegments)
 
   if (!folderName) {
     throw new Error('Escribe un nombre válido para la carpeta.')
+  }
+
+  assertUserAccessToPath(index, currentClientPath, args.currentUserId, 'No tienes acceso a esa carpeta del repositorio.')
+
+  const currentDirectory = getAbsolutePathForSegments(root, currentSegments)
+  const currentStats = await fs.stat(currentDirectory).catch(() => null)
+  if (!currentStats || !currentStats.isDirectory()) {
+    throw new Error('La carpeta destino no existe.')
   }
 
   const folderSegments = [...currentSegments, normalizeSegment(folderName)]
   const target = getAbsolutePathForSegments(root, folderSegments)
   await fs.mkdir(target, { recursive: true })
   const metadata = ensureIndexEntry(index, joinClientPath(folderSegments), 'folder', args.actor)
+  metadata.sharedWithUserIds = Array.from(new Set((args.sharedWithUserIds || []).map((userId) => String(userId || '').trim()).filter(Boolean)))
   if (!metadata.auditTrail.length) {
     appendAudit(metadata, 'CREATED', args.actor, `Carpeta creada por ${args.actor?.label || 'usuario interno'}.`)
   }
@@ -752,6 +771,8 @@ export async function createCrmFolder(args: { empresaId: string; currentPath?: s
 export async function uploadCrmFiles(args: {
   empresaId: string
   currentPath?: string | null
+  currentUserId?: string | null
+  bootstrapSharedFolders?: boolean
   actor?: CrmFilesActor
   files: Array<{ name: string; type?: string | null; size?: number | null; bytes: Buffer }>
 }) {
@@ -762,8 +783,20 @@ export async function uploadCrmFiles(args: {
   const root = await ensureCrmFilesRoot(args.empresaId)
   const index = await readIndex(args.empresaId)
   const currentSegments = normalizeCrmFilesPath(args.currentPath)
+  const currentClientPath = joinClientPath(currentSegments)
+
+  if (args.bootstrapSharedFolders && currentSegments.length) {
+    const directory = getAbsolutePathForSegments(root, currentSegments)
+    await fs.mkdir(directory, { recursive: true })
+    ensureFolderEntries(index, currentSegments, args.actor)
+  }
+
+  assertUserAccessToPath(index, currentClientPath, args.currentUserId, 'No tienes acceso a esa carpeta del repositorio.')
   const directory = getAbsolutePathForSegments(root, currentSegments)
-  await fs.mkdir(directory, { recursive: true })
+  const directoryStats = await fs.stat(directory).catch(() => null)
+  if (!directoryStats || !directoryStats.isDirectory()) {
+    throw new Error('La carpeta destino no existe.')
+  }
   ensureFolderEntries(index, currentSegments, args.actor)
   const tree = await buildFolderTree({ root, index })
   const visibleFolderPaths = collectVisibleFolderPaths(tree || { name: '/', path: '', children: [] })
@@ -800,13 +833,15 @@ export async function uploadCrmFiles(args: {
   return uploaded
 }
 
-export async function deleteCrmEntry(args: { empresaId: string; entryPath: string }) {
+export async function deleteCrmEntry(args: { empresaId: string; entryPath: string; currentUserId?: string | null }) {
   const root = await ensureCrmFilesRoot(args.empresaId)
   const index = await readIndex(args.empresaId)
   const segments = normalizeCrmFilesPath(args.entryPath)
   if (!segments.length) {
     throw new Error('No se puede eliminar la raíz del administrador.')
   }
+
+  assertUserAccessToPath(index, joinClientPath(segments), args.currentUserId, 'No tienes acceso a ese elemento del repositorio.')
 
   const target = getAbsolutePathForSegments(root, segments)
   const stats = await fs.stat(target).catch(() => null)
@@ -827,13 +862,15 @@ export async function deleteCrmEntry(args: { empresaId: string; entryPath: strin
   return { type: 'file' as const }
 }
 
-export async function renameCrmEntry(args: { empresaId: string; entryPath: string; newName: string; actor?: CrmFilesActor }) {
+export async function renameCrmEntry(args: { empresaId: string; entryPath: string; currentUserId?: string | null; newName: string; actor?: CrmFilesActor }) {
   const root = await ensureCrmFilesRoot(args.empresaId)
   const index = await readIndex(args.empresaId)
   const sourceSegments = normalizeCrmFilesPath(args.entryPath)
   if (!sourceSegments.length) {
     throw new Error('No se puede renombrar la raíz del administrador.')
   }
+
+  assertUserAccessToPath(index, joinClientPath(sourceSegments), args.currentUserId, 'No tienes acceso a ese elemento del repositorio.')
 
   const sourcePath = getAbsolutePathForSegments(root, sourceSegments)
   const stats = await fs.stat(sourcePath).catch(() => null)
@@ -860,7 +897,7 @@ export async function renameCrmEntry(args: { empresaId: string; entryPath: strin
   return buildItemFromSegments({ root, empresaId: args.empresaId, itemSegments: targetSegments, index })
 }
 
-export async function moveCrmEntry(args: { empresaId: string; entryPath: string; targetDirectoryPath: string; actor?: CrmFilesActor }) {
+export async function moveCrmEntry(args: { empresaId: string; entryPath: string; targetDirectoryPath: string; currentUserId?: string | null; actor?: CrmFilesActor }) {
   const root = await ensureCrmFilesRoot(args.empresaId)
   const index = await readIndex(args.empresaId)
   const sourceSegments = normalizeCrmFilesPath(args.entryPath)
@@ -868,6 +905,9 @@ export async function moveCrmEntry(args: { empresaId: string; entryPath: string;
   if (!sourceSegments.length) {
     throw new Error('No se puede mover la raíz del administrador.')
   }
+
+  assertUserAccessToPath(index, joinClientPath(sourceSegments), args.currentUserId, 'No tienes acceso a ese elemento del repositorio.')
+  assertUserAccessToPath(index, joinClientPath(targetDirectorySegments), args.currentUserId, 'No tienes acceso a la carpeta destino.')
 
   const sourcePath = getAbsolutePathForSegments(root, sourceSegments)
   const sourceStats = await fs.stat(sourcePath).catch(() => null)
@@ -906,11 +946,12 @@ export async function moveCrmEntry(args: { empresaId: string; entryPath: string;
   return buildItemFromSegments({ root, empresaId: args.empresaId, itemSegments: targetSegments, index })
 }
 
-export async function updateCrmEntrySharing(args: { empresaId: string; entryPath: string; sharedWithUserIds: string[]; actor?: CrmFilesActor }) {
+export async function updateCrmEntrySharing(args: { empresaId: string; entryPath: string; currentUserId?: string | null; sharedWithUserIds: string[]; actor?: CrmFilesActor }) {
   const root = await ensureCrmFilesRoot(args.empresaId)
   const index = await readIndex(args.empresaId)
   const externalEntry = index.entries[args.entryPath]
   if (externalEntry?.kind === 'external') {
+    assertUserAccessToPath(index, args.entryPath, args.currentUserId, 'No tienes acceso a ese elemento del repositorio.')
     externalEntry.sharedWithUserIds = Array.from(new Set(args.sharedWithUserIds.map((userId) => String(userId || '').trim()).filter(Boolean)))
     appendAudit(externalEntry, 'SHARED', args.actor, `${args.actor?.label || 'Usuario interno'} actualizó el acceso compartido con ${externalEntry.sharedWithUserIds.length} usuario(s).`)
     await writeIndex(args.empresaId, index)
@@ -918,6 +959,7 @@ export async function updateCrmEntrySharing(args: { empresaId: string; entryPath
   }
   const segments = normalizeCrmFilesPath(args.entryPath)
   if (!segments.length) throw new Error('Selecciona un archivo o carpeta válida.')
+  assertUserAccessToPath(index, joinClientPath(segments), args.currentUserId, 'No tienes acceso a ese elemento del repositorio.')
   const absolutePath = getAbsolutePathForSegments(root, segments)
   const stats = await fs.stat(absolutePath).catch(() => null)
   if (!stats) throw new Error('El elemento no existe.')

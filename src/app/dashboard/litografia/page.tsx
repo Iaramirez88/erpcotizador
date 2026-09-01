@@ -1,5 +1,5 @@
 /**
- * Calculadora Litografía (MVP)
+ * Centro de Costos (MVP)
  */
 
 "use client"
@@ -30,8 +30,8 @@ export default function LitografiaPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Cotizador litográfico</h1>
-          <p className="text-muted-foreground">Alterna entre la configuración clásica y un ingreso asistido para interpretar briefs comerciales más rápido.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Costos</h1>
+          <p className="text-muted-foreground">Alterna entre la configuración clásica y un ingreso asistido para interpretar briefs comerciales y construir costos más rápido.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">

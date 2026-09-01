@@ -3209,7 +3209,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
               </Button>
               {providerFilter === 'WEB_CHATBOT' ? (
                 <Button asChild variant="outline" className="rounded-2xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
-                  <Link href="/dashboard/crm/conversations">Ver inbox completo</Link>
+                  <Link href="/dashboard/chat">Ver inbox completo</Link>
                 </Button>
               ) : (
                 <Button asChild variant="outline" className="rounded-2xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
@@ -3435,7 +3435,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
           >
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Todos los asesores</p>
             <p className="mt-1 text-lg font-semibold text-slate-950">{queueSummary.teamCount}</p>
-            <p className="mt-1 text-xs text-slate-500">Vista consolidada del frente comercial.</p>
+            <p className="mt-1 text-xs text-slate-500">Vista consolidada del CRM.</p>
           </button>
           {advisorSummary.map((assignee) => {
             const isActive = assignedFilter === assignee.id

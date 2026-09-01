@@ -50,18 +50,18 @@ export default async function WebsiteBuilderSitesPage() {
 
   return (
     <div className="space-y-4">
-      <WebsiteServicesModuleTabs />
-
       <ErpPageHero
         breadcrumbs={[
           { label: 'Inicio', href: '/dashboard' },
           { label: 'Configuración', href: '/dashboard/configuracion/empresa' },
-          { label: 'Servicios web', href: '/dashboard/configuracion/servicios-web' },
+          { label: 'Sitios web', href: '/dashboard/configuracion/servicios-web' },
           { label: 'Sitios' },
         ]}
         title="Sitios web"
         description="Base operativa para crear, organizar, versionar y publicar sitios desde Ordex."
       />
+
+      <WebsiteServicesModuleTabs />
 
       <WebsiteProjectsClient />
 

@@ -167,8 +167,8 @@ export default async function DashboardLayout({
           {/* Main Content */}
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Page Content */}
-            <main className="erp-shell relative flex-1 overflow-y-auto bg-white p-1 pb-24 dark:bg-[#08111f] sm:p-2 sm:pb-14 lg:p-2.5 lg:pb-14">
-              <div className="erp-shell__content mx-auto flex w-full max-w-[1600px] flex-col gap-2.5">
+            <main className="erp-shell relative flex-1 overflow-y-auto bg-white px-1 pb-24 pt-0 dark:bg-[#08111f] sm:px-2 sm:pb-14 sm:pt-0 lg:px-2.5 lg:pb-14 lg:pt-0">
+              <div className="erp-shell__content mx-auto flex w-full max-w-[1600px] flex-col gap-2.5 pt-1 sm:pt-2 lg:pt-2.5">
                 <RouteLoadingIndicator />
                 <DashboardPermissionBoundary allowedHrefs={allowedNavHrefs}>
                   {children}

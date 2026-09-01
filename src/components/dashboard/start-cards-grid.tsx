@@ -147,7 +147,7 @@ const START_CARDS: StartCardDefinition[] = [
   },
   {
     title: 'Gestionar CRM',
-    description: 'Atiende leads, oportunidades y conversaciones desde un frente comercial operativo.',
+    description: 'Atiende leads, oportunidades y conversaciones desde un CRM operativo.',
     href: '/dashboard/crm',
     cta: 'Abrir CRM',
     moduleKey: 'CRM',

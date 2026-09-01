@@ -20,6 +20,18 @@ export async function GET() {
         email: true,
         image: true,
         role: true,
+        sedeMemberships: {
+          where: { sede: { empresaId: access.empresaId } },
+          select: {
+            role: true,
+            sede: {
+              select: {
+                id: true,
+                nombre: true,
+              },
+            },
+          },
+        },
       },
       orderBy: [
         { name: 'asc' },
@@ -27,7 +39,17 @@ export async function GET() {
       ],
     })
 
-    return NextResponse.json({ success: true, data: users })
+    return NextResponse.json({
+      success: true,
+      data: users.map((user) => ({
+        ...user,
+        sedeMemberships: user.sedeMemberships.map((membership) => ({
+          sedeId: membership.sede.id,
+          sedeName: membership.sede.nombre,
+          role: membership.role,
+        })),
+      })),
+    })
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'Error desconocido'
     return NextResponse.json({ success: false, error: detail }, { status: 400 })

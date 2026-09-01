@@ -15,7 +15,8 @@ export async function GET(request: NextRequest) {
     if (!access.ok) return access.response
 
     const pathParam = request.nextUrl.searchParams.get('path')
-    const snapshot = await getCrmFilesSnapshot({ empresaId: access.empresaId, currentPath: pathParam, currentUserId: access.userId })
+    const bypassAccessControl = access.isSystemSuperAdmin || access.membershipRole === 'ADMIN'
+    const snapshot = await getCrmFilesSnapshot({ empresaId: access.empresaId, currentPath: pathParam, currentUserId: access.userId, bypassAccessControl })
     return NextResponse.json({ success: true, data: snapshot })
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'Error desconocido'
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
       const uploaded = await uploadCrmFiles({
         empresaId: access.empresaId,
         currentPath,
+        currentUserId: access.userId,
         actor: { userId: access.userId, label: access.session.user.name || access.session.user.email || 'Usuario interno' },
         files: await Promise.all(allFiles.map(async (file) => ({
           name: file.name,
@@ -70,7 +72,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, data: uploaded })
     }
 
-    const body = (await request.json().catch(() => null)) as { action?: string; path?: string; name?: string } | null
+    const body = (await request.json().catch(() => null)) as { action?: string; path?: string; name?: string; sharedWithUserIds?: string[] } | null
     if (body?.action !== 'create-folder') {
       return NextResponse.json({ success: false, error: 'Acción no soportada.' }, { status: 400 })
     }
@@ -78,7 +80,9 @@ export async function POST(request: NextRequest) {
     const folder = await createCrmFolder({
       empresaId: access.empresaId,
       currentPath: body.path,
+      currentUserId: access.userId,
       name: String(body.name || ''),
+      sharedWithUserIds: Array.isArray(body.sharedWithUserIds) ? body.sharedWithUserIds.map((item) => String(item || '')) : [],
       actor: { userId: access.userId, label: access.session.user.name || access.session.user.email || 'Usuario interno' },
     })
     return NextResponse.json({ success: true, data: folder })
@@ -104,7 +108,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Indica el archivo o carpeta a eliminar.' }, { status: 400 })
     }
 
-    const result = await deleteCrmEntry({ empresaId: access.empresaId, entryPath: targetPath })
+    const result = await deleteCrmEntry({ empresaId: access.empresaId, entryPath: targetPath, currentUserId: access.userId })
     return NextResponse.json({ success: true, data: result })
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'Error desconocido'
@@ -139,6 +143,7 @@ export async function PATCH(request: NextRequest) {
       const renamed = await renameCrmEntry({
         empresaId: access.empresaId,
         entryPath: targetPath,
+        currentUserId: access.userId,
         newName: String(body.newName || ''),
         actor: { userId: access.userId, label: access.session.user.name || access.session.user.email || 'Usuario interno' },
       })
@@ -150,6 +155,7 @@ export async function PATCH(request: NextRequest) {
         empresaId: access.empresaId,
         entryPath: targetPath,
         targetDirectoryPath: String(body.targetDirectoryPath || ''),
+        currentUserId: access.userId,
         actor: { userId: access.userId, label: access.session.user.name || access.session.user.email || 'Usuario interno' },
       })
       return NextResponse.json({ success: true, data: moved })
@@ -159,6 +165,7 @@ export async function PATCH(request: NextRequest) {
       const shared = await updateCrmEntrySharing({
         empresaId: access.empresaId,
         entryPath: targetPath,
+        currentUserId: access.userId,
         sharedWithUserIds: Array.isArray(body.sharedWithUserIds) ? body.sharedWithUserIds.map((item) => String(item || '')) : [],
         actor: { userId: access.userId, label: access.session.user.name || access.session.user.email || 'Usuario interno' },
       })

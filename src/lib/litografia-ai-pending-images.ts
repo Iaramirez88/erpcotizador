@@ -5,6 +5,7 @@ import path from 'path'
 export type LitografiaAiPendingImageRecord = {
   id: string
   empresaId: string
+  actorUserId: string
   prompt: string
   revisedPrompt: string | null
   size: '1024x1024' | '1024x1536' | '1536x1024' | '1024x768' | '1536x864' | '864x1536'

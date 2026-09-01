@@ -6,7 +6,7 @@
 "use client"
 
 import Link from "next/link"
-import { Lock, Building2, Home, Briefcase, ShoppingCart, Boxes, Landmark, BarChart3, Sparkles, Layers3, Shield, ChefHat } from "lucide-react"
+import { Lock, Building2, Home, Briefcase, ShoppingCart, Boxes, Landmark, BarChart3, Sparkles, Layers3, Shield, ChefHat, Bot, Funnel, Settings } from "lucide-react"
 import { useEffect, useMemo, useState, type DragEvent } from "react"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -85,19 +85,19 @@ const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard/odontologia": "Opera pacientes, tratamientos y procesos odontologicos.",
   "/dashboard/crm": "Panel comercial para captar, atender y convertir oportunidades.",
   "/dashboard/crm/negociaciones": "Consolida pipeline, oportunidades, calendario y actividades comerciales en una sola vista.",
-  "/dashboard/crm/conversations": "Centraliza conversaciones de WhatsApp, redes y chatbot.",
+  "/dashboard/crm/conversations": "Ruta heredada del inbox CRM.",
   "/dashboard/crm/agenda": "Programa seguimientos, citas y recordatorios comerciales.",
   "/dashboard/crm/chatbot": "Automatiza conversaciones para atender y vender sin estar presente.",
   "/dashboard/crm/archivos": "Drive comercial para guardar y organizar archivos del proceso comercial.",
-  "/dashboard/crm/integraciones": "Conecta canales, APIs y automatizaciones del CRM.",
+  "/dashboard/crm/integraciones": "Automatiza canales, flujos y conexiones del CRM desde un solo frente.",
   "/dashboard/crm/auditoria-ia": "Revisa calidad, contexto y decisiones de la IA comercial.",
   "/dashboard/crm/leads": "Captura clientes potenciales y haz seguimiento a cada contacto.",
   "/dashboard/crm/oportunidades": "Gestiona etapas de negocio hasta cerrar la venta.",
   "/dashboard/crm/tareas": "Controla pendientes, seguimientos y trabajo del equipo.",
   "/dashboard/espacios-trabajo": "Coordina tareas, proyectos y listas internas del equipo.",
-  "/dashboard/chat": "Chat interno o global para coordinar al equipo.",
+  "/dashboard/chat": "Centraliza conversaciones de WhatsApp, redes, chatbot y coordinación interna del equipo.",
   "/dashboard/ordenes": "Administra ordenes de produccion, servicio o trabajo.",
-  "/dashboard/litografia": "Opera cotizacion, produccion y control de litografia.",
+  "/dashboard/litografia": "Gestiona costos, configuraciones y criterios operativos de producción especializada.",
   "/dashboard/litografia/conocimiento-ia": "Entrena la IA con reglas, productos y criterios del negocio.",
   "/dashboard/litografia/auditoria-ia": "Supervisa respuestas y decisiones de la IA de litografia.",
   "/dashboard/imagenes-ia/generador": "Genera imagenes de apoyo para ventas y produccion.",
@@ -114,7 +114,7 @@ const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard/configuracion/respaldo": "Genera copias por empresa, controla accesos exclusivos y restaura respaldos seguros.",
   "/dashboard/configuracion/empresa": "Configura datos, imagen y parametros de la empresa.",
   "/dashboard/configuracion/notificaciones": "Administra dispositivos vinculados y el estado de notificaciones push de tu usuario.",
-  "/dashboard/configuracion/servicios-web": "Administra servicios web y modulos conectados.",
+  "/dashboard/configuracion/servicios-web": "Gestiona sitios web, renovaciones, accesos y servicios digitales asociados.",
   "/dashboard/configuracion/plan": "Consulta tu plan, limites y opciones de actualizacion.",
   "/dashboard/configuracion/super-admin/modulos-por-plan": "Configura modulos y alcances por tipo de plan.",
   "/dashboard/configuracion/super-admin/empresas": "Administra empresas registradas en la plataforma.",
@@ -237,6 +237,8 @@ function getSectionIcon(title: string) {
       return <BarChart3 className="h-4 w-4" />
     case 'IA':
       return <Sparkles className="h-4 w-4" />
+    case 'Configuración':
+      return <Settings className="h-4 w-4" />
     case 'Administración':
     case 'Otros':
       return <Shield className="h-4 w-4" />
@@ -400,13 +402,9 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: "Canales e integraciones",
+    name: "Automatización",
     href: "/dashboard/crm/integraciones",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h8M12 8v8M4 7h4v4H4V7zm12 6h4v4h-4v-4zm0-10h4v4h-4V3zM4 17h4v4H4v-4z" />
-      </svg>
-    ),
+    icon: <Bot className="h-5 w-5" />,
   },
   {
     name: "Auditoría IA CRM",
@@ -418,13 +416,9 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: "Negociaciones",
+    name: "Oportunidades",
     href: "/dashboard/crm/negociaciones",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 19h16M7 16l4-4 3 3 5-7" />
-      </svg>
-    ),
+    icon: <Funnel className="h-5 w-5" />,
   },
   {
     name: "Tareas y proyectos",
@@ -456,7 +450,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: t('nav.printshop'),
+    name: 'Costos',
     href: "/dashboard/litografia",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -565,7 +559,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: "Servicios web",
+    name: "Sitios web",
     href: "/dashboard/configuracion/servicios-web",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -865,7 +859,8 @@ export default function Sidebar({ user }: SidebarProps) {
     : (empresa?.logo ?? null)
   const sidebarBrandAlt = sidebarBrandName || 'Ordex'
 
-  // Para persona individual, mostrar todos los módulos (candado si no está habilitado por plan)
+  // Para persona individual, mostrar todos los módulos (candado si no está habilitado por plan).
+  // Para empresa, ocultar directamente lo que el plan u override dejó apagado.
   const visibleNavigation = useMemo(() => {
     const payrollEntryHref = user.payrollEntryHref ?? nominaHref()
     const baseNavigation = moduleNavigation.map((item) => {
@@ -916,12 +911,18 @@ export default function Sidebar({ user }: SidebarProps) {
       if (it.href !== '/dashboard/inteligencia') return true
       return user.intelligenceEnabled === true
     })
-    const withOnboardingScope = withIntelligenceGate.filter((it) => {
+    const withPlanGate = withIntelligenceGate.filter((it) => {
+      if (!enabledModules || isPersonal) return true
+      const moduleKey = moduleForDashboardHref(it.href)
+      if (!moduleKey) return true
+      return enabledModules.has(moduleKey)
+    })
+    const withOnboardingScope = withPlanGate.filter((it) => {
       if (allowedNavHrefSet) return allowedNavHrefSet.has(it.href)
       return !isOnboardingScopedDashboardHref(it.href)
     })
-    return sortNavItemsByOrder(withOnboardingScope, effectiveNavOrder)
-  }, [navPrefs, enabledModules, user?.role, user.canAccessBackups, user.intelligenceEnabled, user.canAccessPayrollAdmin, user.hasPayrollPortal, user.payrollEntryHref, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation, effectiveNavOrder, allowedNavHrefSet])
+    return sortNavItemsByOrder(withOnboardingScope, effectiveNavOrder).filter((it) => it.href !== '/dashboard')
+  }, [navPrefs, enabledModules, isPersonal, user?.role, user.canAccessBackups, user.intelligenceEnabled, user.canAccessPayrollAdmin, user.hasPayrollPortal, user.payrollEntryHref, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation, effectiveNavOrder, allowedNavHrefSet])
 
   const visibleHrefs = useMemo(() => {
     return new Set(visibleNavigation.map((it) => it.href))
@@ -965,6 +966,8 @@ export default function Sidebar({ user }: SidebarProps) {
   }, [dashboardSectionOrder, visibleNavigation, effectiveNavOrder])
 
   const activeSectionTitle = useMemo(() => {
+    if (pathname === '/dashboard') return 'Inicio'
+
     // Elegimos el match más específico (href más largo) para evitar que “/dashboard” capture todo.
     let best: { sectionTitle: string; hrefLen: number } | null = null
 
@@ -991,27 +994,33 @@ export default function Sidebar({ user }: SidebarProps) {
   const effectiveOpenSection = openSectionTitle
   const isDark = resolvedTheme === 'dark'
   const sidebarSurface = isDark
-    ? "border-white/10 bg-[linear-gradient(180deg,#0f172a_0%,#111827_52%,#101a2d_100%)] text-slate-100 shadow-[18px_0_40px_-32px_rgba(15,23,42,0.75)]"
-    : "border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_58%,#f1f5f9_100%)] text-slate-900 shadow-[18px_0_40px_-32px_rgba(15,23,42,0.18)]"
-  const sectionBorder = isDark ? "border-white/10" : "border-slate-200/80"
-  const sectionTitleText = isDark ? "text-slate-400" : "text-slate-500"
-  const navText = isDark ? "text-slate-200" : "text-slate-700"
-  const navHover = isDark ? "hover:bg-[#f0dcc7]/20 hover:text-white" : "hover:bg-[#f0dcc7] hover:text-slate-950"
+    ? "border-[#444444] bg-[linear-gradient(180deg,#121212_0%,#1a1a1a_52%,#161616_100%)] text-[#e0e0e0] shadow-[18px_0_40px_-32px_rgba(0,0,0,0.55)]"
+    : "border-[#2b2e401a] bg-[#f2f2f4] text-[#101010] shadow-[18px_0_40px_-32px_rgba(15,23,42,0.14)]"
+  const sectionBorder = isDark ? "border-[#444444]" : "border-[#2b2e401a]"
+  const sectionTitleText = isDark ? "text-[#b0b0b0]" : "text-[#101010]/62"
+  const navText = isDark ? "text-[#e0e0e0]" : "text-[#101010]"
+  const navHover = isDark ? "hover:bg-[#232323] hover:text-[#e0e0e0]" : "hover:bg-[#101010] hover:text-white"
   const navActive = isDark
-    ? "bg-[#FF9800] text-white shadow-[0_12px_18px_-18px_rgba(255,152,0,0.55)]"
+    ? "bg-[#888888] text-[#121212] ring-1 ring-[#888888] shadow-[0_12px_18px_-18px_rgba(136,136,136,0.42)]"
     : "bg-[#FF9800] text-white ring-1 ring-[#FF9800] shadow-[0_10px_18px_-18px_rgba(255,152,0,0.5)]"
   const sectionHeaderOpen = isDark
-    ? "bg-[#f0dcc7]/20 text-slate-100"
-    : "bg-[#f0dcc7] text-slate-900"
+    ? "bg-[#202020] text-[#e0e0e0] ring-1 ring-[#444444]"
+    : "bg-white text-[#101010] ring-1 ring-[#2b2e401a]"
   const sectionHeaderActive = isDark
-    ? "bg-[#FF9800] text-white ring-1 ring-[#FF9800] shadow-[0_12px_18px_-18px_rgba(255,152,0,0.45)]"
+    ? "bg-[#888888] text-[#121212] ring-1 ring-[#888888] shadow-[0_12px_18px_-18px_rgba(136,136,136,0.35)]"
     : "bg-[#FF9800] text-white ring-1 ring-[#FF9800] shadow-[0_12px_18px_-18px_rgba(255,152,0,0.28)]"
   const sectionHeaderTextActive = "text-white"
-  const sectionHeaderTextOpen = isDark ? "text-slate-300" : "text-slate-700"
-  const softButton = isDark ? "border-white/10 text-slate-200 hover:bg-white/10" : "border-slate-200 text-slate-600 hover:bg-slate-100"
-  const userSecondaryText = isDark ? "text-slate-400" : "text-slate-500"
-  const userStrongText = isDark ? "text-slate-100" : "text-slate-900"
-  const badgeSurface = isDark ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-600"
+  const sectionHeaderTextOpen = isDark ? "text-[#b0b0b0]" : "text-[#101010]"
+  const softButton = isDark ? "border-[#444444] text-[#e0e0e0] hover:bg-[#232323]" : "border-[#2b2e401a] text-[#101010] hover:bg-white"
+  const userSecondaryText = isDark ? "text-[#b0b0b0]" : "text-[#101010]/62"
+  const userStrongText = isDark ? "text-[#e0e0e0]" : "text-[#101010]"
+  const badgeSurface = isDark ? "bg-[#202020] text-[#e0e0e0]" : "bg-white text-[#101010]/72"
+  const navFocusRing = isDark
+    ? "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#888888]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#121212]"
+    : "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#101010]/18 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f2f2f4]"
+  const blockedState = isDark
+    ? "cursor-not-allowed opacity-45 text-[#6f6f6f]"
+    : "cursor-not-allowed opacity-45 text-[#101010]/48"
 
   function handleSectionDragStart(event: DragEvent<HTMLElement>, sectionTitle: string) {
     if (isMobileViewport) return
@@ -1069,7 +1078,17 @@ export default function Sidebar({ user }: SidebarProps) {
         {/* Logo */}
         <div className={cn("border-b p-2.5", sectionBorder)}>
           <div className={cn("flex items-start justify-between gap-2", sidebarCollapsed ? "flex-col items-center" : "") }>
-            <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "space-x-3")}>
+            <Link
+              href="/dashboard"
+              onClick={() => {
+                beginRouteLoadingIfNeeded('/dashboard')
+                setMobileNavOpen(false)
+              }}
+              className={cn(
+                "flex items-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#101010]/18 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f2f2f4]",
+                sidebarCollapsed ? "justify-center" : "space-x-3",
+              )}
+            >
               <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-[linear-gradient(135deg,#0f766e_0%,#2563eb_100%)] text-base font-bold text-primary-foreground shadow-[0_12px_24px_-18px_rgba(37,99,235,0.7)]">
                 {sidebarBrandLogo ? (
                   <Image src={sidebarBrandLogo} alt={sidebarBrandAlt} width={36} height={36} className="h-9 w-9 object-contain" />
@@ -1082,7 +1101,7 @@ export default function Sidebar({ user }: SidebarProps) {
                   <h1 className={cn("text-sm font-bold leading-5", userStrongText)}>{sidebarBrandName}</h1>
                 </div>
               ) : null}
-            </div>
+            </Link>
 
             <div className={cn("flex items-center gap-1", sidebarCollapsed ? "flex-col-reverse" : "") }>
               <button
@@ -1178,9 +1197,10 @@ export default function Sidebar({ user }: SidebarProps) {
                       }}
                       className={cn(
                         "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors md:cursor-grab md:active:cursor-grabbing",
-                        isActive ? navActive : cn(navText, navHover),
-                        isBlocked ? "opacity-60 cursor-not-allowed" : ""
+                        navFocusRing,
+                        isActive ? navActive : isBlocked ? blockedState : cn(navText, navHover)
                       )}
+                      aria-disabled={isBlocked || undefined}
                     >
                       <div className="flex items-center space-x-2.5">
                         {item.icon}
@@ -1227,9 +1247,10 @@ export default function Sidebar({ user }: SidebarProps) {
                             }}
                             className={cn(
                               "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
-                              isActive ? navActive : cn(navText, navHover),
-                              isBlocked ? "opacity-60 cursor-not-allowed" : ""
+                              navFocusRing,
+                              isActive ? navActive : isBlocked ? blockedState : cn(navText, navHover)
                             )}
+                            aria-disabled={isBlocked || undefined}
                           >
                             <div className={cn("flex items-center", "justify-center w-full")}>
                               {item.icon}
@@ -1293,26 +1314,27 @@ export default function Sidebar({ user }: SidebarProps) {
                     setOpenSectionTitle((cur) => (cur === section.title ? null : section.title))
                   }}
                   className={cn(
-                    "w-full flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors md:cursor-grab md:active:cursor-grabbing",
+                    "group w-full flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors md:cursor-grab md:active:cursor-grabbing",
+                    navFocusRing,
                     isActiveSection ? sectionHeaderActive : isOpen ? sectionHeaderOpen : cn(navText, navHover)
                   )}
                 >
                   <span className="flex items-center gap-2">
                     <span className={cn(
                       "shrink-0",
-                      isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : sectionTitleText
+                      isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : cn(sectionTitleText, "group-hover:text-white")
                     )}>
                       {getSectionIcon(section.title)}
                     </span>
                     <span className={cn(
                       "text-[10px] font-semibold uppercase tracking-[0.12em]",
-                      isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : sectionTitleText
+                      isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : cn(sectionTitleText, "group-hover:text-white")
                     )}>{section.title === 'Captación' ? 'CRM' : section.title === 'Recursos' ? 'Inventario' : section.title}</span>
                   </span>
                   <svg
                     className={cn(
                       "h-3.5 w-3.5 transition-transform",
-                      isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : sectionTitleText,
+                      isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : cn(sectionTitleText, "group-hover:text-white"),
                       isOpen ? "rotate-180" : ""
                     )}
                     fill="none"
@@ -1361,9 +1383,10 @@ export default function Sidebar({ user }: SidebarProps) {
                               }}
                               className={cn(
                                 "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
-                                isActive ? navActive : cn(navText, navHover),
-                                isBlocked ? "opacity-60 cursor-not-allowed" : ""
+                                navFocusRing,
+                                isActive ? navActive : isBlocked ? blockedState : cn(navText, navHover)
                               )}
+                              aria-disabled={isBlocked || undefined}
                             >
                               <div className="flex items-center space-x-2.5">
                                 {item.icon}

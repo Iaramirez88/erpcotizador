@@ -1596,7 +1596,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
             breadcrumbs={[
               { label: 'Dashboard', href: '/dashboard' },
               { label: 'CRM', href: '/dashboard/crm' },
-              { label: 'Negociaciones' },
+              { label: 'Pipeline' },
             ]}
             eyebrow="Pipeline CRM"
             title="Oportunidades y pipeline comercial"
@@ -1604,7 +1604,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
             actions={
               <>
                 <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
-                  <Link href="/dashboard/crm/negociaciones">Volver a Negociaciones</Link>
+                  <Link href="/dashboard/crm/negociaciones">Volver a CRM</Link>
                 </Button>
                 <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => openCreateOpportunityDialog()}>
                   Nuevo deal
@@ -1659,7 +1659,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
             breadcrumbs={[
               { label: 'Dashboard', href: '/dashboard' },
               { label: 'CRM', href: '/dashboard/crm' },
-              { label: 'Negociaciones' },
+              { label: 'Seguimiento' },
             ]}
             eyebrow="Seguimiento CRM"
             title="Actividades y seguimiento comercial"
@@ -1667,7 +1667,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
             actions={
               <>
                 <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
-                  <Link href="/dashboard/crm/negociaciones">Volver a Negociaciones</Link>
+                  <Link href="/dashboard/crm/negociaciones">Volver a CRM</Link>
                 </Button>
                 <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={openCreateTaskDialog}>
                   Nueva actividad
@@ -1696,7 +1696,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                   ]}
                 />
                 <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700 backdrop-blur">
-                  Frente comercial
+                  CRM
                 </div>
                 <div className="space-y-1.5">
                   <h1 className="max-w-2xl text-2xl font-semibold tracking-tight text-slate-950 lg:text-3xl">Un solo embudo comercial: captación, pipeline y seguimiento.</h1>
@@ -1711,7 +1711,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                       <Link href="/dashboard/crm/chatbot">Panel chatbot</Link>
                     </Button>
                     <Button asChild variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/80 px-4">
-                      <Link href="/dashboard/crm/integraciones">Integraciones</Link>
+                      <Link href="/dashboard/crm/integraciones">Automatización</Link>
                     </Button>
                     <Button variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/80 px-4" onClick={openStageDialog}>Configurar pipeline</Button>
                     <Button variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/80 px-4" onClick={() => void loadData()}>Refrescar</Button>
@@ -1788,7 +1788,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
               <Link href="/dashboard/crm/chatbot">Mensajes chatbot</Link>
             </Button>
             <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
-              <Link href="/dashboard/crm/integraciones">Canales e integraciones</Link>
+              <Link href="/dashboard/crm/integraciones">Automatización</Link>
             </Button>
             <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={openCreateLeadDialog}>Nuevo prospecto</Button>
             <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={openCreateTaskDialog}>Nuevo seguimiento</Button>

@@ -83,6 +83,11 @@ type ChannelConnection = {
   name: string
   provider: CrmChannelProvider
   status: ChannelStatus
+  sede?: {
+    id: string
+    nombre: string
+    codigo?: string | null
+  } | null
   verifyTokenPreview?: string | null
   settingsJson?: Record<string, unknown> | null
   externalAccountId?: string | null
@@ -358,7 +363,52 @@ type ChannelGoalTargets = {
   operational: string
   captures: string
   conversations: string
+  conversion: string
+  acceptance: string
 }
+
+type KpiScopeType = 'COMPANY' | 'SEDE' | 'CHANNEL' | 'CAMPAIGN'
+
+type KpiGoalSettings = {
+  operationalTarget: number | null
+  capturesTarget: number | null
+  conversationsTarget: number | null
+  conversionTargetPct: number | null
+  minimumAcceptancePct: number | null
+}
+
+type KpiCampaignOption = {
+  id: string
+  label: string
+  channelId: string
+  channelName: string
+  captures: number
+  conversations: number
+  timeline: Array<{
+    key: string
+    label: string
+    captures: number
+    conversations: number
+    channels: number
+  }>
+}
+
+type KpiSettingsResponse = {
+  companyName: string
+  currentSede: { id: string; nombre: string } | null
+  settings: {
+    company: KpiGoalSettings
+    bySede: Record<string, KpiGoalSettings>
+    byChannel: Record<string, KpiGoalSettings>
+    byCampaign: Record<string, KpiGoalSettings>
+  }
+  campaignOptions: KpiCampaignOption[]
+}
+
+type KpiFeedback = {
+  tone: 'success' | 'error'
+  message: string
+} | null
 
 type ReadinessItem = {
   label: string
@@ -1027,6 +1077,67 @@ function getDetailedIntegrationGuide(args: {
 
 function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
   return fetch(url, init).then((res) => res.json().catch(() => ({}))) as Promise<JsonResponse<T>>
+}
+
+const EMPTY_CHANNEL_GOAL_TARGETS: ChannelGoalTargets = {
+  operational: '',
+  captures: '',
+  conversations: '',
+  conversion: '',
+  acceptance: '',
+}
+
+function sanitizeNumericInput(value: string) {
+  return value.replace(/[^0-9]/g, '')
+}
+
+function buildGoalTargetsDraft(settings?: Partial<KpiGoalSettings> | null): ChannelGoalTargets {
+  return {
+    operational: settings?.operationalTarget != null ? String(settings.operationalTarget) : '',
+    captures: settings?.capturesTarget != null ? String(settings.capturesTarget) : '',
+    conversations: settings?.conversationsTarget != null ? String(settings.conversationsTarget) : '',
+    conversion: settings?.conversionTargetPct != null ? String(settings.conversionTargetPct) : '',
+    acceptance: settings?.minimumAcceptancePct != null ? String(settings.minimumAcceptancePct) : '',
+  }
+}
+
+function buildGoalScopeKey(scopeType: KpiScopeType, scopeId?: string | null) {
+  return scopeType === 'COMPANY' ? 'COMPANY' : `${scopeType}:${scopeId || ''}`
+}
+
+function buildGoalTargetsByScope(settings: KpiSettingsResponse['settings']) {
+  const next: Record<string, ChannelGoalTargets> = {
+    COMPANY: buildGoalTargetsDraft(settings.company),
+  }
+
+  for (const [sedeId, sedeSettings] of Object.entries(settings.bySede || {})) {
+    next[buildGoalScopeKey('SEDE', sedeId)] = buildGoalTargetsDraft(sedeSettings)
+  }
+
+  for (const [channelId, channelSettings] of Object.entries(settings.byChannel || {})) {
+    next[buildGoalScopeKey('CHANNEL', channelId)] = buildGoalTargetsDraft(channelSettings)
+  }
+
+  for (const [campaignId, campaignSettings] of Object.entries(settings.byCampaign || {})) {
+    next[buildGoalScopeKey('CAMPAIGN', campaignId)] = buildGoalTargetsDraft(campaignSettings)
+  }
+
+  return next
+}
+
+function serializeGoalTargets(settings: ChannelGoalTargets): KpiGoalSettings {
+  const asNumberOrNull = (value: string) => {
+    const sanitized = sanitizeNumericInput(value)
+    return sanitized ? Number(sanitized) : null
+  }
+
+  return {
+    operationalTarget: asNumberOrNull(settings.operational),
+    capturesTarget: asNumberOrNull(settings.captures),
+    conversationsTarget: asNumberOrNull(settings.conversations),
+    conversionTargetPct: asNumberOrNull(settings.conversion),
+    minimumAcceptancePct: asNumberOrNull(settings.acceptance),
+  }
 }
 
 function isOutgoingWebhookBridge(bridgeKind: string) {
@@ -2627,7 +2738,14 @@ export function CrmIntegrationsClient() {
   const [baseUrl, setBaseUrl] = useState('')
   const [copiedKey, setCopiedKey] = useState('')
   const [activeAssetTab, setActiveAssetTab] = useState('overview')
-  const [goalTargets, setGoalTargets] = useState<ChannelGoalTargets>({ operational: '', captures: '', conversations: '' })
+  const [kpiScopeType, setKpiScopeType] = useState<KpiScopeType>('SEDE')
+  const [goalTargetsByScope, setGoalTargetsByScope] = useState<Record<string, ChannelGoalTargets>>({ COMPANY: { ...EMPTY_CHANNEL_GOAL_TARGETS } })
+  const [kpiCompanyName, setKpiCompanyName] = useState('Empresa')
+  const [kpiCurrentSede, setKpiCurrentSede] = useState<{ id: string; nombre: string } | null>(null)
+  const [campaignOptions, setCampaignOptions] = useState<KpiCampaignOption[]>([])
+  const [selectedCampaignScopeId, setSelectedCampaignScopeId] = useState('')
+  const [savingKpiGoals, setSavingKpiGoals] = useState(false)
+  const [kpiGoalsFeedback, setKpiGoalsFeedback] = useState<KpiFeedback>(null)
   const [createForm, setCreateForm] = useState<ChannelFormState>(getInitialChannelForm())
   const [wizardMetaAdvancedOpen, setWizardMetaAdvancedOpen] = useState(false)
   const [metaConnectionFeedback, setMetaConnectionFeedback] = useState<MetaConnectionFeedback | null>(null)
@@ -2674,35 +2792,67 @@ export function CrmIntegrationsClient() {
   }, [])
 
   useEffect(() => {
+    let active = true
+
     if (typeof window !== 'undefined') {
       setBaseUrl(window.location.origin)
-      const storedGoalTargets = window.localStorage.getItem('crm-integrations-goals')
-      if (storedGoalTargets) {
-        try {
-          const parsed = JSON.parse(storedGoalTargets) as Partial<ChannelGoalTargets>
-          setGoalTargets({
-            operational: typeof parsed.operational === 'string' ? parsed.operational : '',
-            captures: typeof parsed.captures === 'string' ? parsed.captures : '',
-            conversations: typeof parsed.conversations === 'string' ? parsed.conversations : '',
-          })
-        } catch {
-          window.localStorage.removeItem('crm-integrations-goals')
-        }
-      }
     }
-    void loadChannels()
-  }, [loadChannels])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem('crm-integrations-goals', JSON.stringify(goalTargets))
-  }, [goalTargets])
+    void requestJson<KpiSettingsResponse>('/api/crm/kpis').then((json) => {
+      if (!active) return
+      if (!json.success || !json.data) {
+        setKpiGoalsFeedback({
+          tone: 'error',
+          message: language === 'en' ? 'The KPI policy could not be loaded. You can still work with the current defaults.' : 'No se pudo cargar la política de KPIs. Puedes seguir trabajando con los sugeridos actuales.',
+        })
+        return
+      }
+
+      setKpiCompanyName(json.data.companyName || 'Empresa')
+      setKpiCurrentSede(json.data.currentSede ?? null)
+      setGoalTargetsByScope(buildGoalTargetsByScope(json.data.settings))
+      setCampaignOptions(Array.isArray(json.data.campaignOptions) ? json.data.campaignOptions : [])
+      setKpiScopeType(json.data.currentSede?.id ? 'SEDE' : 'COMPANY')
+    })
+
+    void loadChannels()
+
+    return () => {
+      active = false
+    }
+  }, [language, loadChannels])
 
   useEffect(() => {
     if (!copiedKey) return
     const timeout = window.setTimeout(() => setCopiedKey(''), 1800)
     return () => window.clearTimeout(timeout)
   }, [copiedKey])
+
+  useEffect(() => {
+    if (kpiScopeType !== 'CHANNEL' || selectedChannelId) return
+    setKpiScopeType(kpiCurrentSede?.id ? 'SEDE' : 'COMPANY')
+  }, [kpiCurrentSede?.id, kpiScopeType, selectedChannelId])
+
+  useEffect(() => {
+    if (!selectedChannelId) {
+      setSelectedCampaignScopeId('')
+      if (kpiScopeType === 'CAMPAIGN') {
+        setKpiScopeType(kpiCurrentSede?.id ? 'SEDE' : 'COMPANY')
+      }
+      return
+    }
+
+    const availableCampaigns = campaignOptions.filter((item) => item.channelId === selectedChannelId)
+    const hasCurrentSelection = availableCampaigns.some((item) => item.id === selectedCampaignScopeId)
+
+    if (!hasCurrentSelection) {
+      setSelectedCampaignScopeId(availableCampaigns[0]?.id ?? '')
+    }
+
+    if (kpiScopeType === 'CAMPAIGN' && !availableCampaigns.length) {
+      setKpiScopeType('CHANNEL')
+    }
+  }, [campaignOptions, kpiCurrentSede?.id, kpiScopeType, selectedCampaignScopeId, selectedChannelId])
 
   useEffect(() => {
     return () => {
@@ -2928,6 +3078,71 @@ export function CrmIntegrationsClient() {
   }, [selectedChannelId, channels])
 
   const selectedChannel = useMemo(() => channels.find((item) => item.id === selectedChannelId) ?? null, [channels, selectedChannelId])
+  const campaignOptionsForSelectedChannel = useMemo(() => {
+    if (!selectedChannelId) return []
+    return campaignOptions.filter((item) => item.channelId === selectedChannelId)
+  }, [campaignOptions, selectedChannelId])
+  const selectedCampaignOption = useMemo(() => campaignOptions.find((item) => item.id === selectedCampaignScopeId) ?? null, [campaignOptions, selectedCampaignScopeId])
+  const activeGoalScopeId = kpiScopeType === 'SEDE'
+    ? kpiCurrentSede?.id ?? null
+    : kpiScopeType === 'CHANNEL'
+      ? selectedChannelId
+      : kpiScopeType === 'CAMPAIGN'
+        ? selectedCampaignScopeId || null
+      : null
+  const activeGoalScopeKey = buildGoalScopeKey(kpiScopeType, activeGoalScopeId)
+  const goalTargets = goalTargetsByScope[activeGoalScopeKey] ?? EMPTY_CHANNEL_GOAL_TARGETS
+  const setGoalTargets = useCallback((value: ChannelGoalTargets | ((current: ChannelGoalTargets) => ChannelGoalTargets)) => {
+    setGoalTargetsByScope((current) => {
+      const previous = current[activeGoalScopeKey] ?? EMPTY_CHANNEL_GOAL_TARGETS
+      const next = typeof value === 'function' ? value(previous) : value
+      return {
+        ...current,
+        [activeGoalScopeKey]: next,
+      }
+    })
+  }, [activeGoalScopeKey])
+
+  const saveKpiGoals = useCallback(async () => {
+    const scopeId = kpiScopeType === 'COMPANY' ? null : activeGoalScopeId
+    if (kpiScopeType !== 'COMPANY' && !scopeId) return
+
+    setSavingKpiGoals(true)
+    try {
+      const json = await requestJson<KpiSettingsResponse>('/api/crm/kpis', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scopeType: kpiScopeType,
+          scopeId,
+          settings: serializeGoalTargets(goalTargets),
+        }),
+      })
+
+      if (!json.success || !json.data) {
+        setKpiGoalsFeedback({
+          tone: 'error',
+          message: json.error || (language === 'en' ? 'The KPI policy could not be saved.' : 'No se pudo guardar la política de KPIs.'),
+        })
+        return
+      }
+
+      setGoalTargetsByScope(buildGoalTargetsByScope(json.data.settings))
+      setKpiCompanyName(json.data.companyName || kpiCompanyName)
+      setCampaignOptions(Array.isArray(json.data.campaignOptions) ? json.data.campaignOptions : [])
+      setKpiGoalsFeedback({
+        tone: 'success',
+        message: language === 'en' ? 'KPI policy saved for this context.' : 'Política de KPIs guardada para este contexto.',
+      })
+    } finally {
+      setSavingKpiGoals(false)
+    }
+  }, [activeGoalScopeId, goalTargets, kpiCompanyName, kpiScopeType, language])
+
+  const resetKpiGoals = useCallback(() => {
+    setGoalTargets({ ...EMPTY_CHANNEL_GOAL_TARGETS })
+    setKpiGoalsFeedback(null)
+  }, [setGoalTargets])
   const createPreset = useMemo(() => TEMPLATE_PRESETS.find((item) => item.key === createForm.templateKey) ?? TEMPLATE_PRESETS[0], [createForm.templateKey])
   const createIsChatbot = createForm.provider === 'WEB_CHATBOT'
   const createIsPublicWebForm = createForm.provider === 'WEB_FORM' && (createForm.bridgeKind === 'GENERIC' || createForm.bridgeKind === 'BOOKING')
@@ -3191,9 +3406,129 @@ export function CrmIntegrationsClient() {
     }
   }, [channels])
 
+  const kpiScopedChannels = useMemo(() => {
+    if (kpiScopeType === 'SEDE' && kpiCurrentSede?.id) {
+      return channels.filter((item) => item.sede?.id === kpiCurrentSede.id)
+    }
+
+    if ((kpiScopeType === 'CHANNEL' || kpiScopeType === 'CAMPAIGN') && selectedChannelId) {
+      return channels.filter((item) => item.id === selectedChannelId)
+    }
+
+    return channels
+  }, [channels, kpiCurrentSede?.id, kpiScopeType, selectedChannelId])
+
+  const kpiStats = useMemo(() => {
+    if (kpiScopeType === 'CAMPAIGN' && selectedCampaignOption) {
+      return {
+        captures: selectedCampaignOption.captures,
+        conversations: selectedCampaignOption.conversations,
+        active: selectedChannel?.status === 'ACTIVE' ? 1 : 0,
+        testing: selectedChannel?.status === 'TESTING' ? 1 : 0,
+      }
+    }
+
+    return {
+      captures: kpiScopedChannels.reduce((sum, item) => sum + (item._count?.captures ?? 0), 0),
+      conversations: kpiScopedChannels.reduce((sum, item) => sum + (item._count?.conversations ?? 0), 0),
+      active: kpiScopedChannels.filter((item) => item.status === 'ACTIVE').length,
+      testing: kpiScopedChannels.filter((item) => item.status === 'TESTING').length,
+    }
+  }, [kpiScopeType, kpiScopedChannels, selectedCampaignOption, selectedChannel?.status])
+
   const channelAnalytics = useMemo(() => {
-    const totalChannels = channels.length || 1
-    const sortedByVolume = [...channels]
+    if (kpiScopeType === 'CAMPAIGN' && selectedCampaignOption) {
+      const selectedProvider = selectedChannel ? getProviderChartColor(selectedChannel.provider) : '#0ea5e9'
+      const selectedBridgeKind = getBridgeKind((selectedChannel?.settingsJson as Record<string, unknown> | null | undefined) ?? null)
+      const readiness = selectedChannel ? getChannelReadiness(selectedChannel, baseUrl) : { configured: [], demo: [], production: [] }
+      const readinessSummary = {
+        configured: readiness.configured.length > 0 && readiness.configured.every((item) => item.done) ? 1 : 0,
+        demo: readiness.demo.length > 0 && readiness.demo.every((item) => item.done) ? 1 : 0,
+        production: readiness.production.length > 0 && readiness.production.every((item) => item.done) ? 1 : 0,
+      }
+      const totalCaptures = selectedCampaignOption.captures
+      const totalConversations = selectedCampaignOption.conversations
+      const conversionRate = totalCaptures > 0 ? Math.round((totalConversations / totalCaptures) * 100) : 0
+      const campaignGoalDefault = 1
+      const captureGoalDefault = Math.max(20, Math.ceil(totalCaptures / 25) * 25)
+      const conversationGoalDefault = Math.max(20, Math.ceil(totalConversations / 25) * 25)
+      const conversionGoalDefault = Math.max(5, Math.ceil(conversionRate / 5) * 5 || 20)
+      const acceptanceGoalDefault = 75
+      const campaignGoal = Math.max(1, Number(sanitizeNumericInput(goalTargets.operational)) || campaignGoalDefault)
+      const captureGoal = Math.max(1, Number(sanitizeNumericInput(goalTargets.captures)) || captureGoalDefault)
+      const conversationGoal = Math.max(1, Number(sanitizeNumericInput(goalTargets.conversations)) || conversationGoalDefault)
+      const conversionGoal = Math.max(1, Number(sanitizeNumericInput(goalTargets.conversion)) || conversionGoalDefault)
+      const acceptanceGoal = Math.max(1, Number(sanitizeNumericInput(goalTargets.acceptance)) || acceptanceGoalDefault)
+
+      return {
+        performance: [
+          {
+            id: selectedCampaignOption.id,
+            name: selectedCampaignOption.label.length > 18 ? `${selectedCampaignOption.label.slice(0, 18)}…` : selectedCampaignOption.label,
+            fullName: selectedCampaignOption.label,
+            provider: selectedChannel ? `${selectedChannel.name} · ${getChannelProviderLabel(selectedChannel.provider, selectedBridgeKind)}` : selectedCampaignOption.channelName,
+            captures: totalCaptures,
+            conversations: totalConversations,
+            color: selectedProvider,
+          },
+        ],
+        distribution: [
+          {
+            label: selectedCampaignOption.label,
+            value: Math.max(1, totalCaptures + totalConversations),
+            color: selectedProvider,
+          },
+        ],
+        timeline: selectedCampaignOption.timeline,
+        defaultTargets: {
+          operational: campaignGoalDefault,
+          captures: captureGoalDefault,
+          conversations: conversationGoalDefault,
+          conversion: conversionGoalDefault,
+          acceptance: acceptanceGoal,
+        },
+        goals: [
+          {
+            label: 'Campaña activa',
+            value: totalCaptures + totalConversations > 0 ? 1 : 0,
+            target: campaignGoal,
+            progress: Math.min(100, Math.round(((totalCaptures + totalConversations > 0 ? 1 : 0) / campaignGoal) * 100)),
+            caption: language === 'en' ? `Inside ${selectedChannel?.name || selectedCampaignOption.channelName}` : `Dentro de ${selectedChannel?.name || selectedCampaignOption.channelName}`,
+            icon: Goal,
+            accent: 'from-sky-500 to-cyan-400',
+          },
+          {
+            label: 'Capturas de campaña',
+            value: totalCaptures,
+            target: captureGoal,
+            progress: Math.min(100, Math.round((totalCaptures / captureGoal) * 100)),
+            caption: language === 'en' ? `${formatCompactNumber(totalCaptures, language)} captures attributed to this campaign` : `${formatCompactNumber(totalCaptures, language)} capturas atribuidas a esta campaña`,
+            icon: TrendingUp,
+            accent: 'from-emerald-500 to-lime-400',
+          },
+          {
+            label: 'Conversaciones de campaña',
+            value: totalConversations,
+            target: conversationGoal,
+            progress: Math.min(100, Math.round((totalConversations / conversationGoal) * 100)),
+            caption: language === 'en' ? `${formatCompactNumber(totalConversations, language)} linked threads from the campaign` : `${formatCompactNumber(totalConversations, language)} hilos vinculados desde la campaña`,
+            icon: Activity,
+            accent: 'from-amber-500 to-orange-400',
+          },
+        ],
+        scorecards: {
+          activationRate: selectedChannel?.status === 'ACTIVE' || selectedChannel?.status === 'TESTING' ? 100 : 0,
+          conversionRate,
+          productionRate: readinessSummary.production ? 100 : 0,
+          configured: readinessSummary.configured,
+          demo: readinessSummary.demo,
+          production: readinessSummary.production,
+        },
+      }
+    }
+
+    const totalChannels = kpiScopedChannels.length || 1
+    const sortedByVolume = [...kpiScopedChannels]
       .sort((left, right) => ((right._count?.captures ?? 0) + (right._count?.conversations ?? 0)) - ((left._count?.captures ?? 0) + (left._count?.conversations ?? 0)))
 
     const performance = sortedByVolume.slice(0, 6).map((channel) => {
@@ -3209,7 +3544,7 @@ export function CrmIntegrationsClient() {
       }
     })
 
-    const distribution = Object.values(channels.reduce<Record<string, { label: string; value: number; color: string }>>((accumulator, channel) => {
+    const distribution = Object.values(kpiScopedChannels.reduce<Record<string, { label: string; value: number; color: string }>>((accumulator, channel) => {
       const bridgeKind = getBridgeKind((channel.settingsJson as Record<string, unknown> | null | undefined) ?? null)
       const key = `${channel.provider}:${bridgeKind || 'GENERIC'}`
       if (!accumulator[key]) {
@@ -3237,7 +3572,7 @@ export function CrmIntegrationsClient() {
     })
 
     const monthMap = new Map(lastSixMonths.map((item) => [item.key, item]))
-    channels.forEach((channel) => {
+    kpiScopedChannels.forEach((channel) => {
       const referenceDate = channel.lastWebhookAt || channel.updatedAt || channel.createdAt
       const date = new Date(referenceDate)
       if (Number.isNaN(date.getTime())) return
@@ -3249,7 +3584,7 @@ export function CrmIntegrationsClient() {
       bucket.channels += 1
     })
 
-    const readiness = channels.reduce((accumulator, channel) => {
+    const readiness = kpiScopedChannels.reduce((accumulator, channel) => {
       const summary = getChannelReadiness(channel, baseUrl)
       const configuredDone = summary.configured.filter((item) => item.done).length === summary.configured.length
       const demoDone = summary.demo.filter((item) => item.done).length === summary.demo.length
@@ -3261,16 +3596,21 @@ export function CrmIntegrationsClient() {
       return accumulator
     }, { configured: 0, demo: 0, production: 0 })
 
-    const totalCaptures = channels.reduce((sum, item) => sum + (item._count?.captures ?? 0), 0)
-    const totalConversations = channels.reduce((sum, item) => sum + (item._count?.conversations ?? 0), 0)
-    const activationRate = Math.round(((stats.active + stats.testing) / totalChannels) * 100)
+    const totalCaptures = kpiScopedChannels.reduce((sum, item) => sum + (item._count?.captures ?? 0), 0)
+    const totalConversations = kpiScopedChannels.reduce((sum, item) => sum + (item._count?.conversations ?? 0), 0)
+    const activationRate = Math.round(((kpiStats.active + kpiStats.testing) / totalChannels) * 100)
     const productionRate = Math.round((readiness.production / totalChannels) * 100)
+    const conversionRate = totalCaptures > 0 ? Math.round((totalConversations / totalCaptures) * 100) : 0
     const channelGoalDefault = Math.max(4, Math.ceil(totalChannels / 4) * 4)
     const captureGoalDefault = Math.max(20, Math.ceil(totalCaptures / 25) * 25)
     const conversationGoalDefault = Math.max(20, Math.ceil(totalConversations / 25) * 25)
-    const channelGoal = Math.max(1, Number(goalTargets.operational.replace(/[^0-9]/g, '')) || channelGoalDefault)
-    const captureGoal = Math.max(1, Number(goalTargets.captures.replace(/[^0-9]/g, '')) || captureGoalDefault)
-    const conversationGoal = Math.max(1, Number(goalTargets.conversations.replace(/[^0-9]/g, '')) || conversationGoalDefault)
+    const conversionGoalDefault = Math.max(5, Math.ceil(conversionRate / 5) * 5 || 20)
+    const acceptanceGoalDefault = 75
+    const channelGoal = Math.max(1, Number(sanitizeNumericInput(goalTargets.operational)) || channelGoalDefault)
+    const captureGoal = Math.max(1, Number(sanitizeNumericInput(goalTargets.captures)) || captureGoalDefault)
+    const conversationGoal = Math.max(1, Number(sanitizeNumericInput(goalTargets.conversations)) || conversationGoalDefault)
+    const conversionGoal = Math.max(1, Number(sanitizeNumericInput(goalTargets.conversion)) || conversionGoalDefault)
+    const acceptanceGoal = Math.max(1, Number(sanitizeNumericInput(goalTargets.acceptance)) || acceptanceGoalDefault)
 
     return {
       performance,
@@ -3280,14 +3620,16 @@ export function CrmIntegrationsClient() {
         operational: channelGoalDefault,
         captures: captureGoalDefault,
         conversations: conversationGoalDefault,
+        conversion: conversionGoalDefault,
+        acceptance: acceptanceGoal,
       },
       goals: [
         {
           label: 'Canales operativos',
-          value: stats.active + stats.testing,
+          value: kpiStats.active + kpiStats.testing,
           target: channelGoal,
-          progress: Math.min(100, Math.round(((stats.active + stats.testing) / channelGoal) * 100)),
-          caption: `${stats.active} activos y ${stats.testing} en testing`,
+          progress: Math.min(100, Math.round(((kpiStats.active + kpiStats.testing) / channelGoal) * 100)),
+          caption: `${kpiStats.active} activos y ${kpiStats.testing} en testing`,
           icon: Goal,
           accent: 'from-sky-500 to-cyan-400',
         },
@@ -3312,13 +3654,14 @@ export function CrmIntegrationsClient() {
       ],
       scorecards: {
         activationRate,
+        conversionRate,
         productionRate,
         configured: readiness.configured,
         demo: readiness.demo,
         production: readiness.production,
       },
     }
-  }, [baseUrl, channels, goalTargets.captures, goalTargets.conversations, goalTargets.operational, language, stats.active, stats.testing])
+  }, [baseUrl, formatCompactNumber, goalTargets.acceptance, goalTargets.captures, goalTargets.conversations, goalTargets.conversion, goalTargets.operational, kpiScopedChannels, kpiScopeType, kpiStats.active, kpiStats.testing, language, selectedCampaignOption, selectedChannel])
 
   const endpoint = getEndpoint(baseUrl, selectedChannel)
   const selectedSettings = (selectedChannel?.settingsJson as Record<string, unknown> | null | undefined) ?? null
@@ -4456,10 +4799,10 @@ export function CrmIntegrationsClient() {
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'CRM', href: '/dashboard/crm' },
-          { label: language === 'en' ? 'Integrations' : 'Integraciones' },
+          { label: language === 'en' ? 'Automation' : 'Automatización' },
         ]}
         eyebrow={language === 'en' ? 'Omnichannel CRM' : 'CRM Omnicanal'}
-        title={language === 'en' ? 'Integrations and lead capture center' : 'Centro de integraciones y captura de leads'}
+        title={language === 'en' ? 'Automation and lead capture center' : 'Centro de automatización y captura de leads'}
         description={language === 'en' ? 'Activate channels, generate scripts for forms and chatbot, and set up operational bridges for email and social networks without duplicating ERP modules. Everything lands in leads, conversations, and opportunities in the existing CRM.' : 'Activa canales, genera scripts para formularios y chatbot, y monta bridges operativos para correo y redes sin duplicar módulos del ERP. Todo termina en leads, conversaciones y oportunidades del CRM existente.'}
         actions={
           <>
@@ -4467,7 +4810,7 @@ export function CrmIntegrationsClient() {
               {language === 'en' ? 'Refresh' : 'Refrescar'}
             </Button>
             <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
-              <Link href="/dashboard/crm/conversations">{language === 'en' ? 'Open omnichannel inbox' : 'Abrir bandeja omnicanal'}</Link>
+              <Link href="/dashboard/chat">{language === 'en' ? 'Open omnichannel inbox' : 'Abrir bandeja omnicanal'}</Link>
             </Button>
             <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={openCreateWizard}>
               {language === 'en' ? 'New channel' : 'Nuevo canal'}
@@ -4488,11 +4831,11 @@ export function CrmIntegrationsClient() {
             <TabsTrigger value="operations" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">{language === 'en' ? 'Operations' : 'Operación'}</TabsTrigger>
             <TabsTrigger value="chatbots" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">Chatbots</TabsTrigger>
             <TabsTrigger value="addons" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">{language === 'en' ? 'Addons' : 'Addons'}</TabsTrigger>
-            <TabsTrigger value="metrics" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">{language === 'en' ? 'Metrics and goals' : 'Métricas y metas'}</TabsTrigger>
+            <TabsTrigger value="metrics" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">KPIs</TabsTrigger>
           </TabsList>
           {workspaceView === 'metrics' ? (
             <p className="px-2 text-[13px] text-slate-500">
-              {language === 'en' ? 'Executive panel to review performance and define commercial goals by channel.' : 'Panel ejecutivo para revisar rendimiento y definir objetivos comerciales por canal.'}
+              {language === 'en' ? 'Executive panel to review KPIs and define goals by company, branch, or channel.' : 'Panel ejecutivo para revisar KPIs y definir metas por empresa, sede o canal.'}
             </p>
           ) : null}
           {workspaceView === 'addons' ? (
@@ -4641,7 +4984,20 @@ export function CrmIntegrationsClient() {
           setMetricsExpanded={setMetricsExpanded}
           goalTargets={goalTargets}
           setGoalTargets={setGoalTargets}
-          stats={stats}
+          goalScopeType={kpiScopeType}
+          setGoalScopeType={setKpiScopeType}
+          goalScopeCompanyLabel={kpiCompanyName}
+          goalScopeSedeLabel={kpiCurrentSede?.nombre || ''}
+          goalScopeChannelLabel={selectedChannel?.name || ''}
+          goalScopeCampaignLabel={selectedCampaignOption?.label || ''}
+          campaignOptions={campaignOptionsForSelectedChannel}
+          selectedCampaignScopeId={selectedCampaignScopeId}
+          setSelectedCampaignScopeId={setSelectedCampaignScopeId}
+          onResetGoalTargets={resetKpiGoals}
+          onSaveGoalTargets={saveKpiGoals}
+          savingGoalTargets={savingKpiGoals}
+          goalTargetsFeedback={kpiGoalsFeedback}
+          stats={kpiStats}
           channelAnalytics={channelAnalytics}
           formatCompactNumber={formatCompactNumber}
         />
@@ -5307,7 +5663,7 @@ export function CrmIntegrationsClient() {
                         <p className="mt-2 text-sm font-medium text-slate-900">{language === 'en' ? 'Leads, conversations, and opportunities in the existing CRM' : 'Leads, conversaciones y oportunidades del CRM existente'}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Button asChild variant="outline" className="rounded-xl"><Link href="/dashboard/crm">{language === 'en' ? 'View pipeline' : 'Ver pipeline'}</Link></Button>
-                          <Button asChild variant="outline" className="rounded-xl"><Link href="/dashboard/crm/conversations">{language === 'en' ? 'Open inbox' : 'Abrir inbox'}</Link></Button>
+                          <Button asChild variant="outline" className="rounded-xl"><Link href="/dashboard/chat">{language === 'en' ? 'Open inbox' : 'Abrir inbox'}</Link></Button>
                           {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>{language === 'en' ? 'Open iframe demo' : 'Abrir demo iframe'}</Link></Button> : null}
                         </div>
                       </div>
@@ -5368,7 +5724,7 @@ export function CrmIntegrationsClient() {
                       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
                         <div className="rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5 text-sm text-emerald-950">
                           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Chatbot Studio centralizado</p>
-                          <p className="mt-3 text-lg font-semibold">Integraciones ya no edita el chatbot.</p>
+                          <p className="mt-3 text-lg font-semibold">Automatización ya no edita el chatbot.</p>
                           <p className="mt-2 leading-6">Este módulo solo crea el canal y entrega accesos rápidos. La configuración del flujo, apariencia, launcher, dominios, inbox y guardado del chatbot continúa únicamente en Chatbot Studio.</p>
                           <div className="mt-4 flex flex-wrap gap-2">
                             <Button asChild className="rounded-xl">
@@ -5657,7 +6013,7 @@ export function CrmIntegrationsClient() {
                       <Card className="rounded-3xl border-slate-200 bg-[linear-gradient(180deg,#fff,#f6fffb)]">
                         <CardHeader>
                           <CardTitle className="text-base">Edicion centralizada en Chatbot Studio</CardTitle>
-                          <CardDescription>Integraciones crea y publica el canal. La configuracion completa del chatbot vive en Chatbot Studio.</CardDescription>
+                          <CardDescription>Automatización crea y publica el canal. La configuracion completa del chatbot vive en Chatbot Studio.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                           <div className="rounded-2xl border border-slate-200 bg-white p-4">

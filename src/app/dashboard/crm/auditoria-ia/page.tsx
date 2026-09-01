@@ -6,8 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { auth } from '@/lib/auth'
+import { canAccessCompanyWideAiHistory } from '@/lib/api-rbac'
 import { queryAiWorkspaceHistory, type AiWorkspaceHistoryEntry } from '@/lib/ai-workspace-history'
 import { prisma } from '@/lib/prisma'
+import { getActiveSedeForUser } from '@/lib/rbac'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 
 export const runtime = 'nodejs'
@@ -66,7 +68,15 @@ export default async function CrmAiAuditPage({ searchParams }: PageProps) {
   if (!userId) redirect('/auth/login')
 
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
-  if (!user?.empresaId) redirect('/dashboard/crm/conversations')
+  if (!user?.empresaId) redirect('/dashboard/chat')
+
+  const activeSede = await getActiveSedeForUser(userId)
+  const canViewCompanyWide = await canAccessCompanyWideAiHistory({
+    userId,
+    sedeId: activeSede.id,
+    sessionRole: session.user.role,
+  })
+  const scopedActorUserId = canViewCompanyWide ? null : userId
 
   const params = await searchParams
   const actorUserId = takeParam(params?.usuarioId)
@@ -80,7 +90,7 @@ export default async function CrmAiAuditPage({ searchParams }: PageProps) {
     empresaId: user.empresaId,
     limit: 120,
     kinds: ['CRM_CONVERSATION_COPILOT'],
-    actorUserId: actorUserId || null,
+    actorUserId: actorUserId || scopedActorUserId,
     actorQuery: actorQuery || null,
     promptQuery: promptQuery || null,
     from: from || null,
@@ -92,6 +102,7 @@ export default async function CrmAiAuditPage({ searchParams }: PageProps) {
         empresaId: user.empresaId,
         limit: 120,
         kinds: ['CRM_CONVERSATION_COPILOT'],
+        actorUserId: scopedActorUserId,
       })
     : baseEntries
 
@@ -118,7 +129,7 @@ export default async function CrmAiAuditPage({ searchParams }: PageProps) {
         description="Consulta el historial del copiloto comercial por conversación, usuario y fecha sobre el inbox CRM."
         actions={
           <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/90">
-            <Link href="/dashboard/crm/conversations">Volver al inbox</Link>
+            <Link href="/dashboard/chat">Volver al inbox</Link>
           </Button>
         }
       />
@@ -219,7 +230,7 @@ export default async function CrmAiAuditPage({ searchParams }: PageProps) {
                       </div>
                       {entryConversationId ? (
                         <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white/90">
-                          <Link href={`/dashboard/crm/conversations?conversationId=${entryConversationId}`}>Abrir conversación</Link>
+                          <Link href={`/dashboard/chat?conversationId=${entryConversationId}`}>Abrir conversación</Link>
                         </Button>
                       ) : null}
                     </div>

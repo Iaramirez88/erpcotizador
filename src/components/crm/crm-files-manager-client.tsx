@@ -17,6 +17,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import type { CrmFileItem, CrmFilesSnapshot, CrmFilesTeamUser, CrmFolderNode, JsonResponse } from '@/components/crm/crm-files-types'
 
+type OwnershipFilter = 'all' | 'own' | 'shared'
+type AdminScopeFilter = 'ALL' | string
+
 function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']
@@ -50,6 +53,25 @@ function getItemVisual(type: CrmFileItem['type']) {
   }
 }
 
+function renderItemAvatar(item: CrmFileItem, className: string, sizes: string) {
+  const visual = getItemVisual(item.type)
+  const Icon = visual.icon
+
+  if (item.type === 'image' && item.url) {
+    return (
+      <span className={`relative overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50 ${className}`}>
+        <Image src={item.url} alt={item.name} fill className="object-cover" sizes={sizes} unoptimized />
+      </span>
+    )
+  }
+
+  return (
+    <span className={`flex items-center justify-center rounded-2xl border ${visual.tone} ${className}`}>
+      <Icon className="h-5 w-5" />
+    </span>
+  )
+}
+
 function buildExpandedFolderDefaults(currentPath: string, tree: CrmFolderNode): string[] {
   const expanded = new Set<string>([tree.path])
   const segments = currentPath.split('/').filter(Boolean)
@@ -61,17 +83,20 @@ function buildExpandedFolderDefaults(currentPath: string, tree: CrmFolderNode): 
   return [...expanded]
 }
 
-export function CrmFilesManagerClient() {
+export function CrmFilesManagerClient({ currentUserId, canViewAllFiles, activeSedeId }: { currentUserId: string | null; canViewAllFiles: boolean; activeSedeId: string | null }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [snapshot, setSnapshot] = useState<CrmFilesSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'files' | 'history'>('files')
+  const [ownershipFilter, setOwnershipFilter] = useState<OwnershipFilter>('all')
+  const [adminScopeFilter, setAdminScopeFilter] = useState<AdminScopeFilter>('ALL')
   const { mode: viewMode, setMode: setViewMode } = useDataViewMode('crm.files.history', 'list')
   const [search, setSearch] = useState('')
   const [folderDialogOpen, setFolderDialogOpen] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
+  const [newFolderShareUserIds, setNewFolderShareUserIds] = useState<string[]>([])
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [moveDialogOpen, setMoveDialogOpen] = useState(false)
   const [shareDialogOpen, setShareDialogOpen] = useState(false)
@@ -113,6 +138,26 @@ export function CrmFilesManagerClient() {
   }, [])
 
   useEffect(() => {
+    if (!canViewAllFiles || teamUsers.length) return
+    void loadTeamUsers()
+  }, [canViewAllFiles, teamUsers.length])
+
+  const usersById = new Map(teamUsers.map((user) => [user.id, user]))
+  const sedeOptions = Array.from(
+    new Map(teamUsers.flatMap((user) => user.sedeMemberships.map((membership) => [membership.sedeId, membership.sedeName]))).entries()
+  )
+    .map(([id, name]) => ({ id, name }))
+    .sort((left, right) => left.name.localeCompare(right.name, 'es', { sensitivity: 'base' }))
+
+  function matchesAdminScope(item: CrmFileItem) {
+    if (!canViewAllFiles || adminScopeFilter === 'ALL') return true
+    if (!item.createdById) return false
+    const owner = usersById.get(item.createdById)
+    if (!owner) return false
+    return owner.sedeMemberships.some((membership) => membership.sedeId === adminScopeFilter)
+  }
+
+  useEffect(() => {
     if (!snapshot || !pendingPreviewPath) return
     const previewMatch = [...snapshot.items, ...snapshot.recentItems].find((item) => item.path === pendingPreviewPath)
     if (!previewMatch || previewMatch.type === 'folder') return
@@ -121,15 +166,28 @@ export function CrmFilesManagerClient() {
     setPendingPreviewPath(null)
   }, [pendingPreviewPath, snapshot])
 
+  function matchesOwnership(item: CrmFileItem) {
+    if (ownershipFilter === 'all' || !currentUserId) return true
+    if (ownershipFilter === 'own') return item.createdById === currentUserId
+    return item.createdById !== currentUserId
+  }
+
   const visibleItems = (snapshot?.items || []).filter((item) => {
+    if (!matchesAdminScope(item)) return false
+    if (!matchesOwnership(item)) return false
     if (!deferredSearch) return true
     return item.name.toLowerCase().includes(deferredSearch)
   })
 
   const visibleRecentItems = (snapshot?.recentItems || []).filter((item) => {
+    if (!matchesAdminScope(item)) return false
+    if (!matchesOwnership(item)) return false
     if (!deferredSearch) return true
     return item.name.toLowerCase().includes(deferredSearch) || item.directoryPath.toLowerCase().includes(deferredSearch)
   })
+
+  const ownItemsCount = (snapshot?.items || []).filter((item) => item.createdById === currentUserId).length
+  const sharedItemsCount = (snapshot?.items || []).filter((item) => item.createdById !== currentUserId).length
 
   function flattenFolders(node: CrmFolderNode): Array<{ label: string; path: string }> {
     const current = [{ label: node.path ? `/${node.path}` : '/', path: node.path }]
@@ -151,7 +209,7 @@ export function CrmFilesManagerClient() {
       const response = await fetch('/api/crm/files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'create-folder', path: snapshot.currentPath, name: newFolderName }),
+        body: JSON.stringify({ action: 'create-folder', path: snapshot.currentPath, name: newFolderName, sharedWithUserIds: newFolderShareUserIds }),
       })
       const json = (await response.json().catch(() => ({}))) as JsonResponse<{ path: string }>
       if (!json.success) {
@@ -160,6 +218,7 @@ export function CrmFilesManagerClient() {
       }
       setFolderDialogOpen(false)
       setNewFolderName('')
+      setNewFolderShareUserIds([])
       setFeedback('Carpeta creada correctamente.')
       await loadSnapshot(snapshot.currentPath)
     } finally {
@@ -297,6 +356,15 @@ export function CrmFilesManagerClient() {
     }
   }
 
+  function openFolderDialog() {
+    setNewFolderName('')
+    setNewFolderShareUserIds([])
+    setFolderDialogOpen(true)
+    if (!teamUsers.length) {
+      void loadTeamUsers()
+    }
+  }
+
   function openPreview(item: CrmFileItem) {
     if (item.type === 'folder') {
       void loadSnapshot(item.path)
@@ -348,6 +416,10 @@ export function CrmFilesManagerClient() {
 
   function toggleSharedUser(userId: string) {
     setShareUserIds((current) => current.includes(userId) ? current.filter((item) => item !== userId) : [...current, userId])
+  }
+
+  function toggleNewFolderSharedUser(userId: string) {
+    setNewFolderShareUserIds((current) => current.includes(userId) ? current.filter((item) => item !== userId) : [...current, userId])
   }
 
   function toggleFolderExpanded(path: string) {
@@ -457,7 +529,7 @@ export function CrmFilesManagerClient() {
         description="Centraliza assets comerciales, documentos, audios y piezas de soporte del CRM con estructura por carpetas, historial y acceso directo desde el dashboard."
         actions={
           <>
-            <Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={() => setFolderDialogOpen(true)} disabled={busy || loading}>
+            <Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={openFolderDialog} disabled={busy || loading}>
               <FolderPlus className="mr-2 h-4 w-4" />
               Nueva carpeta
             </Button>
@@ -526,6 +598,34 @@ export function CrmFilesManagerClient() {
               </TabsList>
 
               <TabsContent value="files" className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-2">
+                  <Button variant={ownershipFilter === 'all' ? 'default' : 'ghost'} className={ownershipFilter === 'all' ? 'rounded-xl bg-slate-950 text-white hover:bg-slate-800' : 'rounded-xl text-slate-700'} onClick={() => setOwnershipFilter('all')}>
+                    Todos
+                  </Button>
+                  <Button variant={ownershipFilter === 'own' ? 'default' : 'ghost'} className={ownershipFilter === 'own' ? 'rounded-xl bg-sky-600 text-white hover:bg-sky-500' : 'rounded-xl text-slate-700'} onClick={() => setOwnershipFilter('own')}>
+                    Archivos propios
+                    <span className="ml-2 rounded-full bg-white/20 px-2 py-0.5 text-xs">{ownItemsCount}</span>
+                  </Button>
+                  <Button variant={ownershipFilter === 'shared' ? 'default' : 'ghost'} className={ownershipFilter === 'shared' ? 'rounded-xl bg-emerald-600 text-white hover:bg-emerald-500' : 'rounded-xl text-slate-700'} onClick={() => setOwnershipFilter('shared')}>
+                    Archivos compartidos
+                    <span className="ml-2 rounded-full bg-white/20 px-2 py-0.5 text-xs">{sharedItemsCount}</span>
+                  </Button>
+                  {canViewAllFiles ? (
+                    <div className="ml-auto min-w-[220px]">
+                      <Select value={adminScopeFilter} onValueChange={setAdminScopeFilter}>
+                        <SelectTrigger className="rounded-xl bg-white">
+                          <SelectValue placeholder="Filtrar por sede" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ALL">Empresa completa</SelectItem>
+                          {sedeOptions.map((sede) => (
+                            <SelectItem key={sede.id} value={sede.id}>{sede.name}{sede.id === activeSedeId ? ' · sede activa' : ''}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : null}
+                </div>
                 {loading ? <p className="text-sm text-slate-500">Cargando archivos...</p> : null}
                 {!loading && !visibleItems.length ? (
                   <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50/70 px-6 py-10 text-center">
@@ -533,11 +633,11 @@ export function CrmFilesManagerClient() {
                       <Plus className="h-8 w-8 text-slate-500" />
                     </div>
                     <div className="mt-4 flex items-center justify-center gap-2">
-                      <p className="text-base font-semibold text-slate-900">Esta carpeta está vacía</p>
-                      <InfoHint content="Crea una carpeta nueva o sube archivos para empezar a organizar el CRM." label="Ver ayuda de carpeta vacía" />
+                      <p className="text-base font-semibold text-slate-900">{ownershipFilter === 'own' ? 'No tienes archivos propios en esta carpeta' : ownershipFilter === 'shared' ? 'No tienes archivos compartidos en esta carpeta' : 'Esta carpeta está vacía'}</p>
+                      <InfoHint content={ownershipFilter === 'all' ? 'Crea una carpeta nueva o sube archivos para empezar a organizar el CRM.' : 'Cambia el filtro o comparte archivos para que aparezcan en esta vista.'} label="Ver ayuda de carpeta vacía" />
                     </div>
                     <div className="mt-5 flex flex-wrap justify-center gap-2">
-                      <Button variant="outline" className="rounded-xl" onClick={() => setFolderDialogOpen(true)} disabled={busy}>
+                      <Button variant="outline" className="rounded-xl" onClick={openFolderDialog} disabled={busy}>
                         <FolderPlus className="mr-2 h-4 w-4" />
                         Nueva carpeta
                       </Button>
@@ -552,8 +652,6 @@ export function CrmFilesManagerClient() {
                 {!loading && visibleItems.length && viewMode === 'grid' ? (
                   <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     {visibleItems.map((item) => {
-                      const visual = getItemVisual(item.type)
-                      const Icon = visual.icon
                       return (
                         <div key={item.path} className="overflow-hidden rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
                           <button
@@ -567,13 +665,13 @@ export function CrmFilesManagerClient() {
                               openPreview(item)
                             }}
                           >
-                            <div className={`flex h-36 items-center justify-center border-b ${visual.tone}`}>
+                            <div className={`flex h-36 items-center justify-center border-b ${getItemVisual(item.type).tone}`}>
                               {item.type === 'image' && item.url ? (
                                 <div className="relative h-full w-full">
                                   <Image src={item.url} alt={item.name} fill className="object-cover" sizes="(max-width: 1280px) 50vw, 25vw" unoptimized />
                                 </div>
                               ) : (
-                                <Icon className="h-10 w-10" />
+                                <>{renderItemAvatar(item, 'h-16 w-16', '(max-width: 1280px) 64px, 64px')}</>
                               )}
                             </div>
                             <div className="space-y-2 p-4">
@@ -599,12 +697,10 @@ export function CrmFilesManagerClient() {
                 {!loading && visibleItems.length && viewMode === 'list' ? (
                   <div className="overflow-hidden rounded-[24px] border border-slate-200">
                     {visibleItems.map((item) => {
-                      const visual = getItemVisual(item.type)
-                      const Icon = visual.icon
                       return (
                         <div key={item.path} className="grid grid-cols-[minmax(0,1.5fr)_0.7fr_0.8fr_auto] items-center gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
                           <button type="button" className="flex min-w-0 items-center gap-3 text-left" onClick={() => item.type === 'folder' ? void loadSnapshot(item.path) : openPreview(item)}>
-                            <span className={`flex h-10 w-10 items-center justify-center rounded-2xl border ${visual.tone}`}><Icon className="h-5 w-5" /></span>
+                            {renderItemAvatar(item, 'h-10 w-10 shrink-0', '(max-width: 1280px) 40px, 40px')}
                             <span className="truncate font-medium text-slate-950">{item.name}</span>
                           </button>
                           <span className="text-sm text-slate-500">{item.type === 'folder' ? 'Carpeta' : formatBytes(item.sizeBytes)}</span>
@@ -622,12 +718,10 @@ export function CrmFilesManagerClient() {
               <TabsContent value="history" className="space-y-3">
                 {!visibleRecentItems.length ? <p className="text-sm text-slate-500">Todavía no hay actividad reciente.</p> : null}
                 {visibleRecentItems.map((item) => {
-                  const visual = getItemVisual(item.type)
-                  const Icon = visual.icon
                   return (
                     <div key={`${item.path}-${item.updatedAt}`} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                       <div className="flex min-w-0 items-center gap-3">
-                        <span className={`flex h-10 w-10 items-center justify-center rounded-2xl border ${visual.tone}`}><Icon className="h-5 w-5" /></span>
+                        {renderItemAvatar(item, 'h-10 w-10 shrink-0', '(max-width: 1280px) 40px, 40px')}
                         <div className="min-w-0">
                           <p className="truncate font-medium text-slate-950">{item.name}</p>
                           <p className="truncate text-sm text-slate-500">/{item.directoryPath || ''} · {formatDate(item.updatedAt)}</p>
@@ -647,16 +741,47 @@ export function CrmFilesManagerClient() {
         </Card>
       </div>
 
-      <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
+      <Dialog open={folderDialogOpen} onOpenChange={(open) => {
+        setFolderDialogOpen(open)
+        if (!open) {
+          setNewFolderName('')
+          setNewFolderShareUserIds([])
+        }
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Nueva carpeta</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 py-2">
             <Input value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} placeholder="Ej. propuestas-marzo" />
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-900">Compartir al crear</p>
+              <div className="max-h-48 space-y-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                {teamUsers.map((user) => {
+                  const checked = newFolderShareUserIds.includes(user.id)
+                  return (
+                    <button
+                      key={user.id}
+                      type="button"
+                      onClick={() => toggleNewFolderSharedUser(user.id)}
+                      className={`flex w-full items-center justify-between rounded-2xl border px-3 py-3 text-left transition-colors ${checked ? 'border-sky-300 bg-sky-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+                    >
+                      <div>
+                        <p className="font-medium text-slate-950">{user.name || user.email}</p>
+                        <p className="text-xs text-slate-500">{user.email} · {user.role}</p>
+                      </div>
+                      <span className={`flex h-8 w-8 items-center justify-center rounded-full border ${checked ? 'border-sky-300 bg-sky-600 text-white' : 'border-slate-200 text-slate-400'}`}>
+                        <Check className="h-4 w-4" />
+                      </span>
+                    </button>
+                  )
+                })}
+                {!teamUsers.length ? <p className="px-2 py-3 text-sm text-slate-500">No hay usuarios disponibles para compartir.</p> : null}
+              </div>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setFolderDialogOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { setFolderDialogOpen(false); setNewFolderShareUserIds([]) }}>Cancelar</Button>
             <Button onClick={() => void handleCreateFolder()} disabled={busy || !newFolderName.trim()}>Crear carpeta</Button>
           </DialogFooter>
         </DialogContent>

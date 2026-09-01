@@ -138,7 +138,12 @@ async function resolveProtectedUploadPath(parts: string[]) {
 
     const entryPath = parts.slice(2).join('/')
     try {
-      const item = await getCrmFileItemByPath({ empresaId, entryPath, currentUserId: access.userId })
+      const item = await getCrmFileItemByPath({
+        empresaId,
+        entryPath,
+        currentUserId: access.userId,
+        bypassAccessControl: access.isSystemSuperAdmin || access.membershipRole === 'ADMIN',
+      })
       if (item.type === 'folder') {
         return new NextResponse('Not found', { status: 404, headers: { 'X-SG-Uploads': 'api' } })
       }

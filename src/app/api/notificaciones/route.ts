@@ -99,7 +99,7 @@ export async function PATCH(request: NextRequest) {
     }
     await prisma.notification.updateMany({
       where: markAllWhere,
-      data: { readAt: new Date() },
+      data: { readAt: new Date(), archivedAt: new Date() },
     })
     return NextResponse.json({ ok: true })
   }

@@ -34,8 +34,8 @@ export function ContabilidadSubnav() {
   const pathname = usePathname() ?? ''
 
   return (
-    <div className="overflow-x-auto">
-      <div className="inline-flex min-w-full gap-2 rounded-[24px] border border-slate-200 bg-slate-50/90 p-1.5">
+    <div className="sticky top-[4.9rem] z-20 overflow-x-auto rounded-[26px] border border-[#2b2e401a] bg-white/96 py-0.5 backdrop-blur supports-[backdrop-filter]:bg-white/88">
+      <div className="inline-flex min-w-full gap-2 rounded-[24px] bg-slate-50/90 p-1.5">
         {contabilidadNavItems.map((item) => {
           const active = isItemActive(pathname, item.href)
 
@@ -44,7 +44,7 @@ export function ContabilidadSubnav() {
               key={item.href}
               href={item.href}
               className={cn(
-                'inline-flex min-h-11 items-center justify-center rounded-[18px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap',
+                'inline-flex min-h-11 items-center justify-center rounded-[18px] px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#101010]/18 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f2f2f4]',
                 active
                   ? 'bg-white text-slate-950 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.4)]'
                   : 'text-slate-600 hover:bg-white/80 hover:text-slate-900',

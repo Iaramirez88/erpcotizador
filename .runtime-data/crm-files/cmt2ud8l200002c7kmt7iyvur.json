@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "entries": {
+    "1788278929737-dd4ooq-Utel_logo.png": {
+      "id": "1eeedd4f-6dbd-4b37-bf47-8528fecff99a",
+      "kind": "file",
+      "createdAt": "2026-09-01T16:08:49.740Z",
+      "updatedAt": "2026-09-01T16:08:49.740Z",
+      "createdById": "cmt2ud90z00022c7ky6rdu9rw",
+      "externalName": null,
+      "externalProvider": null,
+      "externalUrl": null,
+      "externalId": null,
+      "externalMimeType": null,
+      "externalSizeBytes": null,
+      "sharedWithUserIds": [],
+      "linkedEntities": {
+        "tasks": [],
+        "leads": [],
+        "opportunities": []
+      },
+      "auditTrail": [
+        {
+          "id": "f63f0ffd-232a-4741-85cc-335eae02337f",
+          "action": "UPLOADED",
+          "at": "2026-09-01T16:08:49.740Z",
+          "actorUserId": "cmt2ud90z00022c7ky6rdu9rw",
+          "actorLabel": "Ivan Super Admin",
+          "message": "Archivo subido por Ivan Super Admin."
+        }
+      ]
+    }
+  }
+}

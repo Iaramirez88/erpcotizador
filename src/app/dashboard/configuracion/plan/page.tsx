@@ -70,12 +70,12 @@ const PLAN_DETAILS: Record<PlanTier, PlanDetails> = {
     incluye: [
       { title: '📊 Centro de Control', items: ['Dashboard', 'Reportes (100)'] },
       { title: '💰 Comercial', items: ['Cotizador', 'Cotizaciones (300/mes)', 'Remisiones (100)', 'Clientes (500)'] },
-      { title: '🏭 Operaciones', items: ['Órdenes de Trabajo (100)', 'Litografía (sin límite)', 'Escaneos (sin límite)', 'Terminados (sin límite)'] },
+      { title: '🏭 Operaciones', items: ['Órdenes de Trabajo (100)', 'Costos (sin límite)', 'Escaneos (sin límite)', 'Terminados (sin límite)'] },
       { title: '📦 Logística', items: ['Inventario', 'Proveedores (50)', 'Productos (200)'] },
       { title: '⚙️ Gestión', items: ['1 sede', '2 usuarios'] },
       { title: '🛠 Preferencias', items: ['Mi perfil', 'Notificaciones'] },
     ],
-    alcance: ['1 sede', '2 usuarios', '500 clientes', '300 cotizaciones / mes', 'Litografía, Escaneos y Terminados sin límite'],
+    alcance: ['1 sede', '2 usuarios', '500 clientes', '300 cotizaciones / mes', 'Costos, Escaneos y Terminados sin límite'],
   },
   MEDIO: {
     tagline: 'Operacion estable y escalable',
@@ -93,7 +93,7 @@ const PLAN_DETAILS: Record<PlanTier, PlanDetails> = {
       { title: 'Incluye todo el Básico +', items: [] },
       { title: '📊 Centro de Control', items: ['Reportes ilimitados'] },
       { title: '💰 Comercial', items: ['POS', 'Remisiones ilimitadas', 'Facturación', 'Cotizaciones (5.000/mes)', 'Clientes (8.000)'] },
-      { title: '🏭 Operaciones', items: ['Órdenes de Trabajo ilimitadas', 'Litografía, Escaneos y Terminados ilimitados'] },
+      { title: '🏭 Operaciones', items: ['Órdenes de Trabajo ilimitadas', 'Costos, Escaneos y Terminados ilimitados'] },
       { title: '📦 Logística', items: ['Inventario', 'Proveedores ilimitados', 'Productos ilimitados', 'Compras', 'Traslados', 'Desperdicios'] },
       { title: '⚙️ Gestión', items: ['6 sedes', '10 usuarios'] },
       { title: '🛠 Preferencias', items: ['Mi perfil', 'Notificaciones', 'Usuarios'] },

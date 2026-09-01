@@ -38,7 +38,7 @@ export function RopModuleChrome({ current, title, description, breadcrumbs, acti
         stats={stats}
       />
 
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-1">
+      <div className="sticky top-[4.9rem] z-20 rounded-[26px] border border-[#2b2e401a] bg-white/96 p-1.5 backdrop-blur supports-[backdrop-filter]:bg-white/88">
         <nav aria-label="Navegación del módulo ROP" className="flex flex-wrap gap-1">
           {ROP_MODULE_TABS.map((tab) => {
             const isActive = tab.key === current
@@ -47,7 +47,7 @@ export function RopModuleChrome({ current, title, description, breadcrumbs, acti
                 key={tab.key}
                 href={tab.href}
                 className={cn(
-                  'rounded-xl px-3 py-2 text-sm font-medium transition-colors',
+                  'rounded-xl px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#101010]/18 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f2f2f4]',
                   isActive ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600 hover:bg-white/80 hover:text-slate-950'
                 )}
               >

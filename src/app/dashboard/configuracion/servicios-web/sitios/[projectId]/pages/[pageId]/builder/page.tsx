@@ -67,13 +67,11 @@ export default async function WebsiteProjectPageBuilderRoute(
 
   return (
     <div className="space-y-4">
-      <WebsiteServicesModuleTabs />
-
       <ErpPageHero
         breadcrumbs={[
           { label: 'Inicio', href: '/dashboard' },
           { label: 'Configuración', href: '/dashboard/configuracion/empresa' },
-          { label: 'Servicios web', href: '/dashboard/configuracion/servicios-web' },
+          { label: 'Sitios web', href: '/dashboard/configuracion/servicios-web' },
           { label: 'Sitios', href: '/dashboard/configuracion/servicios-web/sitios' },
           { label: page.websiteProject.nombre },
           { label: page.nombre },
@@ -82,6 +80,8 @@ export default async function WebsiteProjectPageBuilderRoute(
         title={`Builder · ${page.nombre}`}
         description={`Edita ${page.slug} dentro del sitio ${page.websiteProject.nombre} con bloques controlados de Puck.`}
       />
+
+      <WebsiteServicesModuleTabs />
 
       <WebsitePageBuilderClient
         projectId={page.websiteProject.id}

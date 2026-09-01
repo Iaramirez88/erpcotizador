@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer'
 import { NextRequest, NextResponse } from 'next/server'
 import { ModuleKey } from '@prisma/client'
 import { z } from 'zod'
-import { canAccessCompanyWideAiHistory, requireApiAccess } from '@/lib/api-rbac'
+import { requireApiAccess, resolveAiHistoryAccessScope } from '@/lib/api-rbac'
 import { appendAiWorkspaceHistory, listAiWorkspaceHistory, updateAiWorkspaceHistoryEntry } from '@/lib/ai-workspace-history'
 import { uploadCrmFiles } from '@/lib/crm-files'
 import { createPendingLitografiaAiVectorization, deletePendingLitografiaAiVectorization, readPendingLitografiaAiVectorization } from '@/lib/litografia-ai-pending-vectorizations'
@@ -205,7 +205,7 @@ export async function GET() {
     const empresaId = await getEmpresaIdFromSedeId(access.sedeId)
     if (!empresaId) return NextResponse.json({ ok: false, error: 'Empresa no encontrada.' }, { status: 404 })
 
-    const canViewCompanyWide = await canAccessCompanyWideAiHistory({
+    const historyAccess = await resolveAiHistoryAccessScope({
       userId: access.userId,
       sedeId: access.sedeId,
       sessionRole: access.session.user.role,
@@ -215,10 +215,10 @@ export async function GET() {
       empresaId,
       limit: 120,
       kinds: ['IMAGE_VECTORIZATION'],
-      actorUserId: canViewCompanyWide ? null : access.userId,
+      actorUserId: historyAccess.actorUserId,
     })
 
-    return NextResponse.json({ ok: true, scope: canViewCompanyWide ? 'company' : 'personal', history: mapVectorHistory(history) })
+    return NextResponse.json({ ok: true, scope: historyAccess.scope, history: mapVectorHistory(history) })
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'No se pudo consultar el historial de vectorización.' }, { status: 400 })
   }
@@ -278,6 +278,7 @@ export async function POST(request: NextRequest) {
       const imageToken = vectorResponse.headers.get('X-Image-Token')
       const pending = await createPendingLitografiaAiVectorization({
         empresaId,
+        actorUserId: access.userId,
         sourceFileName: file.name || 'imagen',
         sourceMimeType: file.type || 'application/octet-stream',
         sourceSizeBytes: bytes.byteLength,
@@ -314,6 +315,9 @@ export async function POST(request: NextRequest) {
       if (!pending) {
         return NextResponse.json({ ok: false, error: 'El vector pendiente expiró o ya no existe. Ejecuta una nueva vectorización.' }, { status: 404 })
       }
+      if (pending.actorUserId !== access.userId) {
+        return NextResponse.json({ ok: false, error: 'No tienes acceso a este vector pendiente.' }, { status: 403 })
+      }
 
       const bytes = Buffer.from(pending.base64, 'base64')
       const fileSlug = slugifyFileName(pending.sourceFileName)
@@ -321,6 +325,8 @@ export async function POST(request: NextRequest) {
       const uploaded = await uploadCrmFiles({
         empresaId,
         currentPath: AI_VECTORS_FOLDER,
+        currentUserId: access.userId,
+        bootstrapSharedFolders: true,
         actor: { userId: access.userId, label: access.session.user.name || access.session.user.email || 'Usuario interno' },
         files: [{
           name: `${fileSlug}.svg`,
@@ -400,6 +406,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: false, error: 'Vectorizer.AI no está configurado. Define LITOGRAFIA_VECTORIZER_API_ID y LITOGRAFIA_VECTORIZER_API_SECRET.' }, { status: 400 })
       }
 
+      const historyAccess = await resolveAiHistoryAccessScope({
+        userId: access.userId,
+        sedeId: access.sedeId,
+        sessionRole: access.session.user.role,
+      })
+
       let imageToken = ''
       let baseName = 'vector'
 
@@ -407,11 +419,11 @@ export async function POST(request: NextRequest) {
         const pending = await readPendingLitografiaAiVectorization({ empresaId, pendingId: parsed.data.pendingId })
         imageToken = typeof pending?.imageToken === 'string' ? pending.imageToken.trim() : ''
         baseName = slugifyFileName(pending?.sourceFileName || 'vector')
-        if (!pending || !imageToken) {
+        if (!pending || pending.actorUserId !== access.userId || !imageToken) {
           return NextResponse.json({ ok: false, error: 'Este vector pendiente ya no tiene un token activo para descargar nuevos formatos.' }, { status: 404 })
         }
       } else {
-        const history = await listAiWorkspaceHistory({ empresaId, limit: 120, kinds: ['IMAGE_VECTORIZATION'] })
+        const history = await listAiWorkspaceHistory({ empresaId, limit: 120, kinds: ['IMAGE_VECTORIZATION'], actorUserId: historyAccess.actorUserId })
         const entry = history.find((item) => item.id === parsed.data.historyId)
         imageToken = typeof entry?.metadata?.imageToken === 'string' ? entry.metadata.imageToken.trim() : ''
         baseName = slugifyFileName(typeof entry?.metadata?.sourceFileName === 'string' ? entry.metadata.sourceFileName : entry?.asset?.name || 'vector')

@@ -315,7 +315,7 @@ export default function ClientesPage() {
         return
       }
 
-      router.push(`/dashboard/crm/conversations?conversationId=${encodeURIComponent(data.data.conversationId)}`)
+      router.push(`/dashboard/chat?conversationId=${encodeURIComponent(data.data.conversationId)}`)
     } catch (error) {
       console.error('Error abriendo conversación WhatsApp:', error)
       alert('No se pudo abrir la conversación de WhatsApp para este cliente.')

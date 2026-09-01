@@ -2,7 +2,9 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { queryAiWorkspaceHistory, queryAiWorkspaceHistoryPage, type AiWorkspaceHistoryEntry, type AiWorkspaceHistoryKind } from '@/lib/ai-workspace-history'
+import { canAccessCompanyWideAiHistory } from '@/lib/api-rbac'
 import { prisma } from '@/lib/prisma'
+import { getActiveSedeForUser } from '@/lib/rbac'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
@@ -64,6 +66,14 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
     redirect('/dashboard/litografia')
   }
 
+  const activeSede = await getActiveSedeForUser(userId)
+  const canViewCompanyWide = await canAccessCompanyWideAiHistory({
+    userId,
+    sedeId: activeSede.id,
+    sessionRole: session.user.role,
+  })
+  const scopedActorUserId = canViewCompanyWide ? null : userId
+
   const actorQuery = getSingleParam(searchParams?.usuario)
   const actorUserId = getSingleParam(searchParams?.usuarioId)
   const from = getSingleParam(searchParams?.desde)
@@ -85,12 +95,13 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
       empresaId: user.empresaId,
       limit: 120,
       kinds: ['LITOGRAFIA_QUOTE', 'IMAGE_GENERATION', 'IMAGE_VECTORIZATION'],
+      actorUserId: scopedActorUserId,
     }),
     queryAiWorkspaceHistory({
       empresaId: user.empresaId,
       limit: 120,
       kinds: selectedKinds,
-      actorUserId: actorUserId || null,
+      actorUserId: actorUserId || scopedActorUserId,
       actorQuery: actorQuery || null,
       promptQuery: promptQuery || null,
       from: from || null,
@@ -99,7 +110,7 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
     queryAiWorkspaceHistoryPage({
       empresaId: user.empresaId,
       kinds: selectedKinds,
-      actorUserId: actorUserId || null,
+      actorUserId: actorUserId || scopedActorUserId,
       actorQuery: actorQuery || null,
       promptQuery: promptQuery || null,
       from: from || null,
@@ -121,7 +132,7 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
       <ErpPageHero
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Litografía', href: '/dashboard/litografia' },
+          { label: 'Costos', href: '/dashboard/litografia' },
           { label: 'Auditoría IA' },
         ]}
         title="Auditoría IA"

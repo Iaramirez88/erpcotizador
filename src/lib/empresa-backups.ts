@@ -3,6 +3,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import { EmpresaBackupFormat, EmpresaBackupTriggerSource, type PrismaClient } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { ensurePlanOwnerUserIdForEmpresa } from '@/lib/plan-owner'
 import { buildXlsxBuffer, formatDateForFilename, type ExcelSheetSpec } from '@/lib/excel-export'
 
 export const BACKUP_MODULES = [
@@ -67,6 +68,8 @@ type BackupBuildResult = {
   manifest: BackupManifest
   estimatedBytes: number
   sheetCount: number
+  modelOrder: string[]
+  scope: ScopeState
 }
 
 type CreateBackupArgs = {
@@ -417,6 +420,36 @@ async function buildBackupRows(args: {
     },
     estimatedBytes: estimateRowsBytes(rowsByModel),
     sheetCount,
+    modelOrder: modelNames,
+    scope,
+  }
+}
+
+async function deleteRowsFromBuild(args: {
+  built: BackupBuildResult
+  client?: BackupPrismaClient
+}) {
+  const client = args.client ?? prisma
+
+  for (const modelName of [...args.built.modelOrder].reverse()) {
+    const rows = args.built.manifest.rowsByModel[modelName] ?? []
+    if (!rows.length) continue
+
+    const delegate = getDelegate(client, modelName)
+    if (!delegate) continue
+
+    const idField = getIdFieldName(modelName)
+    if (idField) {
+      const ids = rows.map((row) => row[idField]).filter((value): value is string | number => value != null)
+      if (ids.length) {
+        await delegate.deleteMany({ where: { [idField]: { in: ids } } })
+        continue
+      }
+    }
+
+    const where = buildModelWhere(modelName, args.built.scope)
+    if (!where) continue
+    await delegate.deleteMany({ where })
   }
 }
 
@@ -671,6 +704,62 @@ export async function getBackupAccess(args: { empresaId: string; userId: string 
   }
 }
 
+export async function resolveBackupDangerZoneRecipient(args: { empresaId: string; fallbackUserId: string }) {
+  const ownerUserId = await ensurePlanOwnerUserIdForEmpresa(args.empresaId)
+
+  const [ownerUser, currentUser, firstAdminUser, empresa] = await Promise.all([
+    ownerUserId
+      ? prisma.user.findUnique({
+          where: { id: ownerUserId },
+          select: { id: true, name: true, email: true },
+        })
+      : Promise.resolve(null),
+    prisma.user.findUnique({
+      where: { id: args.fallbackUserId },
+      select: { id: true, name: true, email: true },
+    }),
+    prisma.user.findFirst({
+      where: {
+        email: { not: '' },
+        sedeMemberships: {
+          some: {
+            role: 'ADMIN',
+            sede: { empresaId: args.empresaId },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, name: true, email: true },
+    }),
+    prisma.empresa.findUnique({
+      where: { id: args.empresaId },
+      select: { nombre: true, email: true },
+    }),
+  ])
+
+  const candidates = [
+    ownerUser,
+    currentUser,
+    firstAdminUser,
+    empresa?.email && currentUser?.id
+      ? {
+          id: currentUser.id,
+          name: empresa.nombre,
+          email: empresa.email,
+        }
+      : null,
+  ]
+
+  const selected = candidates.find((candidate) => candidate?.email?.trim())
+  if (!selected?.email) return null
+
+  return {
+    userId: selected.id,
+    name: selected.name?.trim() || null,
+    email: selected.email.trim().toLowerCase(),
+  }
+}
+
 export async function listBackupAccessUsers(empresaId: string) {
   const users = await prisma.user.findMany({
     where: {
@@ -775,18 +864,7 @@ export async function importEmpresaBackup(args: RestoreBackupArgs) {
 
   await prisma.$transaction(async (tx) => {
     const current = await buildBackupRows({ empresaId: args.empresaId, moduleIds, client: tx })
-    const currentRows = current.manifest.rowsByModel
-
-    for (const modelName of [...modelNames].reverse()) {
-      const delegate = getDelegate(tx as unknown as PrismaClient, modelName)
-      const idField = getIdFieldName(modelName)
-      const rows = currentRows[modelName] ?? []
-      if (!delegate || !idField || !rows.length) continue
-
-      const ids = rows.map((row) => row[idField]).filter((value): value is string | number => value != null)
-      if (!ids.length) continue
-      await delegate.deleteMany({ where: { [idField]: { in: ids } } })
-    }
+    await deleteRowsFromBuild({ built: current, client: tx as unknown as PrismaClient })
 
     for (const modelName of modelNames) {
       const delegate = getDelegate(tx as unknown as PrismaClient, modelName)
@@ -824,6 +902,48 @@ export async function importEmpresaBackup(args: RestoreBackupArgs) {
   })
 
   return { backup: created, rowsCount: manifest.rowsCount, modelCount: Object.keys(manifest.rowsByModel).length }
+}
+
+async function removePathIfExists(targetPath: string) {
+  await fs.rm(targetPath, { recursive: true, force: true })
+}
+
+export async function purgeEmpresaWorkspaceData(args: { empresaId: string; moduleIds?: BackupModuleId[] }) {
+  const moduleIds = normalizeModuleIds(args.moduleIds)
+  const built = await buildBackupRows({ empresaId: args.empresaId, moduleIds })
+
+  await prisma.$transaction(async (tx) => {
+    await deleteRowsFromBuild({ built, client: tx as unknown as PrismaClient })
+    await tx.backupAccessGrant.deleteMany({ where: { empresaId: args.empresaId } })
+    await tx.empresaBackup.deleteMany({ where: { empresaId: args.empresaId } })
+    await tx.user.updateMany({ where: { empresaId: args.empresaId }, data: { empresaId: null } })
+    await tx.empresa.update({
+      where: { id: args.empresaId },
+      data: {
+        planOwnerUserId: null,
+        onboardingData: {},
+        dashboardConfig: {},
+        dianSettings: {},
+      },
+    })
+  })
+
+  await Promise.allSettled([
+    removePathIfExists(getBackupFolder(args.empresaId)),
+    removePathIfExists(path.join(process.cwd(), '.runtime-data', 'ai-workspace-history', `${args.empresaId}.json`)),
+    removePathIfExists(path.join(process.cwd(), '.runtime-data', 'crm-files', `${args.empresaId}.json`)),
+    removePathIfExists(path.join(process.cwd(), '.runtime-data', 'litografia-ai-knowledge', `${args.empresaId}.json`)),
+    removePathIfExists(path.join(process.cwd(), '.runtime-data', 'litografia-ai-pending-images', args.empresaId)),
+    removePathIfExists(path.join(process.cwd(), '.runtime-data', 'litografia-ai-pending-vectorizations', args.empresaId)),
+    removePathIfExists(path.join(process.cwd(), 'public', 'uploads', 'crm-files', args.empresaId)),
+    removePathIfExists(path.join(process.cwd(), 'public', 'uploads', 'crm-inbound-media', args.empresaId)),
+  ])
+
+  return {
+    deletedRows: built.manifest.rowsCount,
+    deletedModels: Object.keys(built.manifest.rowsByModel).length,
+    moduleIds,
+  }
 }
 
 export function parseSqlBackupManifest(sqlContent: string): BackupManifest {

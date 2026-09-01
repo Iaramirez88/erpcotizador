@@ -166,7 +166,7 @@ export default async function NotificacionesPage({ searchParams }: PageProps) {
     }
     await prisma.notification.updateMany({
       where: markAllWhere,
-      data: { readAt: new Date() },
+      data: { readAt: new Date(), archivedAt: new Date() },
     })
     revalidatePath('/dashboard/notificaciones')
   }

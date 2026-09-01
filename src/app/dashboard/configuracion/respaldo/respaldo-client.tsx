@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArchiveRestore, CalendarRange, Database, Download, HardDriveDownload, History, Loader2, ShieldCheck, Upload } from 'lucide-react'
+import { AlertTriangle, ArchiveRestore, CalendarRange, Database, Download, HardDriveDownload, History, Loader2, Mail, Power, ShieldCheck, Upload } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { InfoHint } from '@/components/ui/info-hint'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
 type AccessState = {
@@ -151,6 +153,14 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
   const [backupPage, setBackupPage] = useState(1)
   const [accessPage, setAccessPage] = useState(1)
   const [accessSearch, setAccessSearch] = useState('')
+  const [dangerCode, setDangerCode] = useState('')
+  const [dangerAcceptedExport, setDangerAcceptedExport] = useState(false)
+  const [dangerAcceptedIrreversible, setDangerAcceptedIrreversible] = useState(false)
+  const [dangerMessage, setDangerMessage] = useState<string | null>(null)
+  const [dangerEmailHint, setDangerEmailHint] = useState<string | null>(null)
+  const [dangerDebugCode, setDangerDebugCode] = useState<string | null>(null)
+  const [sendingDangerCode, setSendingDangerCode] = useState(false)
+  const [executingDangerZone, setExecutingDangerZone] = useState(false)
   const progressTimerRef = useRef<number | null>(null)
 
   async function loadSummary() {
@@ -201,7 +211,7 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
     })
   }, [accessSearch, accessUsers])
 
-  const backupsPerPage = 5
+  const backupsPerPage = 10
   const accessUsersPerPage = 5
   const backupTotalPages = Math.max(1, Math.ceil(backups.length / backupsPerPage))
   const accessTotalPages = Math.max(1, Math.ceil(filteredAccessUsers.length / accessUsersPerPage))
@@ -323,6 +333,100 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
     }
   }
 
+  async function requestDangerZoneCode() {
+    setSendingDangerCode(true)
+    setError(null)
+    setDangerMessage(null)
+    try {
+      const response = await fetch('/api/respaldo/danger-zone/send-code', { method: 'POST' })
+      const json = (await response.json().catch(() => null)) as {
+        success?: boolean
+        data?: { message?: string; maskedEmail?: string; debugCode?: string }
+        error?: string
+      } | null
+      if (!response.ok || !json?.success) {
+        throw new Error(json?.error || 'No se pudo enviar el código de seguridad.')
+      }
+      setDangerEmailHint(json.data?.maskedEmail ?? null)
+      setDangerDebugCode(json.data?.debugCode ?? null)
+      setDangerMessage(json.data?.message ?? 'Código enviado correctamente.')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'No se pudo enviar el código de seguridad.')
+    } finally {
+      setSendingDangerCode(false)
+    }
+  }
+
+  async function handleDangerZoneRetirement() {
+    if (!dangerAcceptedExport || !dangerAcceptedIrreversible || !dangerCode.trim()) return
+
+    setExecutingDangerZone(true)
+    setError(null)
+    setDangerMessage(null)
+
+    try {
+      const exportResponse = await fetch('/api/respaldo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          format: 'SQL',
+          moduleIds: modules.map((item) => item.id),
+          label: 'Retiro definitivo del programa',
+        }),
+      })
+      const exportJson = (await exportResponse.json().catch(() => null)) as {
+        success?: boolean
+        data?: { id?: string }
+        error?: string
+      } | null
+      if (!exportResponse.ok || !exportJson?.success || !exportJson.data?.id) {
+        throw new Error(exportJson?.error || 'No se pudo crear el respaldo final antes del retiro.')
+      }
+
+      const downloadLink = document.createElement('a')
+      downloadLink.href = `/api/respaldo/download/${exportJson.data.id}`
+      downloadLink.target = '_blank'
+      downloadLink.rel = 'noreferrer'
+      document.body.appendChild(downloadLink)
+      downloadLink.click()
+      downloadLink.remove()
+
+      await new Promise<void>((resolve) => {
+        window.setTimeout(() => resolve(), 450)
+      })
+
+      const executeResponse = await fetch('/api/respaldo/danger-zone/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: dangerCode,
+          acceptedExport: dangerAcceptedExport,
+          acceptedIrreversible: dangerAcceptedIrreversible,
+        }),
+      })
+      const executeJson = (await executeResponse.json().catch(() => null)) as {
+        success?: boolean
+        data?: { message?: string }
+        error?: string
+      } | null
+      if (!executeResponse.ok || !executeJson?.success) {
+        throw new Error(executeJson?.error || 'No se pudo eliminar la información asociada al programa.')
+      }
+
+      setDangerMessage(`${executeJson.data?.message ?? 'Operación completada.'} Se inició la descarga del respaldo final.`)
+      setDangerCode('')
+      setDangerAcceptedExport(false)
+      setDangerAcceptedIrreversible(false)
+      window.setTimeout(() => {
+        window.location.href = '/dashboard'
+      }, 1400)
+    } catch (dangerError) {
+      setError(dangerError instanceof Error ? dangerError.message : 'No se pudo completar el retiro del programa.')
+    } finally {
+      setExecutingDangerZone(false)
+    }
+  }
+
   if (loading) {
     return (
       <Card>
@@ -340,34 +444,53 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
 
       <Card className="overflow-hidden border-slate-200 shadow-sm">
         <CardContent className="space-y-5 p-5">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
             {modules.map((moduleItem) => {
               const Icon = MODULE_ICONS[moduleItem.id] ?? Database
               const active = selectedModules.includes(moduleItem.id)
               return (
-                <button
+                <div
                   key={moduleItem.id}
-                  type="button"
-                  onClick={() => toggleModule(moduleItem.id)}
                   className={cn(
-                    'rounded-[28px] border px-5 py-6 text-left transition-all',
+                    'rounded-[22px] border px-3 py-3 transition-all',
                     active
-                      ? 'border-emerald-600 bg-[linear-gradient(180deg,_rgba(220,252,231,0.98),_rgba(236,253,245,0.94))] shadow-[0_18px_35px_-18px_rgba(5,150,105,0.58)]'
+                      ? 'border-emerald-300 bg-emerald-50/70 shadow-[0_12px_24px_-18px_rgba(5,150,105,0.45)]'
                       : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
                   )}
                 >
-                  <div className={cn(
-                    'flex h-12 w-12 items-center justify-center rounded-2xl',
-                    active ? 'bg-emerald-600 text-white' : 'bg-sky-100 text-sky-700'
-                  )}>
-                    <Icon className="h-6 w-6" />
+                  <div className="flex items-start gap-3">
+                    <div className={cn(
+                      'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl',
+                      active ? 'bg-emerald-600 text-white' : 'bg-sky-100 text-sky-700'
+                    )}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-sm font-semibold text-slate-950">{moduleItem.label}</div>
+                        <InfoHint
+                          label={`Información de ${moduleItem.label}`}
+                          content={<div className="text-xs leading-5">{moduleItem.description}</div>}
+                        />
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <span className={cn(
+                          'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold',
+                          active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                        )}>
+                          <Power className="h-3.5 w-3.5" />
+                          {active ? 'Prendido' : 'Apagado'}
+                        </span>
+                        <Switch
+                          checked={active}
+                          onCheckedChange={() => toggleModule(moduleItem.id)}
+                          aria-label={`Activar módulo ${moduleItem.label}`}
+                          className="data-[state=checked]:bg-emerald-500 data-[state=unchecked]:bg-slate-300"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="mt-4 text-lg font-semibold text-slate-950">{moduleItem.label}</div>
-                  <div className="mt-2 text-sm leading-5 text-slate-600">{moduleItem.description}</div>
-                  <div className={cn('mt-4 text-xs font-medium', active ? 'text-emerald-700' : 'text-slate-500')}>
-                    {active ? 'Incluido en el respaldo' : 'Toca para incluirlo'}
-                  </div>
-                </button>
+                </div>
               )
             })}
           </div>
@@ -448,6 +571,106 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
         </CardContent>
       </Card>
 
+      {access.isAdmin ? (
+        <Card className="overflow-hidden border-rose-200 shadow-sm">
+          <details className="group" open={false}>
+            <summary className="list-none cursor-pointer select-none bg-[linear-gradient(180deg,_rgba(254,242,242,0.92),_rgba(255,255,255,1))] px-6 py-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-lg font-semibold text-rose-900">
+                    <AlertTriangle className="h-5 w-5" /> Zona de peligro
+                  </div>
+                  <div className="mt-2 text-sm text-rose-800/80">
+                    Exporta un respaldo final completo y luego elimina del programa la información asociada a este workspace.
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-semibold text-rose-700">
+                    Solo administradores
+                  </div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700 group-open:hidden">
+                    Abrir
+                  </div>
+                  <div className="hidden text-xs font-semibold uppercase tracking-[0.16em] text-rose-700 group-open:block">
+                    Cerrar
+                  </div>
+                </div>
+              </div>
+            </summary>
+            <CardContent className="space-y-4 p-5">
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                Este flujo genera un SQL final de toda la empresa y después elimina respaldos, historial y datos operativos asociados al workspace actual.
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                <div className="space-y-2">
+                  <Label htmlFor="danger-zone-code">Código de seguridad</Label>
+                  <Input
+                    id="danger-zone-code"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={dangerCode}
+                    onChange={(event) => setDangerCode(event.target.value.replace(/\D+/g, '').slice(0, 6))}
+                    placeholder="Ingresa el código de 6 dígitos"
+                  />
+                  <div className="text-xs text-slate-500">
+                    {dangerEmailHint
+                      ? `Se enviará o se envió al correo administrador ${dangerEmailHint}.`
+                      : 'Primero envía el código al correo del administrador registrado.'}
+                  </div>
+                  {dangerDebugCode ? (
+                    <div className="text-xs text-amber-700">Código dev: {dangerDebugCode}</div>
+                  ) : null}
+                </div>
+                <Button type="button" variant="outline" onClick={() => void requestDangerZoneCode()} disabled={sendingDangerCode}>
+                  {sendingDangerCode ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
+                  Enviar código al administrador
+                </Button>
+              </div>
+
+              <div className="grid gap-3">
+                <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={dangerAcceptedExport}
+                    onChange={(event) => setDangerAcceptedExport(event.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-slate-300"
+                  />
+                  <span>Confirmo que deseo descargar un respaldo final completo antes de eliminar la información.</span>
+                </label>
+                <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={dangerAcceptedIrreversible}
+                    onChange={(event) => setDangerAcceptedIrreversible(event.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-slate-300"
+                  />
+                  <span>Acepto que la eliminación es irreversible y que no habrá recuperación desde el programa después de continuar.</span>
+                </label>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => void handleDangerZoneRetirement()}
+                  disabled={executingDangerZone || !dangerAcceptedExport || !dangerAcceptedIrreversible || dangerCode.length !== 6}
+                >
+                  {executingDangerZone ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <AlertTriangle className="mr-2 h-4 w-4" />}
+                  Exportar y eliminar información
+                </Button>
+              </div>
+
+              {dangerMessage ? (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  {dangerMessage}
+                </div>
+              ) : null}
+            </CardContent>
+          </details>
+        </Card>
+      ) : null}
+
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <Card>
           <CardHeader>
@@ -456,34 +679,39 @@ export function RespaldoClient({ initialAccess }: { initialAccess: AccessState }
           </CardHeader>
           <CardContent className="space-y-3">
             {paginatedBackups.length ? paginatedBackups.map((backup) => (
-              <div key={backup.id} className="rounded-2xl border border-slate-200 p-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-slate-950">{backup.fileName}</span>
-                      <span className={cn(
-                        'rounded-full px-2 py-1 text-[11px] font-semibold',
-                        backup.triggerSource === 'AUTO'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : backup.triggerSource === 'IMPORT'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-sky-100 text-sky-800'
-                      )}>{backup.triggerSource}</span>
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">{backup.format}</span>
+              <details key={backup.id} className="rounded-2xl border border-slate-200 p-4">
+                <summary className="list-none cursor-pointer">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-950">{backup.fileName}</div>
+                      <div className="mt-1 text-xs text-slate-500">Creado {formatDate(backup.createdAt)}</div>
                     </div>
-                    <div className="text-xs text-slate-500">Creado {formatDate(backup.createdAt)}</div>
-                    <div className="text-xs text-slate-500">Período: {formatDate(backup.periodStart)} a {formatDate(backup.periodEnd)}</div>
-                    <div className="text-xs text-slate-500">Actor: {backup.createdByUser?.name || backup.createdByUser?.email || 'Automático del sistema'}</div>
-                    <div className="text-xs text-slate-500">Peso: {formatBytes(backup.bytes)} · Filas: {backup.rowsCount}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">Ver más</span>
+                      <Button type="button" variant="outline" size="sm" onClick={(event) => { event.preventDefault(); window.location.href = `/api/respaldo/download/${backup.id}` }}>
+                        <Download className="mr-2 h-4 w-4" />
+                        Descargar
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={() => { window.location.href = `/api/respaldo/download/${backup.id}` }}>
-                      <Download className="mr-2 h-4 w-4" />
-                      Descargar
-                    </Button>
+                </summary>
+                <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-xs text-slate-500">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={cn(
+                      'rounded-full px-2 py-1 text-[11px] font-semibold',
+                      backup.triggerSource === 'AUTO'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : backup.triggerSource === 'IMPORT'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-sky-100 text-sky-800'
+                    )}>{backup.triggerSource}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">{backup.format}</span>
                   </div>
+                  <div>Período: {formatDate(backup.periodStart)} a {formatDate(backup.periodEnd)}</div>
+                  <div>Actor: {backup.createdByUser?.name || backup.createdByUser?.email || 'Automático del sistema'}</div>
+                  <div>Peso: {formatBytes(backup.bytes)} · Filas: {backup.rowsCount}</div>
                 </div>
-              </div>
+              </details>
             )) : <div className="text-sm text-slate-500">Aún no hay respaldos registrados.</div>}
             <PaginationControls page={backupPage} totalPages={backupTotalPages} onPageChange={setBackupPage} />
           </CardContent>

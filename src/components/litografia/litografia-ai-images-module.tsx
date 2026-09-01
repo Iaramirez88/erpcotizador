@@ -467,7 +467,7 @@ export function LitografiaAiImagesModule() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">Imágenes IA para litografía</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">Imágenes IA para costos</h1>
           <p className="text-muted-foreground dark:text-white">Genera una vista previa, compárala con referencias visuales y guarda el resultado final directo en archivos.</p>
         </div>
         <div className="flex flex-wrap gap-2">

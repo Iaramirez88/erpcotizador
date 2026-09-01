@@ -50,13 +50,11 @@ export default async function WebsiteProjectPagePreviewRoute(
 
   return (
     <div className="space-y-4">
-      <WebsiteServicesModuleTabs />
-
       <ErpPageHero
         breadcrumbs={[
           { label: 'Inicio', href: '/dashboard' },
           { label: 'Configuración', href: '/dashboard/configuracion/empresa' },
-          { label: 'Servicios web', href: '/dashboard/configuracion/servicios-web' },
+          { label: 'Sitios web', href: '/dashboard/configuracion/servicios-web' },
           { label: 'Sitios', href: '/dashboard/configuracion/servicios-web/sitios' },
           { label: page.websiteProject.nombre },
           { label: page.nombre },
@@ -65,6 +63,8 @@ export default async function WebsiteProjectPagePreviewRoute(
         title={`Preview · ${page.nombre}`}
         description={`Vista protegida del borrador actual para ${page.websiteProject.subdomain || 'sitio'} antes de publicar.`}
       />
+
+      <WebsiteServicesModuleTabs />
 
       <WebsitePageRender data={page.draftData} />
     </div>

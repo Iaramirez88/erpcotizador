@@ -66,6 +66,11 @@ export type CrmFilesTeamUser = {
   email: string
   image: string | null
   role: string
+  sedeMemberships: Array<{
+    sedeId: string
+    sedeName: string
+    role: string
+  }>
 }
 
 export type JsonResponse<T> = {

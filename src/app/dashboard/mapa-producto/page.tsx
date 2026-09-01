@@ -1,12 +1,12 @@
 import Link from 'next/link'
-import { ArrowRight, Boxes, BrainCircuit, Building2, Compass, Factory, LineChart, Wallet, Wrench } from 'lucide-react'
+import { ArrowRight, Boxes, BrainCircuit, Building2, Compass, Factory, LineChart, Shield, Wallet, Wrench } from 'lucide-react'
 import { ErpPageHero, ErpSectionHeading } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 type DomainTone = 'sky' | 'teal' | 'amber'
 
-type DomainId = 'nucleo' | 'comercial' | 'operaciones' | 'inventario' | 'financiero' | 'ia' | 'analitica' | 'verticales'
+type DomainId = 'nucleo' | 'comercial' | 'operaciones' | 'inventario' | 'financiero' | 'ia' | 'analitica' | 'configuracion' | 'administracion' | 'verticales'
 
 type Domain = {
   id: DomainId
@@ -27,18 +27,18 @@ const domains: Domain[] = [
   {
     id: 'nucleo',
     title: 'Inicio',
-    description: 'Base administrativa, control de acceso, configuracion y gobierno del producto.',
+    description: 'Acceso base y punto de entrada del dashboard sin submodulos visibles.',
     href: '/dashboard',
     tone: 'sky',
-    items: ['Dashboard', 'Perfil', 'Notificaciones', 'Usuarios', 'Sedes', 'Plan', 'Servicios web'],
+    items: ['Inicio'],
   },
   {
     id: 'comercial',
-    title: 'Comercial',
+    title: 'CRM',
     description: 'Captacion, seguimiento, venta y documentos de salida dentro del mismo flujo.',
     href: '/dashboard/crm',
     tone: 'teal',
-    items: ['CRM', 'Inbox omnicanal', 'Leads', 'Oportunidades', 'Agenda CRM', 'Tareas CRM', 'Clientes', 'Cotizador', 'Cotizaciones', 'Remisiones', 'POS'],
+    items: ['CRM', 'Conversaciones', 'Automatización', 'Sitios web', 'Leads', 'Oportunidades', 'Agenda CRM', 'Tareas CRM', 'Clientes', 'Cotizador', 'Cotizaciones', 'Remisiones', 'POS'],
   },
   {
     id: 'operaciones',
@@ -46,7 +46,7 @@ const domains: Domain[] = [
     description: 'Ejecucion interna, seguimiento operativo, produccion y trabajo coordinado.',
     href: '/dashboard/ordenes',
     tone: 'amber',
-    items: ['Ordenes de trabajo', 'Tareas y proyectos', 'Conversaciones', 'Escaneos', 'Plantillas', 'Litografia'],
+    items: ['Ordenes de trabajo', 'Tareas y proyectos', 'Red operativa'],
   },
   {
     id: 'inventario',
@@ -70,7 +70,7 @@ const domains: Domain[] = [
     description: 'Capacidades de copiloto, generacion y auditoria especializada por dominio.',
     href: '/dashboard/imagenes-ia/generador',
     tone: 'teal',
-    items: ['Generador de imagenes', 'Vectorizador', 'Conocimiento IA', 'Auditoria IA litografia', 'Auditoria IA CRM'],
+    items: ['Generador de imagenes', 'Vectorizador', 'Conocimiento IA', 'Auditoria IA costos', 'Auditoria IA CRM'],
   },
   {
     id: 'analitica',
@@ -78,7 +78,23 @@ const domains: Domain[] = [
     description: 'Lectura del negocio, rendimiento y trazabilidad transversal.',
     href: '/dashboard/reportes',
     tone: 'sky',
-    items: ['Reportes', 'Auditorias IA por dominio'],
+    items: ['Reportes', 'Motor de inteligencia empresarial', 'Auditorias IA por dominio'],
+  },
+  {
+    id: 'configuracion',
+    title: 'Configuración',
+    description: 'Reglas operativas, plantillas y configuraciones especializadas del negocio.',
+    href: '/dashboard/litografia',
+    tone: 'teal',
+    items: ['Costos', 'Plantillas'],
+  },
+  {
+    id: 'administracion',
+    title: 'Administración',
+    description: 'Gobierno del workspace, usuarios, perfil, plan y control operativo de la empresa.',
+    href: '/dashboard/configuracion/empresa',
+    tone: 'amber',
+    items: ['Mi perfil', 'Empresa', 'Sedes', 'Usuarios', 'Plan', 'Respaldo', 'Ayuda', 'Notificaciones'],
   },
   {
     id: 'verticales',
@@ -91,31 +107,33 @@ const domains: Domain[] = [
 ]
 
 const dependencies: Dependency[] = [
-  { from: 'Comercial', to: 'Operaciones', description: 'Las oportunidades y ventas terminan en ordenes, tareas y seguimiento operativo.' },
-  { from: 'Comercial', to: 'Inventario', description: 'Cotizador, cotizaciones, remisiones y POS dependen del catalogo y del stock.' },
+  { from: 'CRM', to: 'Operaciones', description: 'Las oportunidades y ventas terminan en ordenes, tareas y seguimiento operativo.' },
+  { from: 'CRM', to: 'Inventario', description: 'Cotizador, cotizaciones, remisiones y POS dependen del catalogo y del stock.' },
   { from: 'Operaciones', to: 'Inventario', description: 'La ejecucion interna consulta productos, materiales y disponibilidad real.' },
-  { from: 'Comercial', to: 'Financiero', description: 'POS y documentos comerciales terminan impactando facturacion y registro contable.' },
+  { from: 'CRM', to: 'Financiero', description: 'POS y documentos comerciales terminan impactando facturacion y registro contable.' },
   { from: 'Inventario', to: 'Financiero', description: 'Compras, costos y movimientos soportan el control financiero.' },
-  { from: 'IA', to: 'Comercial', description: 'El copiloto CRM y sus auditorias ya apoyan seguimiento, respuesta y tareas.' },
+  { from: 'IA', to: 'CRM', description: 'El copiloto CRM y sus auditorias ya apoyan seguimiento, respuesta y tareas.' },
   { from: 'IA', to: 'Operaciones', description: 'Litografia IA, OCR y generacion visual apoyan procesos tecnicos y de produccion.' },
   { from: 'Analitica', to: 'Todos los dominios', description: 'Reportes y auditorias entregan lectura transversal del uso y del rendimiento.' },
+  { from: 'Administración', to: 'Todos los dominios', description: 'Usuarios, sedes, respaldo y plan gobiernan el acceso y la operacion general del workspace.' },
 ]
 
 const observations = {
   exists: [
-    'Existe una capa de inicio administrativa clara con empresa, usuarios, sedes y plan.',
-    'Existe un frente comercial fuerte, pero historicamente repartido entre CRM, cotizador, documentos y POS.',
-    'Existe una capa operativa real con ordenes, tareas, proyectos internos, litografia y escaneos.',
+    'Existe un inicio limpio como punto de entrada, separado ya de sus antiguos submodulos administrativos.',
+    'Existe un CRM fuerte, pero historicamente repartido entre CRM, cotizador, documentos y POS.',
+    'Existe una capa operativa real con ordenes y proyectos internos, mientras conversaciones y escaneos ya se movieron a sus frentes funcionales.',
     'Existe una base financiera importante con contabilidad y nomina separadas por submodulos.',
+    'Existe ya una distincion util entre Configuración y Administración dentro del dashboard.',
   ],
   missing: [
     'No existe aun un centro unico de BI/KPI independiente de Reportes.',
     'No existe una seccion transversal unica de Automatizaciones IA.',
-    'No existe una capa unica de Produccion; hoy se reparte entre ordenes, tareas, litografia e inventario.',
+    'No existe una capa unica de Produccion; hoy se reparte entre ordenes, costos e inventario.',
   ],
   overlap: [
-    'Comercial estaba fragmentado entre CRM, Productividad y ventas documentales.',
-    'IA estaba separada entre imagenes y litografia sin una lectura comun del dominio.',
+    'CRM estaba fragmentado entre CRM, productividad y ventas documentales.',
+    'IA estaba separada entre imagenes y costos sin una lectura comun del dominio.',
     'Operaciones compartia piezas con Comercial y con IA, dificultando leer la cadena completa.',
   ],
 }
@@ -128,6 +146,8 @@ const domainIcon = {
   financiero: Wallet,
   ia: BrainCircuit,
   analitica: LineChart,
+  configuracion: Wrench,
+  administracion: Shield,
   verticales: Wrench,
 } satisfies Record<DomainId, typeof Compass>
 
@@ -151,7 +171,7 @@ export default function ProductMapPage() {
         actions={
           <>
             <Button asChild className="rounded-xl">
-              <Link href="/dashboard/crm">Abrir Comercial</Link>
+              <Link href="/dashboard/crm">Abrir CRM</Link>
             </Button>
             <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white/90">
               <Link href="/dashboard/reportes">Ir a Reportes</Link>
@@ -229,16 +249,16 @@ export default function ProductMapPage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm leading-6 text-slate-600">
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-              <p className="font-semibold text-slate-950">Comercial</p>
-              <p>CRM, inbox, leads, oportunidades, agenda, tareas, clientes, cotizador, cotizaciones, remisiones y POS se leen como una sola cadena.</p>
+              <p className="font-semibold text-slate-950">CRM</p>
+              <p>CRM, conversaciones, automatización, sitios web, clientes, cotizador, cotizaciones, remisiones y POS se leen como una sola cadena.</p>
             </div>
             <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
               <p className="font-semibold text-slate-950">Operaciones</p>
-              <p>Ordenes, espacios, chat interno, litografia, escaneos y plantillas viven como ejecucion y coordinacion.</p>
+              <p>Ordenes, proyectos y red operativa viven como ejecucion y coordinacion, mientras costos y conversaciones ya se leen en sus propios frentes.</p>
             </div>
             <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
-              <p className="font-semibold text-slate-950">IA</p>
-              <p>Generacion, vectorizacion, conocimiento y auditorias IA se agrupan como capacidad transversal especializada.</p>
+              <p className="font-semibold text-slate-950">Configuración e IA</p>
+              <p>Costos, plantillas, generacion, vectorizacion, conocimiento y auditorias IA ya se entienden como capas de soporte transversal especializadas.</p>
             </div>
           </CardContent>
         </Card>

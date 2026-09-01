@@ -28,6 +28,7 @@ export default function NotificationsPanel({ onUnreadCountChange }: Props) {
   const [items, setItems] = useState<NotificationItem[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<'all' | 'unread'>('unread')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -55,8 +56,13 @@ export default function NotificationsPanel({ onUnreadCountChange }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ all: true }),
     })
+    setActiveTab('all')
     await load()
   }
+
+  const visibleItems = activeTab === 'unread'
+    ? items.filter((item) => !item.readAt)
+    : items
 
   useEffect(() => {
     void load()
@@ -81,7 +87,21 @@ export default function NotificationsPanel({ onUnreadCountChange }: Props) {
             </div>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={() => void markAllRead()} disabled={!unreadCount}>
-            Marcar todo
+            Marcar todo como leido
+          </Button>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <Button asChild variant="outline" size="sm" className="rounded-full border-slate-200 bg-white">
+            <Link href="/dashboard/notificaciones">Todos</Link>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={activeTab === 'unread' ? 'rounded-full border-sky-200 bg-sky-50 text-sky-700' : 'rounded-full border-slate-200 bg-white'}
+            onClick={() => setActiveTab('unread')}
+          >
+            Sin leer
           </Button>
         </div>
       </div>
@@ -89,9 +109,9 @@ export default function NotificationsPanel({ onUnreadCountChange }: Props) {
       <div className="flex-1 overflow-y-auto p-3">
         {loading ? (
           <div className="text-sm text-muted-foreground">Cargando…</div>
-        ) : items.length ? (
+        ) : visibleItems.length ? (
           <div className="space-y-2">
-            {items.map((n) => (
+            {visibleItems.map((n) => (
               <Card key={n.id} className={n.readAt ? '' : 'border-blue-200'}>
                 <CardHeader className="py-3">
                   <CardTitle className="text-sm">{n.title}</CardTitle>
@@ -110,7 +130,7 @@ export default function NotificationsPanel({ onUnreadCountChange }: Props) {
             ))}
           </div>
         ) : (
-          <div className="text-sm text-muted-foreground">Sin notificaciones.</div>
+          <div className="text-sm text-muted-foreground">{activeTab === 'unread' ? 'No hay notificaciones sin leer.' : 'Sin notificaciones.'}</div>
         )}
       </div>
     </div>

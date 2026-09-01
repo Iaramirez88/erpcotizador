@@ -667,134 +667,135 @@ export default function SuperAdminEmpresasClient() {
       ) : null}
 
       <Dialog open={detailOpen} onOpenChange={(v) => (!detailLoading ? setDetailOpen(v) : null)}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden p-0 sm:max-w-4xl">
+          <DialogHeader className="shrink-0 border-b border-slate-200 px-5 py-4">
             <DialogTitle>{t('superAdmin.companies.detail.title')}</DialogTitle>
             <DialogDescription>{t('superAdmin.companies.detail.subtitle')}</DialogDescription>
           </DialogHeader>
 
-          {detailLoading ? <div className="text-sm text-gray-600">{t('common.loading')}</div> : null}
-          {detailError ? <div className="text-sm text-red-600">{detailError}</div> : null}
+          <div className="flex-1 overflow-y-auto px-5 py-4">
+            {detailLoading ? <div className="text-sm text-gray-600">{t('common.loading')}</div> : null}
+            {detailError ? <div className="text-sm text-red-600">{detailError}</div> : null}
 
-          {editError ? <div className="text-sm text-red-600">{editError}</div> : null}
+            {editError ? <div className="text-sm text-red-600">{editError}</div> : null}
 
-          {detail ? (
-            <div className="space-y-4 text-sm">
-              {!editMode ? (
-                <>
-                  <div>
-                    <b>{detail.nombre}</b> · {t('superAdmin.companies.labels.nit')}: {detail.nit}
-                  </div>
-                  <div>
-                    {t('superAdmin.companies.labels.code')}: <span className="font-mono">{detail.workspaceCode}</span> · {t('superAdmin.companies.labels.id')}: <span className="font-mono">{detail.id}</span>
-                  </div>
-                  <div>
-                    {t('superAdmin.companies.labels.ownerEmail')}: <b>{detail.planOwnerEmail || naText}</b>
-                  </div>
-                  <div>
-                    {t('superAdmin.companies.fields.address')}: <b>{detail.direccion || naText}</b> · {t('superAdmin.companies.fields.phone')}: <b>{detail.telefono || naText}</b> · {t('superAdmin.companies.fields.whatsapp')}: <b>{detail.whatsapp || naText}</b>
-                  </div>
-                  <div>
-                    {t('superAdmin.companies.fields.companyEmail')}: <b>{detail.email || naText}</b>
-                  </div>
-                  <div>
-                    {t('superAdmin.companies.labels.createdAt')}: <b>{fmtDate(detail.createdAt, locale, naText)}</b> · {t('superAdmin.companies.labels.updatedAt')}: <b>{fmtDate(detail.updatedAt, locale, naText)}</b>
-                  </div>
-                  <div>
-                    {t('superAdmin.companies.labels.plan')}: <b>{detail.planTier}</b> · {billingCycleLabel(detail.billingCycle)} · {t('superAdmin.companies.labels.validUntil')}: <b>{fmtDate(detail.planValidUntil, locale, naText)}</b>
-                  </div>
-                  <div>
-                    {t('superAdmin.companies.labels.trialUntil')}: <b>{fmtDate(detail.trialValidUntil, locale, naText)}</b> · Trial tier: <b>{detail.trialTier || naText}</b>
-                  </div>
-                  <div>
-                    {t('superAdmin.companies.labels.stripe')}: {detail.stripeSubscriptionStatus || naText} · {t('superAdmin.companies.labels.periodEnd')}: {fmtDate(detail.stripeCurrentPeriodEnd, locale, naText)}
-                  </div>
-
-                  <div className="space-y-2 rounded-lg border p-3">
+            {detail ? (
+              <div className="space-y-4 text-sm">
+                {!editMode ? (
+                  <>
                     <div>
-                      <div className="font-medium">{t('superAdmin.companies.labels.moduleOverrides')}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {t('superAdmin.companies.fields.moduleOverridesHelp')} {moduleOverrides.length ? `(${moduleOverridesPlanTier})` : ''}
-                      </div>
+                      <b>{detail.nombre}</b> · {t('superAdmin.companies.labels.nit')}: {detail.nit}
                     </div>
-                    {moduleOverridesError ? <div className="text-xs text-red-600">{moduleOverridesError}</div> : null}
-                    {moduleOverridesLoading ? <div className="text-xs text-muted-foreground">{t('common.loading')}</div> : null}
-                    {!moduleOverridesLoading ? (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {moduleOverrides.map((row) => {
-                          const selectValue = row.overrideEnabled == null ? 'inherit' : row.overrideEnabled ? 'enabled' : 'disabled'
-                          const statusLabel = row.overrideEnabled == null
-                            ? t('superAdmin.companies.labels.inherited')
-                            : row.overrideEnabled
-                              ? t('superAdmin.companies.labels.forceEnabled')
-                              : t('superAdmin.companies.labels.forceDisabled')
+                    <div>
+                      {t('superAdmin.companies.labels.code')}: <span className="font-mono">{detail.workspaceCode}</span> · {t('superAdmin.companies.labels.id')}: <span className="font-mono">{detail.id}</span>
+                    </div>
+                    <div>
+                      {t('superAdmin.companies.labels.ownerEmail')}: <b>{detail.planOwnerEmail || naText}</b>
+                    </div>
+                    <div>
+                      {t('superAdmin.companies.fields.address')}: <b>{detail.direccion || naText}</b> · {t('superAdmin.companies.fields.phone')}: <b>{detail.telefono || naText}</b> · {t('superAdmin.companies.fields.whatsapp')}: <b>{detail.whatsapp || naText}</b>
+                    </div>
+                    <div>
+                      {t('superAdmin.companies.fields.companyEmail')}: <b>{detail.email || naText}</b>
+                    </div>
+                    <div>
+                      {t('superAdmin.companies.labels.createdAt')}: <b>{fmtDate(detail.createdAt, locale, naText)}</b> · {t('superAdmin.companies.labels.updatedAt')}: <b>{fmtDate(detail.updatedAt, locale, naText)}</b>
+                    </div>
+                    <div>
+                      {t('superAdmin.companies.labels.plan')}: <b>{detail.planTier}</b> · {billingCycleLabel(detail.billingCycle)} · {t('superAdmin.companies.labels.validUntil')}: <b>{fmtDate(detail.planValidUntil, locale, naText)}</b>
+                    </div>
+                    <div>
+                      {t('superAdmin.companies.labels.trialUntil')}: <b>{fmtDate(detail.trialValidUntil, locale, naText)}</b> · Trial tier: <b>{detail.trialTier || naText}</b>
+                    </div>
+                    <div>
+                      {t('superAdmin.companies.labels.stripe')}: {detail.stripeSubscriptionStatus || naText} · {t('superAdmin.companies.labels.periodEnd')}: {fmtDate(detail.stripeCurrentPeriodEnd, locale, naText)}
+                    </div>
 
-                          return (
-                            <div key={row.module} className="rounded-md border p-2">
-                              <div className="flex items-start justify-between gap-2">
-                                <div>
-                                  <div className="font-medium leading-none">{titleForModule(row.module)}</div>
-                                  <div className="mt-1 text-[11px] text-muted-foreground">{row.module}</div>
+                    <div className="space-y-2 rounded-lg border p-3">
+                      <div>
+                        <div className="font-medium">{t('superAdmin.companies.labels.moduleOverrides')}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {t('superAdmin.companies.fields.moduleOverridesHelp')} {moduleOverrides.length ? `(${moduleOverridesPlanTier})` : ''}
+                        </div>
+                      </div>
+                      {moduleOverridesError ? <div className="text-xs text-red-600">{moduleOverridesError}</div> : null}
+                      {moduleOverridesLoading ? <div className="text-xs text-muted-foreground">{t('common.loading')}</div> : null}
+                      {!moduleOverridesLoading ? (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {moduleOverrides.map((row) => {
+                            const selectValue = row.overrideEnabled == null ? 'inherit' : row.overrideEnabled ? 'enabled' : 'disabled'
+                            const statusLabel = row.overrideEnabled == null
+                              ? t('superAdmin.companies.labels.inherited')
+                              : row.overrideEnabled
+                                ? t('superAdmin.companies.labels.forceEnabled')
+                                : t('superAdmin.companies.labels.forceDisabled')
+
+                            return (
+                              <div key={row.module} className="rounded-md border p-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <div className="font-medium leading-none">{titleForModule(row.module)}</div>
+                                    <div className="mt-1 text-[11px] text-muted-foreground">{row.module}</div>
+                                  </div>
+                                  <span className="text-[11px] text-muted-foreground">{statusLabel}</span>
                                 </div>
-                                <span className="text-[11px] text-muted-foreground">{statusLabel}</span>
-                              </div>
-                              <div className="mt-2 flex items-center gap-2">
-                                <Select
-                                  value={selectValue}
-                                  onValueChange={(value) => void saveModuleOverride(row.module, value as 'inherit' | 'enabled' | 'disabled')}
-                                  disabled={moduleOverrideSavingKey === row.module}
-                                >
-                                  <SelectTrigger className="h-8 text-xs">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="inherit">{t('superAdmin.companies.labels.inherited')}</SelectItem>
-                                    <SelectItem value="enabled">{t('superAdmin.companies.labels.forceEnabled')}</SelectItem>
-                                    <SelectItem value="disabled">{t('superAdmin.companies.labels.forceDisabled')}</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <span className={`text-[11px] font-medium ${row.effectiveEnabled ? 'text-emerald-700' : 'text-rose-700'}`}>
-                                  {row.effectiveEnabled ? 'ON' : 'OFF'}
-                                </span>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div>
-                    <div className="font-medium">{t('superAdmin.companies.invoices.title')}</div>
-                    {detail.billingInvoices.length ? (
-                      <div className="space-y-1">
-                        {detail.billingInvoices.map((inv) => (
-                          <div key={inv.id} className="border rounded-md p-2">
-                            <div>
-                              {invoiceStatusLabel(inv.status)} · {moneyCOP(inv.amountCOP, locale)} · {t('superAdmin.companies.invoices.paidAt')}: <b>{fmtDate(inv.paidAt, locale, naText)}</b>
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {t('superAdmin.companies.invoices.reference')}: {inv.externalReference} · {t('superAdmin.companies.labels.createdAt')}: {fmtDate(inv.createdAt, locale, naText)} · {t('superAdmin.companies.labels.paymentMethod')}: {inv.paymentMethod || naText}
-                            </div>
-                            {inv.quotedModules.length ? (
-                              <div className="mt-2 flex flex-wrap gap-1">
-                                {inv.quotedModules.map((moduleKey) => (
-                                  <span key={moduleKey} className="rounded-full bg-muted px-2 py-1 text-[11px]">
-                                    {titleForModule(moduleKey)}
+                                <div className="mt-2 flex items-center gap-2">
+                                  <Select
+                                    value={selectValue}
+                                    onValueChange={(value) => void saveModuleOverride(row.module, value as 'inherit' | 'enabled' | 'disabled')}
+                                    disabled={moduleOverrideSavingKey === row.module}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="inherit">{t('superAdmin.companies.labels.inherited')}</SelectItem>
+                                      <SelectItem value="enabled">{t('superAdmin.companies.labels.forceEnabled')}</SelectItem>
+                                      <SelectItem value="disabled">{t('superAdmin.companies.labels.forceDisabled')}</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <span className={`text-[11px] font-medium ${row.effectiveEnabled ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                    {row.effectiveEnabled ? 'ON' : 'OFF'}
                                   </span>
-                                ))}
+                                </div>
                               </div>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-muted-foreground">{t('superAdmin.companies.invoices.empty')}</div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            )
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <div className="font-medium">{t('superAdmin.companies.invoices.title')}</div>
+                      {detail.billingInvoices.length ? (
+                        <div className="space-y-1">
+                          {detail.billingInvoices.map((inv) => (
+                            <div key={inv.id} className="border rounded-md p-2">
+                              <div>
+                                {invoiceStatusLabel(inv.status)} · {moneyCOP(inv.amountCOP, locale)} · {t('superAdmin.companies.invoices.paidAt')}: <b>{fmtDate(inv.paidAt, locale, naText)}</b>
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {t('superAdmin.companies.invoices.reference')}: {inv.externalReference} · {t('superAdmin.companies.labels.createdAt')}: {fmtDate(inv.createdAt, locale, naText)} · {t('superAdmin.companies.labels.paymentMethod')}: {inv.paymentMethod || naText}
+                              </div>
+                              {inv.quotedModules.length ? (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  {inv.quotedModules.map((moduleKey) => (
+                                    <span key={moduleKey} className="rounded-full bg-muted px-2 py-1 text-[11px]">
+                                      {titleForModule(moduleKey)}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-muted-foreground">{t('superAdmin.companies.invoices.empty')}</div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
                     <Label>{t('superAdmin.companies.fields.name')}</Label>
                     <Input value={editForm.nombre} onChange={(e) => setEditForm((p) => ({ ...p, nombre: e.target.value }))} />
@@ -888,12 +889,13 @@ export default function SuperAdminEmpresasClient() {
                       <div className="text-xs text-muted-foreground">{t('superAdmin.companies.fields.clearTrialHelp')}</div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-          ) : null}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t border-slate-200 px-5 py-4">
             {!editMode ? (
               <>
                 <Button variant="outline" onClick={() => setDetailOpen(false)} disabled={detailLoading}>

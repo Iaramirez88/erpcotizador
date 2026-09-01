@@ -58,24 +58,24 @@ function normalizeSidebarTooltipPrefs(value: Partial<SidebarTooltipPrefs> | null
 
 function MenuChevron() {
   return (
-    <svg className="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <svg className="h-4 w-4 text-current/65" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
     </svg>
   )
 }
 
 function MobileMenuChevron({ open }: { open: boolean }) {
-  return <ChevronDown className={open ? 'h-4 w-4 text-slate-500 transition-transform rotate-180' : 'h-4 w-4 text-slate-500 transition-transform'} />
+  return <ChevronDown className={open ? 'h-4 w-4 text-current/65 transition-transform rotate-180' : 'h-4 w-4 text-current/65 transition-transform'} />
 }
 
 function MenuIcon({ children }: { children: React.ReactNode }) {
-  return <span className="inline-flex h-5 w-5 items-center justify-center text-slate-700">{children}</span>
+  return <span className="inline-flex h-5 w-5 items-center justify-center text-current">{children}</span>
 }
 
 export default function Header({ user, variant = 'sticky' }: HeaderProps) {
   const router = useRouter()
   const { t, language, setLanguage } = useI18n()
-  const { theme, setTheme } = useTheme()
+  const { theme, resolvedTheme, setTheme } = useTheme()
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
   const [navOrder, setNavOrder] = useState<string[]>([])
   const [sidebarTooltipPrefs, setSidebarTooltipPrefs] = useState<SidebarTooltipPrefs>(DEFAULT_SIDEBAR_TOOLTIP_PREFS)
@@ -95,6 +95,29 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
     return new Set(user.allowedModules)
   }, [user.allowedModules])
   const allowedNavHrefSet = useMemo(() => (allowedNavHrefs.length ? new Set(allowedNavHrefs) : null), [allowedNavHrefs])
+  const isDark = resolvedTheme === 'dark'
+  const mobileSubmenuTriggerClass = isDark
+    ? 'flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-3 text-left text-[15px] font-medium text-[#e0e0e0] transition hover:bg-[#232323]'
+    : 'flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-3 text-left text-[15px] font-medium text-slate-700 transition hover:bg-slate-100'
+  const mobileSubmenuPanelClass = isDark ? 'mt-1 space-y-1 rounded-2xl bg-[#1c1c1c] p-2' : 'mt-1 space-y-1 rounded-2xl bg-slate-50 p-2'
+  const mobileMenuItemClass = isDark
+    ? 'block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[#e0e0e0] transition hover:bg-[#232323]'
+    : 'block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white'
+  const desktopSubTriggerClass = isDark
+    ? 'rounded-2xl px-3 py-3 text-[15px] font-medium text-[#e0e0e0] focus:bg-[#232323] data-[state=open]:bg-[#232323]'
+    : 'rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100'
+  const desktopMenuItemClass = isDark
+    ? 'rounded-xl px-3 py-2.5 text-sm font-medium text-[#e0e0e0] focus:bg-[#232323] focus:text-[#e0e0e0]'
+    : 'rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700'
+  const menuSurfaceClass = isDark
+    ? 'w-80 rounded-3xl border-[#444444] bg-[#181818] p-3 text-[#e0e0e0] shadow-[0_22px_45px_-28px_rgba(0,0,0,0.52)]'
+    : 'w-80 rounded-3xl border-slate-200 p-3 shadow-[0_22px_45px_-28px_rgba(15,23,42,0.35)]'
+  const profileTriggerClass = isDark
+    ? 'h-9 w-9 rounded-full p-0 hover:bg-[#232323]'
+    : 'h-9 w-9 rounded-full p-0 hover:bg-accent/60'
+  const mobileProfileTriggerClass = isDark
+    ? 'h-14 w-14 rounded-full p-0 hover:bg-[#232323]'
+    : 'h-14 w-14 rounded-full p-0 hover:bg-slate-100/80'
 
   const initials = useMemo(() => {
     const name = (user.name ?? '').trim()
@@ -232,7 +255,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
       <div className={options.disabled ? 'opacity-50' : ''}>
         <button
           type="button"
-          className="flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-3 text-left text-[15px] font-medium text-slate-700 transition hover:bg-slate-100"
+          className={mobileSubmenuTriggerClass}
           onClick={() => {
             if (options.disabled) return
             toggleMobileSection(options.keyName)
@@ -245,7 +268,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
           </span>
           <MobileMenuChevron open={open} />
         </button>
-        {open ? <div className="mt-1 space-y-1 rounded-2xl bg-slate-50 p-2">{options.children}</div> : null}
+        {open ? <div className={mobileSubmenuPanelClass}>{options.children}</div> : null}
       </div>
     )
   }
@@ -261,20 +284,20 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
         ),
         children: (
           <>
-            <Link href="/dashboard/configuracion/notificaciones" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
+            <Link href="/dashboard/configuracion/notificaciones" className={mobileMenuItemClass} onClick={() => setUserMenuOpen(false)}>
               Dispositivos
             </Link>
             {navPrefs ? (
-              <button type="button" className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => { setUserMenuOpen(false); setNavSettingsOpen(true) }}>
+              <button type="button" className={mobileMenuItemClass} onClick={() => { setUserMenuOpen(false); setNavSettingsOpen(true) }}>
                 {t('header.customizeMenu')}
               </button>
             ) : null}
             {canManageBilling ? (
               <>
-                <Link href="/dashboard/configuracion/plan" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
+                <Link href="/dashboard/configuracion/plan" className={mobileMenuItemClass} onClick={() => setUserMenuOpen(false)}>
                   Facturación
                 </Link>
-                <Link href="/dashboard/configuracion/plan?tab=almacenamiento" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
+                <Link href="/dashboard/configuracion/plan?tab=almacenamiento" className={mobileMenuItemClass} onClick={() => setUserMenuOpen(false)}>
                   Consumo actual de espacio
                 </Link>
               </>
@@ -284,7 +307,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
       })
     : (
       <DropdownMenuSub>
-        <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
+        <DropdownMenuSubTriggerItem className={desktopSubTriggerClass}>
           <div className="flex w-full items-center justify-between gap-3">
             <span className="flex items-center gap-3">
               <MenuIcon>
@@ -298,20 +321,20 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
           </div>
         </DropdownMenuSubTriggerItem>
         <DropdownMenuSubContentPanel className="w-64 rounded-2xl p-2">
-          <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+          <DropdownMenuItem asChild className={desktopMenuItemClass}>
             <Link href="/dashboard/configuracion/notificaciones">Dispositivos</Link>
           </DropdownMenuItem>
           {navPrefs ? (
-            <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={() => { setUserMenuOpen(false); setNavSettingsOpen(true) }}>
+            <DropdownMenuItem className={desktopMenuItemClass} onSelect={() => { setUserMenuOpen(false); setNavSettingsOpen(true) }}>
               {t('header.customizeMenu')}
             </DropdownMenuItem>
           ) : null}
           {canManageBilling ? (
             <>
-              <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+              <DropdownMenuItem asChild className={desktopMenuItemClass}>
                 <Link href="/dashboard/configuracion/plan">Facturación</Link>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+              <DropdownMenuItem asChild className={desktopMenuItemClass}>
                 <Link href="/dashboard/configuracion/plan?tab=almacenamiento">Consumo actual de espacio</Link>
               </DropdownMenuItem>
             </>
@@ -331,13 +354,13 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
         ),
         children: (
           <>
-            <button type="button" className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => { setTheme('light'); setUserMenuOpen(false) }}>
+            <button type="button" className={mobileMenuItemClass} onClick={() => { setTheme('light'); setUserMenuOpen(false) }}>
               Claro{theme === 'light' ? ' ✓' : ''}
             </button>
-            <button type="button" className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => { setTheme('dark'); setUserMenuOpen(false) }}>
+            <button type="button" className={mobileMenuItemClass} onClick={() => { setTheme('dark'); setUserMenuOpen(false) }}>
               Oscuro{theme === 'dark' ? ' ✓' : ''}
             </button>
-            <button type="button" className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => { setTheme('system'); setUserMenuOpen(false) }}>
+            <button type="button" className={mobileMenuItemClass} onClick={() => { setTheme('system'); setUserMenuOpen(false) }}>
               Sistema{theme === 'system' ? ' ✓' : ''}
             </button>
           </>
@@ -345,7 +368,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
       })
     : (
       <DropdownMenuSub>
-        <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
+        <DropdownMenuSubTriggerItem className={desktopSubTriggerClass}>
           <div className="flex w-full items-center justify-between gap-3">
             <span className="flex items-center gap-3">
               <MenuIcon>
@@ -359,13 +382,13 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
           </div>
         </DropdownMenuSubTriggerItem>
         <DropdownMenuSubContentPanel className="w-56 rounded-2xl p-2">
-          <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setTheme('light') }}>
+          <DropdownMenuItem className={desktopMenuItemClass} onSelect={(e) => { e.preventDefault(); setTheme('light') }}>
             Claro{theme === 'light' ? ' ✓' : ''}
           </DropdownMenuItem>
-          <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setTheme('dark') }}>
+          <DropdownMenuItem className={desktopMenuItemClass} onSelect={(e) => { e.preventDefault(); setTheme('dark') }}>
             Oscuro{theme === 'dark' ? ' ✓' : ''}
           </DropdownMenuItem>
-          <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setTheme('system') }}>
+          <DropdownMenuItem className={desktopMenuItemClass} onSelect={(e) => { e.preventDefault(); setTheme('system') }}>
             Sistema{theme === 'system' ? ' ✓' : ''}
           </DropdownMenuItem>
         </DropdownMenuSubContentPanel>
@@ -383,10 +406,10 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
         ),
         children: (
           <>
-            <button type="button" className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => { setLanguage('es'); setUserMenuOpen(false) }}>
+            <button type="button" className={mobileMenuItemClass} onClick={() => { setLanguage('es'); setUserMenuOpen(false) }}>
               {t('common.spanish')}{language === 'es' ? ' ✓' : ''}
             </button>
-            <button type="button" className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => { setLanguage('en'); setUserMenuOpen(false) }}>
+            <button type="button" className={mobileMenuItemClass} onClick={() => { setLanguage('en'); setUserMenuOpen(false) }}>
               {t('common.english')}{language === 'en' ? ' ✓' : ''}
             </button>
           </>
@@ -394,7 +417,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
       })
     : (
       <DropdownMenuSub>
-        <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
+        <DropdownMenuSubTriggerItem className={desktopSubTriggerClass}>
           <div className="flex w-full items-center justify-between gap-3">
             <span className="flex items-center gap-3">
               <MenuIcon>
@@ -408,10 +431,10 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
           </div>
         </DropdownMenuSubTriggerItem>
         <DropdownMenuSubContentPanel className="w-56 rounded-2xl p-2">
-          <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setLanguage('es') }}>
+          <DropdownMenuItem className={desktopMenuItemClass} onSelect={(e) => { e.preventDefault(); setLanguage('es') }}>
             {t('common.spanish')}{language === 'es' ? ' ✓' : ''}
           </DropdownMenuItem>
-          <DropdownMenuItem className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700" onSelect={(e) => { e.preventDefault(); setLanguage('en') }}>
+          <DropdownMenuItem className={desktopMenuItemClass} onSelect={(e) => { e.preventDefault(); setLanguage('en') }}>
             {t('common.english')}{language === 'en' ? ' ✓' : ''}
           </DropdownMenuItem>
         </DropdownMenuSubContentPanel>
@@ -429,16 +452,16 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
         ),
         children: (
           <>
-            <Link href="/dashboard/ayuda" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
+            <Link href="/dashboard/ayuda" className={mobileMenuItemClass} onClick={() => setUserMenuOpen(false)}>
               Centro de ayuda
             </Link>
-            <Link href="/dashboard/ayuda" className="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white" onClick={() => setUserMenuOpen(false)}>
+            <Link href="/dashboard/ayuda" className={mobileMenuItemClass} onClick={() => setUserMenuOpen(false)}>
               Documentación y videos
             </Link>
-            <button type="button" disabled={!hasCurrentTour} className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white disabled:opacity-50" onClick={() => { startCurrentTour(); setUserMenuOpen(false) }}>
+            <button type="button" disabled={!hasCurrentTour} className={`${mobileMenuItemClass} disabled:opacity-50`} onClick={() => { startCurrentTour(); setUserMenuOpen(false) }}>
               {t('header.tour.view')}
             </button>
-            <button type="button" disabled={!hasCurrentTour} className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-white disabled:opacity-50" onClick={() => { void resetCurrentTour(); startCurrentTour(); setUserMenuOpen(false) }}>
+            <button type="button" disabled={!hasCurrentTour} className={`${mobileMenuItemClass} disabled:opacity-50`} onClick={() => { void resetCurrentTour(); startCurrentTour(); setUserMenuOpen(false) }}>
               {t('header.tour.restart')}
             </button>
           </>
@@ -446,7 +469,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
       })
     : (
       <DropdownMenuSub>
-        <DropdownMenuSubTriggerItem className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100 data-[state=open]:bg-slate-100">
+        <DropdownMenuSubTriggerItem className={desktopSubTriggerClass}>
           <div className="flex w-full items-center justify-between gap-3">
             <span className="flex items-center gap-3">
               <MenuIcon>
@@ -460,15 +483,15 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
           </div>
         </DropdownMenuSubTriggerItem>
         <DropdownMenuSubContentPanel className="w-72 rounded-2xl p-2">
-          <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+          <DropdownMenuItem asChild className={desktopMenuItemClass}>
             <Link href="/dashboard/ayuda">Centro de ayuda</Link>
           </DropdownMenuItem>
-          <DropdownMenuItem asChild className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700">
+          <DropdownMenuItem asChild className={desktopMenuItemClass}>
             <Link href="/dashboard/ayuda">Documentación y videos</Link>
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={!hasCurrentTour}
-            className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700"
+            className={desktopMenuItemClass}
             onSelect={(e) => {
               e.preventDefault()
               startCurrentTour()
@@ -478,7 +501,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={!hasCurrentTour}
-            className="rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700"
+            className={desktopMenuItemClass}
             onSelect={(e) => {
               e.preventDefault()
               void resetCurrentTour()
@@ -521,7 +544,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
                 variant="ghost"
                 size="icon"
                 type="button"
-                className={isMobileFooter ? 'h-14 w-14 rounded-full p-0 hover:bg-slate-100/80' : 'h-9 w-9 rounded-full p-0 hover:bg-accent/60'}
+                className={isMobileFooter ? mobileProfileTriggerClass : profileTriggerClass}
                 aria-label={t('header.profile')}
               >
                 <div className={isMobileFooter ? 'relative h-11 w-11 overflow-hidden rounded-full bg-muted' : 'relative h-8 w-8 overflow-hidden rounded-full bg-muted'}>
@@ -539,10 +562,10 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
               align={isSidebarFooter ? 'start' : 'end'}
               side={isSidebarFooter ? 'right' : isMobileFooter ? 'top' : 'bottom'}
               sideOffset={isSidebarFooter ? 16 : isMobileFooter ? 12 : 8}
-              className="w-80 rounded-3xl border-slate-200 p-3 shadow-[0_22px_45px_-28px_rgba(15,23,42,0.35)]"
+              className={menuSurfaceClass}
             >
 
-              <DropdownMenuItem asChild className="rounded-2xl px-3 py-3 text-[15px] font-medium text-slate-700 focus:bg-slate-100">
+              <DropdownMenuItem asChild className={desktopSubTriggerClass}>
                 <Link href="/dashboard/perfil" className="flex w-full items-center justify-between gap-3">
                   <span className="flex items-center gap-3">
                     <MenuIcon>

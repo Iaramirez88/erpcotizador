@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ModuleKey } from '@prisma/client'
 import { z } from 'zod'
-import { canAccessCompanyWideAiHistory, requireApiAccess } from '@/lib/api-rbac'
+import { requireApiAccess, resolveAiHistoryAccessScope } from '@/lib/api-rbac'
 import { appendAiWorkspaceHistory, listAiWorkspaceHistory, updateAiWorkspaceHistoryEntry } from '@/lib/ai-workspace-history'
 import { uploadCrmFiles } from '@/lib/crm-files'
 import { createPendingLitografiaAiImage, deletePendingLitografiaAiImage, readPendingLitografiaAiImage } from '@/lib/litografia-ai-pending-images'
@@ -84,7 +84,7 @@ export async function GET() {
     const empresaId = await getEmpresaIdFromSedeId(access.sedeId)
     if (!empresaId) return NextResponse.json({ ok: false, error: 'Empresa no encontrada.' }, { status: 404 })
 
-    const canViewCompanyWide = await canAccessCompanyWideAiHistory({
+    const historyAccess = await resolveAiHistoryAccessScope({
       userId: access.userId,
       sedeId: access.sedeId,
       sessionRole: access.session.user.role,
@@ -94,12 +94,12 @@ export async function GET() {
       empresaId,
       limit: 120,
       kinds: ['IMAGE_GENERATION'],
-      actorUserId: canViewCompanyWide ? null : access.userId,
+      actorUserId: historyAccess.actorUserId,
     })
 
     const mappedHistory = await mapHistoryWithPreviewUrls({ empresaId, history })
 
-    return NextResponse.json({ ok: true, scope: canViewCompanyWide ? 'company' : 'personal', history: mappedHistory })
+    return NextResponse.json({ ok: true, scope: historyAccess.scope, history: mappedHistory })
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'No se pudo consultar el historial IA.' }, { status: 400 })
   }
@@ -131,6 +131,9 @@ export async function POST(request: NextRequest) {
       if (!pending) {
         return NextResponse.json({ ok: false, error: 'La imagen pendiente expiró o ya no existe. Genera una nueva versión.' }, { status: 404 })
       }
+      if (pending.actorUserId !== access.userId) {
+        return NextResponse.json({ ok: false, error: 'No tienes acceso a esta imagen pendiente.' }, { status: 403 })
+      }
 
       const bytes = Buffer.from(pending.base64, 'base64')
       const fileSlug = pending.prompt
@@ -142,6 +145,8 @@ export async function POST(request: NextRequest) {
       const uploaded = await uploadCrmFiles({
         empresaId,
         currentPath: AI_IMAGES_FOLDER,
+        currentUserId: access.userId,
+        bootstrapSharedFolders: true,
         actor: { userId: access.userId, label: access.session.user.name || access.session.user.email || 'Usuario interno' },
         files: [{
           name: `${fileSlug}.png`,
@@ -324,6 +329,7 @@ export async function POST(request: NextRequest) {
 
     const pending = await createPendingLitografiaAiImage({
       empresaId,
+      actorUserId: access.userId,
       prompt: parsed.data.prompt,
       revisedPrompt: imageItem.revised_prompt || null,
       size: requestedSize,

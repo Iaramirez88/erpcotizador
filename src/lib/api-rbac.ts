@@ -579,3 +579,17 @@ export async function canAccessCompanyWideAiHistory(args: {
 
   return membership?.role === 'ADMIN'
 }
+
+export async function resolveAiHistoryAccessScope(args: {
+  userId: string
+  sedeId: string
+  sessionRole?: string | null
+}) {
+  const canViewCompanyWide = await canAccessCompanyWideAiHistory(args)
+
+  return {
+    canViewCompanyWide,
+    scope: canViewCompanyWide ? 'company' as const : 'personal' as const,
+    actorUserId: canViewCompanyWide ? null : args.userId,
+  }
+}

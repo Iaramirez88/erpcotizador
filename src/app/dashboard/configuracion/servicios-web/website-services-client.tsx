@@ -271,7 +271,7 @@ export default function WebsiteServicesClient() {
       const res = await fetch('/api/servicios-web', { cache: 'no-store' })
       const json = (await res.json().catch(() => null)) as WebsiteServicesResponse | null
       if (!res.ok || !json?.ok) {
-        alert(json?.error || 'No se pudo cargar la vista de servicios web.')
+        alert(json?.error || 'No se pudo cargar la vista de sitios web.')
         return
       }
 
@@ -618,7 +618,7 @@ export default function WebsiteServicesClient() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3 p-4 md:p-5">
-            {loading ? <p className="text-sm text-slate-500">Cargando servicios web...</p> : null}
+            {loading ? <p className="text-sm text-slate-500">Cargando sitios web...</p> : null}
             {!loading && visibleServices.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">No hay servicios registrados con ese filtro.</p> : null}
 
             {!loading && visibleServices.length > 0 && dataViewMode === 'grid' ? (

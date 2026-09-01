@@ -108,7 +108,7 @@ export async function POST(request: Request, context: RouteContext) {
             type: 'INFO',
             title: 'Te asignaron una conversación CRM',
             body: `Nueva conversación asignada: ${contactLabel}.`,
-            actionUrl: `/dashboard/crm/conversations?conversationId=${row.id}`,
+            actionUrl: `/dashboard/chat?conversationId=${row.id}`,
             actionLabel: 'Abrir conversación',
           },
         })

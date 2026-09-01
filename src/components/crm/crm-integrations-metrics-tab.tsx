@@ -21,12 +21,26 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TabsContent } from '@/components/ui/tabs'
 
 type GoalTargets = {
   operational: string
   captures: string
   conversations: string
+  conversion: string
+  acceptance: string
+}
+
+type KpiScopeType = 'COMPANY' | 'SEDE' | 'CHANNEL' | 'CAMPAIGN'
+
+type CampaignOption = {
+  id: string
+  label: string
+  channelId: string
+  channelName: string
+  captures: number
+  conversations: number
 }
 
 type MetricGoal = {
@@ -42,6 +56,7 @@ type MetricGoal = {
 type ChannelAnalytics = {
   scorecards: {
     activationRate: number
+    conversionRate: number
     productionRate: number
     configured: number
     demo: number
@@ -51,6 +66,8 @@ type ChannelAnalytics = {
     operational: number
     captures: number
     conversations: number
+    conversion: number
+    acceptance: number
   }
   goals: MetricGoal[]
   performance: Array<{
@@ -84,6 +101,19 @@ type Props = {
   setMetricsExpanded: Dispatch<SetStateAction<boolean>>
   goalTargets: GoalTargets
   setGoalTargets: Dispatch<SetStateAction<GoalTargets>>
+  goalScopeType: KpiScopeType
+  setGoalScopeType: Dispatch<SetStateAction<KpiScopeType>>
+  goalScopeCompanyLabel: string
+  goalScopeSedeLabel: string
+  goalScopeChannelLabel: string
+  goalScopeCampaignLabel: string
+  campaignOptions: CampaignOption[]
+  selectedCampaignScopeId: string
+  setSelectedCampaignScopeId: Dispatch<SetStateAction<string>>
+  onSaveGoalTargets: () => void | Promise<void>
+  onResetGoalTargets: () => void
+  savingGoalTargets: boolean
+  goalTargetsFeedback: { tone: 'success' | 'error'; message: string } | null
   stats: Stats
   channelAnalytics: ChannelAnalytics
   formatCompactNumber: (value: number, language: 'es' | 'en') => string
@@ -96,10 +126,29 @@ export function CrmIntegrationsMetricsTab(props: Props) {
     setMetricsExpanded,
     goalTargets,
     setGoalTargets,
+    goalScopeType,
+    setGoalScopeType,
+    goalScopeCompanyLabel,
+    goalScopeSedeLabel,
+    goalScopeChannelLabel,
+    goalScopeCampaignLabel,
+    campaignOptions,
+    selectedCampaignScopeId,
+    setSelectedCampaignScopeId,
+    onSaveGoalTargets,
+    onResetGoalTargets,
+    savingGoalTargets,
+    goalTargetsFeedback,
     stats,
     channelAnalytics,
     formatCompactNumber,
   } = props
+
+  const operationalTargetLabel = goalScopeType === 'CAMPAIGN'
+    ? (language === 'en' ? 'Active campaigns target' : 'Meta de campañas activas')
+    : goalScopeType === 'CHANNEL'
+      ? (language === 'en' ? 'Operational target for this channel' : 'Meta operativa de este canal')
+      : (language === 'en' ? 'Operational channels target' : 'Meta de canales operativos')
 
   return (
     <TabsContent value="metrics" className="space-y-5">
@@ -112,7 +161,7 @@ export function CrmIntegrationsMetricsTab(props: Props) {
                 {language === 'en' ? 'Omnichannel intelligence' : 'Inteligencia omnicanal'}
               </div>
               <div>
-                <h2 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">{language === 'en' ? 'Metrics, goals, and trends' : 'Métricas, metas y tendencias'}</h2>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">{language === 'en' ? 'KPIs, goals, and trends' : 'KPIs, metas y tendencias'}</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 md:text-base">
                   {language === 'en' ? 'This area concentrates the executive dashboard. It is kept separate so daily operations stay lighter and analysis opens only when you need it.' : 'Este espacio concentra el tablero ejecutivo. Lo dejamos aparte para que la operación diaria siga ligera y aquí puedas abrir el análisis sólo cuando lo necesites.'}
                 </p>
@@ -146,7 +195,7 @@ export function CrmIntegrationsMetricsTab(props: Props) {
                 <TrendingUp className="h-4 w-4 text-cyan-300" />
               </div>
               <p className="mt-3 text-3xl font-semibold">{formatCompactNumber(stats.captures + stats.conversations, language)}</p>
-              <p className="mt-1 text-sm text-cyan-50/90">{language === 'en' ? 'Total interactions traced from integrations.' : 'Interacciones totales trazadas desde integraciones.'}</p>
+              <p className="mt-1 text-sm text-cyan-50/90">{language === 'en' ? 'Total interactions traced from automation.' : 'Interacciones totales trazadas desde automatización.'}</p>
             </div>
           </div>
         </CardContent>
@@ -156,12 +205,64 @@ export function CrmIntegrationsMetricsTab(props: Props) {
         <Card className="rounded-[30px] border-slate-200 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] text-slate-950 shadow-[0_28px_80px_-46px_rgba(15,23,42,0.22)]">
           <CardHeader className="pb-4">
             <CardTitle className="text-slate-950">{language === 'en' ? 'Configurable goals' : 'Metas configurables'}</CardTitle>
-            <CardDescription className="text-slate-600">{language === 'en' ? 'You can override the suggested targets and progress recalculates instantly.' : 'Puedes sobreescribir los objetivos sugeridos y el progreso se recalcula al instante.'}</CardDescription>
+            <CardDescription className="text-slate-600">{language === 'en' ? 'Save KPI policy by company, current branch, selected channel, or campaign inside the channel.' : 'Guarda la política de KPIs por empresa, sede actual, canal seleccionado o campaña dentro del canal.'}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3">
+            <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950 shadow-sm">
+              <p className="font-semibold">{language === 'en' ? 'How KPI scope works today' : 'Cómo funciona hoy el alcance de estos KPIs'}</p>
+              <div className="mt-3 space-y-2 leading-6">
+                <p>{language === 'en' ? 'Company: reads the full automation layer and stores one central KPI policy for the tenant.' : 'Empresa: lee toda la capa de automatización y guarda una política central de KPIs para el tenant.'}</p>
+                <p>{language === 'en' ? 'Current branch: keeps an operational target set for the active branch without mixing it with the rest of the company.' : 'Sede actual: mantiene un set operativo de metas para la sede activa sin mezclarlo con el resto de la empresa.'}</p>
+                <p>{language === 'en' ? 'Selected channel and campaign: lets you pin an objective for the channel or campaign you are reviewing right now.' : 'Canal seleccionado y campaña: permite fijar un objetivo para el canal o la campaña que estás revisando ahora.'}</p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
               <div className="grid gap-2">
-                <Label className="text-sm font-medium text-slate-700">{language === 'en' ? 'Operational channels target' : 'Meta de canales operativos'}</Label>
+                <Label className="text-sm font-medium text-slate-700">{language === 'en' ? 'KPI scope' : 'Alcance del KPI'}</Label>
+                <Select value={goalScopeType} onValueChange={(value) => setGoalScopeType(value as KpiScopeType)}>
+                  <SelectTrigger className="rounded-2xl border-slate-300 bg-white text-slate-950">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="COMPANY">{language === 'en' ? `Company: ${goalScopeCompanyLabel}` : `Empresa: ${goalScopeCompanyLabel}`}</SelectItem>
+                    <SelectItem value="SEDE">{language === 'en' ? `Current branch: ${goalScopeSedeLabel || 'Current workspace'}` : `Sede actual: ${goalScopeSedeLabel || 'Workspace actual'}`}</SelectItem>
+                    <SelectItem value="CHANNEL" disabled={!goalScopeChannelLabel}>{language === 'en' ? `Selected channel: ${goalScopeChannelLabel || 'Select a channel first'}` : `Canal seleccionado: ${goalScopeChannelLabel || 'Selecciona un canal primero'}`}</SelectItem>
+                    <SelectItem value="CAMPAIGN" disabled={!goalScopeChannelLabel || campaignOptions.length === 0}>{language === 'en' ? `Campaign: ${goalScopeCampaignLabel || 'Select a channel with campaigns'}` : `Campaña: ${goalScopeCampaignLabel || 'Selecciona un canal con campañas'}`}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {goalScopeType === 'CAMPAIGN' ? (
+                <div className="grid gap-2">
+                  <Label className="text-sm font-medium text-slate-700">{language === 'en' ? 'Campaign inside the channel' : 'Campaña dentro del canal'}</Label>
+                  <Select value={selectedCampaignScopeId} onValueChange={setSelectedCampaignScopeId}>
+                    <SelectTrigger className="rounded-2xl border-slate-300 bg-white text-slate-950">
+                      <SelectValue placeholder={language === 'en' ? 'Select a campaign' : 'Selecciona una campaña'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {campaignOptions.map((campaign) => (
+                        <SelectItem key={campaign.id} value={campaign.id}>
+                          {campaign.label} · {campaign.captures} / {campaign.conversations}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3 text-sm text-slate-600">
+                {goalScopeType === 'COMPANY'
+                  ? (language === 'en' ? 'These targets will be the company-wide reference policy.' : 'Estas metas quedarán como política de referencia para toda la empresa.')
+                  : goalScopeType === 'SEDE'
+                    ? (language === 'en' ? 'These targets only apply to the active branch context.' : 'Estas metas aplican solo al contexto de la sede activa.')
+                    : goalScopeType === 'CHANNEL'
+                      ? (language === 'en' ? 'These targets only apply to the channel currently selected in the integrations workspace.' : 'Estas metas aplican solo al canal actualmente seleccionado en el workspace de integraciones.')
+                      : (language === 'en' ? 'These targets only apply to the campaign currently selected inside the active channel.' : 'Estas metas aplican solo a la campaña actualmente seleccionada dentro del canal activo.')}
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label className="text-sm font-medium text-slate-700">{operationalTargetLabel}</Label>
                 <Input value={goalTargets.operational} onChange={(event) => setGoalTargets((current) => ({ ...current, operational: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.operational)} className="rounded-2xl border-slate-300 bg-white text-slate-950 placeholder:text-slate-500" />
               </div>
               <div className="grid gap-2">
@@ -171,6 +272,41 @@ export function CrmIntegrationsMetricsTab(props: Props) {
               <div className="grid gap-2">
                 <Label className="text-sm font-medium text-slate-700">{language === 'en' ? 'Conversations target' : 'Meta de conversaciones'}</Label>
                 <Input value={goalTargets.conversations} onChange={(event) => setGoalTargets((current) => ({ ...current, conversations: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.conversations)} className="rounded-2xl border-slate-300 bg-white text-slate-950 placeholder:text-slate-500" />
+              </div>
+              <div className="grid gap-2">
+                <Label className="text-sm font-medium text-slate-700">{language === 'en' ? 'Target conversion %' : 'Conversión objetivo %'}</Label>
+                <Input value={goalTargets.conversion} onChange={(event) => setGoalTargets((current) => ({ ...current, conversion: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.conversion)} className="rounded-2xl border-slate-300 bg-white text-slate-950 placeholder:text-slate-500" />
+              </div>
+              <div className="grid gap-2 md:col-span-2">
+                <Label className="text-sm font-medium text-slate-700">{language === 'en' ? 'Minimum acceptance %' : 'Porcentaje mínimo de aceptación'}</Label>
+                <Input value={goalTargets.acceptance} onChange={(event) => setGoalTargets((current) => ({ ...current, acceptance: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.acceptance)} className="rounded-2xl border-slate-300 bg-white text-slate-950 placeholder:text-slate-500" />
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{language === 'en' ? 'Observed conversion' : 'Conversión observada'}</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-950">{channelAnalytics.scorecards.conversionRate}%</p>
+                <p className="mt-1 text-sm text-slate-600">{language === 'en' ? 'Estimated from captures that became linked conversations in this scope.' : 'Estimación construida desde capturas que terminaron vinculadas a conversaciones en este alcance.'}</p>
+              </div>
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{language === 'en' ? 'Acceptance floor' : 'Piso de aceptación'}</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-950">{goalTargets.acceptance || channelAnalytics.defaultTargets.acceptance}%</p>
+                <p className="mt-1 text-sm text-slate-600">{language === 'en' ? 'Use it as the minimum expected performance before escalating the channel or branch.' : 'Úsalo como rendimiento mínimo esperado antes de escalar el canal o la sede.'}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+              <div className={goalTargetsFeedback?.tone === 'error' ? 'text-sm text-rose-700' : 'text-sm text-slate-600'}>
+                {goalTargetsFeedback?.message || (language === 'en' ? 'Leave a field empty to keep using the suggested target for that metric.' : 'Deja un campo vacío si quieres seguir usando la meta sugerida para esa métrica.')}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" className="rounded-xl" onClick={onResetGoalTargets}>
+                  {language === 'en' ? 'Reset form' : 'Limpiar formulario'}
+                </Button>
+                <Button type="button" className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => void onSaveGoalTargets()} disabled={savingGoalTargets}>
+                  {savingGoalTargets ? (language === 'en' ? 'Saving...' : 'Guardando...') : (language === 'en' ? 'Save KPI policy' : 'Guardar política KPI')}
+                </Button>
               </div>
             </div>
 
@@ -216,10 +352,10 @@ export function CrmIntegrationsMetricsTab(props: Props) {
                   <CardHeader className="flex flex-col gap-3 border-b border-slate-100 pb-5 md:flex-row md:items-center md:justify-between">
                     <div>
                       <CardTitle>{language === 'en' ? 'Channels with highest impact' : 'Canales con mayor impacto'}</CardTitle>
-                      <CardDescription>{language === 'en' ? 'Comparison of captures and conversations by channel in the commercial layer.' : 'Comparativo de capturas y conversaciones por canal en la capa comercial.'}</CardDescription>
+                      <CardDescription>{goalScopeType === 'CAMPAIGN' ? (language === 'en' ? 'Current campaign inside the selected channel.' : 'Campaña actual dentro del canal seleccionado.') : (language === 'en' ? 'Comparison of captures and conversations by channel in the commercial layer.' : 'Comparativo de capturas y conversaciones por canal en la capa comercial.')}</CardDescription>
                     </div>
                     <div className="rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                      Top {Math.max(1, channelAnalytics.performance.length)}
+                      {goalScopeType === 'CAMPAIGN' ? (language === 'en' ? 'Focused campaign' : 'Campaña enfocada') : `Top ${Math.max(1, channelAnalytics.performance.length)}`}
                     </div>
                   </CardHeader>
                   <CardContent className="p-4 md:p-6">
@@ -254,7 +390,7 @@ export function CrmIntegrationsMetricsTab(props: Props) {
                     </div>
                     {channelAnalytics.performance.length === 0 ? (
                       <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                        {language === 'en' ? 'Create channels to start seeing real-time performance comparisons.' : 'Crea canales para empezar a ver comparativos de rendimiento en tiempo real.'}
+                        {goalScopeType === 'CAMPAIGN' ? (language === 'en' ? 'Select a channel that already has campaign data to see its comparison.' : 'Selecciona un canal que ya tenga datos de campaña para ver su comparativo.') : (language === 'en' ? 'Create channels to start seeing real-time performance comparisons.' : 'Crea canales para empezar a ver comparativos de rendimiento en tiempo real.')}
                       </div>
                     ) : null}
                   </CardContent>
@@ -262,8 +398,8 @@ export function CrmIntegrationsMetricsTab(props: Props) {
 
                 <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.34)]">
                   <CardHeader className="border-b border-slate-100 pb-5">
-                    <CardTitle>{language === 'en' ? 'Channel mix' : 'Mix de canales'}</CardTitle>
-                    <CardDescription>{language === 'en' ? 'Distribution by source to detect concentration and diversification of the stack.' : 'Distribución por origen para detectar concentración y diversificación del stack.'}</CardDescription>
+                    <CardTitle>{goalScopeType === 'CAMPAIGN' ? (language === 'en' ? 'Campaign focus' : 'Foco de campaña') : (language === 'en' ? 'Channel mix' : 'Mix de canales')}</CardTitle>
+                    <CardDescription>{goalScopeType === 'CAMPAIGN' ? (language === 'en' ? 'The selected campaign is isolated so its objective does not mix with the rest of the channel.' : 'La campaña seleccionada se aísla para que su objetivo no se mezcle con el resto del canal.') : (language === 'en' ? 'Distribution by source to detect concentration and diversification of the stack.' : 'Distribución por origen para detectar concentración y diversificación del stack.')}</CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-4 p-4 md:p-6">
                     <div className="h-[260px] w-full">
@@ -317,7 +453,7 @@ export function CrmIntegrationsMetricsTab(props: Props) {
                 <CardHeader className="flex flex-col gap-3 border-b border-slate-100 pb-5 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <CardTitle>{language === 'en' ? 'Monthly activity pace' : 'Ritmo de actividad por mes'}</CardTitle>
-                    <CardDescription>{language === 'en' ? 'Timeline based on the latest activity or update of each channel.' : 'Lectura temporal con base en última actividad o actualización de cada canal.'}</CardDescription>
+                    <CardDescription>{goalScopeType === 'CAMPAIGN' ? (language === 'en' ? 'Real campaign activity during the last 6 months.' : 'Actividad real de la campaña durante los últimos 6 meses.') : (language === 'en' ? 'Timeline based on the latest activity or update of each channel.' : 'Lectura temporal con base en última actividad o actualización de cada canal.')}</CardDescription>
                   </div>
                   <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
                     {language === 'en' ? 'Last 6 months' : 'Últimos 6 meses'}
@@ -352,7 +488,7 @@ export function CrmIntegrationsMetricsTab(props: Props) {
                                 <div className="mt-2 space-y-1 text-sm text-slate-700">
                                   <p>{language === 'en' ? 'Captures:' : 'Capturas:'} <span className="font-semibold text-slate-950">{captures}</span></p>
                                   <p>{language === 'en' ? 'Conversations:' : 'Conversaciones:'} <span className="font-semibold text-slate-950">{conversations}</span></p>
-                                  <p>{language === 'en' ? 'Channels with activity:' : 'Canales con actividad:'} <span className="font-semibold text-slate-950">{channelsInMonth}</span></p>
+                                  <p>{goalScopeType === 'CAMPAIGN' ? (language === 'en' ? 'Campaign active:' : 'Campaña activa:') : (language === 'en' ? 'Channels with activity:' : 'Canales con actividad:')} <span className="font-semibold text-slate-950">{channelsInMonth}</span></p>
                                 </div>
                               </div>
                             )
