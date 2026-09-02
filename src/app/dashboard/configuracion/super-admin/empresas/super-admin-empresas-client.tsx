@@ -25,28 +25,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import type { ModuleKey } from '@prisma/client'
 import type { PlanTier } from '@/lib/plans'
 
 type BillingCycle = 'MONTHLY' | 'YEARLY'
 
-type ModuleKey =
-  | 'DASHBOARD'
-  | 'COTIZADOR'
-  | 'COTIZACIONES'
-  | 'CLIENTES'
-  | 'CRM'
-  | 'MATERIALES'
-  | 'INVENTARIO'
-  | 'REMISIONES'
-  | 'POS'
-  | 'PROVEEDORES'
-  | 'COMPRAS'
-  | 'ORDENES'
-  | 'ESCANEOS'
-  | 'REPORTES'
-  | 'CONTABILIDAD'
-  | 'NOTIFICACIONES'
-  | 'CONFIG'
+type VerticalKey = 'ODONTOLOGIA' | 'RESTAURANTE' | 'DOTACIONES'
 
 type InvoiceStatus = 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELED' | 'FAILED'
 
@@ -138,6 +122,15 @@ type ModuleOverridesResponse =
   | { ok: true; effectivePlanTier: PlanTier; rows: ModuleOverrideRow[] }
   | { ok?: false; error?: string }
 
+type VerticalOverrideRow = {
+  vertical: VerticalKey
+  enabled: boolean
+}
+
+type VerticalOverridesResponse =
+  | { ok: true; rows: VerticalOverrideRow[] }
+  | { ok?: false; error?: string }
+
 function fmtDate(value: string | null | undefined, locale: string, naText: string): string {
   if (!value) return naText
   try {
@@ -185,15 +178,15 @@ function isFutureDate(value: string | null | undefined): boolean {
 function titleForModule(moduleKey: ModuleKey): string {
   switch (moduleKey) {
     case 'DASHBOARD':
-      return 'Dashboard'
+      return 'Inicio y base'
     case 'COTIZADOR':
-      return 'Cotizador'
+      return 'Cotizador y costos'
     case 'COTIZACIONES':
       return 'Cotizaciones'
     case 'CLIENTES':
       return 'Clientes'
     case 'CRM':
-      return 'CRM'
+      return 'CRM comercial'
     case 'MATERIALES':
       return 'Productos'
     case 'INVENTARIO':
@@ -211,15 +204,59 @@ function titleForModule(moduleKey: ModuleKey): string {
     case 'ESCANEOS':
       return 'Escaneos'
     case 'REPORTES':
-      return 'Reportes'
+      return 'Analítica e inteligencia'
     case 'CONTABILIDAD':
-      return 'Contabilidad'
+      return 'Finanzas / Contabilidad y nómina'
     case 'NOTIFICACIONES':
       return 'Notificaciones'
     case 'CONFIG':
       return 'Configuración'
     default:
       return moduleKey
+  }
+}
+
+function subtitleForModule(moduleKey: ModuleKey): string | null {
+  switch (moduleKey) {
+    case 'DASHBOARD':
+      return 'Incluye Inicio, Red operativa, Mapa de producto y Plantillas base.'
+    case 'COTIZADOR':
+      return 'Incluye Cotizador, Costos e IA operativa ligada a ventas.'
+    case 'CRM':
+      return 'Incluye oportunidades, agenda, DRIVE y automatización comercial.'
+    case 'REPORTES':
+      return 'Incluye Reportes y Motor de inteligencia empresarial.'
+    case 'CONTABILIDAD':
+      return 'Incluye contabilidad, nómina y portal laboral.'
+    case 'POS':
+      return 'Incluye facturación POS y base operativa de restaurante.'
+    default:
+      return null
+  }
+}
+
+function resolveAccessSourceLabel(detail: DetailEmpresa | null, effectivePlanTier: PlanTier, t: (key: string) => string) {
+  if (detail?.planValidUntil && new Date(detail.planValidUntil) > new Date()) {
+    return `${t('superAdmin.companies.labels.activePaidPlan')} ${detail.planTier}`
+  }
+
+  if (detail?.trialValidUntil && new Date(detail.trialValidUntil) > new Date()) {
+    return `${t('superAdmin.companies.labels.activeTrial')} ${detail.trialTier ?? effectivePlanTier}`
+  }
+
+  return `${t('superAdmin.companies.labels.activeBasePlan')} ${effectivePlanTier}`
+}
+
+function titleForVertical(verticalKey: VerticalKey): string {
+  switch (verticalKey) {
+    case 'ODONTOLOGIA':
+      return 'Odontología'
+    case 'RESTAURANTE':
+      return 'Restaurante'
+    case 'DOTACIONES':
+      return 'Dotaciones'
+    default:
+      return verticalKey
   }
 }
 
@@ -263,6 +300,10 @@ export default function SuperAdminEmpresasClient() {
   const [moduleOverridesLoading, setModuleOverridesLoading] = useState(false)
   const [moduleOverridesError, setModuleOverridesError] = useState<string | null>(null)
   const [moduleOverrideSavingKey, setModuleOverrideSavingKey] = useState<ModuleKey | null>(null)
+  const [verticalOverrides, setVerticalOverrides] = useState<VerticalOverrideRow[]>([])
+  const [verticalOverridesLoading, setVerticalOverridesLoading] = useState(false)
+  const [verticalOverridesError, setVerticalOverridesError] = useState<string | null>(null)
+  const [verticalOverrideSavingKey, setVerticalOverrideSavingKey] = useState<VerticalKey | null>(null)
 
   const [editMode, setEditMode] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
@@ -350,6 +391,33 @@ export default function SuperAdminEmpresasClient() {
     }
   }
 
+  async function saveVerticalOverride(verticalKey: VerticalKey, enabled: boolean) {
+    if (!detail?.id) return
+
+    const previous = verticalOverrides
+    setVerticalOverrideSavingKey(verticalKey)
+    setVerticalOverridesError(null)
+    setVerticalOverrides((prev) => prev.map((row) => (row.vertical === verticalKey ? { ...row, enabled } : row)))
+
+    try {
+      const res = await fetch(`/api/super-admin/empresas/${encodeURIComponent(detail.id)}/vertical-overrides`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vertical: verticalKey, enabled }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      if (!res.ok || !json.ok) {
+        setVerticalOverrides(previous)
+        setVerticalOverridesError(json.error || t('superAdmin.companies.errors.saveVerticalOverridesFailed'))
+      }
+    } catch (e) {
+      setVerticalOverrides(previous)
+      setVerticalOverridesError(e instanceof Error ? e.message : t('superAdmin.companies.errors.saveVerticalOverridesFailed'))
+    } finally {
+      setVerticalOverrideSavingKey(null)
+    }
+  }
+
   async function load() {
     setLoading(true)
     setError(null)
@@ -399,10 +467,14 @@ export default function SuperAdminEmpresasClient() {
     setModuleOverrides([])
     setModuleOverridesError(null)
     setModuleOverridesLoading(true)
+    setVerticalOverrides([])
+    setVerticalOverridesError(null)
+    setVerticalOverridesLoading(true)
     try {
-      const [detailRes, overridesRes] = await Promise.all([
+      const [detailRes, overridesRes, verticalOverridesRes] = await Promise.all([
         fetch(`/api/super-admin/empresas/${encodeURIComponent(id)}`, { cache: 'no-store' }),
         fetch(`/api/super-admin/empresas/${encodeURIComponent(id)}/module-overrides`, { cache: 'no-store' }),
+        fetch(`/api/super-admin/empresas/${encodeURIComponent(id)}/vertical-overrides`, { cache: 'no-store' }),
       ])
       const json = (await detailRes.json().catch(() => ({}))) as DetailResponse
       if (!detailRes.ok || !('ok' in json) || !json.ok) {
@@ -420,6 +492,16 @@ export default function SuperAdminEmpresasClient() {
       } else {
         setModuleOverrides(overridesJson.rows)
         setModuleOverridesPlanTier(overridesJson.effectivePlanTier)
+      }
+
+      const verticalsJson = (await verticalOverridesRes.json().catch(() => ({}))) as VerticalOverridesResponse
+      if (!verticalOverridesRes.ok || !('ok' in verticalsJson) || !verticalsJson.ok) {
+        setVerticalOverrides([])
+        setVerticalOverridesError(
+          ('error' in verticalsJson && verticalsJson.error) || t('superAdmin.companies.errors.loadVerticalOverridesFailed')
+        )
+      } else {
+        setVerticalOverrides(verticalsJson.rows)
       }
 
       setEditForm({
@@ -443,6 +525,7 @@ export default function SuperAdminEmpresasClient() {
     } finally {
       setDetailLoading(false)
       setModuleOverridesLoading(false)
+      setVerticalOverridesLoading(false)
     }
   }
 
@@ -718,7 +801,7 @@ export default function SuperAdminEmpresasClient() {
                       <div>
                         <div className="font-medium">{t('superAdmin.companies.labels.moduleOverrides')}</div>
                         <div className="text-xs text-muted-foreground">
-                          {t('superAdmin.companies.fields.moduleOverridesHelp')} {moduleOverrides.length ? `(${moduleOverridesPlanTier})` : ''}
+                          {t('superAdmin.companies.fields.moduleOverridesHelp')} {moduleOverrides.length ? `(${resolveAccessSourceLabel(detail, moduleOverridesPlanTier, t)})` : ''}
                         </div>
                       </div>
                       {moduleOverridesError ? <div className="text-xs text-red-600">{moduleOverridesError}</div> : null}
@@ -732,12 +815,17 @@ export default function SuperAdminEmpresasClient() {
                               : row.overrideEnabled
                                 ? t('superAdmin.companies.labels.forceEnabled')
                                 : t('superAdmin.companies.labels.forceDisabled')
+                            const subtitle = subtitleForModule(row.module)
+                            const planLabel = row.baseEnabled
+                              ? t('superAdmin.companies.labels.baseIncluded')
+                              : t('superAdmin.companies.labels.baseExcluded')
 
                             return (
                               <div key={row.module} className="rounded-md border p-2">
                                 <div className="flex items-start justify-between gap-2">
                                   <div>
                                     <div className="font-medium leading-none">{titleForModule(row.module)}</div>
+                                    {subtitle ? <div className="mt-1 text-[11px] text-muted-foreground">{subtitle}</div> : null}
                                     <div className="mt-1 text-[11px] text-muted-foreground">{row.module}</div>
                                   </div>
                                   <span className="text-[11px] text-muted-foreground">{statusLabel}</span>
@@ -761,9 +849,47 @@ export default function SuperAdminEmpresasClient() {
                                     {row.effectiveEnabled ? 'ON' : 'OFF'}
                                   </span>
                                 </div>
+                                <div className="mt-2 text-[11px] text-muted-foreground">{planLabel}</div>
                               </div>
                             )
                           })}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2 rounded-lg border p-3">
+                      <div>
+                        <div className="font-medium">{t('superAdmin.companies.labels.verticalOverrides')}</div>
+                        <div className="text-xs text-muted-foreground">{t('superAdmin.companies.fields.verticalOverridesHelp')}</div>
+                      </div>
+                      {verticalOverridesError ? <div className="text-xs text-red-600">{verticalOverridesError}</div> : null}
+                      {verticalOverridesLoading ? <div className="text-xs text-muted-foreground">{t('common.loading')}</div> : null}
+                      {!verticalOverridesLoading ? (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {verticalOverrides.map((row) => (
+                            <div key={row.vertical} className="rounded-md border p-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="font-medium leading-none">{titleForVertical(row.vertical)}</div>
+                                  <div className="mt-1 text-[11px] text-muted-foreground">{row.vertical}</div>
+                                </div>
+                                <span className={`text-[11px] font-medium ${row.enabled ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                  {row.enabled ? 'ON' : 'OFF'}
+                                </span>
+                              </div>
+                              <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-muted/40 px-2 py-2">
+                                <Label htmlFor={`vertical-${row.vertical}`} className="text-xs text-muted-foreground">
+                                  {row.enabled ? t('superAdmin.companies.labels.forceEnabled') : t('superAdmin.companies.labels.forceDisabled')}
+                                </Label>
+                                <Switch
+                                  id={`vertical-${row.vertical}`}
+                                  checked={row.enabled}
+                                  onCheckedChange={(checked) => void saveVerticalOverride(row.vertical, checked)}
+                                  disabled={verticalOverrideSavingKey === row.vertical}
+                                />
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       ) : null}
                     </div>

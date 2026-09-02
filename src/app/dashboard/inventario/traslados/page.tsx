@@ -228,7 +228,7 @@ export default function TrasladosPage() {
         actions={<Button onClick={openNew}>{t('inventoryTransfers.actions.new')}</Button>}
       />
 
-      <CatalogModuleTabs />
+      <CatalogModuleTabs group="inventory" />
 
       <Card>
         <CardContent className="pt-6">

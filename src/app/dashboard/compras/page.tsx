@@ -275,6 +275,28 @@ export default function ComprasPage() {
   const [ropMatchedService, setRopMatchedService] = useState<RopServiceCatalogItem | null>(null)
 
   const query = useMemo(() => search.trim(), [search])
+  const currentPurchaseSection = useMemo(
+    () => (activeMode === 'order'
+      ? {
+          label: t('purchases.modes.order'),
+          title: t('purchases.modes.order'),
+          description: 'Borradores y órdenes pendientes por aprobar, registrar o recibir.',
+          primaryActionLabel: 'Nueva orden',
+          secondaryActionLabel: 'Nueva recepción',
+          primaryActionMode: 'order' as PurchaseWorkbenchMode,
+          secondaryActionMode: 'purchase' as PurchaseWorkbenchMode,
+        }
+      : {
+          label: t('nav.purchaseReceipts'),
+          title: t('nav.purchaseReceipts'),
+          description: 'Recepciones y compras registradas con trazabilidad de ítems, pago y soporte.',
+          primaryActionLabel: 'Nueva recepción',
+          secondaryActionLabel: 'Nueva orden',
+          primaryActionMode: 'purchase' as PurchaseWorkbenchMode,
+          secondaryActionMode: 'order' as PurchaseWorkbenchMode,
+        }),
+    [activeMode, t]
+  )
   const filteredCompras = useMemo(
     () => compras.filter((compra) => activeMode === 'order' ? compra.estado === 'BORRADOR' : compra.estado !== 'BORRADOR'),
     [activeMode, compras]
@@ -464,6 +486,15 @@ export default function ComprasPage() {
   }, [query])
 
   useEffect(() => {
+    const nextMode = searchParams?.get('mode') === 'order' ? 'order' : 'purchase'
+    setActiveMode((current) => (current === nextMode ? current : nextMode))
+  }, [searchParams])
+
+  function syncPurchaseModeRoute(nextMode: PurchaseWorkbenchMode) {
+    router.replace(nextMode === 'order' ? '/dashboard/compras?mode=order' : '/dashboard/compras')
+  }
+
+  useEffect(() => {
     const encoded = searchParams?.get('prefill')
     if (!encoded || appliedPrefillRef.current === encoded) return
 
@@ -650,19 +681,19 @@ export default function ComprasPage() {
       <ErpPageHero
         breadcrumbs={[
           { label: 'Inicio', href: '/dashboard' },
-          { label: 'Inventario', href: '/dashboard/inventario' },
-          { label: t('purchases.title') },
+          { label: 'Compras', href: '/dashboard/compras' },
+          { label: currentPurchaseSection.label },
         ]}
-        title={t('purchases.title')}
-        description={t('purchases.subtitle')}
+        title={currentPurchaseSection.title}
+        description={currentPurchaseSection.description}
         actions={
           <>
             {canManagePurchases ? <ImportDialog module="compras" title={t('purchases.actions.import')} /> : null}
-            {canManagePurchases ? <Button onClick={() => openForm('purchase')}>
-              Nueva compra
+            {canManagePurchases ? <Button onClick={() => openForm(currentPurchaseSection.primaryActionMode)}>
+              {currentPurchaseSection.primaryActionLabel}
             </Button> : null}
-            {canManagePurchases ? <Button variant="outline" onClick={() => openForm('order')}>
-              Nueva orden
+            {canManagePurchases ? <Button variant="outline" onClick={() => openForm(currentPurchaseSection.secondaryActionMode)}>
+              {currentPurchaseSection.secondaryActionLabel}
             </Button> : null}
             {canManagePurchases ? <Button variant="outline" asChild>
               <Link href="/dashboard/compras/plantilla">{t('purchases.actions.template')}</Link>
@@ -673,17 +704,21 @@ export default function ComprasPage() {
           </>
         }
         stats={[
-          { label: 'Compras', value: recordedPurchasesCount, hint: 'Registros ya formalizados', tone: 'neutral' },
+          { label: 'Recepciones', value: recordedPurchasesCount, hint: 'Registros ya formalizados', tone: 'neutral' },
           { label: 'Órdenes', value: draftOrdersCount, hint: 'Pendientes por registrar o facturar', tone: 'amber' },
           { label: 'Formulario activo', value: formatCOP(totals.total, locale), hint: activeMode === 'order' ? t('purchases.modes.order') : t('purchases.modes.purchase'), tone: 'sky' },
         ]}
       />
 
-      <CatalogModuleTabs />
+      <CatalogModuleTabs group="purchases" />
 
       <Tabs
         value={activeMode}
-        onValueChange={(value) => resetForm(value as PurchaseWorkbenchMode)}
+        onValueChange={(value) => {
+          const nextMode = value as PurchaseWorkbenchMode
+          resetForm(nextMode)
+          syncPurchaseModeRoute(nextMode)
+        }}
         className="space-y-6"
       >
         <TabsList className="grid w-full max-w-xl grid-cols-2 rounded-2xl bg-slate-100 p-1">

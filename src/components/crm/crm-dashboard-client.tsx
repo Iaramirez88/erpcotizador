@@ -1598,19 +1598,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
               { label: 'CRM', href: '/dashboard/crm' },
               { label: 'Pipeline' },
             ]}
-            eyebrow="Pipeline CRM"
             title="Oportunidades y pipeline comercial"
-            description="El pipeline queda primero y siempre visible. El resto del contexto se consulta por tabs sin perder de vista el embudo."
-            actions={
-              <>
-                <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
-                  <Link href="/dashboard/crm/negociaciones">Volver a CRM</Link>
-                </Button>
-                <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => openCreateOpportunityDialog()}>
-                  Nuevo deal
-                </Button>
-              </>
-            }
           />
 
           <CrmNegotiationsTabs />
@@ -1661,17 +1649,9 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
               { label: 'CRM', href: '/dashboard/crm' },
               { label: 'Seguimiento' },
             ]}
-            eyebrow="Seguimiento CRM"
             title="Actividades y seguimiento comercial"
-            description="Gestiona pendientes comerciales sin cargar el dashboard general. Si necesitas apoyo extra, abre filtros o prioridades desde el menú de opciones."
             actions={
               <>
-                <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
-                  <Link href="/dashboard/crm/negociaciones">Volver a CRM</Link>
-                </Button>
-                <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={openCreateTaskDialog}>
-                  Nueva actividad
-                </Button>
                 {taskOptionsMenu}
               </>
             }

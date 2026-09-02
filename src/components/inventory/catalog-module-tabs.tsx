@@ -1,40 +1,36 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 
 import { cn } from "@/lib/utils"
 
-const ITEMS = [
+type CatalogModuleTabItem = {
+  href: string
+  label: string
+  match: (pathname: string, params: URLSearchParams) => boolean
+}
+
+const INVENTORY_ITEMS: CatalogModuleTabItem[] = [
   {
     href: "/dashboard/productos",
-    label: "Productos",
-    match: (pathname: string) => pathname.startsWith("/dashboard/productos") || pathname.startsWith("/dashboard/materiales"),
+    label: "Catálogo",
+    match: (pathname: string) => pathname.startsWith("/dashboard/productos") || pathname.startsWith("/dashboard/materiales") || pathname.startsWith("/dashboard/terminados"),
   },
   {
     href: "/dashboard/inventario",
-    label: "Inventario",
-    match: (pathname: string) => pathname.startsWith("/dashboard/inventario") && !pathname.startsWith("/dashboard/inventario/abastecimiento") && !pathname.startsWith("/dashboard/inventario/traslados"),
+    label: "Existencias",
+    match: (pathname: string, params: URLSearchParams) => pathname === "/dashboard/inventario" && (params.get('view') ?? 'stock') !== 'movements',
   },
   {
-    href: "/dashboard/inventario/abastecimiento",
-    label: "Abastecimiento",
-    match: (pathname: string) => pathname.startsWith("/dashboard/inventario/abastecimiento"),
+    href: "/dashboard/inventario?view=movements",
+    label: "Movimientos",
+    match: (pathname: string, params: URLSearchParams) => pathname === "/dashboard/inventario" && params.get('view') === 'movements',
   },
   {
     href: "/dashboard/inventario/traslados",
     label: "Traslados",
     match: (pathname: string) => pathname.startsWith("/dashboard/inventario/traslados"),
-  },
-  {
-    href: "/dashboard/compras",
-    label: "Compras",
-    match: (pathname: string) => pathname.startsWith("/dashboard/compras"),
-  },
-  {
-    href: "/dashboard/proveedores",
-    label: "Proveedores",
-    match: (pathname: string) => pathname.startsWith("/dashboard/proveedores"),
   },
   {
     href: "/dashboard/configuracion/desperdicios",
@@ -43,14 +39,44 @@ const ITEMS = [
   },
 ] as const
 
-export function CatalogModuleTabs() {
+const PURCHASE_ITEMS: CatalogModuleTabItem[] = [
+  {
+    href: "/dashboard/inventario/abastecimiento",
+    label: "Solicitudes de compra",
+    match: (pathname: string) => pathname.startsWith("/dashboard/inventario/abastecimiento"),
+  },
+  {
+    href: "/dashboard/compras?mode=order",
+    label: "Órdenes de compra",
+    match: (pathname: string, params: URLSearchParams) => pathname === "/dashboard/compras" && params.get('mode') === 'order',
+  },
+  {
+    href: "/dashboard/compras",
+    label: "Recepciones",
+    match: (pathname: string, params: URLSearchParams) => pathname === "/dashboard/compras" && (params.get('mode') ?? 'purchase') !== 'order',
+  },
+  {
+    href: "/dashboard/proveedores",
+    label: "Proveedores",
+    match: (pathname: string) => pathname.startsWith("/dashboard/proveedores"),
+  },
+] as const
+
+type CatalogModuleTabsProps = {
+  group: 'inventory' | 'purchases'
+}
+
+export function CatalogModuleTabs({ group }: CatalogModuleTabsProps) {
   const pathname = usePathname() ?? ""
+  const searchParams = useSearchParams()
+  const currentParams = new URLSearchParams(searchParams?.toString() ?? '')
+  const items = group === 'purchases' ? PURCHASE_ITEMS : INVENTORY_ITEMS
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-white/85 p-2 shadow-sm">
       <div className="flex flex-wrap gap-2">
-        {ITEMS.map((item) => {
-          const isActive = item.match(pathname)
+        {items.map((item) => {
+          const isActive = item.match(pathname, currentParams)
 
           return (
             <Link

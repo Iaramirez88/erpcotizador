@@ -1271,7 +1271,7 @@ export default function ProductosPage() {
         }
       />
 
-      <CatalogModuleTabs />
+      <CatalogModuleTabs group="inventory" />
 
       {/* Modal de exportación */}
       <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>

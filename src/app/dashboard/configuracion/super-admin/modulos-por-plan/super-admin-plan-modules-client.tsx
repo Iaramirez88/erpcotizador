@@ -9,26 +9,9 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import type { ModuleKey } from '@prisma/client'
 
 type PlanTier = 'CRM' | 'BASIC' | 'MEDIO' | 'INTERMEDIO' | 'FULL'
-
-type ModuleKey =
-  | 'DASHBOARD'
-  | 'COTIZADOR'
-  | 'COTIZACIONES'
-  | 'CLIENTES'
-  | 'CRM'
-  | 'MATERIALES'
-  | 'INVENTARIO'
-  | 'REMISIONES'
-  | 'POS'
-  | 'PROVEEDORES'
-  | 'COMPRAS'
-  | 'ORDENES'
-  | 'ESCANEOS'
-  | 'REPORTES'
-  | 'NOTIFICACIONES'
-  | 'CONFIG'
 
 type Row = { planTier: PlanTier; module: ModuleKey; enabled: boolean; updatedAt: string }
 
@@ -168,6 +151,8 @@ function titleForModule(moduleKey: ModuleKey): string {
       return 'Escaneos'
     case 'REPORTES':
       return 'Reportes'
+    case 'CONTABILIDAD':
+      return 'Contabilidad'
     case 'NOTIFICACIONES':
       return 'Notificaciones'
     case 'CONFIG':

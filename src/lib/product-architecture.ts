@@ -4,6 +4,7 @@ export type ProductLayer =
   | 'Ventas'
   | 'Operaciones'
   | 'Inventario'
+  | 'Compras'
   | 'Finanzas'
   | 'Analítica'
   | 'IA'
@@ -17,6 +18,7 @@ export type DashboardSectionTitle =
   | 'Ventas'
   | 'Operaciones'
   | 'Inventario'
+  | 'Compras'
   | 'Finanzas'
   | 'Analítica'
   | 'IA'
@@ -42,6 +44,7 @@ export const DASHBOARD_SECTION_ORDER: DashboardSectionTitle[] = [
   'Ventas',
   'Operaciones',
   'Inventario',
+  'Compras',
   'Finanzas',
   'Analítica',
   'IA',
@@ -85,14 +88,15 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/litografia', label: 'Costos', section: 'Configuración', layer: 'Configuración', domain: 'Costos y producción especializada', moduleKey: 'COTIZADOR' },
   { href: '/dashboard/escaneos', label: 'Escaneos', labelKey: 'nav.scans', section: 'Ventas', layer: 'Ventas', domain: 'Captura documental', moduleKey: 'ESCANEOS' },
 
-  { href: '/dashboard/productos', label: 'Productos', labelKey: 'nav.products', section: 'Inventario', layer: 'Inventario', domain: 'Productos', moduleKey: 'MATERIALES' },
+  { href: '/dashboard/productos', label: 'Catálogo', labelKey: 'nav.catalog', section: 'Inventario', layer: 'Inventario', domain: 'Productos', moduleKey: 'MATERIALES' },
   { href: '/dashboard/materiales', label: 'Materiales', section: 'Inventario', layer: 'Inventario', domain: 'Materiales', moduleKey: 'MATERIALES' },
   { href: '/dashboard/terminados', label: 'Terminados', section: 'Inventario', layer: 'Inventario', domain: 'Terminados', moduleKey: 'MATERIALES' },
-  { href: '/dashboard/inventario', label: 'Inventario', labelKey: 'nav.inventory', section: 'Inventario', layer: 'Inventario', domain: 'Inventario', moduleKey: 'INVENTARIO' },
+  { href: '/dashboard/inventario', label: 'Existencias', labelKey: 'nav.stock', section: 'Inventario', layer: 'Inventario', domain: 'Inventario', moduleKey: 'INVENTARIO' },
   { href: '/dashboard/inventario/traslados', label: 'Traslados', labelKey: 'nav.transfers', section: 'Inventario', layer: 'Inventario', domain: 'Traslados', moduleKey: 'INVENTARIO' },
   { href: '/dashboard/bodegas', label: 'Bodegas', section: 'Inventario', layer: 'Inventario', domain: 'Bodegas', moduleKey: 'INVENTARIO' },
-  { href: '/dashboard/compras', label: 'Compras', labelKey: 'nav.purchases', section: 'Inventario', layer: 'Inventario', domain: 'Compras', moduleKey: 'COMPRAS' },
-  { href: '/dashboard/proveedores', label: 'Proveedores', labelKey: 'nav.suppliers', section: 'Inventario', layer: 'Inventario', domain: 'Proveedores', moduleKey: 'PROVEEDORES' },
+  { href: '/dashboard/inventario/abastecimiento', label: 'Solicitudes de compra', labelKey: 'nav.purchaseRequests', section: 'Compras', layer: 'Compras', domain: 'Abastecimiento', moduleKey: 'INVENTARIO' },
+  { href: '/dashboard/compras', label: 'Recepciones', labelKey: 'nav.purchaseReceipts', section: 'Compras', layer: 'Compras', domain: 'Compras', moduleKey: 'COMPRAS' },
+  { href: '/dashboard/proveedores', label: 'Proveedores', labelKey: 'nav.suppliers', section: 'Compras', layer: 'Compras', domain: 'Proveedores', moduleKey: 'PROVEEDORES' },
   { href: '/dashboard/configuracion/desperdicios', label: 'Desperdicios', labelKey: 'nav.waste', section: 'Inventario', layer: 'Inventario', domain: 'Reglas de consumo', moduleKey: 'CONFIG' },
 
   { href: '/dashboard/contabilidad', label: 'Contabilidad', labelKey: 'nav.accounting', section: 'Finanzas', layer: 'Finanzas', domain: 'Contabilidad', moduleKey: 'CONTABILIDAD' },

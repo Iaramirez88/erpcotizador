@@ -19,30 +19,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import type { ModuleKey } from '@prisma/client'
 import type { PlanTier } from '@/lib/plans'
 
 type BillingCycle = 'MONTHLY' | 'YEARLY'
 type UserRole = 'ADMIN' | 'USER' | 'VENDEDOR' | 'PRODUCCION' | 'CLIENTE'
 type SedeRole = 'ADMIN' | 'MANAGER' | 'MEMBER' | 'READER'
 type AccessLevel = 'NONE' | 'READ' | 'WRITE' | 'ADMIN'
-type ModuleKey =
-  | 'DASHBOARD'
-  | 'COTIZADOR'
-  | 'COTIZACIONES'
-  | 'CLIENTES'
-  | 'CRM'
-  | 'MATERIALES'
-  | 'INVENTARIO'
-  | 'REMISIONES'
-  | 'POS'
-  | 'PROVEEDORES'
-  | 'COMPRAS'
-  | 'ORDENES'
-  | 'ESCANEOS'
-  | 'REPORTES'
-  | 'CONTABILIDAD'
-  | 'NOTIFICACIONES'
-  | 'CONFIG'
 
 type UserSegment = 'ALL' | 'NEW' | 'TRIAL' | 'NO_COMPANY' | 'WITH_COMPANY'
 

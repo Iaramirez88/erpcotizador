@@ -159,7 +159,7 @@ export default function ConfigDesperdiciosPage() {
         ]}
       />
 
-      <CatalogModuleTabs />
+      <CatalogModuleTabs group="inventory" />
 
       <Card>
         <CardHeader>

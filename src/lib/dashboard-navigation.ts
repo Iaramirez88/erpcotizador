@@ -10,23 +10,30 @@ export type DashboardNavDefinition = {
   href: string
 }
 
+function normalizeDashboardHref(href: string) {
+  return href.split('#', 1)[0]?.split('?', 1)[0] ?? href
+}
+
 function getDashboardNavCatalogItem(href: string) {
-  return DASHBOARD_NAV_CATALOG.find((item) => item.href === href) ?? null
+  const normalizedHref = normalizeDashboardHref(href)
+  return DASHBOARD_NAV_CATALOG.find((item) => item.href === normalizedHref) ?? null
 }
 
 function getLongestPrefixDashboardItem(pathname: string) {
+  const normalizedPathname = normalizeDashboardHref(pathname)
   return [...DASHBOARD_NAV_CATALOG]
     .sort((a, b) => b.href.length - a.href.length)
-    .find((item) => item.href !== '/dashboard' && pathname.startsWith(item.href)) ?? null
+    .find((item) => item.href !== '/dashboard' && normalizedPathname.startsWith(item.href)) ?? null
 }
 
 function getDashboardNavItemForPath(pathname: string) {
-  if (pathname === '/dashboard') return getDashboardNavCatalogItem('/dashboard')
+  const normalizedPathname = normalizeDashboardHref(pathname)
+  if (normalizedPathname === '/dashboard') return getDashboardNavCatalogItem('/dashboard')
 
-  const exactMatch = getDashboardNavCatalogItem(pathname)
+  const exactMatch = getDashboardNavCatalogItem(normalizedPathname)
   if (exactMatch) return exactMatch
 
-  return getLongestPrefixDashboardItem(pathname)
+  return getLongestPrefixDashboardItem(normalizedPathname)
 }
 
 export function isOnboardingScopedDashboardHref(href: string): boolean {
@@ -42,14 +49,15 @@ export function moduleForDashboardHref(href: string): string | null {
 }
 
 export function moduleForDashboardPath(pathname: string): string | null {
-  const override = DASHBOARD_PATH_MODULE_OVERRIDES.find((item) => pathname.startsWith(item.prefix))
+  const normalizedPathname = normalizeDashboardHref(pathname)
+  const override = DASHBOARD_PATH_MODULE_OVERRIDES.find((item) => normalizedPathname.startsWith(item.prefix))
   if (override) return override.moduleKey
-  if (pathname === '/dashboard') return 'DASHBOARD'
+  if (normalizedPathname === '/dashboard') return 'DASHBOARD'
 
-  const exactMatch = getDashboardNavCatalogItem(pathname)
+  const exactMatch = getDashboardNavCatalogItem(normalizedPathname)
   if (exactMatch) return exactMatch.moduleKey
 
-  return getLongestPrefixDashboardItem(pathname)?.moduleKey ?? null
+  return getLongestPrefixDashboardItem(normalizedPathname)?.moduleKey ?? null
 }
 
 export function labelForDashboardPath(pathname: string): string {

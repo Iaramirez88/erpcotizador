@@ -151,7 +151,7 @@ export default function ProveedoresPage() {
       <ErpPageHero
         breadcrumbs={[
           { label: 'Inicio', href: '/dashboard' },
-          { label: 'Inventario', href: '/dashboard/inventario' },
+          { label: 'Compras', href: '/dashboard/compras' },
           { label: t('suppliers.title') },
         ]}
         title={t('suppliers.title')}
@@ -180,7 +180,7 @@ export default function ProveedoresPage() {
         ]}
       />
 
-      <CatalogModuleTabs />
+      <CatalogModuleTabs group="purchases" />
 
       <Dialog
         open={createOpen}

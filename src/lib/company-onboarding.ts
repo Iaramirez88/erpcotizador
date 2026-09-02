@@ -243,13 +243,13 @@ const BUSINESS_TYPE_CORE_MODULES: Record<BusinessType, ModuleKey[]> = {
 
 const BUSINESS_TYPE_ALLOWED_HREFS: Record<BusinessType, string[]> = {
   ODONTOLOGIA: ['/dashboard/clientes', '/dashboard/odontologia', '/dashboard/pos'],
-  RESTAURANTE: ['/dashboard/restaurante', '/dashboard/pos', '/dashboard/clientes', '/dashboard/inventario', '/dashboard/compras', '/dashboard/proveedores'],
+  RESTAURANTE: ['/dashboard/restaurante', '/dashboard/pos', '/dashboard/clientes', '/dashboard/inventario', '/dashboard/inventario/abastecimiento', '/dashboard/compras', '/dashboard/proveedores'],
   ABOGADOS: ['/dashboard/clientes', '/dashboard/cotizaciones'],
   CLINICA: ['/dashboard/clientes', '/dashboard/pos'],
   CONTABILIDAD: ['/dashboard/clientes', '/dashboard/contabilidad', '/dashboard/nomina'],
-  DOTACIONES: ['/dashboard/dotaciones', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/clientes', '/dashboard/inventario', '/dashboard/compras', '/dashboard/proveedores', '/dashboard/remisiones'],
+  DOTACIONES: ['/dashboard/dotaciones', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/clientes', '/dashboard/inventario', '/dashboard/inventario/abastecimiento', '/dashboard/compras', '/dashboard/proveedores', '/dashboard/remisiones'],
   LITOGRAFIA: ['/dashboard/litografia', '/dashboard/litografia/conocimiento-ia', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/clientes', '/dashboard/ordenes', '/dashboard/escaneos', '/dashboard/productos'],
-  COMERCIO: ['/dashboard/pos', '/dashboard/clientes', '/dashboard/inventario', '/dashboard/compras', '/dashboard/proveedores', '/dashboard/remisiones'],
+  COMERCIO: ['/dashboard/pos', '/dashboard/clientes', '/dashboard/inventario', '/dashboard/inventario/abastecimiento', '/dashboard/compras', '/dashboard/proveedores', '/dashboard/remisiones'],
   SERVICIOS: ['/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/clientes'],
 }
 

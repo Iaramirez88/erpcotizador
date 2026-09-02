@@ -5,8 +5,8 @@
 
 "use client"
 
-import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { CatalogModuleTabs } from "@/components/inventory/catalog-module-tabs"
@@ -108,10 +108,13 @@ type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number] | 'all'
 export default function InventarioPage() {
   const { t, language } = useI18n()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = t('common.na')
   const { hasWriteAccess } = useCurrentUserAccess()
   const canManageInventory = hasWriteAccess('INVENTARIO')
+  const stockSectionRef = useRef<HTMLDivElement | null>(null)
+  const movementsSectionRef = useRef<HTMLDivElement | null>(null)
 
   const [materials, setMaterials] = useState<Material[]>([])
   const [movements, setMovements] = useState<Movement[]>([])
@@ -129,6 +132,21 @@ export default function InventarioPage() {
   const [pageSize, setPageSize] = useState<PageSizeOption>(25)
 
   const [warehouseFilterId, setWarehouseFilterId] = useState("")
+  const inventoryView = useMemo(() => (searchParams?.get('view') === 'movements' ? 'movements' : 'stock'), [searchParams])
+  const inventoryHero = useMemo(
+    () => inventoryView === 'movements'
+      ? {
+          label: t('nav.movements'),
+          title: t('nav.movements'),
+          description: 'Entradas, salidas y ajustes recientes con trazabilidad por material y bodega.',
+        }
+      : {
+          label: t('nav.stock'),
+          title: t('nav.stock'),
+          description: 'Existencias actuales por producto, bodega y stock mínimo operativo.',
+        },
+    [inventoryView, t]
+  )
 
   const materialById = useMemo(() => {
     return new Map(materials.map((m) => [m.id, m]))
@@ -263,6 +281,18 @@ export default function InventarioPage() {
   useEffect(() => {
     setPage(1)
   }, [pageSize, search, stockSort, warehouseFilterId])
+
+  useEffect(() => {
+    const view = searchParams?.get('view')
+    if (view === 'movements') {
+      movementsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
+
+    if (view === 'stock') {
+      stockSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [searchParams])
 
   useEffect(() => {
     let cancelled = false
@@ -641,10 +671,11 @@ export default function InventarioPage() {
       <ErpPageHero
         breadcrumbs={[
           { label: 'Inicio', href: '/dashboard' },
-          { label: t('inventory.title') },
+          { label: 'Inventario', href: '/dashboard/inventario' },
+          { label: inventoryHero.label },
         ]}
-        title={<span data-tour="inventario-title">{t('inventory.title')}</span>}
-        description={t('inventory.subtitle')}
+        title={<span data-tour="inventario-title">{inventoryHero.title}</span>}
+        description={inventoryHero.description}
         actions={
           <>
             {canManageInventory ? <Button variant="outline" onClick={exportExcel} disabled={isLoading}>
@@ -671,10 +702,11 @@ export default function InventarioPage() {
         ]}
       />
 
-      <CatalogModuleTabs />
+      <CatalogModuleTabs group="inventory" />
 
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
 
+      <div ref={stockSectionRef}>
       <Card>
         <CardHeader>
           <CardTitle>{t('inventory.stock.title')}</CardTitle>
@@ -830,7 +862,9 @@ export default function InventarioPage() {
           )}
         </CardContent>
       </Card>
+      </div>
 
+      <div ref={movementsSectionRef}>
       <Card>
         <CardHeader>
           <CardTitle>{t('inventory.movements.title')}</CardTitle>
@@ -902,6 +936,7 @@ export default function InventarioPage() {
           )}
         </CardContent>
       </Card>
+      </div>
 
       {canManageInventory ? <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-lg max-h-[88vh] overflow-hidden">

@@ -6,9 +6,9 @@
 "use client"
 
 import Link from "next/link"
-import { Lock, Building2, Home, Briefcase, ShoppingCart, Boxes, Landmark, BarChart3, Sparkles, Layers3, Shield, ChefHat, Bot, Funnel, Settings } from "lucide-react"
+import { Lock, Building2, Home, Briefcase, Store, Boxes, Landmark, BarChart3, Sparkles, Package, Shield, ChefHat, Bot, Funnel, Settings, ReceiptText, LayoutGrid } from "lucide-react"
 import { useEffect, useMemo, useState, type DragEvent } from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog, type NavSettingsItem, type SidebarTooltipPrefs } from "@/components/dashboard/nav-settings-dialog"
@@ -47,24 +47,13 @@ interface NavItem {
   icon: React.ReactElement
   badge?: string
   description?: string
+  scopeHref?: string
 }
 
 interface NavSection {
   title: string
   items: NavItem[]
 }
-
-const INVENTORY_HUB_ROUTES = [
-  '/dashboard/productos',
-  '/dashboard/materiales',
-  '/dashboard/terminados',
-  '/dashboard/inventario',
-  '/dashboard/inventario/abastecimiento',
-  '/dashboard/inventario/traslados',
-  '/dashboard/compras',
-  '/dashboard/proveedores',
-  '/dashboard/configuracion/desperdicios',
-] as const
 
 const DEFAULT_SIDEBAR_TOOLTIP_PREFS: SidebarTooltipPrefs = { desktop: true, mobile: true }
 
@@ -103,10 +92,13 @@ const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard/imagenes-ia/generador": "Genera imagenes de apoyo para ventas y produccion.",
   "/dashboard/imagenes-ia/vectorizador": "Convierte imagenes en vectores listos para produccion.",
   "/dashboard/escaneos": "Digitaliza documentos y extrae informacion util.",
-  "/dashboard/productos": "Centro de inventario con catalogo, stock, compras y abastecimiento.",
-  "/dashboard/inventario": "Existencias, movimientos y control de stock.",
+  "/dashboard/productos": "Catálogo de productos, referencias activas y estructura base del inventario.",
+  "/dashboard/inventario": "Existencias actuales por bodega, stock minimo y control general.",
+  "/dashboard/inventario?view=movements": "Historial reciente de entradas, salidas y ajustes de inventario.",
   "/dashboard/inventario/traslados": "Mueve inventario entre sedes o bodegas.",
-  "/dashboard/compras": "Gestiona compras, abastecimiento y costos.",
+  "/dashboard/inventario/abastecimiento": "Solicitudes internas de compra y abastecimiento entre bodegas.",
+  "/dashboard/compras": "Recepciones y registro formal de compras ya ingresadas.",
+  "/dashboard/compras?mode=order": "Órdenes de compra pendientes por registrar o recibir.",
   "/dashboard/proveedores": "Base de proveedores, contactos y condiciones de compra.",
   "/dashboard/configuracion/desperdicios": "Controla mermas y desperdicios operativos.",
   "/dashboard/configuracion/sedes": "Administra sucursales, ubicaciones y operacion por sede.",
@@ -128,8 +120,13 @@ function getNavItemDescription(item: NavItem) {
   return item.description ?? NAV_ITEM_DESCRIPTIONS[item.href] ?? item.name
 }
 
-function isInventoryHubPath(pathname: string) {
-  return INVENTORY_HUB_ROUTES.some((route) => pathname === route || pathname.startsWith(route + '/'))
+function normalizeNavHref(href: string) {
+  return href.split('#', 1)[0]?.split('?', 1)[0] ?? href
+}
+
+const STATEFUL_NAV_CONFIG: Record<string, { queryKey: string; defaultValue: string }> = {
+  '/dashboard/inventario': { queryKey: 'view', defaultValue: 'stock' },
+  '/dashboard/compras': { queryKey: 'mode', defaultValue: 'purchase' },
 }
 
 function normalizeSidebarTooltipPrefs(value: Partial<SidebarTooltipPrefs> | null | undefined): SidebarTooltipPrefs {
@@ -177,11 +174,25 @@ function SidebarNavTooltip({
 function sortNavItemsByOrder(items: NavItem[], order: string[]) {
   if (!order.length) return items
   const orderMap = new Map(order.map((href, index) => [href, index]))
-  return [...items].sort((a, b) => (orderMap.get(a.href) ?? Number.MAX_SAFE_INTEGER) - (orderMap.get(b.href) ?? Number.MAX_SAFE_INTEGER))
+  const resolveIndex = (item: NavItem) => {
+    const candidates = [item.href, item.scopeHref, normalizeNavHref(item.href), item.scopeHref ? normalizeNavHref(item.scopeHref) : null]
+      .filter((candidate): candidate is string => Boolean(candidate))
+
+    for (const candidate of candidates) {
+      const index = orderMap.get(candidate)
+      if (index !== undefined) return index
+    }
+
+    return Number.MAX_SAFE_INTEGER
+  }
+
+  return [...items].sort((a, b) => resolveIndex(a) - resolveIndex(b))
 }
 
 function getOrderIndex(href: string, order: string[]) {
-  const index = order.indexOf(href)
+  const index = [href, normalizeNavHref(href)]
+    .map((candidate) => order.indexOf(candidate))
+    .find((candidateIndex) => candidateIndex !== -1) ?? -1
   return index === -1 ? Number.MAX_SAFE_INTEGER : index
 }
 
@@ -192,6 +203,44 @@ function sortSectionsByOrder(sections: NavSection[], order: string[]) {
     const bIndex = Math.min(...b.items.map((item) => getOrderIndex(item.href, order)))
     return aIndex - bIndex
   })
+}
+
+function normalizeRecommendedNavOrder(prioritizedHrefs: string[], allHrefs: string[]) {
+  const trailingSections = new Set(['Administración', 'Configuración'])
+  const normalized = [
+    ...prioritizedHrefs.filter((href, index) => prioritizedHrefs.indexOf(href) === index),
+    ...allHrefs.filter((href) => !prioritizedHrefs.includes(href)),
+  ]
+
+  const leading: string[] = []
+  const trailing: string[] = []
+
+  for (const href of normalized) {
+    if (trailingSections.has(sectionForDashboardHref(href))) {
+      trailing.push(href)
+    } else {
+      leading.push(href)
+    }
+  }
+
+  const inventoryHrefs = leading.filter((href) => sectionForDashboardHref(href) === 'Inventario')
+  const purchasesHrefs = leading.filter((href) => sectionForDashboardHref(href) === 'Compras')
+
+  if (!inventoryHrefs.length || !purchasesHrefs.length) {
+    return [...leading, ...trailing]
+  }
+
+  const leadingWithoutPurchases = leading.filter((href) => sectionForDashboardHref(href) !== 'Compras')
+  const inventoryInsertIndex = leadingWithoutPurchases.reduce((lastMatch, href, index) => {
+    return sectionForDashboardHref(href) === 'Inventario' ? index : lastMatch
+  }, -1)
+
+  if (inventoryInsertIndex === -1) {
+    return [...leading, ...trailing]
+  }
+
+  leadingWithoutPurchases.splice(inventoryInsertIndex + 1, 0, ...purchasesHrefs)
+  return [...leadingWithoutPurchases, ...trailing]
 }
 
 function reorderSectionNavOrder(sections: NavSection[], order: string[], fromSection: string, toSection: string, placement: 'before' | 'after') {
@@ -225,27 +274,105 @@ function getSectionIcon(title: string) {
     case 'Captación':
       return <Briefcase className="h-4 w-4" />
     case 'Ventas':
-      return <ShoppingCart className="h-4 w-4" />
+      return <Store className="h-4 w-4" />
     case 'Operaciones':
       return <Boxes className="h-4 w-4" />
     case 'Inventario':
     case 'Recursos':
-      return <Layers3 className="h-4 w-4" />
+      return <Package className="h-4 w-4" />
+    case 'Compras':
+      return <ReceiptText className="h-4 w-4" />
     case 'Finanzas':
       return <Landmark className="h-4 w-4" />
     case 'Analítica':
       return <BarChart3 className="h-4 w-4" />
     case 'IA':
       return <Sparkles className="h-4 w-4" />
+    case 'Verticales':
+      return <LayoutGrid className="h-4 w-4" />
     case 'Configuración':
       return <Settings className="h-4 w-4" />
     case 'Administración':
     case 'Otros':
       return <Shield className="h-4 w-4" />
     default:
-      return <Layers3 className="h-4 w-4" />
+      return <Package className="h-4 w-4" />
   }
 }
+
+const catalogSubmoduleIcon = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4h10a2 2 0 012 2v14H5V6a2 2 0 012-2z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 8h6M9 12h6M9 16h4" />
+  </svg>
+)
+
+const stockSubmoduleIcon = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8l8-4 8 4-8 4-8-4z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12l8 4 8-4" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l8 4 8-4" />
+  </svg>
+)
+
+const movementsSubmoduleIcon = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h10" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 4l4 3-4 3" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17H7" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 14l-4 3 4 3" />
+  </svg>
+)
+
+const transfersSubmoduleIcon = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h11v8H3z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h3l4 3v2h-2" />
+    <circle cx="7" cy="17" r="2" strokeWidth={2} />
+    <circle cx="17" cy="17" r="2" strokeWidth={2} />
+  </svg>
+)
+
+const wasteSubmoduleIcon = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 7h12" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7V5h6v2" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7l1 12h6l1-12" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 11v5M14 11v5" />
+  </svg>
+)
+
+const purchaseRequestsSubmoduleIcon = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4h10a2 2 0 012 2v14H5V6a2 2 0 012-2z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9h6M12 6v6" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 16h6" />
+  </svg>
+)
+
+const purchaseOrdersSubmoduleIcon = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 4h9l3 3v13H6V4z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 4v4h4" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6M9 16h6" />
+  </svg>
+)
+
+const purchaseReceiptsSubmoduleIcon = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4h10v16l-2-1-2 1-2-1-2 1-2-1V4z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9h6M9 13h6" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17h3" />
+  </svg>
+)
+
+const suppliersSubmoduleIcon = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 10l4-4 4 4-4 4-4-4z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l4-4 4 4-4 4-4-4z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 12h4" />
+  </svg>
+)
 
 function buildModuleNavigation(t: (key: string) => string): NavItem[] {
   return [
@@ -510,18 +637,57 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Inventario',
+    name: t('nav.catalog'),
+    href: "/dashboard/productos",
+    icon: catalogSubmoduleIcon,
+  },
+  {
+    name: t('nav.stock'),
     href: "/dashboard/inventario",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M7 20h10a2 2 0 002-2V8a2 2 0 00-2-2h-1.5a2.5 2.5 0 00-5 0H9a2 2 0 00-2 2v10a2 2 0 002 2zm3-14a1 1 0 112 0h-2z"
-        />
-      </svg>
-    ),
+    scopeHref: '/dashboard/inventario',
+    icon: stockSubmoduleIcon,
+  },
+  {
+    name: t('nav.movements'),
+    href: "/dashboard/inventario?view=movements",
+    scopeHref: '/dashboard/inventario',
+    icon: movementsSubmoduleIcon,
+  },
+  {
+    name: 'Traslados',
+    href: "/dashboard/inventario/traslados",
+    scopeHref: '/dashboard/inventario',
+    icon: transfersSubmoduleIcon,
+  },
+  {
+    name: t('nav.waste'),
+    href: "/dashboard/configuracion/desperdicios",
+    scopeHref: '/dashboard/inventario',
+    icon: wasteSubmoduleIcon,
+  },
+  {
+    name: t('nav.purchaseRequests'),
+    href: "/dashboard/inventario/abastecimiento",
+    scopeHref: '/dashboard/compras',
+    icon: purchaseRequestsSubmoduleIcon,
+  },
+  {
+    name: t('purchases.modes.order'),
+    href: "/dashboard/compras?mode=order",
+    scopeHref: '/dashboard/compras',
+    icon: purchaseOrdersSubmoduleIcon,
+  },
+  {
+    name: t('nav.purchaseReceipts'),
+    href: "/dashboard/compras",
+    scopeHref: '/dashboard/compras',
+    icon: purchaseReceiptsSubmoduleIcon,
+  },
+  {
+    name: t('nav.suppliers'),
+    href: "/dashboard/proveedores",
+    scopeHref: '/dashboard/proveedores',
+    icon: suppliersSubmoduleIcon,
   },
   // Gestión
   {
@@ -631,6 +797,7 @@ const ORDEX_FALLBACK_LOGO = '/icon-192.png'
 
 export default function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname() ?? ''
+  const searchParams = useSearchParams()
   const { resolvedTheme } = useTheme()
 
   const { t } = useI18n()
@@ -679,16 +846,35 @@ export default function Sidebar({ user }: SidebarProps) {
   }, [hydrateSidebarCollapsed])
 
   function isNavActive(href: string) {
-    if (href === '/dashboard/inventario' && isInventoryHubPath(pathname)) return true
+    const currentPath = normalizeNavHref(pathname)
+    const [targetPath, rawQuery = ''] = href.split('?', 2)
+    const statefulConfig = STATEFUL_NAV_CONFIG[targetPath]
+
+    if (rawQuery) {
+      if (currentPath !== targetPath) return false
+      const expectedParams = new URLSearchParams(rawQuery)
+      return Array.from(expectedParams.entries()).every(([key, value]) => searchParams?.get(key) === value)
+    }
+
+    if (href === '/dashboard/productos') {
+      return currentPath === '/dashboard/productos' || currentPath === '/dashboard/materiales' || currentPath === '/dashboard/terminados'
+    }
+
+    if (statefulConfig && currentPath === targetPath) {
+      const currentValue = searchParams?.get(statefulConfig.queryKey) ?? statefulConfig.defaultValue
+      return currentValue === statefulConfig.defaultValue
+    }
+
     if (href === '/dashboard') return pathname === '/dashboard'
-    if (pathname === href) return true
-    return pathname.startsWith(href + '/')
+    if (currentPath === href) return true
+    return currentPath.startsWith(href + '/')
   }
 
   function beginRouteLoadingIfNeeded(href: string) {
+    const targetPath = normalizeNavHref(href)
     if (!href) return
-    if (href === pathname) return
-    if (pathname.startsWith(href + '/')) return
+    if (targetPath === pathname) return
+    if (pathname.startsWith(targetPath + '/')) return
     setRouteLoading(true)
   }
 
@@ -747,10 +933,11 @@ export default function Sidebar({ user }: SidebarProps) {
           | { ok?: boolean; dashboard?: { prioritizedHrefs?: string[]; allowedHrefs?: string[] } | null }
           | null
         if (!cancelled && json?.ok) {
+          const prioritizedHrefs = Array.isArray(json.dashboard?.prioritizedHrefs)
+            ? json.dashboard!.prioritizedHrefs.filter((href): href is string => typeof href === 'string' && href.startsWith('/dashboard'))
+            : []
           setRecommendedNavOrder(
-            Array.isArray(json.dashboard?.prioritizedHrefs)
-              ? json.dashboard!.prioritizedHrefs.filter((href): href is string => typeof href === 'string' && href.startsWith('/dashboard'))
-              : []
+            normalizeRecommendedNavOrder(prioritizedHrefs, dashboardNavDefinitions.map((item) => item.href))
           )
           setAllowedNavHrefs((current) => {
             const next = Array.isArray(json.dashboard?.allowedHrefs)
@@ -766,7 +953,7 @@ export default function Sidebar({ user }: SidebarProps) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [dashboardNavDefinitions])
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
@@ -882,7 +1069,7 @@ export default function Sidebar({ user }: SidebarProps) {
 
     const base = !navPrefs ? baseNavigation : baseNavigation.filter((it) => navPrefs[it.href] !== false)
     const withRbacGate = base.filter((it) => {
-      if (allowedNavHrefSet?.has(it.href)) return true
+      if (allowedNavHrefSet?.has(normalizeNavHref(it.scopeHref ?? it.href))) return true
       if (it.href === '/dashboard/configuracion/servicios-web') {
         return canAccessWebsiteServices
       }
@@ -918,7 +1105,7 @@ export default function Sidebar({ user }: SidebarProps) {
       return enabledModules.has(moduleKey)
     })
     const withOnboardingScope = withPlanGate.filter((it) => {
-      if (allowedNavHrefSet) return allowedNavHrefSet.has(it.href)
+      if (allowedNavHrefSet) return allowedNavHrefSet.has(normalizeNavHref(it.scopeHref ?? it.href))
       return !isOnboardingScopedDashboardHref(it.href)
     })
     return sortNavItemsByOrder(withOnboardingScope, effectiveNavOrder)

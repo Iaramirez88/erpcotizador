@@ -461,15 +461,15 @@ export default function AbastecimientoInventarioPage() {
       <ErpPageHero
         breadcrumbs={[
           { label: 'Inicio', href: '/dashboard' },
-          { label: 'Inventario', href: '/dashboard/inventario' },
-          { label: 'Abastecimiento' },
+          { label: 'Compras', href: '/dashboard/compras' },
+          { label: 'Solicitudes de compra' },
         ]}
-        title="Abastecimiento entre sedes"
-        description="Centraliza solicitudes de las sedes hijas hacia la bodega padre, con prioridad, seguimiento y cumplimiento desde inventario."
+        title="Solicitudes de compra"
+        description="Centraliza solicitudes internas entre sedes, con prioridad, seguimiento y cumplimiento desde la bodega abastecedora."
         actions={canManageInventory ? <Button onClick={openNewDialog}>Nueva solicitud</Button> : null}
       />
 
-      <CatalogModuleTabs />
+      <CatalogModuleTabs group="purchases" />
 
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
