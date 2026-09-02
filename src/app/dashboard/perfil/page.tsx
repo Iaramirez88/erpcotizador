@@ -93,7 +93,14 @@ export default async function PerfilPage() {
       })
     : []
 
-  const assignedSedes = user.sedeMemberships.map((membership) => membership.sede)
+  const assignedSedes = [...user.sedeMemberships]
+    .sort((left, right) => {
+      const leftIsDefault = left.sede.id === user.sedeDefaultId
+      const rightIsDefault = right.sede.id === user.sedeDefaultId
+      if (leftIsDefault !== rightIsDefault) return leftIsDefault ? -1 : 1
+      return left.sede.nombre.localeCompare(right.sede.nombre, 'es', { sensitivity: 'base' })
+    })
+    .map((membership) => membership.sede)
   const assignedSedeIds = new Set(user.sedeMemberships.map((membership) => membership.sede.id))
   const requestableSedes = companySedes.filter((sede) => !assignedSedeIds.has(sede.id))
   const assignedSedeRoleById = new Map(user.sedeMemberships.map((membership) => [membership.sede.id, membership.role]))
@@ -254,7 +261,10 @@ export default async function PerfilPage() {
                         {sede.codigo ? `${t('profile.sites.code')}: ${sede.codigo}` : naText}
                       </div>
                     </div>
-                    <span className="text-xs rounded-md border px-2 py-1">{assignedSedeRoleById.get(sede.id) ? sedeRoleLabel(assignedSedeRoleById.get(sede.id)) : 'Asignada'}</span>
+                    <div className="flex items-center gap-2">
+                      {user.sedeDefaultId === sede.id ? <span className="text-xs rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-sky-800">Predeterminada</span> : null}
+                      <span className="text-xs rounded-md border px-2 py-1">{assignedSedeRoleById.get(sede.id) ? sedeRoleLabel(assignedSedeRoleById.get(sede.id)) : 'Asignada'}</span>
+                    </div>
                   </div>
                 ))
               ) : (

@@ -114,7 +114,7 @@ export async function ensureDefaultSedeForEmpresa(empresaId: string, userId: str
   if (!existingMembership) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { role: true, email: true, globalAccess: { select: { level: true } } },
+      select: { role: true, email: true, sedeDefaultId: true, globalAccess: { select: { level: true } } },
     })
 
     const globalLevel = user?.globalAccess?.level ?? 'NONE'
@@ -122,7 +122,7 @@ export async function ensureDefaultSedeForEmpresa(empresaId: string, userId: str
       globalLevel === 'ADMIN' ? 'ADMIN' : globalLevel === 'WRITE' ? 'MEMBER' : globalLevel === 'READ' ? 'READER' : 'READER'
 
     const isSystemSuperAdmin = isSuperAdminEmail(user?.email)
-    const roleForNewMembership: SedeRole = isSystemSuperAdmin ? 'ADMIN' : (roleFromGlobal === 'ADMIN' ? 'ADMIN' : 'ADMIN')
+    const roleForNewMembership: SedeRole = isSystemSuperAdmin ? 'ADMIN' : roleFromGlobal
 
     await prisma.sedeMembership.create({
       data: {
@@ -131,6 +131,25 @@ export async function ensureDefaultSedeForEmpresa(empresaId: string, userId: str
         role: roleForNewMembership,
       },
     })
+
+    if (!user?.sedeDefaultId) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { sedeDefaultId: sede.id },
+      })
+    }
+  } else {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { sedeDefaultId: true },
+    })
+
+    if (!user?.sedeDefaultId) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { sedeDefaultId: sede.id },
+      })
+    }
   }
 
   return sede

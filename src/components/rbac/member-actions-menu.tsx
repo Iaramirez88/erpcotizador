@@ -74,7 +74,13 @@ export function MemberActionsMenu({
   const [resettingPermissions, setResettingPermissions] = useState(false)
   const [resetPermissionsError, setResetPermissionsError] = useState<string | null>(null)
 
-  const options = useMemo(() => sedes, [sedes])
+  const options = useMemo(() => {
+    const merged = [...sedes]
+    if (initialHasSedeAccess && !merged.some((item) => item.id === activeSedeId)) {
+      merged.push({ id: activeSedeId, nombre: activeSedeNombre, codigo: null })
+    }
+    return merged
+  }, [activeSedeId, activeSedeNombre, initialHasSedeAccess, sedes])
   const [selectedDefaultSedeId, setSelectedDefaultSedeId] = useState<string>(userDefaultSedeId ?? '')
 
   async function saveDefaultSede() {

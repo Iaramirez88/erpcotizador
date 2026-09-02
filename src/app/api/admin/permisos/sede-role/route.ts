@@ -63,13 +63,34 @@ export async function PATCH(request: Request) {
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    const currentUserState = await tx.user.findUnique({
+      where: { id: targetUser.id },
+      select: {
+        sedeDefaultId: true,
+        sedeMemberships: {
+          where: { sede: { empresaId } },
+          select: { sedeId: true },
+        },
+      },
+    })
+
     await detachPermissionProfileAssignment({ client: tx, empresaId, sedeId, userId: targetUser.id })
-    return tx.sedeMembership.upsert({
+    const membership = await tx.sedeMembership.upsert({
       where: { sedeId_userId: { sedeId, userId: targetUser.id } },
       create: { sedeId, userId: targetUser.id, role },
       update: { role },
       select: { role: true },
     })
+
+    const hasValidDefaultMembership = !!currentUserState?.sedeDefaultId && currentUserState.sedeMemberships.some((item) => item.sedeId === currentUserState.sedeDefaultId)
+    if (!hasValidDefaultMembership || !currentUserState?.sedeDefaultId) {
+      await tx.user.update({
+        where: { id: targetUser.id },
+        data: { sedeDefaultId: sedeId },
+      })
+    }
+
+    return membership
   })
 
   await publishPermissionUpdateNotification({
