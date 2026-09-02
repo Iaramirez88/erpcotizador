@@ -316,81 +316,87 @@ export default function StartCardsGrid({ allowedModules, enabledPlanModules, can
 
   return (
     <>
-      <div className="hidden gap-3 p-3 md:grid md:grid-cols-2 xl:grid-cols-3">
+      <div className="hidden gap-3 p-3 md:grid md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => {
           const Icon = ICONS[card.icon]
           const isRecommended = recommendedSet.has(card.href) && !card.locked
 
           if (!card.locked) {
             return (
-              <Link key={card.href} href={card.href} className={`group rounded-[24px] border p-4 transition-all hover:-translate-y-1 hover:shadow-lg ${card.surface}`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className={`flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
-                    <Icon className="h-6 w-6" />
+              <details key={card.href} className={`group rounded-[20px] border transition-all hover:-translate-y-0.5 hover:shadow-lg ${card.surface}`}>
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-3.5 py-3.5 [&::-webkit-details-marker]:hidden">
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
+                    <Icon className="h-5 w-5" />
                   </div>
-                  <div className="flex flex-col items-end gap-1">
-                    {isRecommended ? (
-                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
-                        Recomendado
+                  <div className="min-w-0 flex-1">
+                    <h2 className="truncate text-[15px] font-semibold leading-none text-slate-950">{card.title}</h2>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {isRecommended ? (
+                        <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                          Recomendado
+                        </span>
+                      ) : null}
+                      <span className="rounded-full border border-white/80 bg-white/90 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                        Disponible
                       </span>
-                    ) : null}
-                    <span className="rounded-full border border-white/80 bg-white/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-                      Empezar
-                    </span>
+                    </div>
                   </div>
+                  <span className="shrink-0 text-[12px] font-semibold text-slate-600">Ver más</span>
+                </summary>
+                <div className="border-t border-white/70 px-3.5 pb-3.5 pt-3">
+                  <p className="text-[12px] leading-5 text-slate-700">{card.description}</p>
+                  <Link href={card.href} className="mt-3 inline-flex items-center gap-2 text-[12px] font-semibold text-slate-950">
+                    {card.cta}
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </Link>
                 </div>
-                <div className="mt-4 space-y-1.5">
-                  <h2 className="text-lg font-semibold text-slate-950">{card.title}</h2>
-                  <p className="text-[13px] leading-5 text-slate-700">{card.description}</p>
-                </div>
-                <div className="mt-4 inline-flex items-center gap-2 text-[13px] font-semibold text-slate-950">
-                  {card.cta}
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </div>
-              </Link>
+              </details>
             )
           }
 
           return (
-            <div key={card.href} className={`rounded-[24px] border p-4 ${card.surface} relative overflow-hidden`}>
+            <details key={card.href} className={`group relative overflow-hidden rounded-[20px] border ${card.surface}`}>
               <div className="absolute inset-0 bg-white/55 backdrop-blur-[1px]" />
-              <div className="relative flex h-full flex-col">
-                <div className="flex items-start justify-between gap-3">
-                  <div className={`flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
-                    <Icon className="h-6 w-6" />
+              <div className="relative">
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-3.5 py-3.5 [&::-webkit-details-marker]:hidden">
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
+                    <Icon className="h-5 w-5" />
                   </div>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-700">
-                    <Lock className="h-3.5 w-3.5" />
-                    Bloqueado
-                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="truncate text-[15px] font-semibold leading-none text-slate-950">{card.title}</h2>
+                    <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-700">
+                      <Lock className="h-3 w-3" />
+                      Bloqueado
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-[12px] font-semibold text-slate-600">Ver más</span>
+                </summary>
+                <div className="border-t border-white/70 px-3.5 pb-3.5 pt-3">
+                  <p className="text-[12px] leading-5 text-slate-700">{card.description}</p>
+                  <p className="mt-2 text-[12px] font-medium text-slate-900">Tu plan actual no incluye este módulo.</p>
+                  {canManageBilling ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Link
+                        href={buildUpgradeHref(card.moduleKey)}
+                        className="inline-flex items-center rounded-full bg-slate-950 px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-slate-800"
+                      >
+                        Actualiza tu plan
+                      </Link>
+                      <Link
+                        href={buildAddonHref(card.moduleKey)}
+                        className="inline-flex items-center rounded-full border border-slate-300 bg-white/90 px-3.5 py-1.5 text-[12px] font-semibold text-slate-900 transition hover:bg-white"
+                      >
+                        Agrégalo independiente
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-[18px] border border-white/70 bg-white/80 px-3.5 py-2.5 text-[12px] text-slate-700">
+                      Solo la persona dueña del plan o un administrador puede activarlo.
+                    </div>
+                  )}
                 </div>
-                <div className="mt-4 space-y-1.5">
-                  <h2 className="text-lg font-semibold text-slate-950">{card.title}</h2>
-                  <p className="text-[13px] leading-5 text-slate-700">{card.description}</p>
-                  <p className="text-[13px] font-medium text-slate-900">Tu plan actual no incluye este módulo.</p>
-                </div>
-                {canManageBilling ? (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Link
-                      href={buildUpgradeHref(card.moduleKey)}
-                      className="inline-flex items-center rounded-full bg-slate-950 px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-slate-800"
-                    >
-                      Actualiza tu plan
-                    </Link>
-                    <Link
-                      href={buildAddonHref(card.moduleKey)}
-                      className="inline-flex items-center rounded-full border border-slate-300 bg-white/90 px-3.5 py-1.5 text-[12px] font-semibold text-slate-900 transition hover:bg-white"
-                    >
-                      Agrégalo independiente
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-[18px] border border-white/70 bg-white/80 px-3.5 py-2.5 text-[12px] text-slate-700">
-                    Solo la persona dueña del plan o un administrador puede activarlo.
-                  </div>
-                )}
               </div>
-            </div>
+            </details>
           )
         })}
       </div>
@@ -411,7 +417,7 @@ export default function StartCardsGrid({ allowedModules, enabledPlanModules, can
                     <div className="truncate text-[13px] font-semibold text-slate-950">{card.title}</div>
                     <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">{isRecommended ? 'Recomendado' : 'Disponible'}</div>
                   </div>
-                  <div className="text-[11px] font-semibold text-slate-600">Ver</div>
+                  <div className="text-[11px] font-semibold text-slate-600">Ver más</div>
                 </summary>
                 <div className="border-t border-white/70 px-3.5 pb-3.5 pt-3">
                   <p className="text-[12px] leading-5 text-slate-700">{card.description}</p>

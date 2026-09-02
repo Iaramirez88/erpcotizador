@@ -46,17 +46,17 @@ export default function MobileDashboardFooter({ user, canAccessConversations }: 
       'fixed inset-x-0 bottom-0 z-[85] border-t border-slate-200/80 bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.55rem)] pt-2 backdrop-blur-xl transition-transform duration-300 md:hidden',
       chatOpen ? 'pointer-events-none translate-y-full opacity-0' : 'translate-y-0 opacity-100'
     )}>
-      <div className="mx-auto grid w-full max-w-[1600px] grid-cols-4 items-center gap-1 px-1">
+      <div className="mx-auto grid w-full max-w-[1600px] grid-cols-4 items-center gap-0.5 px-0.5">
         <div className="flex justify-center">
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-14 w-14 rounded-full text-slate-700 hover:bg-slate-100/80"
+            className="h-12 w-full max-w-[4.5rem] rounded-2xl text-slate-700 hover:bg-slate-100/80 [&_svg]:!size-5"
             aria-label="Abrir menú"
             onClick={toggleMobileNav}
           >
-            <Menu className="h-7 w-7" />
+            <Menu className="h-5 w-5" />
           </Button>
         </div>
 
@@ -65,12 +65,12 @@ export default function MobileDashboardFooter({ user, canAccessConversations }: 
             type="button"
             variant="ghost"
             size="icon"
-            className="h-14 w-14 rounded-full text-slate-700 hover:bg-slate-100/80 disabled:opacity-45"
+            className="h-12 w-full max-w-[4.5rem] rounded-2xl text-slate-700 hover:bg-slate-100/80 disabled:opacity-45 [&_svg]:!size-5"
             aria-label="Abrir conversaciones"
             disabled={!canAccessConversations}
             onClick={() => window.dispatchEvent(new CustomEvent(CHAT_DRAWER_TOGGLE_EVENT))}
           >
-            <MessageSquareText className="h-7 w-7" />
+            <MessageSquareText className="h-5 w-5" />
           </Button>
         </div>
 
