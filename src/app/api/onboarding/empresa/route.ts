@@ -28,7 +28,7 @@ async function resolveContext() {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, empresaId: true },
+    select: { id: true, empresaId: true, uiPreference: { select: { tutorial: true } } },
   })
 
   if (!user?.empresaId) return null
@@ -52,6 +52,7 @@ async function resolveContext() {
 
   return {
     userId,
+    tutorial: user.uiPreference?.tutorial,
     empresa,
     isOwner,
   }
@@ -88,10 +89,18 @@ export async function GET() {
     }) ?? []
     const locked = Boolean(context.empresa.onboardingCompletedAt)
     const availableBusinessTypes = await getVisibleOnboardingBusinessTypes()
+    const tutorial = context.tutorial
+    const tutorialSeen = tutorial && typeof tutorial === 'object' && !Array.isArray(tutorial) ? tutorial.seen : null
+    const welcomeSeen = Boolean(
+      tutorialSeen && typeof tutorialSeen === 'object' && !Array.isArray(tutorialSeen)
+        ? (tutorialSeen as Record<string, boolean>).dashboardWelcomeTrial15d
+        : false
+    )
 
     return NextResponse.json({
       ok: true,
       required: context.isOwner && !locked && context.empresa.onboardingStatus !== 'COMPLETED',
+      welcomeSeen,
       editable: context.isOwner && !locked,
       locked,
       status: context.empresa.onboardingStatus,

@@ -5,9 +5,7 @@ import { resolveUserIdFromSession } from '@/lib/session-user'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import OnboardingWizardClient from './onboarding-wizard-client'
-import { getBusinessTypeLabel, parseCompanyOnboardingData, resolveDashboardConfig } from '@/lib/company-onboarding'
-import { getVisibleOnboardingBusinessTypes } from '@/lib/onboarding-business-type-settings'
+import { getBusinessTypeLabel, resolveDashboardConfig } from '@/lib/company-onboarding'
 
 export default async function DashboardOnboardingPage() {
   const session = await auth()
@@ -42,7 +40,6 @@ export default async function DashboardOnboardingPage() {
   }
 
   const locked = Boolean(empresa.onboardingCompletedAt)
-  const availableBusinessTypes = await getVisibleOnboardingBusinessTypes()
   const dashboard = resolveDashboardConfig({
     dashboardConfig: empresa.dashboardConfig,
     onboardingData: empresa.onboardingData,
@@ -91,11 +88,29 @@ export default async function DashboardOnboardingPage() {
           </CardContent>
         </Card>
       ) : (
-        <OnboardingWizardClient
-          initialData={parseCompanyOnboardingData(empresa.onboardingData)}
-          availableBusinessTypes={availableBusinessTypes}
-          mode="page"
-        />
+        <Card>
+          <CardHeader>
+            <CardTitle>Gracias por registrarte</CardTitle>
+            <CardDescription>
+              La configuración inicial guiada fue deshabilitada para nuevos registros.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-emerald-950">
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Periodo de prueba</div>
+              <div className="mt-2 text-2xl font-semibold">Tienes 15 días gratis</div>
+              <div className="mt-2 text-sm text-emerald-900">
+                Ya puedes entrar al dashboard y comenzar a usar el sistema. No necesitas completar una configuración inicial desde esta pantalla.
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <Button asChild>
+                <a href="/dashboard">Ir al dashboard</a>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

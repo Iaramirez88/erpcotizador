@@ -1,25 +1,27 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
-import OnboardingWizardClient from '@/app/dashboard/onboarding/onboarding-wizard-client'
-import type { CompanyOnboardingData } from '@/lib/company-onboarding'
+import { usePathname } from 'next/navigation'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 type OnboardingStatusResponse = {
   ok?: boolean
   required?: boolean
-  editable?: boolean
-  data?: CompanyOnboardingData
-  availableBusinessTypes?: CompanyOnboardingData['businessType'][]
+  welcomeSeen?: boolean
 }
 
 export default function OnboardingGate() {
   const pathname = usePathname() ?? ''
-  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [initialData, setInitialData] = useState<CompanyOnboardingData | null>(null)
-  const [availableBusinessTypes, setAvailableBusinessTypes] = useState<CompanyOnboardingData['businessType'][]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -30,9 +32,7 @@ export default function OnboardingGate() {
         const json = (await res.json().catch(() => ({}))) as OnboardingStatusResponse
         if (cancelled || !res.ok || !json.ok) return
         if (pathname.startsWith('/dashboard/onboarding')) return
-        setInitialData(json.data ?? null)
-        setAvailableBusinessTypes(Array.isArray(json.availableBusinessTypes) ? json.availableBusinessTypes : [])
-        setOpen(Boolean(json.required))
+        setOpen(Boolean(json.required) && !json.welcomeSeen)
       } catch {
         // no-op
       } finally {
@@ -44,22 +44,53 @@ export default function OnboardingGate() {
     return () => {
       cancelled = true
     }
-  }, [pathname, router])
+  }, [pathname])
 
-  if (loading || pathname.startsWith('/dashboard/onboarding') || !open || !initialData) return null
+  async function handleDismiss() {
+    try {
+      await fetch('/api/onboarding/welcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seen: true }),
+      })
+    } catch {
+      // no-op
+    }
+    setOpen(false)
+  }
+
+  if (loading || pathname.startsWith('/dashboard/onboarding') || !open) return null
 
   return (
-    <OnboardingWizardClient
-      mode="modal"
-      open={open}
-      required
-      initialData={initialData}
-      availableBusinessTypes={availableBusinessTypes}
-      onCompleted={() => {
-        setOpen(false)
-        router.refresh()
-      }}
-      onDismiss={() => setOpen(false)}
-    />
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) void handleDismiss() }}>
+      <DialogContent className="max-w-xl rounded-[30px] border-slate-200 p-0">
+        <div className="border-b border-slate-100 px-6 py-5">
+          <DialogHeader>
+            <DialogTitle className="text-2xl text-slate-950">Gracias por registrarte</DialogTitle>
+            <DialogDescription className="text-sm leading-6 text-slate-600">
+              Tu espacio ya fue creado correctamente.
+            </DialogDescription>
+          </DialogHeader>
+        </div>
+
+        <div className="space-y-4 px-6 py-5">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Bienvenida</div>
+            <div className="mt-2 text-2xl font-semibold text-emerald-950">Tienes 15 días gratis</div>
+            <div className="mt-2 text-sm text-emerald-900">
+              Durante este periodo podrás explorar la plataforma y empezar a trabajar con tu espacio sin pasos adicionales de configuración inicial.
+            </div>
+          </div>
+
+          <p className="text-sm text-slate-600">
+            Cuando quieras, puedes continuar directamente al dashboard y comenzar a usar el sistema.
+          </p>
+        </div>
+
+        <DialogFooter className="border-t border-slate-100 px-6 py-4">
+          <Button type="button" onClick={() => void handleDismiss()}>Continuar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
