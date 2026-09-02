@@ -7,6 +7,7 @@ import { sendEmail } from '@/lib/email'
 import { escapeHtml, renderEmail, renderEmailCode, renderEmailLink } from '@/lib/email-template'
 import { checkPlanLimit } from '@/lib/plan-limits'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
+import { syncEnabledVerticalGrantsForUser } from '@/lib/company-preset-sync'
 
 export const runtime = 'nodejs'
 
@@ -113,6 +114,12 @@ export async function POST(request: Request) {
         update: {},
       })
     }
+
+    await syncEnabledVerticalGrantsForUser({
+      empresaId: empresa.id,
+      userId: existingUser.id,
+      grantedByUserId: session.user.id,
+    })
 
     const subject = `Acceso · ${empresa.nombre} · Ordex`
     const baseUrl = getBaseUrl(request)

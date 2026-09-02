@@ -101,6 +101,65 @@ async function syncVerticalGrants(args: {
   })
 }
 
+export async function syncEnabledVerticalGrantsForUser(args: {
+  empresaId: string
+  userId: string
+  grantedByUserId: string | null
+}) {
+  const entitlementRows = await prisma.capabilityEntitlement.findMany({
+    where: {
+      empresaId: args.empresaId,
+      domain: 'VERTICALES',
+      subdomain: { in: [...PRESET_VERTICAL_KEYS] },
+      enabled: true,
+    },
+    select: { subdomain: true, action: true },
+  })
+
+  const enabledVerticals = PRESET_VERTICAL_KEYS.filter((vertical) => {
+    const expectedActions = getVerticalActions(vertical)
+    const enabledActions = new Set(
+      entitlementRows.filter((row) => row.subdomain === vertical).map((row) => row.action)
+    )
+    return expectedActions.every((action) => enabledActions.has(action))
+  })
+
+  await prisma.userCapabilityGrant.deleteMany({
+    where: {
+      empresaId: args.empresaId,
+      userId: args.userId,
+      domain: 'VERTICALES',
+      subdomain: { in: [...PRESET_VERTICAL_KEYS] },
+      scopeType: RbacScopeType.EMPRESA,
+      scopeValue: args.empresaId,
+      source: RbacGrantSource.SYSTEM,
+    },
+  })
+
+  if (!enabledVerticals.length) return []
+
+  await prisma.userCapabilityGrant.createMany({
+    data: enabledVerticals.flatMap((vertical) =>
+      getVerticalActions(vertical).map((action) => ({
+        userId: args.userId,
+        empresaId: args.empresaId,
+        domain: 'VERTICALES',
+        subdomain: vertical,
+        action,
+        scopeType: RbacScopeType.EMPRESA,
+        scopeValue: args.empresaId,
+        allowed: true,
+        source: RbacGrantSource.SYSTEM,
+        grantedByUserId: args.grantedByUserId,
+        notes: `${PRESET_GRANT_NOTE_PREFIX}:USER_SYNC:${vertical}`,
+        metadata: { source: PRESET_GRANT_NOTE_PREFIX, vertical, mode: 'USER_SYNC' },
+      }))
+    ),
+  })
+
+  return enabledVerticals
+}
+
 export async function syncCompanyPresetAccess(args: {
   empresaId: string
   businessType: BusinessType | null | undefined

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import type { BillingCycle, PlanTier } from '@prisma/client'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
+import { syncEnabledVerticalGrantsForUser } from '@/lib/company-preset-sync'
 
 export const runtime = 'nodejs'
 
@@ -230,6 +231,17 @@ export async function POST(req: NextRequest) {
     })
 
     const workspaceCode = await ensureWorkspaceCodeForEmpresa(created.id)
+
+    if (planOwnerEmail) {
+      const owner = await prisma.user.findUnique({ where: { email: planOwnerEmail }, select: { id: true } })
+      if (owner?.id) {
+        await syncEnabledVerticalGrantsForUser({
+          empresaId: created.id,
+          userId: owner.id,
+          grantedByUserId: owner.id,
+        })
+      }
+    }
 
     return NextResponse.json({ ok: true, empresaId: created.id, workspaceCode })
   } catch (e) {

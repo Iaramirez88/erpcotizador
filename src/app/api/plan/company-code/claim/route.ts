@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ensureDefaultSedeForEmpresa } from '@/lib/rbac'
+import { syncEnabledVerticalGrantsForUser } from '@/lib/company-preset-sync'
 
 export const runtime = 'nodejs'
 
@@ -38,6 +39,11 @@ export async function POST(req: Request) {
 
   await prisma.user.update({ where: { id: userId }, data: { empresaId: empresa.id } })
   await ensureDefaultSedeForEmpresa(empresa.id, userId)
+  await syncEnabledVerticalGrantsForUser({
+    empresaId: empresa.id,
+    userId,
+    grantedByUserId: userId,
+  })
 
   return NextResponse.json({ ok: true })
 }

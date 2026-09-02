@@ -18,6 +18,7 @@ import { generateWorkspaceCode } from "@/lib/workspace-code"
 import { checkPlanLimit } from "@/lib/plan-limits"
 import { renderEmail, renderEmailCode } from "@/lib/email-template"
 import { Prisma } from "@prisma/client"
+import { syncEnabledVerticalGrantsForUser } from "@/lib/company-preset-sync"
 
 const PERSONAL_TRIAL_DAYS = 7
 
@@ -220,6 +221,12 @@ export async function POST(request: Request) {
         select: { id: true },
       })
     }
+
+    await syncEnabledVerticalGrantsForUser({
+      empresaId: empresaFinal.id,
+      userId: user.id,
+      grantedByUserId: user.id,
+    })
 
     // Notificar al usuario si le faltan datos clave para cotizar.
     if (!user.telefono || !user.cargo || !preferredSedeId) {
