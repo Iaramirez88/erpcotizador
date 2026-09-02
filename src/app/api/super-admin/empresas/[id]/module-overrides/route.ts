@@ -29,6 +29,23 @@ function asOverrideValue(value: unknown): boolean | null | 'invalid' {
   return 'invalid'
 }
 
+function buildModuleOverrideRows(args: {
+  effectivePlanTier: ReturnType<typeof resolveEffectivePlanTier>
+  baseModules: ModuleKey[]
+  overrides: Partial<Record<ModuleKey, boolean>>
+}) {
+  return ALL_MODULE_KEYS.map((moduleKey) => {
+    const overrideEnabled = args.overrides[moduleKey] ?? null
+    const baseEnabled = args.baseModules.includes(moduleKey)
+    return {
+      module: moduleKey,
+      baseEnabled,
+      overrideEnabled,
+      effectiveEnabled: typeof overrideEnabled === 'boolean' ? overrideEnabled : baseEnabled,
+    }
+  })
+}
+
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const session = requireSuperAdmin(await auth())
   if (!session) return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 401 })
@@ -58,19 +75,16 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     getModuleOverridesForEmpresa(empresaId),
   ])
 
+  const rows = buildModuleOverrideRows({
+    effectivePlanTier,
+    baseModules,
+    overrides,
+  })
+
   return NextResponse.json({
     ok: true,
     effectivePlanTier,
-    rows: ALL_MODULE_KEYS.map((moduleKey) => {
-      const overrideEnabled = overrides[moduleKey] ?? null
-      const baseEnabled = baseModules.includes(moduleKey)
-      return {
-        module: moduleKey,
-        baseEnabled,
-        overrideEnabled,
-        effectiveEnabled: typeof overrideEnabled === 'boolean' ? overrideEnabled : baseEnabled,
-      }
-    }),
+    rows,
   })
 }
 
@@ -92,7 +106,39 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     return NextResponse.json({ ok: false, error: 'Override inválido' }, { status: 400 })
   }
 
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: {
+      planTier: true,
+      nit: true,
+      registrationCodeHash: true,
+      planValidUntil: true,
+      trialTier: true,
+      trialStartedAt: true,
+      trialValidUntil: true,
+    },
+  })
+
+  if (!empresa) return NextResponse.json({ ok: false, error: 'Empresa no encontrada' }, { status: 404 })
+
   await saveEmpresaModuleOverride({ empresaId, module: body.module, enabled })
 
-  return NextResponse.json({ ok: true })
+  const effectivePlanTier = resolveEffectivePlanTier(empresa, new Date())
+  const [baseModules, overrides] = await Promise.all([
+    getEnabledModulesForPlan(effectivePlanTier),
+    getModuleOverridesForEmpresa(empresaId),
+  ])
+
+  const rows = buildModuleOverrideRows({
+    effectivePlanTier,
+    baseModules,
+    overrides,
+  })
+  const row = rows.find((candidate) => candidate.module === body.module)
+
+  if (!row) {
+    return NextResponse.json({ ok: false, error: 'No se pudo validar el estado final del módulo' }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, effectivePlanTier, row })
 }
