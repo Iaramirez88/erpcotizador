@@ -375,6 +375,12 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
       role: true,
       sedeDefaultId: true,
       sedeDefault: { select: { id: true, nombre: true, codigo: true } },
+      sedeMemberships: {
+        where: { sede: { empresaId } },
+        select: {
+          sede: { select: { id: true, nombre: true, codigo: true } },
+        },
+      },
       createdAt: true,
       lastLoginAt: true,
     },
@@ -546,7 +552,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
               </div>
 
               <p className="text-sm text-muted-foreground">
-                La lista prioriza primero a quienes todavía no tienen acceso en la sede activa. Usa el buscador para encontrar un usuario por nombre o correo y luego asignar o ajustar su acceso sin cambiar de pantalla.
+                La tabla separa tres conceptos: sede por defecto del perfil, membresía real en la sede activa y permiso general a nivel empresa. Un permiso general no convierte por sí solo al usuario en miembro de la sede activa.
               </p>
             </CardContent>
           </Card>
@@ -637,8 +643,8 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                   <th className="py-2 text-left">{t('rbac.users.table.user')}</th>
                   <th className="py-2 text-left">{t('rbac.users.table.email')}</th>
                   <th className="py-2 text-left">{t('rbac.users.table.role')}</th>
-                  <th className="py-2 text-left">Sede</th>
-                  <th className="py-2 text-left">{activeSede ? `Acceso en ${activeSede.nombre}` : 'Acceso en sede'}</th>
+                  <th className="py-2 text-left">Sede por defecto</th>
+                  <th className="py-2 text-left">{activeSede ? `Membresía en ${activeSede.nombre}` : 'Membresía en sede'}</th>
                   <th className="py-2 text-left">{t('rbac.users.table.created')}</th>
                   <th className="py-2 text-left">{t('rbac.users.table.lastLogin')}</th>
                   <th className="py-2 text-right">Acciones</th>
@@ -677,28 +683,37 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                     </td>
                     <td className="py-2">
                       {activeSede ? (
-                        membershipByUserId[u.id] ? (
-                          <div className="space-y-2">
-                            <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${rolePillClass(membershipByUserId[u.id])}`}>
-                              {t(`rbac.sedeRole.${membershipByUserId[u.id]}`)}
-                            </span>
-                            <div className="flex flex-wrap gap-2 text-xs">
-                              <span className={`inline-flex rounded-full border px-2.5 py-1 ${globalAccessPillClass(globalAccessByUserId[u.id] ?? 'NONE')}`}>
-                                General: {t(`rbac.access.${globalAccessByUserId[u.id] ?? 'NONE'}`)}
+                        <div className="space-y-2">
+                          {membershipByUserId[u.id] ? (
+                            <div className="space-y-1">
+                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${rolePillClass(membershipByUserId[u.id])}`}>
+                                Miembro de sede: {t(`rbac.sedeRole.${membershipByUserId[u.id]}`)}
                               </span>
-                              {permissionProfileByUserId[u.id] ? (
-                                <span className="inline-flex rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-fuchsia-800">
-                                  Regla: {permissionProfileByUserId[u.id].name}
-                                </span>
-                              ) : null}
+                              <div className="text-xs text-muted-foreground">Asignación directa dentro de {activeSede.nombre}.</div>
                             </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="font-medium text-amber-700">Sin membresía en sede</div>
+                              <div className="text-xs text-muted-foreground">Todavía no pertenece a {activeSede.nombre} aunque tenga permisos generales.</div>
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            <span className={`inline-flex rounded-full border px-2.5 py-1 ${globalAccessPillClass(globalAccessByUserId[u.id] ?? 'NONE')}`}>
+                              Permiso empresa: {t(`rbac.access.${globalAccessByUserId[u.id] ?? 'NONE'}`)}
+                            </span>
+                            {permissionProfileByUserId[u.id] ? (
+                              <span className="inline-flex rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-fuchsia-800">
+                                Regla de sede: {permissionProfileByUserId[u.id].name}
+                              </span>
+                            ) : null}
+                            {u.sedeDefaultId && !membershipByUserId[u.id] && u.sedeDefaultId === activeSede.id ? (
+                              <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800">
+                                Sede por defecto sin membresía
+                              </span>
+                            ) : null}
                           </div>
-                        ) : (
-                          <div className="space-y-1">
-                            <div className="font-medium text-amber-700">Sin acceso</div>
-                            <div className="text-xs text-muted-foreground">Todavía no pertenece a {activeSede.nombre}</div>
-                          </div>
-                        )
+                        </div>
                       ) : (
                         <span className="text-muted-foreground">{naText}</span>
                       )}
@@ -727,7 +742,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                             }
                           />
                           <MemberActionsMenu
-                            sedes={sedes}
+                            sedes={u.sedeMemberships.map((membership) => membership.sede)}
                             user={{ id: u.id, name: u.name, email: u.email }}
                             userDefaultSedeId={u.sedeDefaultId}
                             initialGlobalAccess={globalAccessByUserId[u.id] ?? 'NONE'}

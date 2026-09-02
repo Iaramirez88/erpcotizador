@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
-import { SedeRole } from '@prisma/client'
 
 export const runtime = 'nodejs'
 
@@ -46,7 +45,7 @@ export async function PATCH(request: Request) {
 
   const targetUser = await prisma.user.findUnique({
     where: { id: targetUserId },
-    select: { id: true, email: true, name: true, empresaId: true, globalAccess: { select: { level: true } } },
+    select: { id: true, email: true, name: true, empresaId: true },
   })
   if (!targetUser?.id) {
     return NextResponse.json({ success: false, error: 'Usuario no encontrado' }, { status: 404 })
@@ -76,23 +75,19 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: 'Sede inválida' }, { status: 400 })
   }
 
-  const globalLevel = targetUser.globalAccess?.level ?? 'NONE'
-  const roleFromGlobal: SedeRole =
-    globalLevel === 'ADMIN'
-      ? 'ADMIN'
-      : globalLevel === 'WRITE'
-        ? 'MEMBER'
-        : globalLevel === 'READ'
-          ? 'READER'
-          : 'READER'
+  const membership = await prisma.sedeMembership.findUnique({
+    where: { sedeId_userId: { sedeId: sede.id, userId: targetUser.id } },
+    select: { id: true },
+  })
+
+  if (!membership?.id) {
+    return NextResponse.json(
+      { success: false, error: 'La sede por defecto solo puede definirse sobre una sede ya asignada al usuario.' },
+      { status: 400 }
+    )
+  }
 
   await prisma.$transaction(async (tx) => {
-    await tx.sedeMembership.upsert({
-      where: { sedeId_userId: { sedeId: sede.id, userId: targetUser.id } },
-      create: { sedeId: sede.id, userId: targetUser.id, role: roleFromGlobal },
-      update: {},
-    })
-
     await tx.user.update({ where: { id: targetUser.id }, data: { sedeDefaultId: sede.id } })
 
     await tx.notification.create({

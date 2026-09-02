@@ -131,8 +131,6 @@ export async function PATCH(req: NextRequest) {
       emailVerified: true,
       empresaId: true,
       empresa: { select: { nombre: true } },
-      sedeDefaultId: true,
-      globalAccess: { select: { level: true } },
     },
   })
   if (!currentUser?.id) {
@@ -174,45 +172,12 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Cargo demasiado largo.' }, { status: 400 })
   }
 
-  const sedeDefaultIdRaw = typeof body.sedeDefaultId === 'string' ? body.sedeDefaultId.trim() : undefined
-  const sedeDefaultId = sedeDefaultIdRaw === undefined ? undefined : (sedeDefaultIdRaw || null)
-
-  let selectedSedeBelongsToEmpresa = false
-
-  if (sedeDefaultId !== undefined && sedeDefaultId !== null) {
-    const sede = await prisma.sede.findUnique({
-      where: { id: sedeDefaultId },
-      select: { id: true, empresaId: true },
-    })
-    if (!sede?.id || sede.empresaId !== currentUser.empresaId) {
-      return NextResponse.json({ success: false, error: 'La sede seleccionada no es válida para tu empresa.' }, { status: 400 })
-    }
-    selectedSedeBelongsToEmpresa = true
-
-    const membership = await prisma.sedeMembership.findUnique({
-      where: { sedeId_userId: { sedeId: sedeDefaultId, userId } },
-      select: { id: true },
-    })
-    const isCurrentBrokenDefault = currentUser.sedeDefaultId === sedeDefaultId
-    if (!membership?.id && !isCurrentBrokenDefault) {
-      return NextResponse.json({ success: false, error: 'La sede seleccionada no está asignada a tu usuario.' }, { status: 400 })
-    }
-  }
-
   const emailChanged = typeof email === 'string' && email !== currentUser.email
   const verificationCode = emailChanged ? randomDigits(6) : null
   const verificationCodeHash = verificationCode ? sha256Hex(verificationCode) : null
   const verificationExpiresAt = verificationCode ? new Date(Date.now() + 10 * 60 * 1000) : null
 
   const updated = await prisma.$transaction(async (tx) => {
-    if (selectedSedeBelongsToEmpresa && sedeDefaultId && currentUser.sedeDefaultId === sedeDefaultId) {
-      await tx.sedeMembership.upsert({
-        where: { sedeId_userId: { sedeId: sedeDefaultId, userId } },
-        create: { sedeId: sedeDefaultId, userId, role: currentUser.globalAccess?.level === 'ADMIN' ? 'ADMIN' : currentUser.globalAccess?.level === 'WRITE' ? 'MEMBER' : 'READER' },
-        update: {},
-      })
-    }
-
     if (emailChanged) {
       await tx.emailVerificationCode.deleteMany({ where: { userId } })
       await tx.emailVerificationCode.create({
@@ -233,7 +198,6 @@ export async function PATCH(req: NextRequest) {
         emailVerified: emailChanged ? null : undefined,
         telefono: telefono === undefined ? undefined : (telefono === '' ? null : telefono),
         cargo: cargo === undefined ? undefined : (cargo === '' ? null : cargo),
-        sedeDefaultId,
       },
       select: {
         id: true,

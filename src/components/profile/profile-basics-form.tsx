@@ -13,8 +13,8 @@ type Props = {
   initialEmail?: string | null
   initialTelefono?: string | null
   initialCargo?: string | null
-  initialSedeDefaultId?: string | null
-  sedes?: Array<{ id: string; nombre: string; codigo?: string | null }>
+  initialSedeDefault?: { id: string; nombre: string; codigo?: string | null } | null
+  hasSedeDefaultAccess?: boolean
   requestableSedes?: Array<{ id: string; nombre: string; codigo?: string | null }>
 }
 
@@ -26,20 +26,23 @@ type SaveProfileResponse = {
   emailDeliveryWarning?: string | null
 }
 
-export function ProfileBasicsForm({ initialName, initialEmail, initialTelefono, initialCargo, initialSedeDefaultId, sedes, requestableSedes }: Props) {
+export function ProfileBasicsForm({ initialName, initialEmail, initialTelefono, initialCargo, initialSedeDefault, hasSedeDefaultAccess = false, requestableSedes }: Props) {
   const { t } = useI18n()
   const router = useRouter()
   const [name, setName] = useState(initialName ?? '')
   const [email, setEmail] = useState(initialEmail ?? '')
   const [telefono, setTelefono] = useState(initialTelefono ?? '')
   const [cargo, setCargo] = useState(initialCargo ?? '')
-  const [sedeDefaultId, setSedeDefaultId] = useState(initialSedeDefaultId ?? '')
   const [saving, setSaving] = useState(false)
   const [requestingSede, setRequestingSede] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [sedeRequestStatus, setSedeRequestStatus] = useState<string | null>(null)
   const [requestedSedeId, setRequestedSedeId] = useState('')
   const [sedeRequestReason, setSedeRequestReason] = useState('')
+
+  const defaultSedeLabel = initialSedeDefault
+    ? `${initialSedeDefault.nombre}${initialSedeDefault.codigo ? ` (${initialSedeDefault.codigo})` : ''}`
+    : 'Sin sede por defecto configurada'
 
   async function save() {
     setSaving(true)
@@ -48,7 +51,7 @@ export function ProfileBasicsForm({ initialName, initialEmail, initialTelefono, 
       const res = await fetch('/api/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, telefono, cargo, sedeDefaultId }),
+        body: JSON.stringify({ name, email, telefono, cargo }),
       })
       const json = (await res.json().catch(() => null)) as SaveProfileResponse | null
       if (!res.ok || !json?.success) {
@@ -130,21 +133,15 @@ export function ProfileBasicsForm({ initialName, initialEmail, initialTelefono, 
 
       <div className="space-y-2">
         <Label>{t('profile.basics.sedeDefaultLabel')}</Label>
-        <select
-          className="px-3 py-2 border rounded-md w-full"
-          value={sedeDefaultId}
-          onChange={(e) => setSedeDefaultId(e.target.value)}
-        >
-          <option value="">{t('profile.basics.sedeDefaultPlaceholder')}</option>
-          {(sedes ?? []).map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.nombre}{s.codigo ? ` (${s.codigo})` : ''}
-            </option>
-          ))}
-        </select>
+        <div className="rounded-md border bg-slate-50 px-3 py-2 text-sm text-slate-700">{defaultSedeLabel}</div>
         <p className="text-xs text-muted-foreground">
-          Siempre verás aquí tus sedes ya asignadas. Si falta una sede que ya te habían dado, al guardar el perfil se regulariza la relación sin perder tu sede actual.
+          La sede por defecto la ajusta un administrador cuando aprueba el cambio o la asignación correspondiente.
         </p>
+        {initialSedeDefault && !hasSedeDefaultAccess ? (
+          <p className="text-xs text-amber-700">
+            La sede guardada en tu perfil no coincide con tus asignaciones activas. Solicita el ajuste al administrador.
+          </p>
+        ) : null}
       </div>
 
       <div className="flex items-center gap-2">

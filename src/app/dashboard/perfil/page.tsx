@@ -93,15 +93,9 @@ export default async function PerfilPage() {
       })
     : []
 
-  const assignedSedes = Array.from(
-    new Map(
-      [...user.sedeMemberships.map((membership) => membership.sede), ...(user.sedeDefault ? [user.sedeDefault] : [])]
-        .filter((sede): sede is { id: string; nombre: string; codigo: string | null } => Boolean(sede?.id))
-        .map((sede) => [sede.id, sede])
-    ).values()
-  )
-
-  const requestableSedes = companySedes.filter((sede) => !assignedSedes.some((assigned) => assigned.id === sede.id))
+  const assignedSedes = user.sedeMemberships.map((membership) => membership.sede)
+  const assignedSedeIds = new Set(user.sedeMemberships.map((membership) => membership.sede.id))
+  const requestableSedes = companySedes.filter((sede) => !assignedSedeIds.has(sede.id))
   const assignedSedeRoleById = new Map(user.sedeMemberships.map((membership) => [membership.sede.id, membership.role]))
 
   const [recentPasswordResets, recentEmailVerifications] = await Promise.all([
@@ -189,8 +183,8 @@ export default async function PerfilPage() {
                     initialEmail={user.email}
                     initialTelefono={user.telefono}
                     initialCargo={user.cargo}
-                    initialSedeDefaultId={user.sedeDefaultId}
-                    sedes={assignedSedes}
+                    initialSedeDefault={user.sedeDefault}
+                    hasSedeDefaultAccess={user.sedeDefault ? assignedSedeIds.has(user.sedeDefault.id) : false}
                     requestableSedes={requestableSedes}
                   />
                 </CardContent>

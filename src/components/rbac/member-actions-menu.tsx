@@ -187,6 +187,9 @@ export function MemberActionsMenu({
                 </option>
               ))}
             </select>
+            <div className="text-xs text-slate-600">
+              Solo aparecen sedes ya asignadas al usuario. La sede por defecto organiza su perfil, pero no crea acceso nuevo.
+            </div>
             {defaultSedeError ? <div className="text-sm text-red-600">{defaultSedeError}</div> : null}
           </div>
 

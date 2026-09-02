@@ -439,18 +439,18 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
         <div className="max-h-[78vh] space-y-5 overflow-y-auto pr-1">
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Estado en sede</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Membresía en sede</div>
               <div className="mt-2 text-base font-semibold text-slate-900">
                 {hasSedeAccess ? getRoleLabel(sedeRole) : 'Sin acceso en esta sede'}
               </div>
               <div className="mt-1 text-xs text-slate-600">
-                {hasSedeAccess ? `Acceso activo en ${sedeNombre}.` : `Todavía no pertenece a ${sedeNombre}.`}
+                {hasSedeAccess ? `Asignación directa activa en ${sedeNombre}.` : `Todavía no pertenece a ${sedeNombre}.`}
               </div>
             </div>
             <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
               <div className="text-xs font-semibold uppercase tracking-[0.12em] text-sky-700">Permiso general</div>
               <div className="mt-2 text-base font-semibold text-sky-950">{getAccessLabel(globalLevel)}</div>
-              <div className="mt-1 text-xs text-sky-800">Aplica como base a nivel empresa.</div>
+              <div className="mt-1 text-xs text-sky-800">Aplica como base a nivel empresa y no reemplaza la membresía de esta sede.</div>
             </div>
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
               <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">Cobertura</div>
@@ -461,8 +461,8 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
 
           {!hasSedeAccess ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-              <div className="font-semibold">Acceso pendiente en la sede</div>
-              <div className="mt-1">Asigna un rol en esta sede para activar el resto de permisos y dejar este usuario con el mismo esquema editable que una regla.</div>
+              <div className="font-semibold">Sin membresía en la sede</div>
+              <div className="mt-1">Aunque este usuario tenga permiso general de empresa, primero debes asignarle un rol en esta sede para convertirlo en miembro y habilitar permisos específicos aquí.</div>
             </div>
           ) : null}
 
