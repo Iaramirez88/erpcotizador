@@ -31,6 +31,10 @@ function getVerticalActions(vertical: VerticalKey): RbacV2CapabilityAction[] {
   return RBAC_V2_CAPABILITY_CATALOG.find((item) => item.domain === 'VERTICALES' && item.subdomain === vertical)?.actions ?? ['READ']
 }
 
+function isVerticalEnabled(actions: RbacV2CapabilityAction[], entitlementByAction: Map<string, boolean>) {
+  return actions.length > 0 && actions.every((action) => entitlementByAction.get(action) === true)
+}
+
 async function resolveVerticalRow(empresaId: string, vertical: VerticalKey) {
   const actions = getVerticalActions(vertical)
   const rows = await prisma.capabilityEntitlement.findMany({
@@ -47,7 +51,7 @@ async function resolveVerticalRow(empresaId: string, vertical: VerticalKey) {
 
   return {
     vertical,
-    enabled: actions.every((action) => entitlementByAction.get(action) !== false),
+    enabled: isVerticalEnabled(actions, entitlementByAction),
   }
 }
 
@@ -147,7 +151,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
       return {
         vertical,
-        enabled: actions.every((action) => entitlementByAction.get(action) !== false),
+        enabled: isVerticalEnabled(actions, entitlementByAction),
       }
     }),
   })

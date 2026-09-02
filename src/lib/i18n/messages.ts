@@ -175,7 +175,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'superAdmin.companies.fields.clearTrialHelp': 'Limpia los 7 días de prueba para que solo quede el acceso que asignes manualmente.',
     'superAdmin.companies.fields.initialPlan': 'Plan inicial',
     'superAdmin.companies.fields.moduleOverridesHelp': 'La base sale del plan vigente de la empresa y luego puedes prender o apagar módulos puntuales con override.',
-    'superAdmin.companies.fields.verticalOverridesHelp': 'Activa o apaga verticales para la empresa. El acceso final sigue controlado por permisos de usuario.',
+    'superAdmin.companies.fields.verticalOverridesHelp': 'Activa o apaga verticales para la empresa. Si queda en ON, se sincroniza para los usuarios de esa empresa y para los nuevos que ingresen después.',
 
     'superAdmin.companies.placeholders.ownerEmail': 'owner@empresa.com',
     'superAdmin.companies.placeholders.selectPlan': 'Selecciona plan',
@@ -2333,7 +2333,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'superAdmin.companies.fields.clearTrialHelp': 'Clears the 7-day trial so only the manually assigned access remains.',
     'superAdmin.companies.fields.initialPlan': 'Initial plan',
     'superAdmin.companies.fields.moduleOverridesHelp': 'The base comes from the company current plan, then you can force individual modules on or off with overrides.',
-    'superAdmin.companies.fields.verticalOverridesHelp': 'Turn company verticals on or off here. Final access is still controlled by user permissions.',
+    'superAdmin.companies.fields.verticalOverridesHelp': 'Turn company verticals on or off here. When a vertical is ON, it is synchronized for the company users and for new users who join later.',
 
     'superAdmin.companies.placeholders.ownerEmail': 'owner@company.com',
     'superAdmin.companies.placeholders.selectPlan': 'Select plan',
