@@ -8,6 +8,13 @@ import { CardInfoHeader } from '@/components/ui/card-info-header'
 import { Input } from '@/components/ui/input'
 import { InfoHint } from '@/components/ui/info-hint'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
@@ -36,6 +43,17 @@ type OnboardingConfig = {
   } | null
 }
 
+type OnboardingStatusResponse = {
+  ok?: boolean
+  status?: string
+  locked?: boolean
+  completedAt?: string | null
+  businessType?: string | null
+  dashboard?: OnboardingConfig['dashboard']
+  availableBusinessTypes?: string[]
+  error?: string
+}
+
 export default function ConfigEmpresaPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -55,8 +73,29 @@ export default function ConfigEmpresaPage() {
   const [savingTaskPolicy, setSavingTaskPolicy] = useState(false)
   const [taskPolicyError, setTaskPolicyError] = useState<string | null>(null)
   const [taskPolicyStatus, setTaskPolicyStatus] = useState<string | null>(null)
+  const [availableBusinessTypes, setAvailableBusinessTypes] = useState<string[]>([])
+  const [presetBusinessType, setPresetBusinessType] = useState<string>('')
+  const [savingPreset, setSavingPreset] = useState(false)
+  const [presetError, setPresetError] = useState<string | null>(null)
+  const [presetStatus, setPresetStatus] = useState<string | null>(null)
 
   const logoPreview = useMemo(() => (logo ?? config?.logo ?? null), [logo, config?.logo])
+
+  async function loadOnboardingConfig(cancelled = false) {
+    const res = await fetch('/api/onboarding/empresa', { cache: 'no-store' })
+    const json = (await res.json().catch(() => null)) as OnboardingStatusResponse | null
+    if (cancelled || !res.ok || !json?.ok) return
+
+    setOnboarding({
+      status: json.status ?? 'COMPLETED',
+      locked: Boolean(json.locked),
+      completedAt: json.completedAt ?? null,
+      businessType: json.businessType ?? null,
+      dashboard: json.dashboard ?? null,
+    })
+    setAvailableBusinessTypes(Array.isArray(json.availableBusinessTypes) ? json.availableBusinessTypes : [])
+    setPresetBusinessType(json.businessType ?? '')
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -81,24 +120,7 @@ export default function ConfigEmpresaPage() {
         if (!cancelled) setError('No se pudo cargar la configuración.')
       }
       try {
-        const res = await fetch('/api/onboarding/empresa', { cache: 'no-store' })
-        const json = (await res.json().catch(() => null)) as {
-          ok?: boolean
-          status?: string
-          locked?: boolean
-          completedAt?: string | null
-          businessType?: string | null
-          dashboard?: OnboardingConfig['dashboard']
-        } | null
-        if (!cancelled && res.ok && json?.ok) {
-          setOnboarding({
-            status: json.status ?? 'COMPLETED',
-            locked: Boolean(json.locked),
-            completedAt: json.completedAt ?? null,
-            businessType: json.businessType ?? null,
-            dashboard: json.dashboard ?? null,
-          })
-        }
+        await loadOnboardingConfig(cancelled)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -108,6 +130,70 @@ export default function ConfigEmpresaPage() {
       cancelled = true
     }
   }, [])
+
+  async function saveCompanyPreset() {
+    if (!config) return
+    if (!presetBusinessType) {
+      setPresetError('Selecciona un tipo de negocio antes de guardar el preset.')
+      return
+    }
+
+    setSavingPreset(true)
+    setPresetError(null)
+    setPresetStatus(null)
+
+    try {
+      const res = await fetch('/api/configuracion/empresa', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ companyPresetBusinessType: presetBusinessType }),
+      })
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; data?: EmpresaConfig; error?: string } | null
+      if (!res.ok || !json?.ok || !json.data) {
+        setPresetError(json?.error ?? 'No se pudo actualizar la configuración inicial.')
+        return
+      }
+
+      const nextConfig = json.data
+      setConfig((current) => (current ? { ...current, ...nextConfig } : nextConfig))
+      await loadOnboardingConfig()
+      setPresetStatus('La configuración inicial quedó actualizada y ahora sí controla el espacio con el nuevo preset.')
+    } catch {
+      setPresetError('No se pudo actualizar la configuración inicial.')
+    } finally {
+      setSavingPreset(false)
+    }
+  }
+
+  async function clearCompanyPreset() {
+    if (!config) return
+
+    setSavingPreset(true)
+    setPresetError(null)
+    setPresetStatus(null)
+
+    try {
+      const res = await fetch('/api/configuracion/empresa', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clearCompanyPreset: true }),
+      })
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; data?: EmpresaConfig; error?: string } | null
+      if (!res.ok || !json?.ok || !json.data) {
+        setPresetError(json?.error ?? 'No se pudo quitar la configuración inicial.')
+        return
+      }
+
+      const nextConfig = json.data
+      setConfig((current) => (current ? { ...current, ...nextConfig } : nextConfig))
+      await loadOnboardingConfig()
+      setPresetStatus('La configuración inicial quedó eliminada. Desde ahora puedes gobernar el espacio con permisos y módulos sin ese recorte base.')
+    } catch {
+      setPresetError('No se pudo quitar la configuración inicial.')
+    } finally {
+      setSavingPreset(false)
+    }
+  }
 
   async function saveBranding() {
     if (!config) return
@@ -434,15 +520,42 @@ export default function ConfigEmpresaPage() {
                 </div>
               </div>
 
-              {onboarding.locked ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  La configuración inicial ya quedó fijada y no se puede cambiar desde esta pantalla. Si necesitas mover el espacio a otro nicho o ajustar módulos base, solicítalo por soporte en ivanimage@hotmail.com o WhatsApp 3115385427.
+              <div className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Label>Editar configuración inicial</Label>
+                    <InfoHint content="Si cambias este preset, se recalcula el frente base del negocio y puede encender o apagar módulos/verticales iniciales para toda la empresa." label="Ver ayuda de la configuración inicial" />
+                  </div>
+                  <Select value={presetBusinessType} onValueChange={setPresetBusinessType} disabled={savingPreset || loading || !availableBusinessTypes.length}>
+                    <SelectTrigger className="bg-white">
+                      <SelectValue placeholder="Selecciona un tipo de negocio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableBusinessTypes.map((businessType) => (
+                        <SelectItem key={businessType} value={businessType}>
+                          {getBusinessTypeLabel(businessType as Parameters<typeof getBusinessTypeLabel>[0])}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {presetError ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{presetError}</div> : null}
+                  {presetStatus ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{presetStatus}</div> : null}
                 </div>
-              ) : (
-                <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                  Mientras no se cierre la configuración inicial, aquí podrás completar el preset para dejar visibles solo los módulos que sí aplican a tu negocio.
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" disabled={savingPreset || loading || !presetBusinessType} onClick={() => void saveCompanyPreset()}>
+                    {savingPreset ? 'Aplicando…' : 'Aplicar preset'}
+                  </Button>
+                  <Button type="button" variant="destructive" disabled={savingPreset || loading || !onboarding?.businessType} onClick={() => void clearCompanyPreset()}>
+                    {savingPreset ? 'Quitando…' : 'Eliminar preset'}
+                  </Button>
                 </div>
-              )}
+              </div>
+
+              <div className={onboarding.businessType ? 'rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900' : 'rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900'}>
+                {onboarding.businessType
+                  ? 'Este preset sí puede seguir recortando módulos y rutas aunque ya hayas prendido permisos manuales. Si el espacio quedó mal clasificado, cámbialo o elimínalo aquí.'
+                  : 'Actualmente no hay un preset inicial forzando el espacio. Desde este punto el acceso queda gobernado por módulos, verticales y permisos.'}
+              </div>
 
               {onboarding.dashboard?.checklist?.length ? (
                 <div className="space-y-2">
@@ -458,14 +571,9 @@ export default function ConfigEmpresaPage() {
           ) : null}
         </CardContent>
         <CardFooter>
-          {onboarding?.locked ? (
-            <div className="flex flex-wrap gap-2">
-              <Button asChild type="button" variant="outline">
-                <a href="mailto:ivanimage@hotmail.com?subject=Solicitud%20de%20cambio%20de%20nicho">Solicitar por correo</a>
-              </Button>
-              <Button asChild type="button">
-                <a href="https://wa.me/573115385427" target="_blank" rel="noreferrer">Solicitar por WhatsApp</a>
-              </Button>
+          {onboarding?.businessType ? (
+            <div className="text-sm text-slate-600">
+              El cambio del preset se aplica desde esta pantalla y reescribe la base de módulos y accesos iniciales del espacio.
             </div>
           ) : (
             <Button asChild type="button" variant="outline">

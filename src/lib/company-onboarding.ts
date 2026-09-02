@@ -89,6 +89,8 @@ export type CompanyPreset = {
   dashboard: DashboardConfig
 }
 
+const COMPANY_PRESET_DASHBOARD_KEYS = ['headline', 'description', 'prioritizedHrefs', 'allowedHrefs', 'checklist'] as const
+
 const DEFAULT_MODULES: ModuleKey[] = ['DASHBOARD', 'CONFIG', 'NOTIFICACIONES', 'REPORTES']
 
 const MODULE_DEFAULT_HREF: Partial<Record<ModuleKey, string>> = {
@@ -466,6 +468,29 @@ export function parseDashboardConfig(value: unknown): DashboardConfig | null {
     allowedHrefs,
     checklist,
   }
+}
+
+export function mergeCompanyPresetDashboardConfig(currentConfig: unknown, dashboard: DashboardConfig) {
+  const base = isRecord(currentConfig) ? currentConfig : {}
+  return {
+    ...base,
+    headline: dashboard.headline,
+    description: dashboard.description,
+    prioritizedHrefs: [...dashboard.prioritizedHrefs],
+    allowedHrefs: [...dashboard.allowedHrefs],
+    checklist: [...dashboard.checklist],
+  }
+}
+
+export function clearCompanyPresetDashboardConfig(currentConfig: unknown) {
+  if (!isRecord(currentConfig)) return {}
+
+  const next: Record<string, unknown> = { ...currentConfig }
+  for (const key of COMPANY_PRESET_DASHBOARD_KEYS) {
+    delete next[key]
+  }
+
+  return next
 }
 
 export function resolveDashboardConfig(args: {

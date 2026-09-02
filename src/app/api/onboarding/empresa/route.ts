@@ -10,12 +10,12 @@ import {
   resolveDashboardConfig,
 } from '@/lib/company-onboarding'
 import { isCompanyIntelligenceEnabled, removeIntelligenceHrefFromDashboardConfig } from '@/lib/company-intelligence'
-import { ALL_MODULE_KEYS, saveEmpresaModuleOverride } from '@/lib/plan-modules'
 import { ensureBusinessTypeSeedsForEmpresa } from '@/lib/business-type-seeds'
 import { getActiveSedeForUser } from '@/lib/rbac'
 import { buildAllowedDashboardHrefsForUser } from '@/lib/dashboard-access'
 import { getVisibleOnboardingBusinessTypes } from '@/lib/onboarding-business-type-settings'
 import { EXTERNAL_DASHBOARD_SCOPE_COOKIE, intersectDashboardHrefsWithExternalScope } from '@/lib/external-dashboard-scope'
+import { syncCompanyPresetAccess } from '@/lib/company-preset-sync'
 
 export const runtime = 'nodejs'
 
@@ -152,16 +152,12 @@ export async function POST(request: Request) {
       select: { id: true },
     })
 
-    const selectedModules = new Set(preset.modules)
-    await Promise.all(
-      ALL_MODULE_KEYS.map((moduleKey) =>
-        saveEmpresaModuleOverride({
-          empresaId: context.empresa.id,
-          module: moduleKey,
-          enabled: selectedModules.has(moduleKey),
-        })
-      )
-    )
+    await syncCompanyPresetAccess({
+      empresaId: context.empresa.id,
+      businessType: onboarding.businessType,
+      modules: preset.modules,
+      grantedByUserId: context.userId,
+    })
 
     return NextResponse.json({
       ok: true,

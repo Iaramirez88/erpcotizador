@@ -5,6 +5,15 @@ import { requireCapabilityAccess } from '@/lib/api-rbac'
 import bcrypt from 'bcryptjs'
 import { mergeCompanyIntelligenceSettings, parseCompanyIntelligenceSettings } from '@/lib/company-intelligence'
 import { mergeCompanyTaskSettings, parseCompanyTaskSettings } from '@/lib/company-task-settings'
+import {
+  buildCompanyPreset,
+  clearCompanyPresetDashboardConfig,
+  isBusinessType,
+  mergeCompanyPresetDashboardConfig,
+  parseCompanyOnboardingData,
+} from '@/lib/company-onboarding'
+import { ensureBusinessTypeSeedsForEmpresa } from '@/lib/business-type-seeds'
+import { syncCompanyPresetAccess } from '@/lib/company-preset-sync'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
 
 export const runtime = 'nodejs'
@@ -84,7 +93,7 @@ export async function PUT(request: NextRequest) {
 
   const currentEmpresa = await prisma.empresa.findUnique({
     where: { id: empresaId },
-    select: { dashboardConfig: true },
+    select: { dashboardConfig: true, businessType: true, onboardingData: true, onboardingCompletedAt: true },
   })
 
   const nombreRaw = asString(body.nombre).trim()
@@ -94,6 +103,13 @@ export async function PUT(request: NextRequest) {
   const taskCancellationReasonRequired = typeof body.taskCancellationReasonRequired === 'boolean'
     ? body.taskCancellationReasonRequired
     : null
+  const clearCompanyPreset = body.clearCompanyPreset === true
+  const companyPresetBusinessTypeRaw = typeof body.companyPresetBusinessType === 'string'
+    ? body.companyPresetBusinessType.trim()
+    : ''
+  const nextBusinessType = companyPresetBusinessTypeRaw && isBusinessType(companyPresetBusinessTypeRaw)
+    ? companyPresetBusinessTypeRaw
+    : null
 
   const updateData: {
     nombre?: string
@@ -101,6 +117,10 @@ export async function PUT(request: NextRequest) {
     registrationCodeHash?: string | null
     nit?: string
     dashboardConfig?: Prisma.InputJsonValue
+    businessType?: string | null
+    onboardingStatus?: string
+    onboardingCompletedAt?: Date | null
+    onboardingData?: Prisma.InputJsonValue
   } = {}
 
   if (nombreRaw) updateData.nombre = nombreRaw
@@ -133,11 +153,52 @@ export async function PUT(request: NextRequest) {
     }) as Prisma.InputJsonValue
   }
 
+  let presetModules: string[] | null = null
+
+  if (clearCompanyPreset) {
+    updateData.businessType = null
+    updateData.onboardingStatus = 'COMPLETED'
+    updateData.onboardingCompletedAt = null
+    updateData.onboardingData = {} as Prisma.InputJsonValue
+    updateData.dashboardConfig = clearCompanyPresetDashboardConfig(updateData.dashboardConfig ?? currentEmpresa?.dashboardConfig) as Prisma.InputJsonValue
+  } else if (companyPresetBusinessTypeRaw) {
+    if (!nextBusinessType) {
+      return NextResponse.json({ ok: false, error: 'Tipo de negocio inválido' }, { status: 400 })
+    }
+
+    const onboardingData = {
+      ...parseCompanyOnboardingData(currentEmpresa?.onboardingData),
+      businessType: nextBusinessType,
+    }
+    const preset = buildCompanyPreset(onboardingData)
+    presetModules = preset.modules
+
+    await ensureBusinessTypeSeedsForEmpresa({ empresaId, businessType: nextBusinessType })
+
+    updateData.businessType = nextBusinessType
+    updateData.onboardingStatus = 'COMPLETED'
+    updateData.onboardingCompletedAt = currentEmpresa?.onboardingCompletedAt ?? new Date()
+    updateData.onboardingData = onboardingData as Prisma.InputJsonValue
+    updateData.dashboardConfig = mergeCompanyPresetDashboardConfig(
+      updateData.dashboardConfig ?? currentEmpresa?.dashboardConfig,
+      preset.dashboard
+    ) as Prisma.InputJsonValue
+  }
+
   const empresa = await prisma.empresa.update({
     where: { id: empresaId },
     data: updateData,
     select: { id: true, nombre: true, nit: true, logo: true, dashboardConfig: true, registrationCodeHash: true },
   })
+
+  if (presetModules) {
+    await syncCompanyPresetAccess({
+      empresaId: empresa.id,
+      businessType: nextBusinessType,
+      modules: presetModules as never,
+      grantedByUserId: access.userId,
+    })
+  }
 
   return NextResponse.json({
     ok: true,
