@@ -235,6 +235,62 @@ function formatRole(role: WorkspaceRole | null | undefined) {
   return 'Sin rol'
 }
 
+function getUniqueIds(ids: string[]) {
+  return Array.from(new Set(ids.map((value) => value.trim()).filter(Boolean)))
+}
+
+function getWorkspaceShareUserIds(args: {
+  ownerUserId?: string | null
+  memberUserIds: string[]
+  currentUserId?: string | null
+}) {
+  const sharedIds = getUniqueIds([args.ownerUserId || '', ...args.memberUserIds])
+  return sharedIds.filter((userId) => userId !== args.currentUserId)
+}
+
+function getTaskShareUserIds(args: { assigneeUserIds: string[]; currentUserId?: string | null }) {
+  return getUniqueIds(args.assigneeUserIds).filter((userId) => userId !== args.currentUserId)
+}
+
+function areStringSetsEqual(left: string[], right: string[]) {
+  const normalizedLeft = getUniqueIds(left)
+  const normalizedRight = getUniqueIds(right)
+  if (normalizedLeft.length !== normalizedRight.length) return false
+  const rightSet = new Set(normalizedRight)
+  return normalizedLeft.every((value) => rightSet.has(value))
+}
+
+function formatUserListFromIds(userIds: string[], users: TeamUser[]) {
+  return getUniqueIds(userIds)
+    .map((userId) => {
+      const user = users.find((candidate) => candidate.id === userId)
+      return user ? getUserLabel(user) : 'Usuario sin nombre'
+    })
+    .join(', ')
+}
+
+function buildWorkspaceShareConfirmationMessage(args: {
+  workspaceName: string
+  users: TeamUser[]
+  sharedUserIds: string[]
+  isEditing: boolean
+}) {
+  if (!args.sharedUserIds.length) return null
+  const verb = args.isEditing ? 'actualizar' : 'crear'
+  return `Vas a ${verb} el proyecto "${args.workspaceName}" y quedará compartido con: ${formatUserListFromIds(args.sharedUserIds, args.users)}. ¿Deseas continuar?`
+}
+
+function buildTaskShareConfirmationMessage(args: {
+  taskTitle: string
+  users: TeamUser[]
+  sharedUserIds: string[]
+  isEditing: boolean
+}) {
+  if (!args.sharedUserIds.length) return null
+  const verb = args.isEditing ? 'actualizar' : 'crear'
+  return `Vas a ${verb} la tarea "${args.taskTitle}" y quedará compartida con: ${formatUserListFromIds(args.sharedUserIds, args.users)}. ¿Deseas continuar?`
+}
+
 function serializeDragPayload(payload: DragPayload) {
   return JSON.stringify(payload)
 }
@@ -1119,6 +1175,18 @@ export function CrmTaskWorkspacesClient() {
     if (!workspaceForm.name.trim()) return alert('El nombre del proyecto es requerido.')
     if (workspaceForm.scope === 'SEDE' && !workspaceForm.sedeIds.length) return alert('Selecciona al menos una sede para el proyecto.')
     if (workspaceForm.scope === 'USER' && !workspaceForm.ownerUserId) return alert('Selecciona un usuario responsable del proyecto.')
+    const sharedUserIds = getWorkspaceShareUserIds({
+      ownerUserId: workspaceForm.ownerUserId,
+      memberUserIds: workspaceForm.memberUserIds,
+      currentUserId,
+    })
+    const shareConfirmationMessage = buildWorkspaceShareConfirmationMessage({
+      workspaceName: workspaceForm.name.trim(),
+      users,
+      sharedUserIds,
+      isEditing: false,
+    })
+    if (shareConfirmationMessage && !window.confirm(shareConfirmationMessage)) return
     setSavingWorkspace(true)
     try {
       const json = await requestJson<Workspace>('/api/crm/task-workspaces', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(workspaceForm) })
@@ -1137,6 +1205,25 @@ export function CrmTaskWorkspacesClient() {
     if (!canManageWorkspace) return alert('Solo un manager puede administrar miembros y roles.')
     if (!workspaceSettingsForm.name.trim()) return alert('El nombre del proyecto es requerido.')
     if (workspaceSettingsForm.scope === 'SEDE' && !workspaceSettingsForm.sedeIds.length) return alert('Selecciona al menos una sede para el proyecto.')
+    const nextSharedUserIds = getWorkspaceShareUserIds({
+      ownerUserId: workspaceSettingsForm.ownerUserId,
+      memberUserIds: workspaceSettingsForm.members.map((member) => member.userId),
+      currentUserId,
+    })
+    const previousSharedUserIds = getWorkspaceShareUserIds({
+      ownerUserId: selectedWorkspace?.ownerUser?.id,
+      memberUserIds: selectedWorkspace?.members.map((member) => member.userId) ?? [],
+      currentUserId,
+    })
+    const shareConfirmationMessage = !areStringSetsEqual(previousSharedUserIds, nextSharedUserIds)
+      ? buildWorkspaceShareConfirmationMessage({
+          workspaceName: workspaceSettingsForm.name.trim(),
+          users,
+          sharedUserIds: nextSharedUserIds,
+          isEditing: true,
+        })
+      : null
+    if (shareConfirmationMessage && !window.confirm(shareConfirmationMessage)) return
     setSavingWorkspace(true)
     try {
       const json = await requestJson<Workspace>(`/api/crm/task-workspaces/${workspaceSettingsForm.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: workspaceSettingsForm.name, description: workspaceSettingsForm.description, visibility: workspaceSettingsForm.visibility, ownerUserId: workspaceSettingsForm.ownerUserId || null, sedeIds: workspaceSettingsForm.scope === 'SEDE' ? workspaceSettingsForm.sedeIds : [], members: workspaceSettingsForm.members }) })
@@ -1214,9 +1301,17 @@ export function CrmTaskWorkspacesClient() {
 
   async function handleCreateTask() {
     if (!taskForm.title.trim()) return alert('El título de la tarea es requerido.')
+    const normalizedAssigneeIds = Array.from(new Set([...(currentUserId ? [currentUserId] : []), ...taskForm.assignedToUserIds]))
+    const sharedUserIds = getTaskShareUserIds({ assigneeUserIds: normalizedAssigneeIds, currentUserId })
+    const shareConfirmationMessage = buildTaskShareConfirmationMessage({
+      taskTitle: taskForm.title.trim(),
+      users,
+      sharedUserIds,
+      isEditing: false,
+    })
+    if (shareConfirmationMessage && !window.confirm(shareConfirmationMessage)) return
     setSavingTask(true)
     try {
-      const normalizedAssigneeIds = Array.from(new Set([...(currentUserId ? [currentUserId] : []), ...taskForm.assignedToUserIds]))
       const json = await requestJson<TaskItem>('/api/crm/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspaceId: taskForm.workspaceId || null, projectId: taskForm.projectId || null, title: taskForm.title, description: taskForm.description, dueAt: taskForm.dueAt || null, priority: taskForm.priority, status: taskForm.status, colorHex: normalizeHex(taskForm.colorHex), assignedToUserIds: normalizedAssigneeIds }) })
       if (!json.success) return alert(json.error || 'No se pudo crear la tarea.')
       setTaskDialogOpen(false)
@@ -1419,6 +1514,20 @@ export function CrmTaskWorkspacesClient() {
   async function handleSaveDetail() {
     if (!detailForm.id) return
     if (selectedTask && !canEditTask(selectedTask)) return alert('Tu rol actual no permite editar esta tarea.')
+    const nextSharedUserIds = getTaskShareUserIds({ assigneeUserIds: detailForm.assignedToUserIds, currentUserId })
+    const previousSharedUserIds = getTaskShareUserIds({
+      assigneeUserIds: selectedTask?.assignments.map((assignment) => assignment.userId) ?? [],
+      currentUserId,
+    })
+    const shareConfirmationMessage = !areStringSetsEqual(previousSharedUserIds, nextSharedUserIds)
+      ? buildTaskShareConfirmationMessage({
+          taskTitle: detailForm.title.trim() || selectedTask?.title || 'Sin título',
+          users,
+          sharedUserIds: nextSharedUserIds,
+          isEditing: true,
+        })
+      : null
+    if (shareConfirmationMessage && !window.confirm(shareConfirmationMessage)) return
     setSavingDetail(true)
     try {
       const patch: Record<string, unknown> = { title: detailForm.title, description: detailForm.description, dueAt: detailForm.dueAt || null, priority: detailForm.priority, status: detailForm.status, colorHex: normalizeHex(detailForm.colorHex), attachmentsJson: detailForm.attachmentsJson, customFieldsJson: detailForm.customFieldsJson, assignedToUserIds: detailForm.assignedToUserIds, archived: detailForm.archived }

@@ -216,7 +216,6 @@ export async function getAccessibleTaskWorkspaceIds(client: DbClient, args: { em
         ? {}
         : {
             OR: [
-              { visibility: 'PUBLIC' },
               { createdById: args.userId },
               { ownerUserId: args.userId },
               { members: { some: { userId: args.userId } } },
@@ -239,7 +238,6 @@ export async function getAccessibleTaskWorkspace(client: DbClient, args: { works
         ? {}
         : {
             OR: [
-              { visibility: 'PUBLIC' },
               { createdById: args.userId },
               { ownerUserId: args.userId },
               { members: { some: { userId: args.userId } } },
@@ -258,7 +256,7 @@ export function getWorkspaceRoleForUser(workspace: Pick<CrmTaskWorkspaceWithAcce
 
 export function canUserAccessWorkspace(workspace: Pick<CrmTaskWorkspaceWithAccess, 'createdById' | 'ownerUserId' | 'members' | 'visibility'>, userId: string, capability: WorkspaceCapability): boolean {
   const role = getWorkspaceRoleForUser(workspace, userId)
-  if (capability === 'view') return workspace.visibility === 'PUBLIC' || Boolean(role)
+  if (capability === 'view') return Boolean(role)
   if (!role) return false
   if (capability === 'edit') return role === 'EDITOR' || role === 'MANAGER'
   return role === 'MANAGER'
@@ -276,7 +274,7 @@ export function mapWorkspaceForUser(workspace: CrmTaskWorkspaceWithAccess, userI
     currentUserId: userId,
     currentUserRole,
     permissions: {
-      canView: workspace.visibility === 'PUBLIC' || Boolean(currentUserRole),
+      canView: Boolean(currentUserRole),
       canEditTasks: currentUserRole === 'EDITOR' || currentUserRole === 'MANAGER',
       canManage: currentUserRole === 'MANAGER',
     },
