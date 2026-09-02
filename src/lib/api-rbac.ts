@@ -16,6 +16,7 @@ import { resolveUserIdFromSession } from '@/lib/session-user'
 import {
   EXTERNAL_DASHBOARD_SCOPE_COOKIE,
   EXTERNAL_DASHBOARD_SCOPE_ROP_ONBOARDING,
+  isCapabilityAllowedForExternalDashboardScope,
   isModuleAllowedForExternalDashboardScope,
 } from '@/lib/external-dashboard-scope'
 
@@ -462,7 +463,11 @@ export async function canAccessCapability(
   if (!accessContext.ok) return accessContext
 
   const externalScope = await getExternalDashboardScope()
-  if (externalScope === EXTERNAL_DASHBOARD_SCOPE_ROP_ONBOARDING) {
+  if (!isCapabilityAllowedForExternalDashboardScope({
+    scope: externalScope,
+    domain: args.domain,
+    subdomain: args.subdomain,
+  })) {
     return {
       ok: false,
       response: NextResponse.json(

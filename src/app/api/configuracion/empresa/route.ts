@@ -74,7 +74,7 @@ export async function PUT(request: NextRequest) {
   const access = await requireCapabilityAccess({
     domain: 'CORE',
     subdomain: 'COMPANY',
-    action: 'CONFIGURE',
+    action: 'UPDATE',
     scope: 'EMPRESA',
   })
   if (!access.ok) return access.response

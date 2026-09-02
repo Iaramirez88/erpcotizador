@@ -43,3 +43,13 @@ export function isModuleAllowedForExternalDashboardScope(args: {
   if (args.scope !== EXTERNAL_DASHBOARD_SCOPE_ROP_ONBOARDING) return true
   return EXTERNAL_ROP_ALLOWED_MODULES.includes(args.moduleKey as (typeof EXTERNAL_ROP_ALLOWED_MODULES)[number])
 }
+
+export function isCapabilityAllowedForExternalDashboardScope(args: {
+  scope: string | null | undefined
+  domain: string
+  subdomain: string
+}): boolean {
+  if (args.scope !== EXTERNAL_DASHBOARD_SCOPE_ROP_ONBOARDING) return true
+
+  return args.domain === 'CORE' && args.subdomain === 'ROP'
+}
