@@ -24,11 +24,10 @@ export default async function RespaldoPage() {
     <div className="space-y-4">
       <ErpPageHero
         breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Inicio', href: '/dashboard' },
           { label: 'Configuración', href: '/dashboard/configuracion/empresa' },
           { label: 'Respaldo' },
         ]}
-        eyebrow="Administración"
         title="Respaldo"
         description="Genera copias por empresa, filtra por período y módulos, descarga en SQL o Excel, revisa el historial y restaura respaldos seguros sobre la base actual."
       />

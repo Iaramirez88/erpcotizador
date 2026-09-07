@@ -31,7 +31,6 @@ export default function LitografiaPage() {
     <div className="space-y-4 p-3 sm:p-4 lg:p-6">
       <ErpPageHero
         breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Configuración' }, { label: 'Costos' }]}
-        eyebrow="ERP configuración"
         title="Costos"
         description="Alterna entre la configuración clásica y un ingreso asistido para interpretar briefs comerciales y construir costos más rápido."
         actions={

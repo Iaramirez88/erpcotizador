@@ -185,7 +185,7 @@ export function MobileNotificationSettings() {
   return (
     <div className="space-y-6 pb-6">
       <ErpPageHero
-        breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Configuracion', href: '/dashboard/configuracion/empresa' }, { label: 'Dispositivos' }]}
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Configuracion', href: '/dashboard/configuracion/empresa' }, { label: 'Dispositivos' }]}
         eyebrow="Configuracion personal"
         title="Dispositivos"
         description="Administra este dispositivo, activa notificaciones push y revisa en que equipos de tu usuario hay suscripciones activas."

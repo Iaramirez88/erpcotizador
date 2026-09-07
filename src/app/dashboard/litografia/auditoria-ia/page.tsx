@@ -131,7 +131,7 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
     <div className="space-y-6 pb-6">
       <ErpPageHero
         breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Inicio', href: '/dashboard' },
           { label: 'Costos', href: '/dashboard/litografia' },
           { label: 'Auditoría IA' },
         ]}

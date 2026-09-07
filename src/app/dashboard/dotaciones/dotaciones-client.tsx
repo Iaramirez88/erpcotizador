@@ -708,7 +708,7 @@ export default function DotacionesClient() {
 	return (
 		<div className="space-y-6 pb-6">
 			<ErpPageHero
-				breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Dotaciones' }]}
+				breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Dotaciones' }]}
 				eyebrow="Vertical SGDigital"
 				title="Panel de dotaciones"
 				description="Un frente operativo para cotizar, planear dotaciones por empleado y emitir entregas parciales con trazabilidad por sede."

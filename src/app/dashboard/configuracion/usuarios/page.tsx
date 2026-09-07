@@ -448,7 +448,6 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
   return (
     <div className="space-y-6">
       <ErpPageHero
-        eyebrow="Configuracion"
         title={t('rbac.users.title')}
         description={t('rbac.users.subtitle')}
         stats={[

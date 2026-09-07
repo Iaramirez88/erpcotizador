@@ -148,7 +148,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6 pb-6">
       <ErpPageHero
-        breadcrumbs={[{ label: 'Dashboard' }]}
+        breadcrumbs={[{ label: 'Inicio' }]}
         title={`Hola, ${displayName}`}
         description={dashboardConfig?.description
           ?? (activeSedeName

@@ -68,7 +68,6 @@ export default function PlantillasPage() {
   return (
     <div className="space-y-6">
       <ErpPageHero
-        eyebrow="Centro documental"
         title="Plantillas globales"
         description="Reúne las plantillas activas del sistema y muestra una demo rápida de cada documento antes de entrar al editor o al módulo origen."
         stats={[

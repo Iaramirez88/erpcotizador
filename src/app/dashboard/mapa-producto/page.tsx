@@ -166,10 +166,9 @@ export default function ProductMapPage() {
     <div className="space-y-6 pb-6">
       <ErpPageHero
         breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Inicio', href: '/dashboard' },
           { label: 'Mapa de producto' },
         ]}
-        eyebrow="Fase 1 · Organizacion"
         title="Product Map interno"
         description="Vista viva del producto actual para ubicar dominios, capas activas y accesos canonicos sin salir del dashboard."
         actions={

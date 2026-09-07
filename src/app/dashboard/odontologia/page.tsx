@@ -770,7 +770,7 @@ export default function OdontologiaDashboardPage() {
   return (
     <div className="space-y-6 pb-6">
       <ErpPageHero
-        breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Odontología' }]}
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Odontología' }]}
         eyebrow="Vertical piloto"
         title="Panel odontológico"
         description="Historia clínica, odontograma visual, agenda y plan de tratamiento en una misma estación clínica inicial."

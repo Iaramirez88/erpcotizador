@@ -335,7 +335,6 @@ export default function ConfigEmpresaPage() {
   return (
     <div className="max-w-3xl space-y-6">
       <ErpPageHero
-        eyebrow="ERP configuración"
         title="Empresa"
         description="Personaliza el branding y comparte el código correcto para solicitar acceso."
         stats={[

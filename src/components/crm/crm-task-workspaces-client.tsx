@@ -2039,7 +2039,7 @@ export function CrmTaskWorkspacesClient() {
   return (
     <div className="space-y-6">
       <ErpPageHero
-        breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Proyectos' }]}
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Proyectos' }]}
         title="Tareas y proyectos"
         description="Crea tareas de forma directa, relaciónalas opcionalmente con proyectos o listas existentes, y centraliza el seguimiento con responsables, evidencia y estados claros."
         actions={<div className="flex flex-wrap items-center gap-2"><DropdownMenu><DropdownMenuTrigger asChild><Button className="rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700"><Plus className="mr-2 h-4 w-4" />Crear tarea<ChevronDown className="ml-2 h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-60 rounded-2xl p-1.5"><DropdownMenuItem onSelect={() => openTaskCreationDialog('')}>Crear sin relación</DropdownMenuItem><DropdownMenuItem onSelect={() => openTaskCreationDialog(selectedProjectId || '')} disabled={!selectedWorkspaceId}>Crear en proyecto actual</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onSelect={() => setWorkspaceDialogOpen(true)}>Crear proyecto</DropdownMenuItem></DropdownMenuContent></DropdownMenu><Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85 dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10" onClick={() => setWorkspaceDialogOpen(true)}>Nuevo proyecto</Button></div>}

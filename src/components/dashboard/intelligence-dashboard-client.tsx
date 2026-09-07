@@ -451,8 +451,7 @@ export function IntelligenceDashboardClient() {
   return (
     <div className="space-y-6 pb-6">
       <ErpPageHero
-        breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Inteligencia empresarial' }]}
-        eyebrow="Analítica ejecutiva"
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Inteligencia empresarial' }]}
         title="Motor de inteligencia empresarial"
         description="Lectura ejecutiva asistida del negocio construida sobre el Decision Engine. Funciona como apoyo gerencial y no reemplaza la validación humana ni el análisis operativo detallado."
         actions={

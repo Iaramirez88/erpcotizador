@@ -461,7 +461,6 @@ export default function SuperAdminPlanModulesClient() {
     <div className="space-y-4 p-3 sm:p-4 lg:p-6">
       <ErpPageHero
         breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Administración' }, { label: 'Super Admin · Módulos por plan' }]}
-        eyebrow="Super admin"
         title="Super Admin · Módulos por plan"
         description="Habilita o deshabilita módulos para cada plan."
         actions={

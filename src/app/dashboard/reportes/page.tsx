@@ -2276,7 +2276,6 @@ export default function ReportesPage() {
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <ErpPageHero
-        eyebrow="ERP analítico"
         title={t('reports.title')}
         description="Centro analítico configurable para armar reportes con bloques del negocio, exportarlos en varios formatos y conservar historial operativo."
         actions={

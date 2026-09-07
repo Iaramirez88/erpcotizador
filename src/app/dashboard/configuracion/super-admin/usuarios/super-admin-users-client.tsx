@@ -382,7 +382,6 @@ export default function SuperAdminUsersClient() {
     <div className="space-y-4 p-3 sm:p-4 lg:p-6">
       <ErpPageHero
         breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Administración' }, { label: t('superAdmin.users.title') }]}
-        eyebrow="Super admin"
         title={t('superAdmin.users.title')}
         description={t('superAdmin.users.subtitle')}
       />

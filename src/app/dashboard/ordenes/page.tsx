@@ -665,7 +665,6 @@ export default function OrdenesPage() {
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <ErpPageHero
-        eyebrow="ERP operativo"
         title={t('orders.title')}
         description={t('orders.subtitle')}
         actions={

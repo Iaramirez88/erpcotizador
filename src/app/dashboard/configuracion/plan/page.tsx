@@ -570,7 +570,6 @@ export default function PlanPage() {
     <div className="space-y-4 p-3 sm:p-4 lg:p-6">
       <ErpPageHero
         breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Administración' }, { label: 'Plan' }]}
-        eyebrow="ERP administración"
         title="Plan"
         description={isSuperAdmin ? 'Vista extendida del catálogo y estrategia comercial.' : 'Elige el plan que mejor se ajuste a tu operación.'}
         actions={isSuperAdmin ? (

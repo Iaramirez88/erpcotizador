@@ -49,7 +49,7 @@ export default async function DashboardOnboardingPage() {
   return (
     <div className="space-y-6 pb-6">
       <ErpPageHero
-        breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Onboarding inicial' }]}
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Onboarding inicial' }]}
         title="Arma tu espacio en minutos"
         description={locked
           ? 'La configuración inicial ya quedó cerrada para proteger el nicho y los módulos del espacio.'
