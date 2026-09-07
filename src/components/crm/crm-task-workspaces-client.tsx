@@ -117,6 +117,28 @@ type TaskCustomField = {
   file: TaskAttachment | null
 }
 
+type TaskDetailFormState = {
+  id: string
+  title: string
+  description: string
+  dueAt: string
+  priority: TaskPriority
+  status: TaskStatus
+  colorHex: string
+  attachmentsJson: TaskAttachment[]
+  customFieldsJson: TaskCustomField[]
+  assignedToUserIds: string[]
+  archived: boolean
+  projectId: string
+}
+
+type TaskCustomFieldDraftState = {
+  label: string
+  type: TaskCustomFieldType
+  textValue: string
+  file: TaskAttachment | null
+}
+
 type TaskItem = {
   id: string
   title: string
@@ -367,6 +389,36 @@ function normalizeTask(row: TaskItem): TaskItem {
   }
 }
 
+function getInitialTaskDetailForm(): TaskDetailFormState {
+  return {
+    id: '',
+    title: '',
+    description: '',
+    dueAt: '',
+    priority: 'NORMAL',
+    status: 'OPEN',
+    colorHex: '#1D4ED8',
+    attachmentsJson: [],
+    customFieldsJson: [],
+    assignedToUserIds: [],
+    archived: false,
+    projectId: '',
+  }
+}
+
+function getInitialCustomFieldDraft(): TaskCustomFieldDraftState {
+  return {
+    label: '',
+    type: 'TEXT',
+    textValue: '',
+    file: null,
+  }
+}
+
+function buildTaskDetailSnapshot(detailForm: TaskDetailFormState, customFieldDraft: TaskCustomFieldDraftState) {
+  return JSON.stringify({ detailForm, customFieldDraft })
+}
+
 function formatAttachmentSize(sizeBytes?: number | null) {
   if (!sizeBytes || !Number.isFinite(sizeBytes)) return 'Sin tamaño'
   if (sizeBytes < 1024) return `${sizeBytes} B`
@@ -525,6 +577,7 @@ export function CrmTaskWorkspacesClient() {
   const workspaceGridRef = useRef<HTMLDivElement | null>(null)
   const handledNotificationTaskRef = useRef<string>('')
   const detailDialogOpenedFromNotificationRef = useRef(false)
+  const lastPersistedDetailSnapshotRef = useRef('')
   const notificationCleanupTimerRef = useRef<number | null>(null)
   const { toast } = useToast()
 
@@ -546,6 +599,7 @@ export function CrmTaskWorkspacesClient() {
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
   const [taskMoveDialogOpen, setTaskMoveDialogOpen] = useState(false)
   const [detailDialogOpen, setDetailDialogOpen] = useState(false)
+  const [detailHasUnsavedChanges, setDetailHasUnsavedChanges] = useState(false)
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
   const [externalAttachmentDialogOpen, setExternalAttachmentDialogOpen] = useState(false)
   const [workspaceSearch, setWorkspaceSearch] = useState('')
@@ -590,8 +644,8 @@ export function CrmTaskWorkspacesClient() {
   const [projectForm, setProjectForm] = useState({ sourceWorkspaceId: '', workspaceId: '', projectId: '', name: '', description: '' })
   const [taskForm, setTaskForm] = useState({ title: '', description: '', dueAt: '', priority: 'NORMAL' as TaskPriority, status: 'OPEN' as TaskStatus, colorHex: '#1D4ED8', assignedToUserIds: [] as string[], workspaceId: '', projectId: '' })
   const [taskMoveForm, setTaskMoveForm] = useState({ taskId: '', workspaceId: '', projectId: '' })
-  const [detailForm, setDetailForm] = useState({ id: '', title: '', description: '', dueAt: '', priority: 'NORMAL' as TaskPriority, status: 'OPEN' as TaskStatus, colorHex: '#1D4ED8', attachmentsJson: [] as TaskAttachment[], customFieldsJson: [] as TaskCustomField[], assignedToUserIds: [] as string[], archived: false, projectId: '' })
-  const [customFieldDraft, setCustomFieldDraft] = useState({ label: '', type: 'TEXT' as TaskCustomFieldType, textValue: '', file: null as TaskAttachment | null })
+  const [detailForm, setDetailForm] = useState<TaskDetailFormState>(getInitialTaskDetailForm)
+  const [customFieldDraft, setCustomFieldDraft] = useState<TaskCustomFieldDraftState>(getInitialCustomFieldDraft)
   const [workspaceSettingsForm, setWorkspaceSettingsForm] = useState({ id: '', name: '', description: '', scope: 'SEDE' as WorkspaceScope, visibility: 'PRIVATE' as WorkspaceVisibility, sedeIds: [] as string[], ownerUserId: '', members: [] as Array<{ userId: string; role: WorkspaceRole }> })
   const [externalAttachmentForm, setExternalAttachmentForm] = useState(getInitialExternalAttachmentForm())
   const requestedTaskId = searchParams?.get('taskId') || ''
@@ -616,6 +670,45 @@ export function CrmTaskWorkspacesClient() {
   const selectedTaskCanEdit = Boolean(selectedTask && currentUserId && (!selectedTask.workspace?.id || editableWorkspaceIds.has(selectedTask.workspace.id)))
   const quickTaskCanEdit = Boolean(quickTask && currentUserId && (!quickTask.workspace?.id || editableWorkspaceIds.has(quickTask.workspace.id)))
   const canEditTasks = Boolean(selectedWorkspace?.permissions?.canEditTasks || selectedTaskCanEdit || quickTaskCanEdit)
+
+  function queueDetailUrlCleanup() {
+    if (typeof window === 'undefined' || !requestedTaskId) return
+
+    const params = new URLSearchParams(window.location.search)
+    params.delete('taskId')
+    const resolvedPathname = pathname || window.location.pathname
+    const nextUrl = params.toString() ? `${resolvedPathname}?${params.toString()}` : resolvedPathname
+
+    if (notificationCleanupTimerRef.current) {
+      window.clearTimeout(notificationCleanupTimerRef.current)
+    }
+
+    notificationCleanupTimerRef.current = window.setTimeout(() => {
+      router.replace(nextUrl, { scroll: false })
+      notificationCleanupTimerRef.current = null
+    }, 120)
+  }
+
+  function resetDetailEditorState() {
+    setSelectedTask(null)
+    setDetailForm(getInitialTaskDetailForm())
+    setCustomFieldDraft(getInitialCustomFieldDraft())
+    setCustomFieldUploadTarget(null)
+    setNoteDraft('')
+    setLibraryPickerOpen(false)
+    setExternalAttachmentDialogOpen(false)
+    setExternalAttachmentForm(getInitialExternalAttachmentForm())
+    setDetailHasUnsavedChanges(false)
+    lastPersistedDetailSnapshotRef.current = ''
+  }
+
+  function closeDetailDialog() {
+    setDetailDialogOpen(false)
+    detailDialogOpenedFromNotificationRef.current = false
+    handledNotificationTaskRef.current = ''
+    resetDetailEditorState()
+    queueDetailUrlCleanup()
+  }
 
   async function loadBase() {
     setLoading(true)
@@ -683,7 +776,7 @@ export function CrmTaskWorkspacesClient() {
       if (row.project?.id) {
         setSelectedProjectId(row.project.id)
       }
-      setDetailForm({
+      const nextDetailForm: TaskDetailFormState = {
         id: row.id,
         title: row.title,
         description: row.description || '',
@@ -696,8 +789,13 @@ export function CrmTaskWorkspacesClient() {
         assignedToUserIds: row.assignments.map((assignment) => assignment.userId),
         archived: Boolean(row.archivedAt),
         projectId: row.project?.id || '',
-      })
-      setCustomFieldDraft({ label: '', type: 'TEXT', textValue: '', file: null })
+      }
+      const nextCustomFieldDraft = getInitialCustomFieldDraft()
+      setDetailForm(nextDetailForm)
+      setCustomFieldDraft(nextCustomFieldDraft)
+      setCustomFieldUploadTarget(null)
+      setDetailHasUnsavedChanges(false)
+      lastPersistedDetailSnapshotRef.current = buildTaskDetailSnapshot(nextDetailForm, nextCustomFieldDraft)
       if (requestedTaskId === taskId) {
         detailDialogOpenedFromNotificationRef.current = true
       }
@@ -709,16 +807,18 @@ export function CrmTaskWorkspacesClient() {
   useEffect(() => { void loadTasks(selectedWorkspaceId, taskViewMode) }, [loadTasks, selectedWorkspaceId, taskViewMode])
 
   useEffect(() => {
+    const shouldRefreshDetail = detailDialogOpen && selectedTask?.id && !detailHasUnsavedChanges && !uploadingAttachment && !savingDetail
+
     const intervalId = window.setInterval(() => {
       void loadTasks(selectedWorkspaceId, taskViewMode)
-      if (selectedTask?.id) {
+      if (shouldRefreshDetail && selectedTask?.id) {
         void loadTaskDetail(selectedTask.id)
       }
     }, TASK_AUTO_REFRESH_MS)
 
     const unsubscribe = subscribeToNotificationReceivedEvent(() => {
       void loadTasks(selectedWorkspaceId, taskViewMode)
-      if (selectedTask?.id) {
+      if (shouldRefreshDetail && selectedTask?.id) {
         void loadTaskDetail(selectedTask.id)
       }
     })
@@ -727,7 +827,22 @@ export function CrmTaskWorkspacesClient() {
       window.clearInterval(intervalId)
       unsubscribe()
     }
-  }, [loadTasks, selectedTask?.id, selectedWorkspaceId, taskViewMode])
+  }, [detailDialogOpen, detailHasUnsavedChanges, loadTasks, savingDetail, selectedTask?.id, selectedWorkspaceId, taskViewMode, uploadingAttachment])
+
+  useEffect(() => {
+    if (!detailDialogOpen || !detailForm.id) {
+      setDetailHasUnsavedChanges(false)
+      return
+    }
+
+    setDetailHasUnsavedChanges(buildTaskDetailSnapshot(detailForm, customFieldDraft) !== lastPersistedDetailSnapshotRef.current)
+  }, [customFieldDraft, detailDialogOpen, detailForm])
+
+  useEffect(() => {
+    if (detailDialogOpen) return
+    if (!selectedTask) return
+    closeDetailDialog()
+  }, [detailDialogOpen, selectedTask?.id])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -844,27 +959,8 @@ export function CrmTaskWorkspacesClient() {
     if (detailDialogOpen) return
     if (!requestedTaskId) return
     if (!detailDialogOpenedFromNotificationRef.current) return
-    if (typeof window === 'undefined') return
-
-    detailDialogOpenedFromNotificationRef.current = false
-    handledNotificationTaskRef.current = ''
-    setSelectedTask(null)
-    setNoteDraft('')
-
-    const params = new URLSearchParams(window.location.search)
-    params.delete('taskId')
-    const resolvedPathname = pathname || window.location.pathname
-    const nextUrl = params.toString() ? `${resolvedPathname}?${params.toString()}` : resolvedPathname
-
-    if (notificationCleanupTimerRef.current) {
-      window.clearTimeout(notificationCleanupTimerRef.current)
-    }
-
-    notificationCleanupTimerRef.current = window.setTimeout(() => {
-      router.replace(nextUrl, { scroll: false })
-      notificationCleanupTimerRef.current = null
-    }, 120)
-  }, [detailDialogOpen, pathname, requestedTaskId, router])
+    closeDetailDialog()
+  }, [detailDialogOpen, requestedTaskId])
 
   useEffect(() => {
     return () => {
@@ -1314,9 +1410,13 @@ export function CrmTaskWorkspacesClient() {
     try {
       const json = await requestJson<TaskItem>('/api/crm/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspaceId: taskForm.workspaceId || null, projectId: taskForm.projectId || null, title: taskForm.title, description: taskForm.description, dueAt: taskForm.dueAt || null, priority: taskForm.priority, status: taskForm.status, colorHex: normalizeHex(taskForm.colorHex), assignedToUserIds: normalizedAssigneeIds }) })
       if (!json.success) return alert(json.error || 'No se pudo crear la tarea.')
+      const shouldOpenDetailAfterCreate = !taskForm.workspaceId && !taskForm.projectId && Boolean(json.data?.id)
       setTaskDialogOpen(false)
       setTaskForm({ title: '', description: '', dueAt: '', priority: 'NORMAL', status: 'OPEN', colorHex: '#1D4ED8', assignedToUserIds: currentUserId ? [currentUserId] : [], workspaceId: selectedWorkspaceId || '', projectId: selectedProjectId || '' })
       await loadTasks(selectedWorkspaceId, taskViewMode)
+      if (shouldOpenDetailAfterCreate && json.data?.id) {
+        await loadTaskDetail(json.data.id)
+      }
       toast({
         title: 'Tarea creada',
         description: normalizedAssigneeIds.length
@@ -1405,8 +1505,7 @@ export function CrmTaskWorkspacesClient() {
       if (!json.success) return alert(json.error || 'No se pudo anular la tarea.')
 
       if (selectedTask?.id === taskCancelTarget.id && !showArchived) {
-        setDetailDialogOpen(false)
-        setSelectedTask(null)
+        closeDetailDialog()
       }
 
       setTaskCancelDialogOpen(false)
