@@ -94,7 +94,7 @@ const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard/escaneos": "Digitaliza documentos y extrae informacion util.",
   "/dashboard/productos": "Catálogo de productos, referencias activas y estructura base del inventario.",
   "/dashboard/inventario": "Existencias actuales por bodega, stock minimo y control general.",
-  "/dashboard/inventario?view=movements": "Historial reciente de entradas, salidas y ajustes de inventario.",
+  "/dashboard/inventario/movimientos": "Historial reciente de entradas, salidas y ajustes de inventario.",
   "/dashboard/inventario/traslados": "Mueve inventario entre sedes o bodegas.",
   "/dashboard/inventario/abastecimiento": "Solicitudes internas de compra y abastecimiento entre bodegas.",
   "/dashboard/compras": "Recepciones y registro formal de compras ya ingresadas.",
@@ -649,7 +649,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
   },
   {
     name: t('nav.movements'),
-    href: "/dashboard/inventario?view=movements",
+    href: "/dashboard/inventario/movimientos",
     scopeHref: '/dashboard/inventario',
     icon: movementsSubmoduleIcon,
   },

@@ -20,12 +20,12 @@ const INVENTORY_ITEMS: CatalogModuleTabItem[] = [
   {
     href: "/dashboard/inventario",
     label: "Existencias",
-    match: (pathname: string, params: URLSearchParams) => pathname === "/dashboard/inventario" && (params.get('view') ?? 'stock') !== 'movements',
+    match: (pathname: string) => pathname === "/dashboard/inventario",
   },
   {
-    href: "/dashboard/inventario?view=movements",
+    href: "/dashboard/inventario/movimientos",
     label: "Movimientos",
-    match: (pathname: string, params: URLSearchParams) => pathname === "/dashboard/inventario" && params.get('view') === 'movements',
+    match: (pathname: string) => pathname.startsWith("/dashboard/inventario/movimientos"),
   },
   {
     href: "/dashboard/inventario/traslados",

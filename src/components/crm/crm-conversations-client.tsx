@@ -3183,13 +3183,12 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       {props.hideHero ? null : (
         <ErpPageHero
           breadcrumbs={[
-            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'Inicio', href: '/dashboard' },
             { label: 'CRM', href: '/dashboard/crm' },
             props.initialProviderFilter === 'WEB_CHATBOT'
               ? { label: 'Panel chatbot' }
               : { label: 'Conversaciones' },
           ]}
-          eyebrow="CRM Omnicanal"
           title={props.title || 'Bandeja de conversaciones'}
           description={props.description || 'Opera el inbox de pruebas, asigna hilos a asesores, simula inbound y convierte conversaciones en oportunidades sin salir del CRM.'}
           actions={

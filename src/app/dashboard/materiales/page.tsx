@@ -188,6 +188,7 @@ export default function ProductosPage() {
   const [stockMaxFiltro, setStockMaxFiltro] = useState("")
   const [createdFromFiltro, setCreatedFromFiltro] = useState("")
   const [createdToFiltro, setCreatedToFiltro] = useState("")
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSizeOption>(25)
@@ -1235,9 +1236,9 @@ export default function ProductosPage() {
         breadcrumbs={[
           { label: 'Inicio', href: '/dashboard' },
           { label: 'Inventario', href: '/dashboard/inventario' },
-          { label: 'Productos' },
+          { label: 'Catálogo' },
         ]}
-        title={<span data-tour="materiales-title">Productos</span>}
+        title={<span data-tour="materiales-title">Catálogo</span>}
         description="Catálogo y precios del módulo de inventario."
         actions={
           <>
@@ -1440,7 +1441,7 @@ export default function ProductosPage() {
       <Card>
         <CardContent className="pt-6">
           <div className="space-y-3">
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex-1 min-w-[240px]">
                 <Input
                   data-tour="materiales-search"
@@ -1450,144 +1451,154 @@ export default function ProductosPage() {
                 />
               </div>
 
-              <select
-                value={tipoFiltro}
-                onChange={(e) => setTipoFiltro(e.target.value)}
-                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAdvancedFilters((current) => !current)}
               >
-                <option value="">Todos los tipos</option>
-                {TIPOS_MATERIAL.map(tipo => (
-                  <option key={tipo.value} value={tipo.value}>{tipo.label}</option>
-                ))}
-              </select>
-
-              <select
-                value={unidadFiltro}
-                onChange={(e) => setUnidadFiltro(e.target.value)}
-                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-              >
-                <option value="">Todas las unidades</option>
-                {UNIDADES_MEDIDA.map((u) => (
-                  <option key={u.value} value={u.value}>{u.label}</option>
-                ))}
-              </select>
+                {showAdvancedFilters ? 'Ocultar búsqueda avanzada' : 'Búsqueda avanzada'}
+              </Button>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <select
-                value={sortFiltro}
-                onChange={(e) => setSortFiltro(e.target.value as typeof sortFiltro)}
-                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-              >
-                <option value="nameAsc">Orden: Nombre</option>
-                <option value="mostSold">Más vendido</option>
-                <option value="mostQuoted">Más cotizado</option>
-                <option value="stockDesc">Mayor stock</option>
-                <option value="createdDesc">Más reciente</option>
-                <option value="createdAsc">Más antiguo</option>
-                <option value="priceDesc">Mayor precio</option>
-                <option value="priceAsc">Menor precio</option>
-              </select>
+            {showAdvancedFilters ? (
+              <div className="flex flex-wrap gap-3">
+                <select
+                  value={tipoFiltro}
+                  onChange={(e) => setTipoFiltro(e.target.value)}
+                  className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="">Todos los tipos</option>
+                  {TIPOS_MATERIAL.map(tipo => (
+                    <option key={tipo.value} value={tipo.value}>{tipo.label}</option>
+                  ))}
+                </select>
 
-              <select
-                value={sedeFiltro}
-                onChange={(e) => setSedeFiltro(e.target.value)}
-                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-              >
-                <option value="">Sede: activa</option>
-                {sedes.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nombre}{s.codigo ? ` (${s.codigo})` : ''}
-                  </option>
-                ))}
-              </select>
+                <select
+                  value={unidadFiltro}
+                  onChange={(e) => setUnidadFiltro(e.target.value)}
+                  className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="">Todas las unidades</option>
+                  {UNIDADES_MEDIDA.map((u) => (
+                    <option key={u.value} value={u.value}>{u.label}</option>
+                  ))}
+                </select>
 
-              <select
-                value={bodegaFiltro}
-                onChange={(e) => setBodegaFiltro(e.target.value)}
-                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-              >
-                <option value="">Todas las bodegas</option>
-                {bodegasFiltroList.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {formatBodegaLabel(b)}
-                  </option>
-                ))}
-              </select>
+                <select
+                  value={sortFiltro}
+                  onChange={(e) => setSortFiltro(e.target.value as typeof sortFiltro)}
+                  className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="nameAsc">Orden: Nombre</option>
+                  <option value="mostSold">Más vendido</option>
+                  <option value="mostQuoted">Más cotizado</option>
+                  <option value="stockDesc">Mayor stock</option>
+                  <option value="createdDesc">Más reciente</option>
+                  <option value="createdAsc">Más antiguo</option>
+                  <option value="priceDesc">Mayor precio</option>
+                  <option value="priceAsc">Menor precio</option>
+                </select>
 
-              <Input
-                placeholder="Proveedor"
-                value={proveedorFiltro}
-                onChange={(e) => setProveedorFiltro(e.target.value)}
-                className="h-9 w-[180px]"
-              />
+                <select
+                  value={sedeFiltro}
+                  onChange={(e) => setSedeFiltro(e.target.value)}
+                  className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="">Sede: activa</option>
+                  {sedes.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nombre}{s.codigo ? ` (${s.codigo})` : ''}
+                    </option>
+                  ))}
+                </select>
 
-              <Input
-                placeholder="Categoría"
-                value={categoriaFiltro}
-                onChange={(e) => setCategoriaFiltro(e.target.value)}
-                className="h-9 w-[180px]"
-              />
+                <select
+                  value={bodegaFiltro}
+                  onChange={(e) => setBodegaFiltro(e.target.value)}
+                  className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="">Todas las bodegas</option>
+                  {bodegasFiltroList.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {formatBodegaLabel(b)}
+                    </option>
+                  ))}
+                </select>
 
-              <select
-                value={descuentoFiltro}
-                onChange={(e) => setDescuentoFiltro(e.target.value as typeof descuentoFiltro)}
-                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-              >
-                <option value="all">Descuento: Todos</option>
-                <option value="true">Con descuento</option>
-                <option value="false">Sin descuento</option>
-              </select>
-
-              <div className="flex items-center gap-2">
                 <Input
-                  placeholder="Precio min"
-                  value={precioMinFiltro}
-                  onChange={(e) => setPrecioMinFiltro(e.target.value)}
-                  className="h-9 w-[110px]"
-                  inputMode="decimal"
+                  placeholder="Proveedor"
+                  value={proveedorFiltro}
+                  onChange={(e) => setProveedorFiltro(e.target.value)}
+                  className="h-9 w-[180px]"
                 />
+
                 <Input
-                  placeholder="Precio max"
-                  value={precioMaxFiltro}
-                  onChange={(e) => setPrecioMaxFiltro(e.target.value)}
-                  className="h-9 w-[110px]"
-                  inputMode="decimal"
+                  placeholder="Categoría"
+                  value={categoriaFiltro}
+                  onChange={(e) => setCategoriaFiltro(e.target.value)}
+                  className="h-9 w-[180px]"
                 />
+
+                <select
+                  value={descuentoFiltro}
+                  onChange={(e) => setDescuentoFiltro(e.target.value as typeof descuentoFiltro)}
+                  className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="all">Descuento: Todos</option>
+                  <option value="true">Con descuento</option>
+                  <option value="false">Sin descuento</option>
+                </select>
+
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Precio min"
+                    value={precioMinFiltro}
+                    onChange={(e) => setPrecioMinFiltro(e.target.value)}
+                    className="h-9 w-[110px]"
+                    inputMode="decimal"
+                  />
+                  <Input
+                    placeholder="Precio max"
+                    value={precioMaxFiltro}
+                    onChange={(e) => setPrecioMaxFiltro(e.target.value)}
+                    className="h-9 w-[110px]"
+                    inputMode="decimal"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Stock min"
+                    value={stockMinFiltro}
+                    onChange={(e) => setStockMinFiltro(e.target.value)}
+                    className="h-9 w-[110px]"
+                    inputMode="decimal"
+                  />
+                  <Input
+                    placeholder="Stock max"
+                    value={stockMaxFiltro}
+                    onChange={(e) => setStockMaxFiltro(e.target.value)}
+                    className="h-9 w-[110px]"
+                    inputMode="decimal"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="date"
+                    value={createdFromFiltro}
+                    onChange={(e) => setCreatedFromFiltro(e.target.value)}
+                    className="h-9"
+                  />
+                  <Input
+                    type="date"
+                    value={createdToFiltro}
+                    onChange={(e) => setCreatedToFiltro(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
               </div>
-
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Stock min"
-                  value={stockMinFiltro}
-                  onChange={(e) => setStockMinFiltro(e.target.value)}
-                  className="h-9 w-[110px]"
-                  inputMode="decimal"
-                />
-                <Input
-                  placeholder="Stock max"
-                  value={stockMaxFiltro}
-                  onChange={(e) => setStockMaxFiltro(e.target.value)}
-                  className="h-9 w-[110px]"
-                  inputMode="decimal"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Input
-                  type="date"
-                  value={createdFromFiltro}
-                  onChange={(e) => setCreatedFromFiltro(e.target.value)}
-                  className="h-9"
-                />
-                <Input
-                  type="date"
-                  value={createdToFiltro}
-                  onChange={(e) => setCreatedToFiltro(e.target.value)}
-                  className="h-9"
-                />
-              </div>
-            </div>
+            ) : null}
           </div>
         </CardContent>
       </Card>

@@ -14,9 +14,9 @@ import {
   appendTaskHistory,
   canUserAccessWorkspace,
   crmTaskInclude,
-  ensureWorkspaceEditors,
   getAccessibleTaskWorkspaceIds,
   getAccessibleTaskWorkspace,
+  getNonWorkspaceMemberUserIds,
   normalizeTaskAttachments,
   normalizeTaskColorHex,
   normalizeTaskCustomFields,
@@ -320,6 +320,15 @@ export async function POST(request: Request) {
       }
     }
 
+    if (workspace) {
+      const invalidWorkspaceAssigneeIds = getNonWorkspaceMemberUserIds(workspace, normalizedAssigneeIds)
+      if (invalidWorkspaceAssigneeIds.length) {
+        return NextResponse.json({
+          error: 'Todos los responsables de una tarea del espacio deben seguir siendo miembros activos del proyecto.',
+        }, { status: 400 })
+      }
+    }
+
     const finalSedeId = explicitSedeId || workspace?.sedeId || lead?.sedeId || opportunity?.sedeId || cliente?.sedeId || ''
     if (!workspaceId && finalSedeId) {
       const denied = await assertTaskCapabilitySedeAccess({
@@ -361,13 +370,6 @@ export async function POST(request: Request) {
             userId,
           })),
         })
-
-        if (workspaceId) {
-          await ensureWorkspaceEditors(tx, {
-            workspaceId,
-            userIds: normalizedAssigneeIds,
-          })
-        }
       }
 
       await appendTaskHistory(tx, {

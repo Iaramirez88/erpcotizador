@@ -385,7 +385,7 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
     <div className="space-y-4.5 pb-4">
       <CrmNegotiationsPageHeader
         breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Inicio', href: '/dashboard' },
           { label: 'CRM', href: '/dashboard/crm' },
           { label: 'Calendario' },
         ]}

@@ -530,7 +530,7 @@ export default function EscaneosPage() {
   return (
     <div className="space-y-6">
       <ErpPageHero
-        eyebrow="Operacion"
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Operaciones' }, { label: 'Escaneos' }]}
         title="Escaneos"
         description="Escanea facturas o cotizaciones, valida coherencia contable y administra el flujo de confirmacion desde un mismo tablero."
         stats={[

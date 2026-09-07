@@ -73,6 +73,7 @@ type ManagementUser = {
   name: string | null
   role: UserRole
   createdAt: string
+  lithographyQuoteToolsEnabled: boolean
   empresa: null | {
     id: string
     nombre: string
@@ -150,6 +151,7 @@ export default function SuperAdminUsersClient() {
   const [editIsPaid, setEditIsPaid] = useState(false)
   const [editIsPaidTouched, setEditIsPaidTouched] = useState(false)
   const [editClearTrial, setEditClearTrial] = useState(false)
+  const [editLithographyQuoteToolsEnabled, setEditLithographyQuoteToolsEnabled] = useState(false)
   const [selectedSedeId, setSelectedSedeId] = useState('')
   const [sedeStates, setSedeStates] = useState<ManagementSede[]>([])
 
@@ -222,6 +224,7 @@ export default function SuperAdminUsersClient() {
     setEditIsPaid(false)
     setEditIsPaidTouched(false)
     setEditClearTrial(false)
+    setEditLithographyQuoteToolsEnabled(false)
     setSelectedSedeId('')
     setSedeStates([])
   }
@@ -254,6 +257,7 @@ export default function SuperAdminUsersClient() {
       setEditIsPaid(isFutureDate(detail.empresa?.planValidUntil))
       setEditIsPaidTouched(false)
       setEditClearTrial(false)
+      setEditLithographyQuoteToolsEnabled(Boolean(detail.lithographyQuoteToolsEnabled))
       setSelectedSedeId(detail.selectedSedeId ?? detail.sedes[0]?.sedeId ?? '')
       setSedeStates(detail.sedes)
     } catch {
@@ -279,6 +283,7 @@ export default function SuperAdminUsersClient() {
           planValidUntil: management.empresa ? (editPlanValidUntil || null) : undefined,
           clearTrial: management.empresa ? editClearTrial : undefined,
           isPaid: management.empresa && editIsPaidTouched ? editIsPaid : undefined,
+          lithographyQuoteToolsEnabled: management.empresa ? editLithographyQuoteToolsEnabled : undefined,
         }),
       })
       const json = (await res.json().catch(() => ({}))) as ManagementResponse
@@ -747,6 +752,14 @@ export default function SuperAdminUsersClient() {
                           {t('superAdmin.users.labels.trialUntil')}: {fmtDate(management.empresa.trialValidUntil, locale, naText)}
                         </div>
                       </div>
+
+                      <label className="flex items-start justify-between gap-3 rounded-lg border p-3">
+                        <div>
+                          <div className="font-medium">{t('superAdmin.users.fields.enableLithographyQuoteTools')}</div>
+                          <div className="text-xs text-muted-foreground">{t('superAdmin.users.fields.enableLithographyQuoteToolsHelp')}</div>
+                        </div>
+                        <Switch checked={editLithographyQuoteToolsEnabled} onCheckedChange={setEditLithographyQuoteToolsEnabled} />
+                      </label>
                     </>
                   ) : (
                     <div className="rounded-md border p-3 text-sm text-muted-foreground">

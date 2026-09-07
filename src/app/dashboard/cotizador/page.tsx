@@ -441,6 +441,8 @@ export default function CotizadorPage() {
     pricesIncludeIva: true,
     ivaPct: 19,
   })
+  const [lithographyQuoteToolsEnabled, setLithographyQuoteToolsEnabled] = useState(false)
+  const [isLithographySector, setIsLithographySector] = useState(false)
 
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [materiales, setMateriales] = useState<Material[]>([])
@@ -554,6 +556,7 @@ export default function CotizadorPage() {
     fetchClientes()
     fetchMateriales()
     void fetchCotizacionesConfig()
+    void fetchEmpresaConfig()
   }, [])
 
   useEffect(() => {
@@ -583,6 +586,19 @@ export default function CotizadorPage() {
       }
     } catch (error) {
       console.error('Error al cargar config de IVA:', error)
+    }
+  }
+
+  const fetchEmpresaConfig = async () => {
+    try {
+      const res = await fetch('/api/configuracion/empresa', { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (res.ok && json?.ok && json?.data) {
+        setLithographyQuoteToolsEnabled(Boolean(json.data.lithographyQuoteToolsEnabled))
+        setIsLithographySector(json.data.businessType === 'LITOGRAFIA')
+      }
+    } catch (error) {
+      console.error('Error al cargar acceso de litografía:', error)
     }
   }
 
@@ -2268,6 +2284,7 @@ export default function CotizadorPage() {
           </DialogHeader>
           <LitografiaAiAssistant
             initialBrief={[descripcion, observaciones].map((item) => item.trim()).filter(Boolean).join("\n\n")}
+            isLithographySector={isLithographySector}
             openToken={litografiaAiOpenToken}
             onApplyToClassic={(draft) => {
               setLitografiaAiOpen(false)
@@ -2544,7 +2561,6 @@ export default function CotizadorPage() {
       </Dialog>
       <ErpPageHero
         breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Ventas' }, { label: t('quoteBuilder.page.title') }]}
-        eyebrow="ERP ventas"
         title={<span data-tour="cotizador-title">{t('quoteBuilder.page.title')}</span>}
         description={isLoadingCotizacion
           ? t('quoteBuilder.page.loadingQuote')
@@ -2721,29 +2737,33 @@ export default function CotizadorPage() {
                   >
                     {t('quoteBuilder.actions.aiQuoteBuilder')}
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() => {
-                      setShowItemForm(false)
-                      setLitografiaOpen(true)
-                    }}
-                  >
-                    {t('quoteBuilder.actions.lithographyQuoteBuilder')}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() => {
-                      setShowItemForm(false)
-                      setMetrajeEdit(null)
-                      setMetrajeOpen(true)
-                    }}
-                  >
-                    {t('quoteBuilder.actions.metrageQuoteBuilder')}
-                  </Button>
+                  {lithographyQuoteToolsEnabled ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        onClick={() => {
+                          setShowItemForm(false)
+                          setLitografiaOpen(true)
+                        }}
+                      >
+                        {t('quoteBuilder.actions.lithographyQuoteBuilder')}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        onClick={() => {
+                          setShowItemForm(false)
+                          setMetrajeEdit(null)
+                          setMetrajeOpen(true)
+                        }}
+                      >
+                        {t('quoteBuilder.actions.metrageQuoteBuilder')}
+                      </Button>
+                    </>
+                  ) : null}
                   <Button onClick={() => setShowItemForm(true)} size="sm" data-tour="cotizador-add-item">
                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

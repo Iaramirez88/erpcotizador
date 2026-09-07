@@ -281,6 +281,24 @@ export function mapWorkspaceForUser(workspace: CrmTaskWorkspaceWithAccess, userI
   }
 }
 
+export function getWorkspaceMemberUserIds(
+  workspace: Pick<CrmTaskWorkspaceWithAccess, 'createdById' | 'ownerUserId' | 'members'>,
+): string[] {
+  return Array.from(new Set([
+    workspace.createdById,
+    ...(workspace.ownerUserId ? [workspace.ownerUserId] : []),
+    ...workspace.members.map((member) => member.userId),
+  ].filter(Boolean)))
+}
+
+export function getNonWorkspaceMemberUserIds(
+  workspace: Pick<CrmTaskWorkspaceWithAccess, 'createdById' | 'ownerUserId' | 'members'>,
+  userIds: string[],
+): string[] {
+  const allowedUserIds = new Set(getWorkspaceMemberUserIds(workspace))
+  return Array.from(new Set(userIds.filter((userId) => !allowedUserIds.has(userId))))
+}
+
 export async function ensureWorkspaceEditors(
   client: DbClient,
   args: {

@@ -786,7 +786,7 @@ export default function CotizacionesPage() {
   return (
     <div className="space-y-4 p-3 sm:p-4 lg:p-6">
       <ErpPageHero
-        eyebrow="ERP comercial"
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Ventas' }, { label: t('quotes.page.title') }]}
         title={t('quotes.page.title')}
         description={t('quotes.page.subtitle')}
         actions={

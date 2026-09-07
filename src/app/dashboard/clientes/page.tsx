@@ -383,7 +383,11 @@ export default function ClientesPage() {
   return (
     <div className="space-y-6">
       <ErpPageHero
-        eyebrow="ERP comercial"
+        breadcrumbs={[
+          { label: 'Inicio', href: '/dashboard' },
+          { label: 'Ventas' },
+          { label: t('customers.title') },
+        ]}
         title={<span data-tour="clientes-title">{t('customers.title')}</span>}
         description={t('customers.subtitle')}
         actions={

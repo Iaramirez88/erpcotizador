@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   BillingCycle,
   ModuleKey,
+  Prisma,
   PlanTier,
   RbacGrantSource,
   RbacScopeType,
@@ -15,6 +16,7 @@ import { detachPermissionProfileAssignment, publishPermissionUpdateNotification 
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { sedeRoleToBaseAccess } from '@/lib/rbac'
 import { buildUserPermissionSnapshot } from '@/lib/user-permission-snapshot'
+import { mergeUserLithographySettings, parseUserLithographySettings } from '@/lib/lithography-access'
 
 export const runtime = 'nodejs'
 
@@ -76,6 +78,7 @@ type PatchBody = {
   clearTrial?: unknown
   isPaid?: unknown
   sedeAccesses?: unknown
+  lithographyQuoteToolsEnabled?: unknown
 }
 
 type SedeAccessInput = {
@@ -119,6 +122,7 @@ async function buildUserManagement(userId: string) {
       name: true,
       role: true,
       createdAt: true,
+      uiPreference: { select: { tutorial: true } },
       empresa: {
         select: {
           id: true,
@@ -189,6 +193,7 @@ async function buildUserManagement(userId: string) {
       name: user.name,
       role: user.role,
       createdAt: user.createdAt.toISOString(),
+      lithographyQuoteToolsEnabled: parseUserLithographySettings(user.uiPreference?.tutorial).quoteToolsEnabled,
       globalAccessLevel: globalSnapshot?.globalAccessByUserId[user.id] ?? 'NONE',
       sedeDefaultId: user.sedeDefaultId,
       empresa: user.empresa
@@ -262,6 +267,23 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
       if (Object.keys(userData).length) {
         await tx.user.update({ where: { id: userId }, data: userData })
+      }
+
+      if (typeof body.lithographyQuoteToolsEnabled === 'boolean') {
+        const currentPreference = await tx.uiPreference.findUnique({
+          where: { userId },
+          select: { tutorial: true },
+        })
+
+        const nextTutorial = mergeUserLithographySettings(currentPreference?.tutorial, {
+          quoteToolsEnabled: body.lithographyQuoteToolsEnabled,
+        }) as Prisma.InputJsonValue
+
+        await tx.uiPreference.upsert({
+          where: { userId },
+          create: { userId, tutorial: nextTutorial },
+          update: { tutorial: nextTutorial },
+        })
       }
 
       if (current.empresaId) {

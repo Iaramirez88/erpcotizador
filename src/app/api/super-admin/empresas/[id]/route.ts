@@ -5,6 +5,7 @@ import type { BillingCycle, ModuleKey, PlanTier } from '@prisma/client'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
 import { syncEnabledVerticalGrantsForUser } from '@/lib/company-preset-sync'
+import { mergeCompanyLithographySettings, parseCompanyLithographySettings } from '@/lib/lithography-access'
 
 export const runtime = 'nodejs'
 
@@ -60,6 +61,7 @@ type PatchBody = {
   planValidUntil?: unknown
   clearTrial?: unknown
   planOwnerEmail?: unknown
+  lithographyQuoteToolsEnabled?: unknown
 }
 
 function parsePlanValidUntil(value: unknown): Date | null | 'invalid' {
@@ -98,6 +100,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       whatsapp: true,
       email: true,
       logo: true,
+      businessType: true,
+      dashboardConfig: true,
       planTier: true,
       billingCycle: true,
       planValidUntil: true,
@@ -153,6 +157,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       ...empresa,
       workspaceCode,
       hasCompanyCode: Boolean(empresa.registrationCodeHash),
+      lithographyQuoteToolsEnabled: parseCompanyLithographySettings(empresa.dashboardConfig).quoteToolsEnabled,
       planOwnerEmail,
       billingInvoices: empresa.billingInvoices.map((invoice) => ({
         ...invoice,
@@ -171,6 +176,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (!empresaId) return NextResponse.json({ ok: false, error: 'Empresa inválida' }, { status: 400 })
 
   const body = (await req.json().catch(() => ({}))) as PatchBody
+  const currentEmpresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { dashboardConfig: true },
+  })
+  if (!currentEmpresa) {
+    return NextResponse.json({ ok: false, error: 'Empresa no encontrada' }, { status: 404 })
+  }
 
   const data: Record<string, unknown> = {}
 
@@ -247,6 +259,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     data.trialTier = null
     data.trialStartedAt = null
     data.trialValidUntil = null
+  }
+
+  if (typeof body.lithographyQuoteToolsEnabled === 'boolean') {
+    data.dashboardConfig = mergeCompanyLithographySettings(currentEmpresa.dashboardConfig, {
+      quoteToolsEnabled: body.lithographyQuoteToolsEnabled,
+    })
   }
 
   const planOwnerEmailRaw = normalizeNullableString(body.planOwnerEmail)

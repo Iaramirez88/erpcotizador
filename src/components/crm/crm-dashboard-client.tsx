@@ -1594,7 +1594,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
         <>
           <CrmNegotiationsPageHeader
             breadcrumbs={[
-              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'Inicio', href: '/dashboard' },
               { label: 'CRM', href: '/dashboard/crm' },
               { label: 'Pipeline' },
             ]}
@@ -1645,7 +1645,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
         <>
           <CrmNegotiationsPageHeader
             breadcrumbs={[
-              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'Inicio', href: '/dashboard' },
               { label: 'CRM', href: '/dashboard/crm' },
               { label: 'Seguimiento' },
             ]}
@@ -1671,13 +1671,10 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
               <div className="space-y-3">
                 <ErpBreadcrumbs
                   items={[
-                    { label: 'Dashboard', href: '/dashboard' },
+                    { label: 'Inicio', href: '/dashboard' },
                     { label: 'CRM' },
                   ]}
                 />
-                <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700 backdrop-blur">
-                  CRM
-                </div>
                 <div className="space-y-1.5">
                   <h1 className="max-w-2xl text-2xl font-semibold tracking-tight text-slate-950 lg:text-3xl">Un solo embudo comercial: captación, pipeline y seguimiento.</h1>
                   <p className="max-w-2xl text-[13px] leading-5 text-slate-600">La lógica sigue separada entre leads y oportunidades, pero la operación se lee como un mismo flujo: captar, calificar, convertir y cerrar con contexto ERP.</p>

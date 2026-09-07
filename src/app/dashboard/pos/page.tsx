@@ -2690,7 +2690,7 @@ export default function PosPage() {
   return (
     <div className="space-y-6">
       <ErpPageHero
-        eyebrow="ERP comercial"
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Ventas' }, { label: t('pos.title') }]}
         title={t('pos.title')}
         description={t('pos.subtitle')}
         actions={activeTab === 'interna' ? (

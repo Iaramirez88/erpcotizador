@@ -92,6 +92,7 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/materiales', label: 'Materiales', section: 'Inventario', layer: 'Inventario', domain: 'Materiales', moduleKey: 'MATERIALES' },
   { href: '/dashboard/terminados', label: 'Terminados', section: 'Inventario', layer: 'Inventario', domain: 'Terminados', moduleKey: 'MATERIALES' },
   { href: '/dashboard/inventario', label: 'Existencias', labelKey: 'nav.stock', section: 'Inventario', layer: 'Inventario', domain: 'Inventario', moduleKey: 'INVENTARIO' },
+  { href: '/dashboard/inventario/movimientos', label: 'Movimientos', labelKey: 'nav.movements', section: 'Inventario', layer: 'Inventario', domain: 'Movimientos de inventario', moduleKey: 'INVENTARIO' },
   { href: '/dashboard/inventario/traslados', label: 'Traslados', labelKey: 'nav.transfers', section: 'Inventario', layer: 'Inventario', domain: 'Traslados', moduleKey: 'INVENTARIO' },
   { href: '/dashboard/bodegas', label: 'Bodegas', section: 'Inventario', layer: 'Inventario', domain: 'Bodegas', moduleKey: 'INVENTARIO' },
   { href: '/dashboard/inventario/abastecimiento', label: 'Solicitudes de compra', labelKey: 'nav.purchaseRequests', section: 'Compras', layer: 'Compras', domain: 'Abastecimiento', moduleKey: 'INVENTARIO' },

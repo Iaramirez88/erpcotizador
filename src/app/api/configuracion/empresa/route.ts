@@ -13,6 +13,7 @@ import {
   parseCompanyOnboardingData,
 } from '@/lib/company-onboarding'
 import { ensureBusinessTypeSeedsForEmpresa } from '@/lib/business-type-seeds'
+import { mergeCompanyLithographySettings, parseCompanyLithographySettings, resolveLithographyQuoteToolsEnabled } from '@/lib/lithography-access'
 import { syncCompanyPresetAccess } from '@/lib/company-preset-sync'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
 
@@ -41,11 +42,17 @@ export async function GET() {
           nombre: true,
           nit: true,
           logo: true,
+          businessType: true,
           dashboardConfig: true,
           registrationCodeHash: true,
         },
       },
     },
+  })
+
+  const currentUser = await prisma.user.findUnique({
+    where: { id: access.userId },
+    select: { uiPreference: { select: { tutorial: true } } },
   })
 
   const empresa = sede?.empresa
@@ -63,8 +70,15 @@ export async function GET() {
       nombre: empresa.nombre,
       nit: empresa.nit,
       logo: empresa.logo,
+      businessType: empresa.businessType,
       intelligenceEnabled: parseCompanyIntelligenceSettings(empresa.dashboardConfig).enabled,
       taskCancellationReasonRequired: parseCompanyTaskSettings(empresa.dashboardConfig).requireTaskCancellationReason,
+      companyLithographyQuoteToolsEnabled: parseCompanyLithographySettings(empresa.dashboardConfig).quoteToolsEnabled,
+      lithographyQuoteToolsEnabled: resolveLithographyQuoteToolsEnabled({
+        businessType: empresa.businessType,
+        companyDashboardConfig: empresa.dashboardConfig,
+        userTutorialConfig: currentUser?.uiPreference?.tutorial,
+      }),
       hasRegistrationCode: Boolean(empresa.registrationCodeHash),
     },
   })
@@ -102,6 +116,9 @@ export async function PUT(request: NextRequest) {
   const intelligenceEnabled = typeof body.intelligenceEnabled === 'boolean' ? body.intelligenceEnabled : null
   const taskCancellationReasonRequired = typeof body.taskCancellationReasonRequired === 'boolean'
     ? body.taskCancellationReasonRequired
+    : null
+  const lithographyQuoteToolsEnabled = typeof body.lithographyQuoteToolsEnabled === 'boolean'
+    ? body.lithographyQuoteToolsEnabled
     : null
   const clearCompanyPreset = body.clearCompanyPreset === true
   const companyPresetBusinessTypeRaw = typeof body.companyPresetBusinessType === 'string'
@@ -150,6 +167,12 @@ export async function PUT(request: NextRequest) {
   if (taskCancellationReasonRequired !== null) {
     updateData.dashboardConfig = mergeCompanyTaskSettings(updateData.dashboardConfig ?? currentEmpresa?.dashboardConfig, {
       requireTaskCancellationReason: taskCancellationReasonRequired,
+    }) as Prisma.InputJsonValue
+  }
+
+  if (lithographyQuoteToolsEnabled !== null) {
+    updateData.dashboardConfig = mergeCompanyLithographySettings(updateData.dashboardConfig ?? currentEmpresa?.dashboardConfig, {
+      quoteToolsEnabled: lithographyQuoteToolsEnabled,
     }) as Prisma.InputJsonValue
   }
 
@@ -207,8 +230,10 @@ export async function PUT(request: NextRequest) {
       nombre: empresa.nombre,
       nit: empresa.nit,
       logo: empresa.logo,
+      businessType: currentEmpresa?.businessType ?? null,
       intelligenceEnabled: parseCompanyIntelligenceSettings(empresa.dashboardConfig).enabled,
       taskCancellationReasonRequired: parseCompanyTaskSettings(empresa.dashboardConfig).requireTaskCancellationReason,
+      companyLithographyQuoteToolsEnabled: parseCompanyLithographySettings(empresa.dashboardConfig).quoteToolsEnabled,
       hasRegistrationCode: Boolean(empresa.registrationCodeHash),
     },
   })

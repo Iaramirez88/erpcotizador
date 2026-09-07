@@ -4797,11 +4797,10 @@ export function CrmIntegrationsClient() {
     <div className="space-y-4.5 pb-4">
       <ErpPageHero
         breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Inicio', href: '/dashboard' },
           { label: 'CRM', href: '/dashboard/crm' },
           { label: language === 'en' ? 'Automation' : 'Automatización' },
         ]}
-        eyebrow={language === 'en' ? 'Omnichannel CRM' : 'CRM Omnicanal'}
         title={language === 'en' ? 'Automation and lead capture center' : 'Centro de automatización y captura de leads'}
         description={language === 'en' ? 'Activate channels, generate scripts for forms and chatbot, and set up operational bridges for email and social networks without duplicating ERP modules. Everything lands in leads, conversations, and opportunities in the existing CRM.' : 'Activa canales, genera scripts para formularios y chatbot, y monta bridges operativos para correo y redes sin duplicar módulos del ERP. Todo termina en leads, conversaciones y oportunidades del CRM existente.'}
         actions={

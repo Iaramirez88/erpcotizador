@@ -359,7 +359,6 @@ export default function RemisionesPage() {
   return (
     <div className="space-y-4 p-3 sm:p-4 lg:p-6">
       <ErpPageHero
-        eyebrow="ERP ventas"
         breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Ventas' }, { label: 'Remisiones' }]}
         title="Remisiones"
         description="Salida de inventario con trazabilidad por documento."

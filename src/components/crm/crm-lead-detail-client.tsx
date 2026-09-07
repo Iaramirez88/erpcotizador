@@ -400,7 +400,7 @@ export function CrmLeadDetailClient(props: Props) {
         <div className="space-y-2">
           <ErpBreadcrumbs
             items={[
-              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'Inicio', href: '/dashboard' },
               { label: 'CRM', href: '/dashboard/crm' },
               { label: 'Lead', href: '/dashboard/crm' },
               { label: lead.nombre },

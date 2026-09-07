@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { normalizeString } from '@/lib/crm'
-import { canUserAccessWorkspace, ensureWorkspaceEditors, getAccessibleTaskWorkspace } from '@/lib/crm-task-workspaces'
+import { canUserAccessWorkspace, getAccessibleTaskWorkspace, getNonWorkspaceMemberUserIds } from '@/lib/crm-task-workspaces'
 
 export const runtime = 'nodejs'
 
@@ -109,6 +109,21 @@ export async function PATCH(request: Request, context: RouteContext) {
       })
 
       if (resolvedWorkspaceId !== current.workspaceId) {
+        const assignmentRows = await tx.crmTaskAssignment.findMany({
+          where: {
+            empresaId: access.empresaId,
+            task: { projectId: current.id },
+          },
+          select: { userId: true },
+        })
+
+        if (targetWorkspace) {
+          const invalidWorkspaceAssigneeIds = getNonWorkspaceMemberUserIds(targetWorkspace, assignmentRows.map((row) => row.userId))
+          if (invalidWorkspaceAssigneeIds.length) {
+            throw new Error('PROJECT_MOVE_ASSIGNEES_NOT_IN_TARGET_WORKSPACE')
+          }
+        }
+
         await tx.crmTask.updateMany({
           where: {
             empresaId: access.empresaId,
@@ -118,19 +133,6 @@ export async function PATCH(request: Request, context: RouteContext) {
             workspaceId: resolvedWorkspaceId,
           },
         })
-
-        const assignmentRows = await tx.crmTaskAssignment.findMany({
-          where: {
-            empresaId: access.empresaId,
-            task: { projectId: current.id },
-          },
-          select: { userId: true },
-        })
-
-        await ensureWorkspaceEditors(tx, {
-          workspaceId: resolvedWorkspaceId,
-          userIds: assignmentRows.map((row) => row.userId),
-        })
       }
 
       return updated
@@ -138,6 +140,11 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     return NextResponse.json({ success: true, data: project })
   } catch (error) {
+    if (error instanceof Error && error.message === 'PROJECT_MOVE_ASSIGNEES_NOT_IN_TARGET_WORKSPACE') {
+      return NextResponse.json({
+        error: 'No puedes mover esta lista a ese proyecto porque contiene tareas asignadas a usuarios que no pertenecen al espacio de destino.',
+      }, { status: 400 })
+    }
     console.error('Error actualizando proyecto del espacio:', error)
     return NextResponse.json({ error: 'Error actualizando proyecto del espacio' }, { status: 500 })
   }

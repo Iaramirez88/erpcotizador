@@ -6191,7 +6191,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   return (
     <div className="space-y-4.5">
       <ErpPageHero
-        eyebrow="CRM"
+        breadcrumbs={[
+          { label: 'Inicio', href: '/dashboard' },
+          { label: 'CRM', href: '/dashboard/crm' },
+          { label: 'Chatbot studio' },
+        ]}
         title="Chatbot studio"
         description="Consola dedicada para diseñar el flujo conversacional, definir disparadores, variables, responsables y revisar el historial real del chatbot web."
         stats={[

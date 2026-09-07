@@ -121,7 +121,7 @@ export default async function CrmAiAuditPage({ searchParams }: PageProps) {
     <div className="space-y-6 pb-6">
       <ErpPageHero
         breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Inicio', href: '/dashboard' },
           { label: 'CRM', href: '/dashboard/crm' },
           { label: 'Auditoría IA' },
         ]}

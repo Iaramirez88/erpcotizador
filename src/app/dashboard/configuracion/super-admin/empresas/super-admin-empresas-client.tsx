@@ -85,11 +85,13 @@ type DetailEmpresa = {
   planOwnerEmail?: string | null
   nombre: string
   nit: string
+  businessType?: string | null
   direccion: string | null
   telefono: string | null
   whatsapp?: string | null
   email: string | null
   logo: string | null
+  lithographyQuoteToolsEnabled: boolean
   planTier: PlanTier
   billingCycle: BillingCycle
   planValidUntil: string | null
@@ -358,6 +360,7 @@ export default function SuperAdminEmpresasClient() {
     companyEmail: '',
     logo: '',
     planOwnerEmail: '',
+    lithographyQuoteToolsEnabled: false,
     planTier: 'FULL' as PlanTier,
     billingCycle: 'MONTHLY' as BillingCycle,
     planValidUntil: '',
@@ -737,6 +740,7 @@ export default function SuperAdminEmpresasClient() {
         companyEmail: json.empresa.email ?? '',
         logo: json.empresa.logo ?? '',
         planOwnerEmail: json.empresa.planOwnerEmail ?? '',
+        lithographyQuoteToolsEnabled: Boolean(json.empresa.lithographyQuoteToolsEnabled),
         planTier: json.empresa.planTier,
         billingCycle: json.empresa.billingCycle,
         planValidUntil: toDateInputValue(json.empresa.planValidUntil),
@@ -818,6 +822,7 @@ export default function SuperAdminEmpresasClient() {
         companyEmail: editForm.companyEmail,
         logo: editForm.logo,
         planOwnerEmail: editForm.planOwnerEmail,
+        lithographyQuoteToolsEnabled: editForm.lithographyQuoteToolsEnabled,
         planTier: editForm.planTier,
         billingCycle: editForm.billingCycle,
         planValidUntil: editForm.planValidUntil || null,
@@ -1173,6 +1178,9 @@ export default function SuperAdminEmpresasClient() {
                             <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2">
                               {t('superAdmin.companies.fields.whatsapp')}: <span className="font-medium text-slate-900">{detail.whatsapp || naText}</span>
                             </div>
+                            <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 sm:col-span-2 xl:col-span-1">
+                              {t('superAdmin.companies.fields.enableLithographyQuoteTools')}: <span className="font-medium text-slate-900">{detail.lithographyQuoteToolsEnabled ? t('common.yes') : t('common.no')}</span>
+                            </div>
                           </div>
                         </div>
                         <div className="grid min-w-[220px] gap-2 text-xs text-slate-600">
@@ -1438,6 +1446,18 @@ export default function SuperAdminEmpresasClient() {
                     <Label>{t('superAdmin.companies.fields.planValidUntil')}</Label>
                     <Input type="date" value={editForm.planValidUntil} onChange={(e) => setEditForm((p) => ({ ...p, planValidUntil: e.target.value, isPaidTouched: false }))} />
                     <p className="text-xs text-muted-foreground">{t('superAdmin.companies.fields.planValidUntilHelp')}</p>
+                  </div>
+
+                  <div className="flex items-center gap-3 sm:col-span-2 pt-2">
+                    <Switch
+                      checked={editForm.lithographyQuoteToolsEnabled}
+                      onCheckedChange={(checked) => setEditForm((p) => ({ ...p, lithographyQuoteToolsEnabled: Boolean(checked) }))}
+                      disabled={editLoading}
+                    />
+                    <div>
+                      <div className="font-medium">{t('superAdmin.companies.fields.enableLithographyQuoteTools')}</div>
+                      <div className="text-xs text-muted-foreground">{t('superAdmin.companies.fields.enableLithographyQuoteToolsHelp')}</div>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-3 sm:col-span-2 pt-2">

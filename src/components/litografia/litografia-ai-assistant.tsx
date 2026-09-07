@@ -650,6 +650,7 @@ export function LitografiaAiAssistant(props: {
   initialBrief?: string
   openToken?: string | number
   mode?: LitografiaAssistantMode
+  isLithographySector?: boolean
 }) {
   const conversationViewportRef = useRef<HTMLDivElement | null>(null)
   const responseSectionRef = useRef<HTMLDivElement | null>(null)
@@ -700,6 +701,7 @@ export function LitografiaAiAssistant(props: {
   const [copied, setCopied] = useState(false)
   const [showResponsePanel, setShowResponsePanel] = useState(false)
   const assistantMode = props.mode === "JSON_BASE" ? "JSON_BASE" : "IA"
+  const isLithographySector = props.isLithographySector !== false
 
   const currencyFormatter = new Intl.NumberFormat("es-CO", {
     style: "currency",
@@ -1155,7 +1157,9 @@ export function LitografiaAiAssistant(props: {
   const modeTitle = assistantMode === "JSON_BASE" ? "Cotizar base JSON" : "Cotice con IA"
   const modeDescription = assistantMode === "JSON_BASE"
     ? "Describe el trabajo con la misma interfaz, pero esta prueba fuerza reglas internas y base JSON sin pasar por la interpretación IA del flujo actual."
-    : "Describe el trabajo como lo pediría el cliente. La lectura se resume para pasar rápido a la cotización final."
+    : isLithographySector
+      ? "Describe el trabajo como lo pediría el cliente. La lectura se resume para pasar rápido a la cotización final."
+      : "Describe el requerimiento con la mayor claridad posible. La IA organizará la información para ayudarte a construir la cotización final."
   const loadingDescription = assistantMode === "JSON_BASE"
     ? "Leyendo formato, material, tintas, acabados y costos desde reglas internas más la base JSON para compararlo contra el flujo IA."
     : "Interpretando formato, material, tintas, acabados y costos base para llevarte a la respuesta final."
@@ -1163,6 +1167,23 @@ export function LitografiaAiAssistant(props: {
   const historyEmpty = assistantMode === "JSON_BASE"
     ? "Todavía no hay cotizaciones registradas en este flujo comparativo."
     : "Todavía no hay cotizaciones IA guardadas para esta empresa."
+  const briefLabel = isLithographySector ? "Brief del cliente" : "Descripción del requerimiento"
+  const briefPlaceholder = isLithographySector
+    ? "Ejemplo: 5.000 plegables media carta en propalcote 150 g, 4x4, dos cuerpos, entrega en Chapinero..."
+    : "Describe qué necesita el cliente, cantidades, medidas, material, tiempos de entrega o cualquier detalle útil para cotizar."
+  const guideTitle = isLithographySector ? "Guía básica del requerimiento" : "Resumen del requerimiento"
+  const guideDescription = isLithographySector
+    ? `Cumplidos ${readyRequirements} de ${briefRequirements.length}. Enter analiza y Shift+Enter agrega salto de línea.`
+    : "Escribe el requerimiento con el mayor contexto posible. Si quieres, usa el apoyo manual para ordenar mejor la información antes de analizar."
+  const guideHelperText = isLithographySector
+    ? "Puedes escribir libremente y, si quieres afinar, apoyar la consulta con selecciones del JSON actual."
+    : "Puedes escribir libremente y usar el apoyo manual como ayuda para organizar producto, cantidad y otros detalles clave."
+  const quickQuantityPlaceholder = isLithographySector ? "Ejemplo: 300 unidades" : "Ejemplo: 300 unidades o 25 cajas"
+  const quickProductPlaceholder = isLithographySector ? "Ejemplo: separador de libro, volante, tarjeta" : "Ejemplo: aviso, empaque, volante, tarjeta"
+  const advancedPanelTitle = isLithographySector ? "Opciones actuales del JSON" : "Apoyo manual del requerimiento"
+  const advancedPanelDescription = isLithographySector
+    ? "Marca opciones reales del catálogo. La escritura libre sigue activa y estas selecciones solo refuerzan la consulta."
+    : "Estas selecciones son opcionales y sirven para complementar el texto libre con referencias más claras sobre el requerimiento."
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -1187,22 +1208,22 @@ export function LitografiaAiAssistant(props: {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="litografia-ai-brief">Brief del cliente</Label>
+            <Label htmlFor="litografia-ai-brief">{briefLabel}</Label>
             <Textarea
               id="litografia-ai-brief"
               value={brief}
               onChange={(event) => setBrief(event.target.value)}
               onKeyDown={handleBriefKeyDown}
               className="min-h-36"
-              placeholder="Ejemplo: 5.000 plegables media carta en propalcote 150 g, 4x4, dos cuerpos, entrega en Chapinero..."
+              placeholder={briefPlaceholder}
             />
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-slate-900">Guía básica del requerimiento</p>
-                <p className="text-sm text-slate-500">Cumplidos {readyRequirements} de {briefRequirements.length}. Enter analiza y Shift+Enter agrega salto de línea.</p>
+                <p className="text-sm font-medium text-slate-900">{guideTitle}</p>
+                <p className="text-sm text-slate-500">{guideDescription}</p>
               </div>
               <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
                 {finalBrief.trim().length} caracteres
@@ -1225,7 +1246,7 @@ export function LitografiaAiAssistant(props: {
               >
                 Consulta manual avanzada
               </Button>
-              <p className="self-center text-xs text-slate-500">Puedes escribir libremente y, si quieres afinar, apoyar la consulta con selecciones del JSON actual.</p>
+              <p className="self-center text-xs text-slate-500">{guideHelperText}</p>
             </div>
             <div className="mt-4 space-y-3">
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
@@ -1260,7 +1281,7 @@ export function LitografiaAiAssistant(props: {
                   value={quickQuantity}
                   onChange={(event) => setQuickQuantity(event.target.value)}
                   className="mt-3 min-h-[72px] resize-none border-0 bg-white/70 px-0 py-0 text-lg font-semibold shadow-none focus-visible:ring-0"
-                  placeholder="Ejemplo: 300 unidades"
+                  placeholder={quickQuantityPlaceholder}
                 />
               </div>
               <div className={`rounded-2xl border px-4 py-4 ${quickProduct.trim() ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
@@ -1272,7 +1293,7 @@ export function LitografiaAiAssistant(props: {
                   value={quickProduct}
                   onChange={(event) => setQuickProduct(event.target.value)}
                   className="mt-3 min-h-[72px] resize-none border-0 bg-white/70 px-0 py-0 text-lg font-semibold shadow-none focus-visible:ring-0"
-                  placeholder="Ejemplo: separador de libro, volante, tarjeta"
+                  placeholder={quickProductPlaceholder}
                 />
                 {productSuggestion.note ? <p className="mt-3 text-xs text-slate-600">{productSuggestion.note}</p> : null}
                 {guideMode === "natural" && productOptions.length ? (
@@ -1296,8 +1317,8 @@ export function LitografiaAiAssistant(props: {
               <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">Opciones actuales del JSON</p>
-                    <p className="text-sm text-slate-500">Marca opciones reales del catálogo. La escritura libre sigue activa y estas selecciones solo refuerzan la consulta.</p>
+                    <p className="text-sm font-semibold text-slate-900">{advancedPanelTitle}</p>
+                    <p className="text-sm text-slate-500">{advancedPanelDescription}</p>
                   </div>
                   <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
                     Selección manual opcional

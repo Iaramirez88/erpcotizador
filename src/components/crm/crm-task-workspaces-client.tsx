@@ -1207,13 +1207,23 @@ export function CrmTaskWorkspacesClient() {
 
   const taskAssigneeCandidates = useMemo(() => {
     const term = assigneeSearch.trim().toLowerCase()
-    return users.filter((user) => !term || (user.name || '').toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term))
-  }, [users, assigneeSearch])
+    const selectedWorkspaceMemberIds = new Set((selectedWorkspace?.members ?? []).map((member) => member.userId))
+    const restrictToWorkspaceMembers = Boolean(taskForm.workspaceId)
+    return users.filter((user) => {
+      if (restrictToWorkspaceMembers && !selectedWorkspaceMemberIds.has(user.id)) return false
+      return !term || (user.name || '').toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term)
+    })
+  }, [users, assigneeSearch, selectedWorkspace, taskForm.workspaceId])
 
   const detailAssigneeCandidates = useMemo(() => {
     const term = detailAssigneeSearch.trim().toLowerCase()
-    return users.filter((user) => !term || (user.name || '').toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term))
-  }, [users, detailAssigneeSearch])
+    const detailWorkspaceMemberIds = new Set((selectedTask?.workspace?.members ?? []).map((member) => member.userId))
+    const restrictToWorkspaceMembers = Boolean(selectedTask?.workspace?.id)
+    return users.filter((user) => {
+      if (restrictToWorkspaceMembers && !detailWorkspaceMemberIds.has(user.id)) return false
+      return !term || (user.name || '').toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term)
+    })
+  }, [users, detailAssigneeSearch, selectedTask])
 
   const noteEntries = useMemo(() => selectedTask?.history.filter((entry) => entry.type === 'NOTE_ADDED') ?? [], [selectedTask])
 
@@ -1410,6 +1420,14 @@ export function CrmTaskWorkspacesClient() {
     try {
       const json = await requestJson<TaskItem>('/api/crm/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspaceId: taskForm.workspaceId || null, projectId: taskForm.projectId || null, title: taskForm.title, description: taskForm.description, dueAt: taskForm.dueAt || null, priority: taskForm.priority, status: taskForm.status, colorHex: normalizeHex(taskForm.colorHex), assignedToUserIds: normalizedAssigneeIds }) })
       if (!json.success) return alert(json.error || 'No se pudo crear la tarea.')
+      if (json.data?.id) {
+        const nextOrderedTaskIds = [json.data.id, ...orderedTaskIds.filter((taskId) => taskId !== json.data?.id)]
+        try {
+          await saveOrderedTasks(nextOrderedTaskIds)
+        } catch {
+          // Keep the optimistic local order for this session even if persistence fails.
+        }
+      }
       const shouldOpenDetailAfterCreate = !taskForm.workspaceId && !taskForm.projectId && Boolean(json.data?.id)
       setTaskDialogOpen(false)
       setTaskForm({ title: '', description: '', dueAt: '', priority: 'NORMAL', status: 'OPEN', colorHex: '#1D4ED8', assignedToUserIds: currentUserId ? [currentUserId] : [], workspaceId: selectedWorkspaceId || '', projectId: selectedProjectId || '' })
