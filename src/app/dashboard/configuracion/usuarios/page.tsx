@@ -2,7 +2,7 @@ import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { Bell, Plus, ShieldCheck, UserRoundCheck, UserRoundX } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
-import { ensureDefaultSedeForEmpresa, requireEmpresaIdForUser } from '@/lib/rbac'
+import { ensureDefaultSedeForEmpresa, getActiveSedeForUser, requireEmpresaIdForUser } from '@/lib/rbac'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -16,7 +16,7 @@ import { revalidatePath } from 'next/cache'
 import { checkPlanLimit } from '@/lib/plan-limits'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { AccessLevel, ModuleKey, SedeRole } from '@prisma/client'
-import { deriveExplicitCapabilityLevel } from '@/lib/dashboard-access'
+import { deriveExplicitCapabilityLevel, userHasCapabilityAccess } from '@/lib/dashboard-access'
 import { buildUserPermissionSnapshot } from '@/lib/user-permission-snapshot'
 import { DASHBOARD_PERMISSION_RULES } from '@/lib/dashboard-permission-catalog'
 import { syncEnabledVerticalGrantsForUser } from '@/lib/company-preset-sync'
@@ -126,6 +126,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
 
   const empresaId = await requireEmpresaIdForUser(session.user.id)
   await ensureDefaultSedeForEmpresa(empresaId, session.user.id)
+  const activeSedeForAccess = await getActiveSedeForUser(session.user.id)
 
   const myAdmin = await prisma.sedeMembership.findFirst({
     where: {
@@ -136,7 +137,18 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
     select: { id: true },
   })
 
-  if (session.user.role !== 'ADMIN' && !myAdmin) {
+  const canAccessUsersModule = activeSedeForAccess?.id
+    ? await userHasCapabilityAccess({
+        userId: session.user.id,
+        empresaId,
+        sedeId: activeSedeForAccess.id,
+        domain: 'CORE',
+        subdomain: 'USERS',
+        action: 'READ',
+      })
+    : false
+
+  if (session.user.role !== 'ADMIN' && !myAdmin && !canAccessUsersModule) {
     redirect('/dashboard')
   }
 

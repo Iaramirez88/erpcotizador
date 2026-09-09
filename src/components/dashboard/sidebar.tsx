@@ -1099,6 +1099,7 @@ export default function Sidebar({ user }: SidebarProps) {
       return user.intelligenceEnabled === true
     })
     const withPlanGate = withIntelligenceGate.filter((it) => {
+      if (allowedNavHrefSet?.has(normalizeNavHref(it.scopeHref ?? it.href))) return true
       if (!enabledModules || isPersonal) return true
       const moduleKey = moduleForDashboardHref(it.href)
       if (!moduleKey) return true

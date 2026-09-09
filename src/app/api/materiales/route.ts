@@ -6,7 +6,7 @@
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireApiAccess } from "@/lib/api-rbac"
+import { canAccessCapability, requireApiAccess } from "@/lib/api-rbac"
 import { checkPlanLimit } from "@/lib/plan-limits"
 import { AccessLevel, ModuleKey } from "@prisma/client"
 import type { Prisma } from "@prisma/client"
@@ -75,6 +75,28 @@ async function ensureDefaultWarehouse(tx: Prisma.TransactionClient, args: { empr
   })
 
   return created.id
+}
+
+async function requireCatalogWriteAccess(sedeId?: string) {
+  const productAccess = await canAccessCapability({
+    domain: 'RECURSOS',
+    subdomain: 'PRODUCTS',
+    action: 'CREATE',
+    sedeId,
+    allowLegacyFallback: true,
+  })
+  if (productAccess.ok) return productAccess
+
+  const materialsAccess = await canAccessCapability({
+    domain: 'RECURSOS',
+    subdomain: 'MATERIALS',
+    action: 'CREATE',
+    sedeId,
+    allowLegacyFallback: true,
+  })
+  if (materialsAccess.ok) return materialsAccess
+
+  return productAccess
 }
 
 // GET - Listar todos los materiales
@@ -560,7 +582,7 @@ export async function GET(request: Request) {
 // POST - Crear nuevo material
 export async function POST(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.MATERIALES, 'WRITE')
+    const access = await requireCatalogWriteAccess()
     if (!access.ok) return access.response
 
     const empresaId = access.empresaId
@@ -650,12 +672,8 @@ export async function POST(request: Request) {
         if (!warehouse || warehouse.empresaId !== empresaId) return null
 
         if (warehouse.sedeId && access.session.user.role !== 'ADMIN') {
-          await requireSedeAccess({
-            userId: access.userId,
-            sedeId: warehouse.sedeId,
-            module: ModuleKey.MATERIALES,
-            minLevel: AccessLevel.WRITE,
-          })
+          const sedeAccess = await requireCatalogWriteAccess(warehouse.sedeId)
+          if (!sedeAccess.ok) return null
         }
 
         validated.push({ id: warehouse.id, sedeId: warehouse.sedeId ?? null })
