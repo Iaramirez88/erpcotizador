@@ -22,6 +22,8 @@ import {
   HandCoins,
   LayoutGrid,
   Loader2,
+  Package2,
+  Pencil,
   Plus,
   Printer,
   ReceiptText,
@@ -63,17 +65,21 @@ import { buildWhatsAppWebUrl } from "@/lib/whatsapp-link";
 import { cn } from "@/lib/utils";
 import {
   createEmptyRestaurantBoard,
+  aggregateRestaurantSaleStockItems,
   type DiningTable,
   type KitchenStatus,
   type KitchenTicket,
   type Priority,
   type RecipeComponent,
+  type RecipeComponentUsageScope,
   RESTAURANT_STATION_OPTIONS,
   type RestaurantActivityLog,
   type RestaurantBoardState,
   type RestaurantBoardSummary,
   type RestaurantCourierType,
+  recipeComponentAppliesToServiceMode,
   type RestaurantServiceMode,
+  type RestaurantSaleStockItem,
   type Station,
   type TableStatus,
 } from "@/lib/restaurante";
@@ -182,11 +188,18 @@ type TicketFormState = {
 };
 
 type RecipeDraftState = {
+  recipeId: string | null;
   name: string;
   station: Station;
   yieldCount: number;
   notes: string;
   components: RecipeComponent[];
+};
+
+type TableDraftState = {
+  name: string;
+  color: string;
+  serviceMode: RestaurantServiceMode;
 };
 
 type AutosaveState = "idle" | "saving" | "saved" | "error";
@@ -343,11 +356,27 @@ const SECTION_META: Record<SectionId, { title: string; description: string }> =
 
 function createRecipeDraft(): RecipeDraftState {
   return {
+    recipeId: null,
     name: "",
     station: "COCINA",
     yieldCount: 1,
     notes: "",
-    components: [{ id: crypto.randomUUID(), materialId: "", quantity: 1 }],
+    components: [
+      {
+        id: crypto.randomUUID(),
+        materialId: "",
+        quantity: 1,
+        usageScope: "ALL",
+      },
+    ],
+  };
+}
+
+function createTableDraft(): TableDraftState {
+  return {
+    name: "",
+    color: "#f97316",
+    serviceMode: "DINE_IN",
   };
 }
 
@@ -476,6 +505,14 @@ function formatRestaurantServiceModeLabel(value: RestaurantServiceMode) {
   if (value === "TAKEAWAY") return "Para llevar";
   if (value === "DELIVERY") return "Domicilio";
   return "En mesa";
+}
+
+function formatRecipeUsageScopeLabel(value: RecipeComponentUsageScope) {
+  if (value === "DINE_IN") return "Solo mesa";
+  if (value === "TAKEAWAY") return "Solo para llevar";
+  if (value === "DELIVERY") return "Solo domicilio";
+  if (value === "OFF_PREMISE") return "Para llevar y domicilio";
+  return "Siempre";
 }
 
 function formatRestaurantCourierLabel(value: RestaurantCourierType, customLabel?: string) {
@@ -777,6 +814,7 @@ export default function RestauranteClient() {
     useState<RestaurantCheckoutPaymentMethod>("CASH");
   const [cashReceivedInput, setCashReceivedInput] = useState("");
   const [tipInput, setTipInput] = useState("");
+  const [tipPercentageSelection, setTipPercentageSelection] = useState<number | null>(10);
   const [roundingStep, setRoundingStep] = useState<0 | 100 | 1000>(0);
   const [splitCount, setSplitCount] = useState(1);
   const [manualChargeDraft, setManualChargeDraft] = useState<ManualChargeDraft>({
@@ -834,6 +872,7 @@ export default function RestauranteClient() {
   const [recipeDraft, setRecipeDraft] = useState<RecipeDraftState>(() =>
     createRecipeDraft(),
   );
+  const [tableDraft, setTableDraft] = useState<TableDraftState>(() => createTableDraft());
   const [shortageDraft, setShortageDraft] = useState({ label: "", note: "" });
   const lastPersistedSnapshotRef = useRef(EMPTY_BOARD_SNAPSHOT);
   const skipNextAutosaveRef = useRef(true);
@@ -1007,6 +1046,8 @@ export default function RestauranteClient() {
         if (!recipe) continue;
         for (const component of recipe.components) {
           if (!component.materialId || component.quantity <= 0) continue;
+          if (!recipeComponentAppliesToServiceMode(component, table.serviceMode))
+            continue;
           const material = materialsById.get(component.materialId);
           if (!material) continue;
           const normalizedQty =
@@ -1226,6 +1267,57 @@ export default function RestauranteClient() {
     }));
   }
 
+  function addTable() {
+    const name = tableDraft.name.trim();
+    if (!name) {
+      setSaleSubmitState({
+        kind: "error",
+        message: "Escribe el nombre de la mesa o canal antes de crearla.",
+      });
+      return;
+    }
+
+    const nextTable: DiningTable = {
+      id: crypto.randomUUID(),
+      name,
+      color: tableDraft.color,
+      status: "LIBRE",
+      guestName: "",
+      guests: 0,
+      note: "",
+      serviceMode: tableDraft.serviceMode,
+      courierType: "NONE",
+      courierLabel: "",
+      lastInvoiceId: null,
+      lastInvoiceNumber: null,
+      lastSaleAt: null,
+      lastSaleTotal: null,
+      tickets: [],
+    };
+
+    setBoard((current) => ({
+      ...current,
+      tables: [...current.tables, nextTable],
+    }));
+    setSelectedTableId(nextTable.id);
+    setTicketForm((current) => ({ ...current, tableId: nextTable.id }));
+    setTableDraft(createTableDraft());
+    setSaleSubmitState({ kind: "success", message: `Mesa ${name} creada.` });
+  }
+
+  function deleteSelectedTable() {
+    if (!selectedTable) return;
+    setBoard((current) => ({
+      ...current,
+      tables: current.tables.filter((table) => table.id !== selectedTable.id),
+    }));
+    const remaining = board.tables.filter((table) => table.id !== selectedTable.id);
+    const nextSelectedId = remaining[0]?.id ?? "";
+    setSelectedTableId(nextSelectedId);
+    setTicketForm((current) => ({ ...current, tableId: nextSelectedId }));
+    setSaleSubmitState({ kind: "success", message: `Mesa ${selectedTable.name} eliminada.` });
+  }
+
   function addRecipe() {
     const validComponents = recipeDraft.components.filter(
       (component) => component.materialId && component.quantity > 0,
@@ -1233,19 +1325,45 @@ export default function RestauranteClient() {
     if (!recipeDraft.name.trim() || !validComponents.length) return;
     setBoard((current) => ({
       ...current,
-      recipes: [
-        {
-          id: crypto.randomUUID(),
-          name: recipeDraft.name.trim(),
-          station: recipeDraft.station,
-          yieldCount: Math.max(1, Number(recipeDraft.yieldCount) || 1),
-          notes: recipeDraft.notes.trim(),
-          components: validComponents,
-        },
-        ...current.recipes,
-      ],
+      recipes: recipeDraft.recipeId
+        ? current.recipes.map((recipe) =>
+            recipe.id === recipeDraft.recipeId
+              ? {
+                  ...recipe,
+                  name: recipeDraft.name.trim(),
+                  station: recipeDraft.station,
+                  yieldCount: Math.max(1, Number(recipeDraft.yieldCount) || 1),
+                  notes: recipeDraft.notes.trim(),
+                  components: validComponents,
+                }
+              : recipe,
+          )
+        : [
+            {
+              id: crypto.randomUUID(),
+              name: recipeDraft.name.trim(),
+              station: recipeDraft.station,
+              yieldCount: Math.max(1, Number(recipeDraft.yieldCount) || 1),
+              notes: recipeDraft.notes.trim(),
+              components: validComponents,
+            },
+            ...current.recipes,
+          ],
     }));
     setRecipeDraft(createRecipeDraft());
+  }
+
+  function startRecipeEdit(recipeId: string) {
+    const recipe = board.recipes.find((item) => item.id === recipeId);
+    if (!recipe) return;
+    setRecipeDraft({
+      recipeId: recipe.id,
+      name: recipe.name,
+      station: recipe.station,
+      yieldCount: recipe.yieldCount,
+      notes: recipe.notes,
+      components: recipe.components.map((component) => ({ ...component })),
+    });
   }
 
   function updateRecipeComponent(
@@ -1265,7 +1383,7 @@ export default function RestauranteClient() {
       ...current,
       components: [
         ...current.components,
-        { id: crypto.randomUUID(), materialId: "", quantity: 1 },
+        { id: crypto.randomUUID(), materialId: "", quantity: 1, usageScope: "ALL" },
       ],
     }));
   }
@@ -1597,10 +1715,18 @@ export default function RestauranteClient() {
       selectedTableSaleItems.reduce((sum, item) => sum + (item.total ?? 0), 0),
     [selectedTableSaleItems],
   );
+  const tipQuickOptions = useMemo(
+    () => [0, 10, 15].map((pct) => ({ pct, value: Math.round((selectedTableEstimatedTotal * pct) / 100) })),
+    [selectedTableEstimatedTotal],
+  );
   const tipAmount = useMemo(() => {
     const parsed = Number(tipInput);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }, [tipInput]);
+  const tipPercentage = useMemo(() => {
+    if (selectedTableEstimatedTotal <= 0 || tipAmount <= 0) return 0;
+    return Number(((tipAmount / selectedTableEstimatedTotal) * 100).toFixed(2));
+  }, [selectedTableEstimatedTotal, tipAmount]);
   const totalBeforeRounding = useMemo(
     () => selectedTableEstimatedTotal + tipAmount,
     [selectedTableEstimatedTotal, tipAmount],
@@ -1638,6 +1764,29 @@ export default function RestauranteClient() {
           overview.wasteAlerts.length,
     [overview?.wasteAlerts],
   );
+  const restaurantRecipeStockItems = useMemo<RestaurantSaleStockItem[]>(() => {
+    if (!selectedTable) return [];
+    const recipesById = new Map(board.recipes.map((recipe) => [recipe.id, recipe]));
+    const items: RestaurantSaleStockItem[] = [];
+
+    for (const saleItem of selectedTableSaleItems) {
+      if (!saleItem.recipeId) continue;
+      const recipe = recipesById.get(saleItem.recipeId);
+      if (!recipe) continue;
+      for (const component of recipe.components) {
+        if (!component.materialId || component.quantity <= 0) continue;
+        if (!recipeComponentAppliesToServiceMode(component, selectedTable.serviceMode)) {
+          continue;
+        }
+        items.push({
+          materialId: component.materialId,
+          quantity: (component.quantity * saleItem.qty) / Math.max(recipe.yieldCount, 1),
+        });
+      }
+    }
+
+    return aggregateRestaurantSaleStockItems(items);
+  }, [board.recipes, selectedTable, selectedTableSaleItems]);
 
   function addMenuShortcutToSelectedTable(shortcut: MenuShortcut) {
     const targetTableId =
@@ -1773,6 +1922,7 @@ export default function RestauranteClient() {
     setSelectedPaymentMethod("CASH");
     setCashReceivedInput("");
     setTipInput("");
+    setTipPercentageSelection(10);
     setRoundingStep(0);
     setSplitCount(Math.max(1, table?.guests || 1));
     setCustomerPhoneInput("");
@@ -2167,11 +2317,20 @@ export default function RestauranteClient() {
                             ? cashChangeDue
                             : null,
                         tipAmount,
+                        tipPercentage: tipAmount > 0 ? tipPercentage : null,
                         roundingAdjustment,
                         splitCount: selectedSplitCount,
                         serviceMode: selectedTable.serviceMode,
                         courierType: selectedTable.courierType,
                         courierLabel: selectedTable.courierLabel || null,
+                        restaurantSale: {
+                          version: 1,
+                          tableName: selectedTable.name,
+                          serviceMode: selectedTable.serviceMode,
+                          tipAmount,
+                          tipPercentage: tipAmount > 0 ? tipPercentage : null,
+                          stockItems: restaurantRecipeStockItems,
+                        },
                       },
                     },
                   ]
@@ -2324,6 +2483,7 @@ export default function RestauranteClient() {
       setCustomerNotificationsEnabled(false);
       setCashReceivedInput("");
       setTipInput("");
+      setTipPercentageSelection(10);
       setRoundingStep(0);
       setCustomerPhoneInput("");
       setCustomerEmailInput("");
@@ -2438,6 +2598,63 @@ export default function RestauranteClient() {
     if (sectionId === "mesas")
       return (
         <div className="space-y-5">
+          <div className="grid gap-3 rounded-[26px] border border-slate-200 bg-white p-4 lg:grid-cols-[1.4fr_0.9fr_0.9fr_auto] lg:items-end">
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-600">Nueva mesa o canal</span>
+              <Input
+                value={tableDraft.name}
+                onChange={(event) =>
+                  setTableDraft((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                placeholder="Mesa terraza / Barra 2 / Rappi"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-600">Color</span>
+              <Input
+                type="color"
+                value={tableDraft.color}
+                onChange={(event) =>
+                  setTableDraft((current) => ({
+                    ...current,
+                    color: event.target.value,
+                  }))
+                }
+                className="h-11 rounded-2xl p-1"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-600">Modo base</span>
+              <Select
+                value={tableDraft.serviceMode}
+                onValueChange={(value) =>
+                  setTableDraft((current) => ({
+                    ...current,
+                    serviceMode: value as RestaurantServiceMode,
+                  }))
+                }
+              >
+                <SelectTrigger className="rounded-2xl bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DINE_IN">En mesa</SelectItem>
+                  <SelectItem value="TAKEAWAY">Para llevar</SelectItem>
+                  <SelectItem value="DELIVERY">Domicilio</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
+            <Button
+              type="button"
+              className="rounded-2xl bg-orange-500 text-white hover:bg-orange-600"
+              onClick={addTable}
+            >
+              <Plus className="mr-2 h-4 w-4" /> Crear mesa
+            </Button>
+          </div>
           <div className="rounded-[30px] border border-slate-200 bg-slate-50/90 p-3">
             <div className="flex flex-wrap gap-2">
               {laneOptions.map((lane, index) => {
@@ -2485,14 +2702,26 @@ export default function RestauranteClient() {
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-700">
                   Mesa activa
                 </div>
-                <div className="mt-1 text-2xl font-semibold text-slate-950">
-                  {selectedTable.name}
+                <div className="mt-1 flex items-center gap-3 text-2xl font-semibold text-slate-950">
+                  <span
+                    className="inline-flex h-4 w-4 rounded-full border border-white shadow-sm"
+                    style={{ backgroundColor: selectedTable.color }}
+                  />
+                  <span>{selectedTable.name}</span>
                 </div>
                 <div className="mt-1 text-sm text-slate-600">
                   {selectedTable.guestName || "Lista para tomar pedido"} ·{" "}
                   {selectedTable.tickets.length} productos cargados
                 </div>
               </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-2xl border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                onClick={deleteSelectedTable}
+              >
+                <Trash2 className="mr-2 h-4 w-4" /> Eliminar mesa
+              </Button>
             </div>
           ) : null}
           <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
@@ -2531,7 +2760,12 @@ export default function RestauranteClient() {
                         ? "border-orange-300 bg-orange-500 pt-14 shadow-[0_24px_48px_-32px_rgba(249,115,22,0.8)]"
                         : "border-slate-200 bg-white hover:border-orange-200 hover:bg-orange-50/40",
                     )}
+                    style={{ boxShadow: selected ? `0 24px 48px -32px ${table.color}99` : undefined }}
                   >
+                  <span
+                    className="absolute inset-x-3 top-3 h-1.5 rounded-full"
+                    style={{ backgroundColor: table.color }}
+                  />
                   <div className="flex items-center justify-between text-[11px] font-medium">
                     <span
                       className={cn(
@@ -2811,6 +3045,24 @@ export default function RestauranteClient() {
             </Button>
           </div>
           <div className="mt-5 grid gap-3 lg:grid-cols-2">
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-300">Nombre mesa / canal</span>
+              <Input
+                value={selectedTable?.name ?? ""}
+                onChange={(event) => updateSelectedTableMeta({ name: event.target.value })}
+                placeholder="Mesa terraza"
+                className="rounded-2xl border-white/10 bg-white text-slate-950"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-300">Color de mesa</span>
+              <Input
+                type="color"
+                value={selectedTable?.color ?? "#f97316"}
+                onChange={(event) => updateSelectedTableMeta({ color: event.target.value })}
+                className="h-11 rounded-2xl border-white/10 bg-white p-1 text-slate-950"
+              />
+            </label>
             <label className="space-y-1 text-sm">
               <span className="text-slate-300">Cliente o referencia</span>
               <Input
@@ -3253,6 +3505,21 @@ export default function RestauranteClient() {
       return (
         <div className="space-y-4">
           <div className="space-y-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-950">
+                  {recipeDraft.recipeId ? "Editar receta" : "Nueva receta"}
+                </div>
+                <div className="text-xs text-slate-500">
+                  Vincula ingredientes base y define si aplican en mesa, para llevar o domicilio.
+                </div>
+              </div>
+              {recipeDraft.recipeId ? (
+                <Button type="button" variant="ghost" onClick={() => setRecipeDraft(createRecipeDraft())}>
+                  Cancelar edición
+                </Button>
+              ) : null}
+            </div>
             <div className="space-y-1">
               <Label>Nombre</Label>
               <Input
@@ -3323,7 +3590,7 @@ export default function RestauranteClient() {
               {recipeDraft.components.map((component) => (
                 <div
                   key={component.id}
-                  className="grid gap-2 sm:grid-cols-[1fr_120px_auto]"
+                  className="grid gap-2 sm:grid-cols-[1fr_120px_220px_auto]"
                 >
                   <Select
                     value={component.materialId || "__none__"}
@@ -3358,6 +3625,25 @@ export default function RestauranteClient() {
                       })
                     }
                   />
+                  <Select
+                    value={component.usageScope}
+                    onValueChange={(value) =>
+                      updateRecipeComponent(component.id, {
+                        usageScope: value as RecipeComponentUsageScope,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="rounded-2xl bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Siempre</SelectItem>
+                      <SelectItem value="DINE_IN">Solo mesa</SelectItem>
+                      <SelectItem value="TAKEAWAY">Solo para llevar</SelectItem>
+                      <SelectItem value="DELIVERY">Solo domicilio</SelectItem>
+                      <SelectItem value="OFF_PREMISE">Para llevar y domicilio</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Button
                     type="button"
                     variant="ghost"
@@ -3382,7 +3668,7 @@ export default function RestauranteClient() {
                 className="rounded-2xl bg-orange-500 text-white hover:bg-orange-600"
                 onClick={addRecipe}
               >
-                Guardar receta
+                {recipeDraft.recipeId ? "Actualizar receta" : "Guardar receta"}
               </Button>
             </div>
           </div>
@@ -3402,20 +3688,43 @@ export default function RestauranteClient() {
                         {recipe.station} · rinde {recipe.yieldCount}
                       </div>
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="rounded-2xl"
-                      onClick={() => deleteRecipe(recipe.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="rounded-2xl"
+                        onClick={() => startRecipeEdit(recipe.id)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="rounded-2xl"
+                        onClick={() => deleteRecipe(recipe.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   {recipe.notes ? (
                     <div className="mt-2 text-xs text-slate-500">
                       {recipe.notes}
                     </div>
                   ) : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {recipe.components.map((component) => {
+                      const material = overview?.materials.find((item) => item.id === component.materialId);
+                      return (
+                        <span
+                          key={component.id}
+                          className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-600"
+                        >
+                          {(material?.nombre ?? "Insumo")} · {formatNumber(component.quantity)} · {formatRecipeUsageScopeLabel(component.usageScope)}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               ))
             ) : (
@@ -3576,6 +3885,13 @@ export default function RestauranteClient() {
                       </p>
                     </div>
                   </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button asChild variant="outline" className="rounded-2xl">
+                        <Link href="/dashboard/restaurante/ingredientes">
+                          <Package2 className="mr-2 h-4 w-4" /> Ingredientes y recetas
+                        </Link>
+                      </Button>
+                    </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-[24px] border border-orange-100 bg-orange-50 px-4 py-3">
@@ -4464,20 +4780,26 @@ export default function RestauranteClient() {
                 <div className="space-y-4">
                   <div className="space-y-2 rounded-[24px] border border-slate-200 bg-white px-4 py-4">
                     <Label>Propina voluntaria</Label>
+                    <p className="text-xs text-slate-500">
+                      Sugerencia porcentual configurable. Puedes añadirla o quitarla antes de facturar.
+                    </p>
                     <div className="flex flex-wrap gap-2">
-                      {[0, 2000, 5000, 10000].map((value) => (
+                      {tipQuickOptions.map(({ pct, value }) => (
                         <button
-                          key={value}
+                          key={pct}
                           type="button"
-                          onClick={() => setTipInput(value ? String(value) : "")}
+                          onClick={() => {
+                            setTipPercentageSelection(pct || null);
+                            setTipInput(value ? String(value) : "");
+                          }}
                           className={cn(
                             "rounded-full border px-3 py-2 text-sm font-semibold transition",
-                            (Number(tipInput) || 0) === value
+                            (pct === 0 && tipAmount === 0) || tipPercentageSelection === pct
                               ? "border-orange-300 bg-orange-50 text-orange-700"
                               : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
                           )}
                         >
-                          {value ? formatCurrency(value) : "Sin propina"}
+                          {pct === 0 ? "Sin propina" : `${pct}% · ${formatCurrency(value)}`}
                         </button>
                       ))}
                     </div>
@@ -4485,7 +4807,10 @@ export default function RestauranteClient() {
                       type="number"
                       min={0}
                       value={tipInput}
-                      onChange={(event) => setTipInput(event.target.value)}
+                      onChange={(event) => {
+                        setTipPercentageSelection(null);
+                        setTipInput(event.target.value);
+                      }}
                       placeholder="Otro valor de propina"
                     />
                   </div>
@@ -4537,7 +4862,10 @@ export default function RestauranteClient() {
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-3 text-sm">
                       <span className="text-slate-600">Propina</span>
-                      <span className="font-semibold text-slate-950">{formatCurrency(tipAmount)}</span>
+                      <span className="font-semibold text-slate-950">
+                        {formatCurrency(tipAmount)}
+                        {tipAmount > 0 ? ` (${formatNumber(tipPercentage)}%)` : ""}
+                      </span>
                     </div>
                     <div className="mt-3 flex items-center justify-between gap-3 text-sm">
                       <span className="text-slate-600">Ajuste redondeo</span>

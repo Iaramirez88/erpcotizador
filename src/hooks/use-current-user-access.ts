@@ -6,6 +6,7 @@ import { type AccessLevel, type ModuleKey } from '@prisma/client'
 type MeData = {
   access?: Partial<Record<ModuleKey, AccessLevel>>
   canManageCustomProductRequests?: boolean
+  canManageProducts?: boolean
 }
 
 const ACCESS_ORDER: Record<AccessLevel, number> = {

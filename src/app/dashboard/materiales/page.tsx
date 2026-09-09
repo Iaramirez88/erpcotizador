@@ -241,7 +241,7 @@ export default function ProductosPage() {
   const externalIdInputRef = useRef<HTMLInputElement | null>(null)
   const nombreInputRef = useRef<HTMLInputElement | null>(null)
   const { data: currentUserAccess, hasWriteAccess } = useCurrentUserAccess()
-  const canManageProducts = hasWriteAccess('MATERIALES')
+  const canManageProducts = Boolean(currentUserAccess?.canManageProducts) || hasWriteAccess('MATERIALES')
   const isAdmin = Boolean(currentUserAccess?.canManageCustomProductRequests)
   
   const [formData, setFormData] = useState({

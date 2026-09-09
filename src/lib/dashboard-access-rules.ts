@@ -166,6 +166,23 @@ function canAccessCapabilityFromContext(args: {
   })
 }
 
+export function hasCapabilityAccessFromContext(args: {
+  context: DashboardAccessContext
+  domain: RbacV2Domain
+  subdomain: string
+  action: RbacV2CapabilityAction
+  scope?: RbacV2Scope
+  directGrantOnly?: boolean
+}) {
+  return canAccessCapabilityFromContext({
+    context: args.context,
+    capability: { domain: args.domain, subdomain: args.subdomain },
+    action: args.action,
+    scope: args.scope,
+    directGrantOnly: args.directGrantOnly,
+  })
+}
+
 function canAccessDashboardRuleFromContext(args: {
   context: DashboardAccessContext
   rule: (typeof DASHBOARD_PERMISSION_RULES)[number]

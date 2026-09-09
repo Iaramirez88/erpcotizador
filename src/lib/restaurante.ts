@@ -4,6 +4,7 @@ export type Station = 'COCINA' | 'BARRA' | 'EMPAQUE'
 export type Priority = 'ALTA' | 'NORMAL'
 export type RestaurantServiceMode = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY'
 export type RestaurantCourierType = 'NONE' | 'INTERNAL' | 'RAPPI' | 'DIDI' | 'UBER_EATS' | 'OTHER'
+export type RecipeComponentUsageScope = 'ALL' | 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'OFF_PREMISE'
 
 export type RestaurantActivityLog = {
   id: string
@@ -34,6 +35,7 @@ export type RecipeComponent = {
   id: string
   materialId: string
   quantity: number
+  usageScope: RecipeComponentUsageScope
 }
 
 export type Recipe = {
@@ -48,6 +50,7 @@ export type Recipe = {
 export type DiningTable = {
   id: string
   name: string
+  color: string
   status: TableStatus
   guestName: string
   guests: number
@@ -87,6 +90,20 @@ export type RestaurantBoardSummary = {
   activityCount: number
 }
 
+export type RestaurantSaleStockItem = {
+  materialId: string
+  quantity: number
+}
+
+export type RestaurantSaleMetadata = {
+  version: 1
+  tableName: string
+  serviceMode: RestaurantServiceMode
+  tipAmount: number
+  tipPercentage: number | null
+  stockItems: RestaurantSaleStockItem[]
+}
+
 export const RESTAURANT_STATION_OPTIONS: Station[] = ['COCINA', 'BARRA', 'EMPAQUE']
 
 const TABLE_STATUS_VALUES: TableStatus[] = ['LIBRE', 'ATENDIENDO', 'ESPERANDO_COCINA', 'LISTA_PARA_COBRO']
@@ -94,14 +111,21 @@ const KITCHEN_STATUS_VALUES: KitchenStatus[] = ['PENDIENTE', 'EN_PREPARACION', '
 const PRIORITY_VALUES: Priority[] = ['ALTA', 'NORMAL']
 const SERVICE_MODE_VALUES: RestaurantServiceMode[] = ['DINE_IN', 'TAKEAWAY', 'DELIVERY']
 const COURIER_TYPE_VALUES: RestaurantCourierType[] = ['NONE', 'INTERNAL', 'RAPPI', 'DIDI', 'UBER_EATS', 'OTHER']
+const RECIPE_COMPONENT_USAGE_SCOPE_VALUES: RecipeComponentUsageScope[] = ['ALL', 'DINE_IN', 'TAKEAWAY', 'DELIVERY', 'OFF_PREMISE']
+
+const DEFAULT_TABLE_COLORS = ['#f97316', '#f59e0b', '#0ea5e9', '#10b981', '#8b5cf6', '#ef4444'] as const
+
+function getDefaultTableColor(index: number) {
+  return DEFAULT_TABLE_COLORS[index % DEFAULT_TABLE_COLORS.length]
+}
 
 export const DEFAULT_RESTAURANT_TABLES: DiningTable[] = [
-  { id: 'm1', name: 'Mesa 1', status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
-  { id: 'm2', name: 'Mesa 2', status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
-  { id: 'm3', name: 'Mesa 3', status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
-  { id: 'm4', name: 'Mesa 4', status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
-  { id: 'barra', name: 'Barra', status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
-  { id: 'dom', name: 'Domicilios', status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DELIVERY', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
+  { id: 'm1', name: 'Mesa 1', color: getDefaultTableColor(0), status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
+  { id: 'm2', name: 'Mesa 2', color: getDefaultTableColor(1), status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
+  { id: 'm3', name: 'Mesa 3', color: getDefaultTableColor(2), status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
+  { id: 'm4', name: 'Mesa 4', color: getDefaultTableColor(3), status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
+  { id: 'barra', name: 'Barra', color: getDefaultTableColor(4), status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
+  { id: 'dom', name: 'Domicilios', color: getDefaultTableColor(5), status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DELIVERY', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
 ]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -120,6 +144,11 @@ function cleanPositiveNumber(value: unknown, fallback: number) {
 function cleanNumberOrNull(value: unknown) {
   const parsed = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function normalizeColor(value: unknown, fallback: string) {
+  const color = typeof value === 'string' ? value.trim() : ''
+  return /^#(?:[0-9a-fA-F]{3}){1,2}$/.test(color) ? color : fallback
 }
 
 function normalizeTableStatus(value: unknown): TableStatus {
@@ -146,6 +175,57 @@ function normalizeCourierType(value: unknown): RestaurantCourierType {
   return typeof value === 'string' && COURIER_TYPE_VALUES.includes(value as RestaurantCourierType) ? (value as RestaurantCourierType) : 'NONE'
 }
 
+function normalizeRecipeComponentUsageScope(value: unknown): RecipeComponentUsageScope {
+  return typeof value === 'string' && RECIPE_COMPONENT_USAGE_SCOPE_VALUES.includes(value as RecipeComponentUsageScope)
+    ? (value as RecipeComponentUsageScope)
+    : 'ALL'
+}
+
+export function recipeComponentAppliesToServiceMode(component: Pick<RecipeComponent, 'usageScope'>, serviceMode: RestaurantServiceMode) {
+  if (component.usageScope === 'ALL') return true
+  if (component.usageScope === 'OFF_PREMISE') return serviceMode === 'TAKEAWAY' || serviceMode === 'DELIVERY'
+  return component.usageScope === serviceMode
+}
+
+export function aggregateRestaurantSaleStockItems(stockItems: RestaurantSaleStockItem[]) {
+  const aggregate = new Map<string, number>()
+  for (const item of stockItems) {
+    if (!item.materialId || item.quantity <= 0) continue
+    aggregate.set(item.materialId, (aggregate.get(item.materialId) ?? 0) + item.quantity)
+  }
+  return Array.from(aggregate.entries()).map(([materialId, quantity]) => ({ materialId, quantity }))
+}
+
+export function parseRestaurantSaleMetadata(value: unknown): RestaurantSaleMetadata | null {
+  if (!isRecord(value)) return null
+  const raw = isRecord(value.restaurantSale) ? value.restaurantSale : null
+  if (!raw) return null
+
+  const stockItems = Array.isArray(raw.stockItems)
+    ? raw.stockItems
+        .map((item) => {
+          if (!isRecord(item)) return null
+          const materialId = cleanText(item.materialId)
+          const quantity = cleanPositiveNumber(item.quantity, 0)
+          if (!materialId || quantity <= 0) return null
+          return { materialId, quantity } satisfies RestaurantSaleStockItem
+        })
+        .filter(Boolean) as RestaurantSaleStockItem[]
+    : []
+
+  const tableName = cleanText(raw.tableName)
+  if (!tableName || !stockItems.length) return null
+
+  return {
+    version: 1,
+    tableName,
+    serviceMode: normalizeServiceMode(raw.serviceMode),
+    tipAmount: Math.max(0, cleanNumberOrNull(raw.tipAmount) ?? 0),
+    tipPercentage: cleanNumberOrNull(raw.tipPercentage),
+    stockItems: aggregateRestaurantSaleStockItems(stockItems),
+  }
+}
+
 export function createEmptyRestaurantBoard(): RestaurantBoardState {
   return {
     tables: DEFAULT_RESTAURANT_TABLES.map((table) => ({ ...table, tickets: [] })),
@@ -158,6 +238,8 @@ export function createEmptyRestaurantBoard(): RestaurantBoardState {
 
 export function sanitizeRestaurantBoard(value: unknown): RestaurantBoardState {
   if (!isRecord(value)) return createEmptyRestaurantBoard()
+
+  const hasTablesArray = Array.isArray(value.tables)
 
   const tables = Array.isArray(value.tables)
     ? value.tables
@@ -189,6 +271,7 @@ export function sanitizeRestaurantBoard(value: unknown): RestaurantBoardState {
           return {
             id: cleanText(table.id) || `table-${index + 1}`,
             name: cleanText(table.name) || `Mesa ${index + 1}`,
+            color: normalizeColor(table.color, defaultTable?.color ?? getDefaultTableColor(index)),
             status: normalizeTableStatus(table.status),
             guestName: cleanText(table.guestName),
             guests: Math.max(0, Math.round(cleanPositiveNumber(table.guests, 0))),
@@ -220,6 +303,7 @@ export function sanitizeRestaurantBoard(value: unknown): RestaurantBoardState {
                     id: cleanText(component.id) || `component-${index + 1}-${componentIndex + 1}`,
                     materialId,
                     quantity: cleanPositiveNumber(component.quantity, 1),
+                    usageScope: normalizeRecipeComponentUsageScope(component.usageScope),
                   } satisfies RecipeComponent
                 })
                 .filter(Boolean) as RecipeComponent[]
@@ -272,7 +356,7 @@ export function sanitizeRestaurantBoard(value: unknown): RestaurantBoardState {
     : []
 
   return {
-    tables: tables.length ? tables : createEmptyRestaurantBoard().tables,
+    tables: hasTablesArray ? tables : createEmptyRestaurantBoard().tables,
     recipes,
     shortages,
     activityLog,

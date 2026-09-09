@@ -943,7 +943,7 @@ export default function Sidebar({ user }: SidebarProps) {
             const next = Array.isArray(json.dashboard?.allowedHrefs)
               ? json.dashboard!.allowedHrefs.filter((href): href is string => typeof href === 'string' && href.startsWith('/dashboard'))
               : []
-            const preserved = current.filter((href) => href === nominaHref('portal-empleado'))
+            const preserved = current.filter((href) => href === nominaHref('portal-empleado') || !next.includes(href))
             return Array.from(new Set([...next, ...preserved]))
           })
         }

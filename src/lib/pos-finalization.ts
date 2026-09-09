@@ -10,6 +10,7 @@ import {
   type Prisma,
 } from '@prisma/client'
 import { type PosFinalizePaymentInput } from '@/lib/pos-payments'
+import { parseRestaurantSaleMetadata } from '@/lib/restaurante'
 
 export class StockInsufficientError extends Error {
   details: {
@@ -84,6 +85,129 @@ export async function resolveWarehouseId(
   return any?.id ?? null
 }
 
+export type StockAdjustmentLine = {
+  materialId: string
+  quantity: number
+}
+
+export async function applyStockAdjustments(
+  tx: Prisma.TransactionClient,
+  args: {
+    empresaId: string
+    sedeId: string
+    userId?: string | null
+    warehouseId?: string | null
+    sourceType: InventoryMovementSourceType
+    sourceId: string
+    note: string
+    direction: 'OUT' | 'IN'
+    lines: StockAdjustmentLine[]
+  },
+) {
+  const aggregate = new Map<string, number>()
+  for (const line of args.lines) {
+    if (!line.materialId || line.quantity <= 0) continue
+    aggregate.set(line.materialId, (aggregate.get(line.materialId) ?? 0) + line.quantity)
+  }
+
+  if (!aggregate.size) return
+
+  const deltaSign = args.direction === 'OUT' ? -1 : 1
+
+  for (const [materialId, quantity] of aggregate.entries()) {
+    const mat = await tx.material.findUnique({ where: { id: materialId }, select: { stockActual: true, nombre: true } })
+    const globalBefore = mat?.stockActual ?? 0
+    const signedDelta = quantity * deltaSign
+
+    if (args.warehouseId) {
+      const stockRow = await tx.inventoryStock.findUnique({
+        where: { warehouseId_materialId: { warehouseId: args.warehouseId, materialId } },
+        select: { quantity: true },
+      })
+      const stockBefore = stockRow?.quantity ?? 0
+      const stockAfter = stockBefore + signedDelta
+      const globalAfter = globalBefore + signedDelta
+
+      if (stockAfter < -1e-9 || globalAfter < -1e-9) {
+        throw new StockInsufficientError({
+          materialId,
+          materialNombre: mat?.nombre ?? null,
+          required: quantity,
+          warehouseId: args.warehouseId,
+          warehouseAvailable: stockBefore,
+          globalAvailable: globalBefore,
+        })
+      }
+
+      await tx.inventoryStock.upsert({
+        where: { warehouseId_materialId: { warehouseId: args.warehouseId, materialId } },
+        create: { warehouseId: args.warehouseId, materialId, quantity: stockAfter },
+        update: { quantity: stockAfter },
+        select: { id: true },
+      })
+
+      await tx.material.update({ where: { id: materialId }, data: { stockActual: globalAfter }, select: { id: true } })
+
+      await tx.inventoryMovement.create({
+        data: {
+          empresaId: args.empresaId,
+          sedeId: args.sedeId,
+          warehouseId: args.warehouseId,
+          materialId,
+          type: args.direction === 'OUT' ? InventoryMovementType.OUT : InventoryMovementType.IN,
+          quantity: signedDelta,
+          stockBefore,
+          stockAfter,
+          note: args.note,
+          sourceType: args.sourceType,
+          sourceId: args.sourceId,
+          createdById: args.userId ?? null,
+        },
+        select: { id: true },
+      })
+      continue
+    }
+
+    const stockBefore = globalBefore
+    const stockAfter = stockBefore + signedDelta
+    if (stockAfter < -1e-9) {
+      throw new StockInsufficientError({
+        materialId,
+        materialNombre: mat?.nombre ?? null,
+        required: quantity,
+        globalAvailable: globalBefore,
+      })
+    }
+
+    await tx.material.update({ where: { id: materialId }, data: { stockActual: stockAfter }, select: { id: true } })
+
+    await tx.inventoryMovement.create({
+      data: {
+        empresaId: args.empresaId,
+        sedeId: args.sedeId,
+        materialId,
+        type: args.direction === 'OUT' ? InventoryMovementType.OUT : InventoryMovementType.IN,
+        quantity: signedDelta,
+        stockBefore,
+        stockAfter,
+        note: args.note,
+        sourceType: args.sourceType,
+        sourceId: args.sourceId,
+        createdById: args.userId ?? null,
+      },
+      select: { id: true },
+    })
+  }
+}
+
+export function extractRestaurantStockAdjustmentsFromPayments(payments: Array<{ metadata: unknown }>) {
+  for (const payment of payments) {
+    const metadata = parseRestaurantSaleMetadata(payment.metadata)
+    if (metadata?.stockItems.length) return metadata.stockItems
+  }
+  return []
+}
+
 export async function finalizeInvoice(
   tx: Prisma.TransactionClient,
   args: {
@@ -104,7 +228,7 @@ export async function finalizeInvoice(
       sedeId: true,
       warehouseId: true,
       total: true,
-      payments: { where: { status: PosPaymentStatus.PAID }, select: { amount: true } },
+      payments: { where: { status: PosPaymentStatus.PAID }, select: { amount: true, metadata: true } },
       items: { select: { materialId: true, quantity: true } },
     },
   })
@@ -155,96 +279,37 @@ export async function finalizeInvoice(
     warehouseId: args.body.warehouseId ?? invoice.warehouseId,
   })
 
-  const resolvedWarehouse = resolvedWarehouseId
-    ? await tx.inventoryWarehouse.findUnique({ where: { id: resolvedWarehouseId }, select: { id: true, nombre: true } })
-    : null
+  const directStockLines = invoice.items
+    .filter((item) => Boolean(item.materialId) && item.quantity > 0)
+    .map((item) => ({ materialId: item.materialId!, quantity: item.quantity }))
 
-  for (const it of invoice.items) {
-    if (!it.materialId) continue
+  await applyStockAdjustments(tx, {
+    empresaId: args.empresaId,
+    sedeId: args.sedeId,
+    userId: args.userId,
+    warehouseId: resolvedWarehouseId,
+    sourceType: InventoryMovementSourceType.POS_INVOICE,
+    sourceId: invoice.id,
+    note: `Facturación factura ${invoice.numero}`,
+    direction: 'OUT',
+    lines: directStockLines,
+  })
 
-    const required = it.quantity
-    const mat = await tx.material.findUnique({ where: { id: it.materialId }, select: { stockActual: true, nombre: true } })
-    const globalBefore = mat?.stockActual ?? 0
+  const restaurantStockLines = extractRestaurantStockAdjustmentsFromPayments(paymentsFinal.length
+    ? paymentsFinal.map((payment) => ({ metadata: payment.metadata ?? null }))
+    : invoice.payments.map((payment) => ({ metadata: payment.metadata ?? null })))
 
-    if (resolvedWarehouseId) {
-      const stockRow = await tx.inventoryStock.findUnique({
-        where: { warehouseId_materialId: { warehouseId: resolvedWarehouseId, materialId: it.materialId } },
-        select: { quantity: true },
-      })
-      const stockBefore = stockRow?.quantity ?? 0
-      const stockAfter = stockBefore - required
-      const globalAfter = globalBefore - required
-
-      if (stockAfter < -1e-9 || globalAfter < -1e-9) {
-        throw new StockInsufficientError({
-          materialId: it.materialId,
-          materialNombre: mat?.nombre ?? null,
-          required,
-          warehouseId: resolvedWarehouseId,
-          warehouseNombre: resolvedWarehouse?.nombre ?? null,
-          warehouseAvailable: stockBefore,
-          globalAvailable: globalBefore,
-        })
-      }
-
-      await tx.inventoryStock.upsert({
-        where: { warehouseId_materialId: { warehouseId: resolvedWarehouseId, materialId: it.materialId } },
-        create: { warehouseId: resolvedWarehouseId, materialId: it.materialId, quantity: stockAfter },
-        update: { quantity: stockAfter },
-        select: { id: true },
-      })
-
-      await tx.material.update({ where: { id: it.materialId }, data: { stockActual: globalAfter }, select: { id: true } })
-
-      await tx.inventoryMovement.create({
-        data: {
-          empresaId: args.empresaId,
-          sedeId: args.sedeId,
-          warehouseId: resolvedWarehouseId,
-          materialId: it.materialId,
-          type: InventoryMovementType.OUT,
-          quantity: -required,
-          stockBefore,
-          stockAfter,
-          note: `Facturación factura ${invoice.numero}`,
-          sourceType: InventoryMovementSourceType.POS_INVOICE,
-          sourceId: invoice.id,
-          createdById: args.userId ?? null,
-        },
-        select: { id: true },
-      })
-    } else {
-      const stockBefore = globalBefore
-      const stockAfter = stockBefore - required
-      if (stockAfter < -1e-9) {
-        throw new StockInsufficientError({
-          materialId: it.materialId,
-          materialNombre: mat?.nombre ?? null,
-          required,
-          globalAvailable: globalBefore,
-        })
-      }
-
-      await tx.material.update({ where: { id: it.materialId }, data: { stockActual: stockAfter }, select: { id: true } })
-
-      await tx.inventoryMovement.create({
-        data: {
-          empresaId: args.empresaId,
-          sedeId: args.sedeId,
-          materialId: it.materialId,
-          type: InventoryMovementType.OUT,
-          quantity: -required,
-          stockBefore,
-          stockAfter,
-          note: `Facturación factura ${invoice.numero}`,
-          sourceType: InventoryMovementSourceType.POS_INVOICE,
-          sourceId: invoice.id,
-          createdById: args.userId ?? null,
-        },
-        select: { id: true },
-      })
-    }
-  }
+  await applyStockAdjustments(tx, {
+    empresaId: args.empresaId,
+    sedeId: args.sedeId,
+    userId: args.userId,
+    warehouseId: resolvedWarehouseId,
+    sourceType: InventoryMovementSourceType.POS_INVOICE,
+    sourceId: invoice.id,
+    note: `Consumo receta factura ${invoice.numero}`,
+    direction: 'OUT',
+    lines: restaurantStockLines,
+  })
 
   await tx.posInvoice.update({
     where: { id: invoice.id },

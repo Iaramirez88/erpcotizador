@@ -12,7 +12,9 @@ import {
   deriveExplicitCapabilityLevel,
   getAllowedModulesFromDashboardHrefs,
   getCapabilityDefinition,
+  hasCapabilityAccessFromContext,
 } from '@/lib/dashboard-access-rules'
+import type { RbacV2CapabilityAction, RbacV2Domain, RbacV2Scope } from '@/lib/rbac-v2-catalog'
 
 export {
   buildAllowedDashboardHrefsFromContext,
@@ -21,6 +23,7 @@ export {
   deriveExplicitCapabilityLevel,
   getAllowedModulesFromDashboardHrefs,
   getCapabilityDefinition,
+  hasCapabilityAccessFromContext,
 }
 export type { DashboardAccessContext }
 
@@ -68,6 +71,27 @@ async function buildDashboardAccessContext(args: {
     disabledCapabilities,
     grantsByCapability,
   }
+}
+
+export async function userHasCapabilityAccess(args: {
+  userId: string
+  empresaId: string
+  sedeId: string
+  domain: RbacV2Domain
+  subdomain: string
+  action: RbacV2CapabilityAction
+  scope?: RbacV2Scope
+  directGrantOnly?: boolean
+}) {
+  const context = await buildDashboardAccessContext(args)
+  return hasCapabilityAccessFromContext({
+    context,
+    domain: args.domain,
+    subdomain: args.subdomain,
+    action: args.action,
+    scope: args.scope,
+    directGrantOnly: args.directGrantOnly,
+  })
 }
 
 export async function buildAllowedDashboardPermissionKeysForUser(args: {

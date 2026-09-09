@@ -3,11 +3,11 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import {
   InventoryMovementSourceType,
-  InventoryMovementType,
   ModuleKey,
   PosInvoiceStatus,
   type Prisma,
 } from '@prisma/client'
+import { applyStockAdjustments, extractRestaurantStockAdjustmentsFromPayments } from '@/lib/pos-finalization'
 
 export const runtime = 'nodejs'
 
@@ -21,6 +21,7 @@ async function reverseInvoiceStock(tx: Prisma.TransactionClient, args: { empresa
       empresaId: true,
       sedeId: true,
       warehouseId: true,
+      payments: { where: { status: 'PAID' }, select: { metadata: true } },
       items: { select: { materialId: true, quantity: true } },
     },
   })
@@ -51,77 +52,31 @@ async function reverseInvoiceStock(tx: Prisma.TransactionClient, args: { empresa
     throw new Error('INVOICE_STATUS_NOT_ALLOWED')
   }
 
-  for (const it of invoice.items) {
-    if (!it.materialId) continue
+  await applyStockAdjustments(tx, {
+    empresaId: args.empresaId,
+    sedeId: args.sedeId,
+    userId: args.userId,
+    warehouseId: invoice.warehouseId,
+    sourceType: InventoryMovementSourceType.POS_INVOICE,
+    sourceId: invoice.id,
+    note: `Anulación POS factura ${invoice.numero}`,
+    direction: 'IN',
+    lines: invoice.items
+      .filter((item) => Boolean(item.materialId) && item.quantity > 0)
+      .map((item) => ({ materialId: item.materialId!, quantity: item.quantity })),
+  })
 
-    if (invoice.warehouseId) {
-      const stockRow = await tx.inventoryStock.findUnique({
-        where: { warehouseId_materialId: { warehouseId: invoice.warehouseId, materialId: it.materialId } },
-        select: { quantity: true },
-      })
-
-      const stockBefore = stockRow?.quantity ?? 0
-      const stockAfter = stockBefore + it.quantity
-
-      await tx.inventoryStock.upsert({
-        where: { warehouseId_materialId: { warehouseId: invoice.warehouseId, materialId: it.materialId } },
-        create: { warehouseId: invoice.warehouseId, materialId: it.materialId, quantity: stockAfter },
-        update: { quantity: stockAfter },
-        select: { id: true },
-      })
-
-      await tx.material.update({
-        where: { id: it.materialId },
-        data: { stockActual: { increment: it.quantity } },
-        select: { id: true },
-      })
-
-      await tx.inventoryMovement.create({
-        data: {
-          empresaId: args.empresaId,
-          sedeId: args.sedeId,
-          warehouseId: invoice.warehouseId,
-          materialId: it.materialId,
-          type: InventoryMovementType.IN,
-          quantity: it.quantity,
-          stockBefore,
-          stockAfter,
-          note: `Anulación POS factura ${invoice.numero}`,
-          sourceType: InventoryMovementSourceType.POS_INVOICE,
-          sourceId: invoice.id,
-          createdById: args.userId,
-        },
-        select: { id: true },
-      })
-    } else {
-      const mat = await tx.material.findUnique({ where: { id: it.materialId }, select: { stockActual: true } })
-      const stockBefore = mat?.stockActual ?? 0
-      const stockAfter = stockBefore + it.quantity
-
-      await tx.material.update({
-        where: { id: it.materialId },
-        data: { stockActual: stockAfter },
-        select: { id: true },
-      })
-
-      await tx.inventoryMovement.create({
-        data: {
-          empresaId: args.empresaId,
-          sedeId: args.sedeId,
-          materialId: it.materialId,
-          type: InventoryMovementType.IN,
-          quantity: it.quantity,
-          stockBefore,
-          stockAfter,
-          note: `Anulación POS factura ${invoice.numero}`,
-          sourceType: InventoryMovementSourceType.POS_INVOICE,
-          sourceId: invoice.id,
-          createdById: args.userId,
-        },
-        select: { id: true },
-      })
-    }
-  }
+  await applyStockAdjustments(tx, {
+    empresaId: args.empresaId,
+    sedeId: args.sedeId,
+    userId: args.userId,
+    warehouseId: invoice.warehouseId,
+    sourceType: InventoryMovementSourceType.POS_INVOICE,
+    sourceId: invoice.id,
+    note: `Reversa receta factura ${invoice.numero}`,
+    direction: 'IN',
+    lines: extractRestaurantStockAdjustmentsFromPayments(invoice.payments),
+  })
 
   await tx.posInvoice.update({ where: { id: invoice.id }, data: { status: PosInvoiceStatus.VOID }, select: { id: true } })
 

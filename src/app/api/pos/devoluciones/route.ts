@@ -4,10 +4,10 @@ import { requireApiAccess } from '@/lib/api-rbac'
 import {
   ModuleKey,
   type Prisma,
-  InventoryMovementType,
   InventoryMovementSourceType,
   PosInvoiceStatus,
 } from '@prisma/client'
+import { applyStockAdjustments, extractRestaurantStockAdjustmentsFromPayments } from '@/lib/pos-finalization'
 import { reserveNextPosReturnNumber } from '@/lib/pos-numbering'
 
 export const runtime = 'nodejs'
@@ -159,7 +159,14 @@ export async function POST(request: Request) {
       const invoice = invoiceId
         ? await tx.posInvoice.findUnique({
             where: { id: invoiceId },
-            select: { id: true, empresaId: true, sedeId: true, total: true, warehouseId: true },
+            select: {
+              id: true,
+              empresaId: true,
+              sedeId: true,
+              total: true,
+              warehouseId: true,
+              payments: { where: { status: 'PAID' }, select: { metadata: true } },
+            },
           })
         : null
 
@@ -226,71 +233,32 @@ export async function POST(request: Request) {
         select: { id: true, numero: true, total: true, invoiceId: true, warehouseId: true },
       })
 
-      for (const it of computedLineTotals) {
-        if (!it.materialId) continue
+      await applyStockAdjustments(tx, {
+        empresaId,
+        sedeId: access.sedeId,
+        userId: access.userId,
+        warehouseId,
+        sourceType: InventoryMovementSourceType.POS_RETURN,
+        sourceId: createdReturn.id,
+        note: `POS devolución ${createdReturn.numero}`,
+        direction: 'IN',
+        lines: computedLineTotals
+          .filter((item) => Boolean(item.materialId) && item.quantity > 0)
+          .map((item) => ({ materialId: item.materialId!, quantity: item.quantity })),
+      })
 
-        if (warehouseId) {
-          const stockRow = await tx.inventoryStock.findUnique({
-            where: { warehouseId_materialId: { warehouseId, materialId: it.materialId } },
-            select: { id: true, quantity: true },
-          })
-          const stockBefore = stockRow?.quantity ?? 0
-          const stockAfter = stockBefore + it.quantity
-
-          await tx.inventoryStock.upsert({
-            where: { warehouseId_materialId: { warehouseId, materialId: it.materialId } },
-            create: { warehouseId, materialId: it.materialId, quantity: stockAfter },
-            update: { quantity: stockAfter },
-            select: { id: true },
-          })
-
-          const mat = await tx.material.findUnique({ where: { id: it.materialId }, select: { stockActual: true } })
-          const globalBefore = mat?.stockActual ?? 0
-          const globalAfter = globalBefore + it.quantity
-
-          await tx.material.update({ where: { id: it.materialId }, data: { stockActual: globalAfter }, select: { id: true } })
-
-          await tx.inventoryMovement.create({
-            data: {
-              empresaId,
-              sedeId: access.sedeId,
-              warehouseId,
-              materialId: it.materialId,
-              type: InventoryMovementType.IN,
-              quantity: it.quantity,
-              stockBefore,
-              stockAfter,
-              note: `POS devolución ${createdReturn.numero}`,
-              sourceType: InventoryMovementSourceType.POS_RETURN,
-              sourceId: createdReturn.id,
-              createdById: access.userId,
-            },
-            select: { id: true },
-          })
-        } else {
-          const mat = await tx.material.findUnique({ where: { id: it.materialId }, select: { stockActual: true } })
-          const stockBefore = mat?.stockActual ?? 0
-          const stockAfter = stockBefore + it.quantity
-
-          await tx.material.update({ where: { id: it.materialId }, data: { stockActual: stockAfter }, select: { id: true } })
-
-          await tx.inventoryMovement.create({
-            data: {
-              empresaId,
-              sedeId: access.sedeId,
-              materialId: it.materialId,
-              type: InventoryMovementType.IN,
-              quantity: it.quantity,
-              stockBefore,
-              stockAfter,
-              note: `POS devolución ${createdReturn.numero}`,
-              sourceType: InventoryMovementSourceType.POS_RETURN,
-              sourceId: createdReturn.id,
-              createdById: access.userId,
-            },
-            select: { id: true },
-          })
-        }
+      if (invoice?.id) {
+        await applyStockAdjustments(tx, {
+          empresaId,
+          sedeId: access.sedeId,
+          userId: access.userId,
+          warehouseId,
+          sourceType: InventoryMovementSourceType.POS_RETURN,
+          sourceId: createdReturn.id,
+          note: `Reintegro receta devolución ${createdReturn.numero}`,
+          direction: 'IN',
+          lines: extractRestaurantStockAdjustmentsFromPayments(invoice.payments),
+        })
       }
 
       if (invoice?.id) {

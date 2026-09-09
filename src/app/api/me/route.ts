@@ -12,6 +12,7 @@ import { randomDigits, sha256Hex } from '@/lib/auth-tokens'
 import { sendEmail } from '@/lib/email'
 import { renderEmail, renderEmailCode } from '@/lib/email-template'
 import { EXTERNAL_DASHBOARD_SCOPE_COOKIE, isModuleAllowedForExternalDashboardScope } from '@/lib/external-dashboard-scope'
+import { userHasCapabilityAccess } from '@/lib/dashboard-access'
 
 export const runtime = 'nodejs'
 
@@ -22,6 +23,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 }
+
+const ACCESS_ORDER: Record<AccessLevel, number> = { NONE: 0, READ: 1, WRITE: 2, ADMIN: 3 }
 
 export async function GET() {
   const session = await auth()
@@ -60,32 +63,39 @@ export async function GET() {
   let materialsAccess: AccessLevel = 'NONE'
   let accessMap: Partial<Record<ModuleKey, AccessLevel>> = {}
   let canManageCustomProductRequests = false
+  let canManageProducts = false
   try {
     const sede = await getActiveSedeForUser(userId)
-    const [nextAccessMap, membership] = await Promise.all([
+    const [nextAccessMap, membership, productCapabilities] = await Promise.all([
       getEffectiveAccessMap({ userId, sedeId: sede.id, modules: NAV_MODULES }),
       prisma.sedeMembership.findUnique({
         where: { sedeId_userId: { sedeId: sede.id, userId } },
         select: { role: true },
       }),
+      Promise.all([
+        userHasCapabilityAccess({ userId, empresaId: sede.empresaId, sedeId: sede.id, domain: 'RECURSOS', subdomain: 'PRODUCTS', action: 'CREATE' }),
+        userHasCapabilityAccess({ userId, empresaId: sede.empresaId, sedeId: sede.id, domain: 'RECURSOS', subdomain: 'PRODUCTS', action: 'UPDATE' }),
+        userHasCapabilityAccess({ userId, empresaId: sede.empresaId, sedeId: sede.id, domain: 'RECURSOS', subdomain: 'MATERIALS', action: 'CREATE' }),
+        userHasCapabilityAccess({ userId, empresaId: sede.empresaId, sedeId: sede.id, domain: 'RECURSOS', subdomain: 'MATERIALS', action: 'UPDATE' }),
+      ]),
     ])
     accessMap = nextAccessMap
     configAccess = nextAccessMap.CONFIG ?? 'NONE'
     ordersAccess = nextAccessMap.ORDENES ?? 'NONE'
     materialsAccess = nextAccessMap.MATERIALES ?? 'NONE'
     canManageCustomProductRequests = membership?.role === 'ADMIN' || membership?.role === 'MANAGER'
+    canManageProducts = ACCESS_ORDER[materialsAccess] >= ACCESS_ORDER.WRITE || productCapabilities.some(Boolean)
   } catch {
     // si algo falla (sede no resuelta, etc), dejamos NONE
   }
 
-  const order: Record<AccessLevel, number> = { NONE: 0, READ: 1, WRITE: 2, ADMIN: 3 }
   const externalScopedAccessMap = externalDashboardScope
     ? Object.fromEntries(
         Object.entries(accessMap).filter(([moduleKey]) => isModuleAllowedForExternalDashboardScope({ moduleKey, scope: externalDashboardScope }))
       ) as Partial<Record<ModuleKey, AccessLevel>>
     : accessMap
-  const canConfigWrite = !externalDashboardScope && order[configAccess] >= order.WRITE
-  const canDeleteOrders = !externalDashboardScope && order[ordersAccess] >= order.ADMIN
+  const canConfigWrite = !externalDashboardScope && ACCESS_ORDER[configAccess] >= ACCESS_ORDER.WRITE
+  const canDeleteOrders = !externalDashboardScope && ACCESS_ORDER[ordersAccess] >= ACCESS_ORDER.ADMIN
 
   const empresaId = user?.empresaId ?? null
   const isSystemSuperAdmin = isSuperAdminEmail(user?.email)
@@ -100,6 +110,7 @@ export async function GET() {
           access: externalScopedAccessMap,
           canConfigWrite,
           canDeleteOrders,
+          canManageProducts: !externalDashboardScope && canManageProducts,
           canManageCustomProductRequests: !externalDashboardScope && canManageCustomProductRequests,
           empresaId,
           isPlanOwner: !externalDashboardScope && isPlanOwner,
