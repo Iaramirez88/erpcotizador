@@ -7,7 +7,7 @@ import { sendEmail } from '@/lib/email'
 import { escapeHtml, renderEmail, renderEmailCode, renderEmailLink } from '@/lib/email-template'
 import { checkPlanLimit } from '@/lib/plan-limits'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
-import { syncEnabledVerticalGrantsForUser } from '@/lib/company-preset-sync'
+import { provisionDefaultAdminAccessForNewUser, syncEnabledVerticalGrantsForUser } from '@/lib/company-preset-sync'
 
 export const runtime = 'nodejs'
 
@@ -110,8 +110,16 @@ export async function POST(request: Request) {
     if (sedeForInvite?.id) {
       await prisma.sedeMembership.upsert({
         where: { sedeId_userId: { sedeId: sedeForInvite.id, userId: existingUser.id } },
-        create: { sedeId: sedeForInvite.id, userId: existingUser.id, role: 'READER' },
-        update: {},
+        create: { sedeId: sedeForInvite.id, userId: existingUser.id, role: 'ADMIN' },
+        update: { role: 'ADMIN' },
+      })
+    }
+
+    if (!alreadyMember) {
+      await provisionDefaultAdminAccessForNewUser({
+        empresaId: empresa.id,
+        userId: existingUser.id,
+        grantedByUserId: session.user.id,
       })
     }
 

@@ -13,6 +13,7 @@ import { sendEmail } from '@/lib/email'
 import { renderEmail, renderEmailCode } from '@/lib/email-template'
 import { EXTERNAL_DASHBOARD_SCOPE_COOKIE, isModuleAllowedForExternalDashboardScope } from '@/lib/external-dashboard-scope'
 import { userHasCapabilityAccess } from '@/lib/dashboard-access'
+import { ensureDefaultAdminAccessForUserIfMissing } from '@/lib/company-preset-sync'
 
 export const runtime = 'nodejs'
 
@@ -56,6 +57,13 @@ export async function GET() {
     }),
     getWebsiteServicesAccessForUser(userId),
   ])
+
+  if (user?.empresaId) {
+    await ensureDefaultAdminAccessForUserIfMissing({
+      empresaId: user.empresaId,
+      userId,
+    })
+  }
 
   // Para UI: incluir acceso efectivo (por sede) a CONFIG
   let configAccess: AccessLevel = 'NONE'

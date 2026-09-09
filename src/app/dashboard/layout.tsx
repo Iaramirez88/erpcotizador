@@ -25,6 +25,7 @@ import DashboardPermissionBoundary from '@/components/dashboard/dashboard-permis
 import { DashboardAccessProvider } from '@/components/dashboard/dashboard-access-context'
 import { buildAllowedDashboardHrefsForUser, buildAllowedDashboardPermissionKeysForUser, getAllowedModulesFromDashboardHrefs } from '@/lib/dashboard-access'
 import { isCompanyIntelligenceEnabledForEmpresa } from '@/lib/company-intelligence'
+import { ensureDefaultAdminAccessForUserIfMissing } from '@/lib/company-preset-sync'
 import { getBackupAccess } from '@/lib/empresa-backups'
 import { nominaHref } from '@/lib/nomina-routes'
 import { EXTERNAL_DASHBOARD_SCOPE_COOKIE, intersectDashboardHrefsWithExternalScope } from '@/lib/external-dashboard-scope'
@@ -65,6 +66,12 @@ export default async function DashboardLayout({
         }),
         getWebsiteServicesAccessForUser(userId),
       ])
+      if (layoutUser?.empresaId) {
+        await ensureDefaultAdminAccessForUserIfMissing({
+          empresaId: layoutUser.empresaId,
+          userId,
+        })
+      }
       const access = await getEffectiveAccessMap({ userId, sedeId: sede.id, modules: NAV_MODULES })
       allowedModules = NAV_MODULES.filter((m) => (access[m] ?? 'NONE') !== 'NONE')
       const [nextAllowedNavHrefs, permissionKeys] = await Promise.all([

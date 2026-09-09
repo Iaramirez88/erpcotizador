@@ -19,7 +19,7 @@ import { AccessLevel, ModuleKey, SedeRole } from '@prisma/client'
 import { deriveExplicitCapabilityLevel, userHasCapabilityAccess } from '@/lib/dashboard-access'
 import { buildUserPermissionSnapshot } from '@/lib/user-permission-snapshot'
 import { DASHBOARD_PERMISSION_RULES } from '@/lib/dashboard-permission-catalog'
-import { syncEnabledVerticalGrantsForUser } from '@/lib/company-preset-sync'
+import { provisionDefaultAdminAccessForNewUser, syncEnabledVerticalGrantsForUser } from '@/lib/company-preset-sync'
 
 export const runtime = 'nodejs'
 
@@ -271,6 +271,11 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
 
       await prisma.user.update({ where: { id: req.requesterUserId }, data: { empresaId: empresaId2 }, select: { id: true } })
       await ensureDefaultSedeForEmpresa(empresaId2, req.requesterUserId)
+      await provisionDefaultAdminAccessForNewUser({
+        empresaId: empresaId2,
+        userId: req.requesterUserId,
+        grantedByUserId: session2.user.id,
+      })
       await syncEnabledVerticalGrantsForUser({
         empresaId: empresaId2,
         userId: req.requesterUserId,
