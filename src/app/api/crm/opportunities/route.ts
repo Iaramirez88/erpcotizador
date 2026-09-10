@@ -16,6 +16,19 @@ import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 
 export const runtime = 'nodejs'
 
+const STAGE_PROBABILITY_MAP = {
+  NEW: 10,
+  QUALIFIED: 30,
+  PROPOSAL: 60,
+  NEGOTIATION: 80,
+  WON: 100,
+  LOST: 0,
+} as const
+
+function getStageProbabilityPct(stage: keyof typeof STAGE_PROBABILITY_MAP) {
+  return STAGE_PROBABILITY_MAP[stage] ?? 0
+}
+
 export async function GET(request: Request) {
   try {
     const access = await requireCapabilityAccess({
@@ -131,14 +144,13 @@ export async function POST(request: Request) {
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
     const title = normalizeString(body?.title)
     const description = normalizeString(body?.description)
-    const stage = parseOpportunityStage(body?.stage) ?? 'NEW'
+    const stage = 'NEW'
     const leadId = normalizeString(body?.leadId)
     const clienteId = normalizeString(body?.clienteId)
     const assignedToUserId = normalizeString(body?.assignedToUserId)
     const cotizacionId = normalizeString(body?.cotizacionId)
     const explicitSedeId = normalizeString(body?.sedeId)
     const expectedValue = parseOptionalFloat(body?.expectedValue)
-    const probabilityPct = parseOptionalInt(body?.probabilityPct)
     const expectedCloseAt = parseOptionalDate(body?.expectedCloseAt)
 
     if (!title) return NextResponse.json({ error: 'title es requerido' }, { status: 400 })
@@ -146,9 +158,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'leadId o clienteId es requerido' }, { status: 400 })
     }
     if (expectedValue === undefined) return NextResponse.json({ error: 'expectedValue inválido' }, { status: 400 })
-    if (probabilityPct === undefined || (probabilityPct !== null && (probabilityPct < 0 || probabilityPct > 100))) {
-      return NextResponse.json({ error: 'probabilityPct inválido (0..100)' }, { status: 400 })
-    }
     if (expectedCloseAt === undefined) return NextResponse.json({ error: 'expectedCloseAt inválido' }, { status: 400 })
 
     const lead = leadId
@@ -199,9 +208,9 @@ export async function POST(request: Request) {
           leadId: leadId || null,
           clienteId: clienteId || null,
           expectedValue: expectedValue ?? 0,
-          probabilityPct: probabilityPct ?? 0,
+          probabilityPct: getStageProbabilityPct(stage),
           expectedCloseAt: expectedCloseAt ?? null,
-          assignedToUserId: assignedToUserId || null,
+          assignedToUserId: assignedToUserId || access.userId,
           createdById: access.userId,
           cotizacionId: cotizacionId || null,
         },

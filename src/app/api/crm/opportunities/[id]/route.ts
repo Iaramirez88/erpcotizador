@@ -16,6 +16,19 @@ import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 
 export const runtime = 'nodejs'
 
+const STAGE_PROBABILITY_MAP = {
+  NEW: 10,
+  QUALIFIED: 30,
+  PROPOSAL: 60,
+  NEGOTIATION: 80,
+  WON: 100,
+  LOST: 0,
+} as const
+
+function getStageProbabilityPct(stage: keyof typeof STAGE_PROBABILITY_MAP) {
+  return STAGE_PROBABILITY_MAP[stage] ?? 0
+}
+
 interface RouteContext {
   params: Promise<{ id: string }>
 }
@@ -128,7 +141,6 @@ export async function PATCH(request: Request, context: RouteContext) {
     const assignedToUserId = normalizeString(body?.assignedToUserId)
     const cotizacionId = normalizeString(body?.cotizacionId)
     const expectedValue = parseOptionalFloat(body?.expectedValue)
-    const probabilityPct = parseOptionalInt(body?.probabilityPct)
     const expectedCloseAt = parseOptionalDate(body?.expectedCloseAt)
     const lostReason = normalizeString(body?.lostReason)
 
@@ -137,9 +149,6 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'expectedValue') && expectedValue === undefined) {
       return NextResponse.json({ error: 'expectedValue inválido' }, { status: 400 })
-    }
-    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'probabilityPct') && (probabilityPct === undefined || (probabilityPct !== null && (probabilityPct < 0 || probabilityPct > 100)))) {
-      return NextResponse.json({ error: 'probabilityPct inválido (0..100)' }, { status: 400 })
     }
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'expectedCloseAt') && expectedCloseAt === undefined) {
       return NextResponse.json({ error: 'expectedCloseAt inválido' }, { status: 400 })
@@ -168,6 +177,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const nextStage = stage ?? current.stage
+    const nextProbabilityPct = getStageProbabilityPct(nextStage)
     const row = await prisma.$transaction(async (tx) => {
       const updated = await tx.crmOpportunity.update({
         where: { id: current.id },
@@ -176,7 +186,7 @@ export async function PATCH(request: Request, context: RouteContext) {
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'description') ? { description: description || null } : {}),
           ...(stage ? { stage } : {}),
           ...(expectedValue !== undefined ? { expectedValue: expectedValue ?? 0 } : {}),
-          ...(probabilityPct !== undefined ? { probabilityPct: probabilityPct ?? 0 } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'stage') ? { probabilityPct: nextProbabilityPct } : {}),
           ...(expectedCloseAt !== undefined ? { expectedCloseAt: expectedCloseAt ?? null } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId') ? { assignedToUserId: assignedToUserId || null } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'cotizacionId') ? { cotizacionId: cotizacionId || null } : {}),

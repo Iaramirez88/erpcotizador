@@ -23,6 +23,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -46,12 +47,21 @@ type LeadSource = 'WEB' | 'REFERIDO' | 'WHATSAPP' | 'LLAMADA' | 'IMPORT' | 'OTRO
 type OpportunityStage = 'NEW' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON' | 'LOST'
 type TaskStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE' | 'CANCELED'
 type TaskPriority = 'LOW' | 'NORMAL' | 'HIGH'
+type ProductServiceOption = 'ERP + CRM' | 'Página web' | 'Ecommerce' | 'SEO / Posicionamiento' | 'Google Ads' | 'Diseño gráfico' | 'Artículos publicitarios' | 'Dotaciones' | 'Impresión' | 'Otro'
+type NextActionOption = 'Llamar' | 'Enviar WhatsApp' | 'Enviar correo' | 'Agendar reunión' | 'Preparar propuesta' | 'Presentar propuesta' | 'Hacer seguimiento' | 'Otro'
 
 type StageSetting = {
   key: OpportunityStage
   label: string
   color?: string | null
   sortOrder: number
+}
+
+type StagePalette = {
+  id: string
+  label: string
+  description: string
+  colors: Record<OpportunityStage, string>
 }
 
 type Lead = {
@@ -111,6 +121,12 @@ type Task = {
 
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
 
+type Assignee = {
+  id: string
+  name?: string | null
+  email?: string | null
+}
+
 type LeadDetail = Lead & {
   notes?: string | null
 }
@@ -131,6 +147,73 @@ const DEFAULT_STAGE_SETTINGS: StageSetting[] = [
 ]
 const TASK_STATUS_OPTIONS: TaskStatus[] = ['OPEN', 'DONE', 'CANCELED']
 const TASK_PRIORITY_OPTIONS: TaskPriority[] = ['LOW', 'NORMAL', 'HIGH']
+const PRODUCT_SERVICE_OPTIONS: ProductServiceOption[] = ['ERP + CRM', 'Página web', 'Ecommerce', 'SEO / Posicionamiento', 'Google Ads', 'Diseño gráfico', 'Artículos publicitarios', 'Dotaciones', 'Impresión', 'Otro']
+const NEXT_ACTION_OPTIONS: NextActionOption[] = ['Llamar', 'Enviar WhatsApp', 'Enviar correo', 'Agendar reunión', 'Preparar propuesta', 'Presentar propuesta', 'Hacer seguimiento', 'Otro']
+const DEFAULT_STAGE_BY_CREATION: OpportunityStage = 'NEW'
+const STAGE_PROBABILITY_MAP: Record<OpportunityStage, number> = {
+  NEW: 10,
+  QUALIFIED: 30,
+  PROPOSAL: 60,
+  NEGOTIATION: 80,
+  WON: 100,
+  LOST: 0,
+}
+const OPPORTUNITY_PRODUCT_PREFIX = 'Producto/Servicio:'
+const OPPORTUNITY_NOTES_PREFIX = 'Notas iniciales:'
+const STAGE_COLOR_PALETTES: StagePalette[] = [
+  {
+    id: 'clasico',
+    label: 'Clásica',
+    description: 'Tonos firmes y separados para lectura rápida.',
+    colors: {
+      NEW: '#334155',
+      QUALIFIED: '#0f766e',
+      PROPOSAL: '#1d4ed8',
+      NEGOTIATION: '#b45309',
+      WON: '#15803d',
+      LOST: '#b91c1c',
+    },
+  },
+  {
+    id: 'ejecutiva',
+    label: 'Ejecutiva',
+    description: 'Más sobria, útil para equipos que quieren menor saturación.',
+    colors: {
+      NEW: '#475569',
+      QUALIFIED: '#0369a1',
+      PROPOSAL: '#4338ca',
+      NEGOTIATION: '#c2410c',
+      WON: '#166534',
+      LOST: '#991b1b',
+    },
+  },
+  {
+    id: 'vibrante',
+    label: 'Vibrante',
+    description: 'Mayor contraste para distinguir columnas de inmediato.',
+    colors: {
+      NEW: '#1f2937',
+      QUALIFIED: '#0d9488',
+      PROPOSAL: '#2563eb',
+      NEGOTIATION: '#ea580c',
+      WON: '#16a34a',
+      LOST: '#dc2626',
+    },
+  },
+  {
+    id: 'pastel-firme',
+    label: 'Pastel firme',
+    description: 'Color diferenciable con un look más suave.',
+    colors: {
+      NEW: '#64748b',
+      QUALIFIED: '#0f766e',
+      PROPOSAL: '#4f46e5',
+      NEGOTIATION: '#d97706',
+      WON: '#059669',
+      LOST: '#e11d48',
+    },
+  },
+]
 
 function normalizeStageSettings(stageSettings: StageSetting[] | null | undefined) {
   const source = Array.isArray(stageSettings) && stageSettings.length ? stageSettings : DEFAULT_STAGE_SETTINGS
@@ -170,21 +253,113 @@ function summarizeOpportunityNeed(notes: string | null | undefined) {
   return firstChunk.slice(0, 72).trim()
 }
 
-function buildOpportunityTitleFromLead(args: { nombre: string; empresaNombre?: string | null; notes?: string | null }) {
-  const nombre = args.nombre.trim()
-  const empresa = (args.empresaNombre || '').trim()
-  const need = summarizeOpportunityNeed(args.notes)
+function getStageProbabilityPct(stage: OpportunityStage) {
+  return STAGE_PROBABILITY_MAP[stage] ?? 0
+}
 
-  if (empresa && need) return `${empresa} · ${need}`
-  if (empresa) return `Oportunidad ${empresa}`
-  if (need) return nombre ? `${nombre} · ${need}` : need
-  return nombre ? `Oportunidad ${nombre}` : 'Nueva oportunidad'
+function normalizeCurrencyInput(value: string) {
+  const digits = value.replace(/[^\d]+/g, '')
+  if (!digits) return '0'
+  return digits.replace(/^0+(?=\d)/, '') || '0'
+}
+
+function formatCurrencyInput(value: string, locale: string) {
+  return formatMoney(Number(normalizeCurrencyInput(value)), locale)
+}
+
+function formatLeadPhonePreview(value: string | null | undefined) {
+  const digits = normalizeLeadPhone(value)
+  if (!digits) return ''
+  if (digits.length === 10) return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`
+  if (digits.length === 7) return `${digits.slice(0, 3)} ${digits.slice(3)}`
+  return digits
+}
+
+function formatLeadOptionLabel(lead: Lead) {
+  const company = (lead.empresaNombre || '').trim()
+  const contact = lead.nombre.trim()
+  const phone = formatLeadPhonePreview(lead.celular || lead.telefono)
+  const companySegment = company && company.toLowerCase() !== contact.toLowerCase() ? `${company} — ` : ''
+  const trailingSegment = phone || lead.email || 'Sin teléfono'
+  return `${companySegment}${contact} — ${trailingSegment}`
+}
+
+function resolveProductServiceLabel(productService: ProductServiceOption | '', productServiceOther: string) {
+  if (productService === 'Otro') return productServiceOther.trim()
+  return productService
+}
+
+function resolveNextActionLabel(nextAction: NextActionOption | '', nextActionOther: string) {
+  if (nextAction === 'Otro') return nextActionOther.trim()
+  return nextAction
+}
+
+function buildOpportunityTitleSuggestion(args: { lead: Lead | null; productOrService: string }) {
+  const productOrService = args.productOrService.trim()
+  if (!productOrService || !args.lead) return ''
+  const company = (args.lead.empresaNombre || '').trim()
+  const contact = args.lead.nombre.trim()
+  const counterparty = company || contact
+  return counterparty ? `${productOrService} - ${counterparty}` : productOrService
+}
+
+function buildOpportunityDescription(args: { productOrService: string; notes: string }) {
+  const parts = [`${OPPORTUNITY_PRODUCT_PREFIX} ${args.productOrService.trim()}`]
+  const notes = args.notes.trim()
+  if (notes) {
+    parts.push('', OPPORTUNITY_NOTES_PREFIX, notes)
+  }
+  return parts.join('\n')
+}
+
+function parseOpportunityDescription(value: string | null | undefined) {
+  const raw = (value || '').trim()
+  if (!raw) return { productOrService: '', notes: '' }
+
+  const lines = raw.split(/\r?\n/)
+  const firstLine = lines[0]?.trim() || ''
+  if (!firstLine.startsWith(OPPORTUNITY_PRODUCT_PREFIX)) {
+    return { productOrService: '', notes: raw }
+  }
+
+  const productOrService = firstLine.slice(OPPORTUNITY_PRODUCT_PREFIX.length).trim()
+  const notesStartIndex = lines.findIndex((line) => line.trim() === OPPORTUNITY_NOTES_PREFIX)
+  const notes = notesStartIndex >= 0
+    ? lines.slice(notesStartIndex + 1).join('\n').trim()
+    : lines.slice(1).join('\n').trim()
+
+  return { productOrService, notes }
 }
 
 function withAlpha(color: string | null | undefined, alphaHex: string, fallback: string) {
   const raw = typeof color === 'string' ? color.trim() : ''
   if (/^#[0-9a-fA-F]{6}$/.test(raw)) return `${raw}${alphaHex}`
   return fallback
+}
+
+function getReadableTextColor(color: string | null | undefined) {
+  const raw = typeof color === 'string' ? color.trim() : ''
+  if (!/^#[0-9a-fA-F]{6}$/.test(raw)) return '#ffffff'
+  const red = parseInt(raw.slice(1, 3), 16)
+  const green = parseInt(raw.slice(3, 5), 16)
+  const blue = parseInt(raw.slice(5, 7), 16)
+  const brightness = ((red * 299) + (green * 587) + (blue * 114)) / 1000
+  return brightness > 160 ? '#0f172a' : '#ffffff'
+}
+
+function applyStagePalette(stageList: StageSetting[], palette: StagePalette) {
+  return stageList.map((stage) => ({
+    ...stage,
+    color: palette.colors[stage.key] || stage.color || '#64748b',
+  }))
+}
+
+function detectStagePaletteId(stageList: StageSetting[]) {
+  for (const palette of STAGE_COLOR_PALETTES) {
+    const matches = stageList.every((stage) => (stage.color || '').toLowerCase() === (palette.colors[stage.key] || '').toLowerCase())
+    if (matches) return palette.id
+  }
+  return 'custom'
 }
 
 function getInitials(value: string | null | undefined) {
@@ -301,25 +476,6 @@ function normalizeLeadPhone(value: string | null | undefined) {
   return (value || '').replace(/[^\d]+/g, '')
 }
 
-function getSuggestedOpportunityPreset(lead: Lead) {
-  const lastTouch = new Date(lead.lastActivityAt || lead.createdAt).getTime()
-  const daysSinceTouch = Number.isNaN(lastTouch) ? 0 : Math.max(0, Math.floor((Date.now() - lastTouch) / 86400000))
-
-  if (lead.source === 'REFERIDO') {
-    return { stage: 'QUALIFIED' as OpportunityStage, probabilityPct: '65', expectedValue: '3500000' }
-  }
-
-  if (lead.source === 'WHATSAPP' || lead.source === 'LLAMADA') {
-    return { stage: 'QUALIFIED' as OpportunityStage, probabilityPct: '55', expectedValue: '2500000' }
-  }
-
-  if (daysSinceTouch <= 2) {
-    return { stage: 'QUALIFIED' as OpportunityStage, probabilityPct: '45', expectedValue: '1800000' }
-  }
-
-  return { stage: 'NEW' as OpportunityStage, probabilityPct: '30', expectedValue: '1200000' }
-}
-
 async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
   const res = await fetch(url, init)
   return (await res.json().catch(() => ({}))) as JsonResponse<T>
@@ -361,11 +517,19 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [stageSettings, setStageSettings] = useState<StageSetting[]>(DEFAULT_STAGE_SETTINGS)
+  const [assignees, setAssignees] = useState<Assignee[]>([])
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   const [leadDialogOpen, setLeadDialogOpen] = useState(false)
   const [opportunityDialogOpen, setOpportunityDialogOpen] = useState(false)
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
   const [stageDialogOpen, setStageDialogOpen] = useState(false)
+  const [opportunityFiltersDialogOpen, setOpportunityFiltersDialogOpen] = useState(false)
+  const [opportunityListDialogOpen, setOpportunityListDialogOpen] = useState(false)
+  const [opportunityStageFilterDialogOpen, setOpportunityStageFilterDialogOpen] = useState(false)
+  const [opportunityClearFiltersDialogOpen, setOpportunityClearFiltersDialogOpen] = useState(false)
+  const [opportunityRefreshDialogOpen, setOpportunityRefreshDialogOpen] = useState(false)
+  const [opportunityPaletteDialogOpen, setOpportunityPaletteDialogOpen] = useState(false)
   const [taskUtilityPanels, setTaskUtilityPanels] = useState({ filters: false, priorities: false })
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null)
   const [editingOpportunityId, setEditingOpportunityId] = useState<string | null>(null)
@@ -379,6 +543,9 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
   const [opportunityDealLoading, setOpportunityDealLoading] = useState(false)
   const [activeOpportunityDetail, setActiveOpportunityDetail] = useState<OpportunityDetail | null>(null)
   const [stageManualOrder, setStageManualOrder] = useState<Partial<Record<OpportunityStage, string[]>>>({})
+  const [opportunityTitleTouched, setOpportunityTitleTouched] = useState(false)
+  const lastSuggestedOpportunityTitleRef = useRef('')
+  const [savingPaletteId, setSavingPaletteId] = useState<string | null>(null)
 
   const [leadForm, setLeadForm] = useState({
     nombre: '',
@@ -396,11 +563,17 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
   const [opportunityForm, setOpportunityForm] = useState({
     title: '',
     description: '',
-    stage: 'NEW' as OpportunityStage,
+    productService: '' as ProductServiceOption | '',
+    productServiceOther: '',
+    stage: DEFAULT_STAGE_BY_CREATION as OpportunityStage,
     leadId: '',
-    expectedValue: '',
-    probabilityPct: '0',
+    expectedValue: '0',
+    probabilityPct: String(getStageProbabilityPct(DEFAULT_STAGE_BY_CREATION)),
     expectedCloseAt: '',
+    assignedToUserId: '',
+    nextAction: '' as NextActionOption | '',
+    nextActionOther: '',
+    nextActionDueAt: '',
   })
 
   const [taskForm, setTaskForm] = useState({
@@ -438,16 +611,20 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
       const opportunitySuffix = opportunityParams.toString() ? `?${opportunityParams.toString()}` : ''
       const taskSuffix = taskParams.toString() ? `?${taskParams.toString()}` : ''
 
-      const [leadRes, opportunityRes, taskRes, stageRes] = await Promise.all([
+      const [leadRes, opportunityRes, taskRes, stageRes, assigneeRes, meRes] = await Promise.all([
         requestJson<Lead[]>(`/api/crm/leads${leadSuffix}`),
         requestJson<Opportunity[]>(`/api/crm/opportunities${opportunitySuffix}`),
         requestJson<Task[]>(`/api/crm/tasks${taskSuffix}`),
         requestJson<StageSetting[]>(`/api/crm/stages`),
+        requestJson<Assignee[]>('/api/crm/assignees'),
+        requestJson<{ id: string }>('/api/me'),
       ])
 
       setLeads(Array.isArray(leadRes.data) ? leadRes.data : [])
       setOpportunities(Array.isArray(opportunityRes.data) ? opportunityRes.data : [])
       setTasks(Array.isArray(taskRes.data) ? taskRes.data : [])
+      setAssignees(Array.isArray(assigneeRes.data) ? assigneeRes.data : [])
+      setCurrentUserId(meRes.data?.id ?? null)
       const nextStages = normalizeStageSettings(stageRes.data)
       setStageSettings(nextStages)
       setStageDrafts(nextStages)
@@ -526,8 +703,11 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
     return DEFAULT_STAGE_SETTINGS.map((defaultStage) => stageMap.get(defaultStage.key) ?? defaultStage)
   }, [stageMap])
 
+  const activeStagePaletteId = useMemo(() => detectStagePaletteId(visibleStageSettings), [visibleStageSettings])
+
   const getStageLabel = (stage: OpportunityStage) => stageMap.get(stage)?.label || stage
   const getStageColor = (stage: OpportunityStage) => stageMap.get(stage)?.color || null
+  const currentOpportunityStageFilterLabel = opportunityStageFilter === 'ALL' ? 'Todas' : getStageLabel(opportunityStageFilter)
 
   const opportunitiesByStage = useMemo(() => {
     return visibleStageSettings.map((stage) => {
@@ -741,15 +921,60 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
     setLeadForm({ nombre: '', empresaNombre: '', documento: '', email: '', telefono: '', celular: '', ciudad: '', source: 'OTRO', status: 'NEW', notes: '' })
   }
 
-  function resetOpportunityForm(stage?: OpportunityStage) {
+  const selectedOpportunityLead = useMemo(() => {
+    return leads.find((lead) => lead.id === opportunityForm.leadId) ?? null
+  }, [leads, opportunityForm.leadId])
+
+  const selectedLeadSourceLabel = useMemo(() => {
+    if (!selectedOpportunityLead) return ''
+    return selectedOpportunityLead.originLabel || getLeadSourceFallbackMeta(selectedOpportunityLead.source).label
+  }, [selectedOpportunityLead])
+
+  const selectedProductServiceLabel = useMemo(() => {
+    return resolveProductServiceLabel(opportunityForm.productService, opportunityForm.productServiceOther)
+  }, [opportunityForm.productService, opportunityForm.productServiceOther])
+
+  const selectedNextActionLabel = useMemo(() => {
+    return resolveNextActionLabel(opportunityForm.nextAction, opportunityForm.nextActionOther)
+  }, [opportunityForm.nextAction, opportunityForm.nextActionOther])
+
+  const suggestedOpportunityTitle = useMemo(() => {
+    return buildOpportunityTitleSuggestion({ lead: selectedOpportunityLead, productOrService: selectedProductServiceLabel })
+  }, [selectedOpportunityLead, selectedProductServiceLabel])
+
+  useEffect(() => {
+    if (!opportunityDialogOpen || !suggestedOpportunityTitle) return
+    setOpportunityForm((current) => {
+      const currentTitle = current.title.trim()
+      const canReplace = !opportunityTitleTouched || !currentTitle || currentTitle === lastSuggestedOpportunityTitleRef.current
+      if (!canReplace || currentTitle === suggestedOpportunityTitle) return current
+      lastSuggestedOpportunityTitleRef.current = suggestedOpportunityTitle
+      return { ...current, title: suggestedOpportunityTitle }
+    })
+  }, [opportunityDialogOpen, opportunityTitleTouched, suggestedOpportunityTitle])
+
+  useEffect(() => {
+    if (!opportunityDialogOpen || !currentUserId) return
+    setOpportunityForm((current) => (current.assignedToUserId ? current : { ...current, assignedToUserId: currentUserId }))
+  }, [currentUserId, opportunityDialogOpen])
+
+  function resetOpportunityForm() {
+    setOpportunityTitleTouched(false)
+    lastSuggestedOpportunityTitleRef.current = ''
     setOpportunityForm({
       title: '',
       description: '',
-      stage: stage ?? stageSettings[0]?.key ?? 'NEW',
+      productService: '',
+      productServiceOther: '',
+      stage: DEFAULT_STAGE_BY_CREATION,
       leadId: '',
-      expectedValue: '',
-      probabilityPct: '0',
+      expectedValue: '0',
+      probabilityPct: String(getStageProbabilityPct(DEFAULT_STAGE_BY_CREATION)),
       expectedCloseAt: '',
+      assignedToUserId: currentUserId || '',
+      nextAction: '',
+      nextActionOther: '',
+      nextActionDueAt: '',
     })
   }
 
@@ -789,16 +1014,10 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
 
   function openCreateOpportunityForLead(args: { leadId: string; leadName: string; companyName?: string | null; notes?: string | null }) {
     setEditingOpportunityId(null)
-    const lead = leads.find((item) => item.id === args.leadId)
-    const suggested = lead ? getSuggestedOpportunityPreset(lead) : null
-    resetOpportunityForm(suggested?.stage)
+    resetOpportunityForm()
     setOpportunityForm((current) => ({
       ...current,
       leadId: args.leadId,
-      title: buildOpportunityTitleFromLead({ nombre: args.leadName, empresaNombre: args.companyName, notes: args.notes }),
-      stage: suggested?.stage ?? current.stage,
-      probabilityPct: suggested?.probabilityPct ?? current.probabilityPct,
-      expectedValue: suggested?.expectedValue ?? current.expectedValue,
     }))
     setOpportunityDialogOpen(true)
     setActiveTab('opportunities')
@@ -849,7 +1068,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
 
   function openCreateOpportunityDialog(stage?: OpportunityStage) {
     setEditingOpportunityId(null)
-    resetOpportunityForm(stage)
+    resetOpportunityForm()
     setOpportunityDialogOpen(true)
   }
 
@@ -862,10 +1081,10 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
     setStageDrafts((prev) => prev.map((item) => (item.key === key ? { ...item, ...patch } : item)))
   }
 
-  async function submitStageSettings() {
+  async function persistStageSettings(nextDrafts?: StageSetting[]) {
     setSavingStages(true)
     try {
-      const payload = normalizeStageSettings(stageDrafts)
+      const payload = normalizeStageSettings(nextDrafts ?? stageDrafts)
         .map((item) => ({
           ...item,
           label: item.label.trim(),
@@ -881,14 +1100,32 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
       })
       if (!json.success || !Array.isArray(json.data)) {
         alert(json.error || 'No se pudo actualizar el pipeline.')
-        return
+        return false
       }
       const next = normalizeStageSettings(json.data)
       setStageSettings(next)
       setStageDrafts(next)
       setStageDialogOpen(false)
+      return true
     } finally {
       setSavingStages(false)
+    }
+  }
+
+  async function submitStageSettings() {
+    await persistStageSettings()
+  }
+
+  async function applyPaletteAndSave(paletteId: string) {
+    const palette = STAGE_COLOR_PALETTES.find((item) => item.id === paletteId)
+    if (!palette) return
+
+    const nextDrafts = applyStagePalette(stageSettings.map((item) => ({ ...item })), palette)
+    setSavingPaletteId(paletteId)
+    try {
+      await persistStageSettings(nextDrafts)
+    } finally {
+      setSavingPaletteId(null)
     }
   }
 
@@ -900,15 +1137,28 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
     }
 
     const row = json.data
+    const parsedDescription = parseOpportunityDescription(row.description)
+    const parsedProduct = PRODUCT_SERVICE_OPTIONS.includes(parsedDescription.productOrService as ProductServiceOption)
+      ? parsedDescription.productOrService as ProductServiceOption
+      : (parsedDescription.productOrService ? 'Otro' : '')
+    const parsedProductOther = parsedProduct === 'Otro' ? parsedDescription.productOrService : ''
     setEditingOpportunityId(row.id)
+    setOpportunityTitleTouched(true)
+    lastSuggestedOpportunityTitleRef.current = row.title
     setOpportunityForm({
       title: row.title,
-      description: row.description || '',
+      description: parsedDescription.notes,
+      productService: parsedProduct,
+      productServiceOther: parsedProductOther,
       stage: row.stage,
       leadId: row.lead?.id || '',
-      expectedValue: String(row.expectedValue ?? ''),
+      expectedValue: normalizeCurrencyInput(String(row.expectedValue ?? 0)),
       probabilityPct: String(row.probabilityPct ?? 0),
       expectedCloseAt: row.expectedCloseAt ? new Date(row.expectedCloseAt).toISOString().slice(0, 10) : '',
+      assignedToUserId: row.assignedTo?.id || currentUserId || '',
+      nextAction: '',
+      nextActionOther: '',
+      nextActionDueAt: '',
     })
     setOpportunityDialogOpen(true)
   }
@@ -976,23 +1226,80 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
   }
 
   async function submitOpportunity() {
-    if (!opportunityForm.title.trim() || !opportunityForm.leadId) {
-      alert('Título y lead son requeridos para la oportunidad.')
+    const productOrService = resolveProductServiceLabel(opportunityForm.productService, opportunityForm.productServiceOther)
+    const nextAction = resolveNextActionLabel(opportunityForm.nextAction, opportunityForm.nextActionOther)
+    const hasFollowUpInput = Boolean(opportunityForm.nextAction || opportunityForm.nextActionDueAt)
+
+    if (!opportunityForm.leadId) {
+      alert('El lead es obligatorio para crear la oportunidad.')
+      return
+    }
+
+    if (!productOrService) {
+      alert('Selecciona el producto o servicio de la oportunidad.')
+      return
+    }
+
+    if (!opportunityForm.title.trim()) {
+      alert('El título es obligatorio para la oportunidad.')
+      return
+    }
+
+    if (!opportunityForm.assignedToUserId) {
+      alert('Selecciona un responsable para la oportunidad.')
+      return
+    }
+
+    if (hasFollowUpInput && (!nextAction || !opportunityForm.nextActionDueAt)) {
+      alert('Completa la próxima acción y su fecha, o deja ambos campos vacíos.')
       return
     }
 
     setSavingOpportunity(true)
     try {
       const isEditing = Boolean(editingOpportunityId)
+      const payload = {
+        title: opportunityForm.title.trim(),
+        description: buildOpportunityDescription({ productOrService, notes: opportunityForm.description }),
+        leadId: opportunityForm.leadId,
+        expectedValue: normalizeCurrencyInput(opportunityForm.expectedValue),
+        expectedCloseAt: opportunityForm.expectedCloseAt,
+        assignedToUserId: opportunityForm.assignedToUserId,
+        ...(isEditing ? { stage: opportunityForm.stage } : {}),
+      }
       const json = await requestJson<Opportunity>(isEditing ? `/api/crm/opportunities/${editingOpportunityId}` : '/api/crm/opportunities', {
         method: isEditing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(opportunityForm),
+        body: JSON.stringify(payload),
       })
       if (!json.success) {
         alert(json.error || (isEditing ? 'No se pudo actualizar la oportunidad.' : 'No se pudo crear la oportunidad.'))
         return
       }
+
+      if (!isEditing && json.data?.id && nextAction && opportunityForm.nextActionDueAt) {
+        const taskJson = await requestJson<Task>('/api/crm/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: `${nextAction} · ${json.data.title}`,
+            description: opportunityForm.description.trim() || `Seguimiento inicial para ${json.data.title}.`,
+            dueAt: opportunityForm.nextActionDueAt,
+            priority: 'NORMAL',
+            opportunityId: json.data.id,
+            leadId: opportunityForm.leadId,
+            assignedToUserId: opportunityForm.assignedToUserId,
+          }),
+        })
+
+        if (!taskJson.success) {
+          await loadData()
+          closeOpportunityDialog()
+          alert(taskJson.error || 'La oportunidad se creó, pero no se pudo programar la próxima acción.')
+          return
+        }
+      }
+
       await loadData()
       closeOpportunityDialog()
     } finally {
@@ -1162,7 +1469,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
         {opportunitiesByStage.map((column) => (
                 <Card
                   key={column.key}
-                  className={`w-[260px] shrink-0 overflow-hidden rounded-[24px] border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)] transition-all md:min-w-0 md:flex-1 ${dragTargetStage === column.key ? 'ring-2 ring-sky-400 shadow-[0_24px_50px_-30px_rgba(14,165,233,0.35)]' : ''}`}
+                  className={`w-[260px] shrink-0 overflow-hidden rounded-[24px] border-slate-200 bg-white shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)] transition-all md:min-w-0 md:flex-1 ${dragTargetStage === column.key ? 'ring-2 ring-sky-400 shadow-[0_24px_50px_-30px_rgba(14,165,233,0.35)]' : ''}`}
                   onDragOver={(event) => {
                     event.preventDefault()
                     if (draggingOpportunityId) {
@@ -1180,29 +1487,29 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                     void handleOpportunityDrop(column.key, null)
                   }}
                 >
-                  <CardHeader className="border-b border-slate-100 px-3 pb-2.5 pt-3" style={{ background: `linear-gradient(180deg, ${withAlpha(column.color, '16', 'rgba(148,163,184,0.12)')}, rgba(255,255,255,0.98))` }}>
+                  <CardHeader className="border-b border-slate-200 px-3 pb-2.5 pt-3" style={{ backgroundColor: column.color || '#64748b', color: getReadableTextColor(column.color) }}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
-                        <div className="inline-flex items-center gap-1.5 rounded-full border border-white/80 bg-white/85 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">
-                          <CircleDot className="h-3 w-3" style={{ color: column.color || '#64748b' }} />
+                        <div className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ borderColor: withAlpha(getReadableTextColor(column.color), '33', 'rgba(255,255,255,0.2)'), backgroundColor: withAlpha(getReadableTextColor(column.color), '1f', 'rgba(255,255,255,0.12)'), color: getReadableTextColor(column.color) }}>
+                          <CircleDot className="h-3 w-3" style={{ color: getReadableTextColor(column.color) }} />
                           {column.label}
                         </div>
-                        <CardDescription className="text-[11px]">{formatMoney(column.total, locale)} proyectado</CardDescription>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: withAlpha(getReadableTextColor(column.color), 'd9', 'rgba(255,255,255,0.85)') }}>
+                          Oportunidades {column.items.length}
+                        </p>
+                        <CardDescription className="text-[11px]" style={{ color: withAlpha(getReadableTextColor(column.color), 'cc', 'rgba(255,255,255,0.8)') }}>{formatMoney(column.total, locale)} proyectado</CardDescription>
                       </div>
                       <div className="flex items-start gap-2">
                         <button
                           type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:text-sky-700"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white/95 text-slate-900 shadow-sm transition hover:-translate-y-0.5"
+                          style={{ borderColor: withAlpha(getReadableTextColor(column.color), '33', 'rgba(255,255,255,0.2)') }}
                           onClick={() => openCreateOpportunityDialog(column.key)}
                           title={`Nueva carta en ${column.label}`}
                           aria-label={`Nueva carta en ${column.label}`}
                         >
                           <Plus className="h-4 w-4" />
                         </button>
-                        <div className="rounded-xl bg-white/85 px-2.5 py-1 text-right shadow-sm">
-                          <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Deals</p>
-                          <p className="text-sm font-semibold text-slate-900">{column.items.length}</p>
-                        </div>
                       </div>
                     </div>
                     {dragTargetStage === column.key ? (
@@ -1438,6 +1745,76 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
     </div>
   )
 
+  const stagePaletteToolbar = (
+    <Card className="rounded-[22px] border-slate-200 bg-white/92 shadow-[0_16px_30px_-28px_rgba(15,23,42,0.2)]">
+      <CardContent className="flex flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Paletas de cabecera</p>
+          <p className="text-xs text-slate-500">Aplica colores sólidos para distinguir cada etapa con mayor contraste.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {STAGE_COLOR_PALETTES.map((palette) => {
+            const isActive = activeStagePaletteId === palette.id
+            const isSaving = savingPaletteId === palette.id
+            return (
+              <button
+                key={palette.id}
+                type="button"
+                onClick={() => void applyPaletteAndSave(palette.id)}
+                disabled={savingStages || Boolean(savingPaletteId)}
+                className={`rounded-2xl border px-3 py-2 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${isActive ? 'border-slate-900 bg-slate-50 shadow-sm' : 'border-slate-200 bg-white'}`}
+                title={palette.description}
+              >
+                <div className="flex items-center gap-1.5">
+                  {visibleStageSettings.map((stage) => (
+                    <span key={`${palette.id}-${stage.key}`} className="h-3 w-3 rounded-full border border-black/10" style={{ backgroundColor: palette.colors[stage.key] }} />
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700">{isSaving ? 'Aplicando...' : palette.label}</p>
+              </button>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  const opportunityOptionsMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl border-slate-200 bg-white text-slate-700 shadow-sm">
+          <MoreHorizontal className="h-4 w-4" />
+          <span className="sr-only">Mostrar opciones del pipeline</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64 rounded-2xl p-1.5">
+        <DropdownMenuLabel className="px-2 py-1 text-xs uppercase tracking-[0.16em] text-slate-500">Opciones del pipeline</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="rounded-xl px-3 py-2 text-sm" onSelect={() => setOpportunityFiltersDialogOpen(true)}>
+          Filtros
+        </DropdownMenuItem>
+        <DropdownMenuItem className="rounded-xl px-3 py-2 text-sm" onSelect={() => setOpportunityListDialogOpen(true)}>
+          Lista
+        </DropdownMenuItem>
+        <DropdownMenuItem className="rounded-xl px-3 py-2 text-sm" onSelect={() => setOpportunityStageFilterDialogOpen(true)}>
+          {currentOpportunityStageFilterLabel}
+        </DropdownMenuItem>
+        <DropdownMenuItem className="rounded-xl px-3 py-2 text-sm" onSelect={() => setOpportunityClearFiltersDialogOpen(true)}>
+          Limpiar filtros
+        </DropdownMenuItem>
+        <DropdownMenuItem className="rounded-xl px-3 py-2 text-sm" onSelect={openStageDialog}>
+          Configurar pipeline
+        </DropdownMenuItem>
+        <DropdownMenuItem className="rounded-xl px-3 py-2 text-sm" onSelect={() => setOpportunityRefreshDialogOpen(true)}>
+          Refrescar
+        </DropdownMenuItem>
+        <DropdownMenuItem className="rounded-xl px-3 py-2 text-sm" onSelect={() => setOpportunityPaletteDialogOpen(true)}>
+          Paletas de cabecera
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
   const activityFiltersCard = (
     <Card className="rounded-[26px] border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.35)]">
       <CardContent className="grid gap-2.5 p-3 md:grid-cols-4 md:p-4">
@@ -1604,37 +1981,16 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
           <CrmNegotiationsTabs />
 
           <section className="space-y-3">
-            <Tabs value={focusedOpportunityTab} onValueChange={(value) => setFocusedOpportunityTab(value as 'filters' | 'list')}>
-              <Card className="rounded-[22px] border-slate-200 bg-white/92 shadow-[0_16px_30px_-28px_rgba(15,23,42,0.2)]">
-                <CardContent className="p-2.5">
-                  <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
-                    <TabsList className="grid h-9 w-full max-w-[220px] grid-cols-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
-                      <TabsTrigger value="filters" className="rounded-md px-3 py-1.5 text-[11px] data-[state=active]:bg-white data-[state=active]:shadow-sm">Filtros</TabsTrigger>
-                      <TabsTrigger value="list" className="rounded-md px-3 py-1.5 text-[11px] data-[state=active]:bg-white data-[state=active]:shadow-sm">Lista</TabsTrigger>
-                    </TabsList>
-                    <div className="min-w-0 flex-1">
-                      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por oportunidad, lead o cliente..." className="h-9 rounded-lg border-slate-200 bg-white text-sm" />
-                    </div>
-                    <div className="w-full xl:w-[170px]">
-                      <Select value={opportunityStageFilter} onValueChange={(value) => setOpportunityStageFilter(value as 'ALL' | OpportunityStage)}>
-                        <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white text-sm"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ALL">Todas</SelectItem>
-                          {visibleStageSettings.map((item) => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button variant="outline" className="h-9 rounded-lg border-slate-200 bg-white px-3 text-[11px]" onClick={clearFilters}>Limpiar filtros</Button>
-                    <Button variant="outline" className="h-9 rounded-lg border-slate-200 bg-white px-3 text-[11px]" onClick={openStageDialog}>
-                      Configurar pipeline
-                    </Button>
-                    <Button variant="outline" className="h-9 rounded-lg border-slate-200 bg-white px-3 text-[11px]" onClick={() => void loadData()}>
-                      Refrescar
-                    </Button>
+            <Card className="rounded-[22px] border-slate-200 bg-white/92 shadow-[0_16px_30px_-28px_rgba(15,23,42,0.2)]">
+              <CardContent className="p-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por oportunidad, lead o cliente..." className="h-10 rounded-xl border-slate-200 bg-white text-sm" />
                   </div>
-                </CardContent>
-              </Card>
-            </Tabs>
+                  {opportunityOptionsMenu}
+                </div>
+              </CardContent>
+            </Card>
 
             {opportunityPipelineBoard}
 
@@ -1656,7 +2012,6 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
               </>
             }
           />
-
           <CrmNegotiationsTabs />
 
           {taskUtilityPanels.filters ? activityFiltersCard : null}
@@ -1721,6 +2076,8 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
               </div>
             </div>
           </section>
+
+          {stagePaletteToolbar}
 
           {activityFiltersCard}
 
@@ -2095,56 +2452,121 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
       </Dialog>
 
       <Dialog open={opportunityDialogOpen} onOpenChange={(open) => { if (open) setOpportunityDialogOpen(true); else closeOpportunityDialog() }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-hidden p-0">
+          <DialogHeader className="border-b border-slate-100 px-6 py-5">
             <DialogTitle>{editingOpportunityId ? 'Editar oportunidad' : 'Nueva oportunidad'}</DialogTitle>
-            <DialogDescription>{editingOpportunityId ? 'Ajusta etapa, valor esperado y probabilidad de cierre.' : 'Asocia la oportunidad a un lead existente y define el valor esperado.'}</DialogDescription>
+            <DialogDescription>{editingOpportunityId ? 'Actualiza responsable, etapa, valor estimado y notas iniciales.' : 'Asocia la oportunidad a un lead existente y registra solo la información comercial esencial.'}</DialogDescription>
           </DialogHeader>
+          <div className="max-h-[calc(90vh-148px)] overflow-y-auto px-6 py-5">
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
               <Label>Título</Label>
-              <Input value={opportunityForm.title} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, title: e.target.value }))} />
+              <Input value={opportunityForm.title} onChange={(e) => { setOpportunityTitleTouched(true); setOpportunityForm((prev) => ({ ...prev, title: e.target.value })) }} placeholder="Diseño web - Empresa ABC" />
+              {suggestedOpportunityTitle ? <p className="text-xs text-slate-500">Sugerencia: {suggestedOpportunityTitle}</p> : <p className="text-xs text-slate-500">Formato sugerido: [Producto/Servicio] - [Empresa]</p>}
             </div>
             {!editingOpportunityId ? (
+              <div className="grid gap-3">
+                <div className="grid gap-2">
+                  <Label>Lead *</Label>
+                  <Select value={opportunityForm.leadId} onValueChange={(value) => setOpportunityForm((prev) => ({ ...prev, leadId: value }))}>
+                    <SelectTrigger><SelectValue placeholder="Selecciona un lead" /></SelectTrigger>
+                    <SelectContent>
+                      {leads.map((lead) => <SelectItem key={lead.id} value={lead.id}>{formatLeadOptionLabel(lead)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selectedLeadSourceLabel ? <p className="text-xs text-slate-500">Fuente heredada del lead: {selectedLeadSourceLabel}</p> : null}
+              </div>
+            ) : (
               <div className="grid gap-2">
-                <Label>Lead</Label>
-                <Select value={opportunityForm.leadId} onValueChange={(value) => setOpportunityForm((prev) => ({ ...prev, leadId: value }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecciona un lead" /></SelectTrigger>
+                <Label>Lead vinculado</Label>
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">{selectedOpportunityLead ? formatLeadOptionLabel(selectedOpportunityLead) : 'Lead no disponible'}</div>
+                {selectedLeadSourceLabel ? <p className="text-xs text-slate-500">Fuente heredada del lead: {selectedLeadSourceLabel}</p> : null}
+              </div>
+            )}
+            <div className="grid gap-2">
+              <Label>Producto / Servicio *</Label>
+              <Select value={opportunityForm.productService || '__none__'} onValueChange={(value) => setOpportunityForm((prev) => ({ ...prev, productService: value === '__none__' ? '' : value as ProductServiceOption }))}>
+                <SelectTrigger><SelectValue placeholder="Selecciona producto o servicio" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Selecciona producto o servicio</SelectItem>
+                  {PRODUCT_SERVICE_OPTIONS.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {opportunityForm.productService === 'Otro' ? (
+                <Input value={opportunityForm.productServiceOther} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, productServiceOther: e.target.value }))} placeholder="Especifica el producto o servicio" />
+              ) : null}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Valor estimado *</Label>
+                <Input value={formatCurrencyInput(opportunityForm.expectedValue, locale)} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, expectedValue: normalizeCurrencyInput(e.target.value) }))} placeholder="$ 0" inputMode="numeric" />
+              </div>
+              <div className="grid gap-2">
+                <Label>Fecha estimada de cierre</Label>
+                <Input type="date" value={opportunityForm.expectedCloseAt} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, expectedCloseAt: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Responsable *</Label>
+                <Select value={opportunityForm.assignedToUserId || '__none__'} onValueChange={(value) => setOpportunityForm((prev) => ({ ...prev, assignedToUserId: value === '__none__' ? '' : value }))}>
+                  <SelectTrigger><SelectValue placeholder="Selecciona un responsable" /></SelectTrigger>
                   <SelectContent>
-                    {leads.map((lead) => <SelectItem key={lead.id} value={lead.id}>{lead.nombre}</SelectItem>)}
+                    {assignees.map((assignee) => <SelectItem key={assignee.id} value={assignee.id}>{assignee.name || assignee.email || assignee.id}</SelectItem>)}
                   </SelectContent>
                 </Select>
+              </div>
+              {editingOpportunityId ? (
+                <div className="grid gap-2">
+                  <Label>Etapa</Label>
+                  <Select value={opportunityForm.stage} onValueChange={(value) => setOpportunityForm((prev) => ({ ...prev, stage: value as OpportunityStage, probabilityPct: String(getStageProbabilityPct(value as OpportunityStage)) }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {stageSettings.map((item) => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  <Label>Etapa inicial</Label>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">Nuevo</div>
+                </div>
+              )}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Próxima acción</Label>
+                <Select value={opportunityForm.nextAction || '__none__'} onValueChange={(value) => setOpportunityForm((prev) => ({ ...prev, nextAction: value === '__none__' ? '' : value as NextActionOption }))}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar acción" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Seleccionar acción</SelectItem>
+                    {NEXT_ACTION_OPTIONS.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Fecha próxima acción</Label>
+                <Input type="date" value={opportunityForm.nextActionDueAt} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, nextActionDueAt: e.target.value }))} />
+              </div>
+            </div>
+            {opportunityForm.nextAction === 'Otro' ? (
+              <div className="grid gap-2">
+                <Label>Especifica la próxima acción</Label>
+                <Input value={opportunityForm.nextActionOther} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, nextActionOther: e.target.value }))} placeholder="Describe la gestión a realizar" />
               </div>
             ) : null}
-            <div className="grid gap-2 sm:grid-cols-3">
-              <div className="grid gap-2 sm:col-span-1">
-                <Label>Etapa</Label>
-                <Select value={opportunityForm.stage} onValueChange={(value) => setOpportunityForm((prev) => ({ ...prev, stage: value as OpportunityStage }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {stageSettings.map((item) => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Valor esperado</Label>
-                <Input value={opportunityForm.expectedValue} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, expectedValue: e.target.value }))} placeholder="1500000" />
-              </div>
-              <div className="grid gap-2">
-                <Label>Probabilidad %</Label>
-                <Input value={opportunityForm.probabilityPct} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, probabilityPct: e.target.value }))} placeholder="60" />
-              </div>
+            <div className="grid gap-2">
+              <Label>Probabilidad automática</Label>
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">{getStageProbabilityPct(opportunityForm.stage)}%</div>
             </div>
             <div className="grid gap-2">
-              <Label>Cierre estimado</Label>
-              <Input type="date" value={opportunityForm.expectedCloseAt} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, expectedCloseAt: e.target.value }))} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Descripción</Label>
-              <Textarea value={opportunityForm.description} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, description: e.target.value }))} rows={4} />
+              <Label>Notas iniciales</Label>
+              <Textarea value={opportunityForm.description} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, description: e.target.value }))} rows={4} placeholder="Información relevante de la oportunidad..." />
             </div>
           </div>
-          <DialogFooter>
+          </div>
+          <DialogFooter className="border-t border-slate-100 px-6 py-4">
             <Button variant="outline" onClick={closeOpportunityDialog}>Cancelar</Button>
             <Button onClick={() => void submitOpportunity()} disabled={savingOpportunity}>{savingOpportunity ? 'Guardando...' : editingOpportunityId ? 'Guardar cambios' : 'Crear oportunidad'}</Button>
           </DialogFooter>
@@ -2223,12 +2645,35 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
       </Dialog>
 
       <Dialog open={stageDialogOpen} onOpenChange={setStageDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-hidden p-0">
+          <DialogHeader className="border-b border-slate-100 px-6 py-5">
             <DialogTitle>Configurar pipeline</DialogTitle>
             <DialogDescription>Define el nombre, orden y color de cada etapa comercial para esta empresa.</DialogDescription>
           </DialogHeader>
+          <div className="max-h-[calc(90vh-148px)] overflow-y-auto px-6 py-5">
           <div className="grid gap-3 py-2">
+            <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+              <p className="text-sm font-semibold text-slate-900">Paletas rápidas</p>
+              <p className="mt-1 text-xs text-slate-500">Puedes aplicar una base y luego ajustar cada color manualmente.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {STAGE_COLOR_PALETTES.map((palette) => (
+                  <button
+                    key={palette.id}
+                    type="button"
+                    onClick={() => setStageDrafts((current) => applyStagePalette(current, palette))}
+                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left transition hover:-translate-y-0.5 hover:shadow-sm"
+                    title={palette.description}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {visibleStageSettings.map((stage) => (
+                        <span key={`${palette.id}-dialog-${stage.key}`} className="h-3 w-3 rounded-full border border-black/10" style={{ backgroundColor: palette.colors[stage.key] }} />
+                      ))}
+                    </div>
+                    <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700">{palette.label}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
             {stageDrafts
               .slice()
               .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -2253,9 +2698,125 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                 </div>
               ))}
           </div>
-          <DialogFooter>
+          </div>
+          <DialogFooter className="border-t border-slate-100 px-6 py-4">
             <Button variant="outline" onClick={() => setStageDialogOpen(false)}>Cancelar</Button>
             <Button onClick={() => void submitStageSettings()} disabled={savingStages}>{savingStages ? 'Guardando...' : 'Guardar pipeline'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={opportunityFiltersDialogOpen} onOpenChange={setOpportunityFiltersDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Filtros</DialogTitle>
+            <DialogDescription>Define si quieres una vista compacta solo con pipeline o una vista extendida para trabajar además con la lista.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <button type="button" onClick={() => setFocusedOpportunityTab('filters')} className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${focusedOpportunityTab === 'filters' ? 'border-slate-900 bg-slate-50' : 'border-slate-200 bg-white'}`}>
+              <p className="text-sm font-semibold text-slate-900">Modo filtros</p>
+              <p className="mt-1 text-sm text-slate-500">Deja visible solo el pipeline para una lectura más limpia.</p>
+            </button>
+            <button type="button" onClick={() => setFocusedOpportunityTab('list')} className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${focusedOpportunityTab === 'list' ? 'border-slate-900 bg-slate-50' : 'border-slate-200 bg-white'}`}>
+              <p className="text-sm font-semibold text-slate-900">Modo lista</p>
+              <p className="mt-1 text-sm text-slate-500">Muestra debajo del pipeline la lista detallada de oportunidades.</p>
+            </button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpportunityFiltersDialogOpen(false)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={opportunityListDialogOpen} onOpenChange={setOpportunityListDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Lista</DialogTitle>
+            <DialogDescription>Controla la lista complementaria de oportunidades que aparece debajo del pipeline.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-900">Estado actual</p>
+              <p className="mt-1 text-sm text-slate-500">{focusedOpportunityTab === 'list' ? 'La lista está visible.' : 'La lista está oculta.'}</p>
+            </div>
+          </div>
+          <DialogFooter>
+            {focusedOpportunityTab === 'list' ? (
+              <Button variant="outline" onClick={() => { setFocusedOpportunityTab('filters'); setOpportunityListDialogOpen(false) }}>Ocultar lista</Button>
+            ) : (
+              <Button onClick={() => { setFocusedOpportunityTab('list'); setOpportunityListDialogOpen(false) }}>Mostrar lista</Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={opportunityStageFilterDialogOpen} onOpenChange={setOpportunityStageFilterDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Etapa visible</DialogTitle>
+            <DialogDescription>Filtra el pipeline por la etapa comercial que quieres revisar.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="grid gap-2">
+              <Label>Etapa</Label>
+              <Select value={opportunityStageFilter} onValueChange={(value) => setOpportunityStageFilter(value as 'ALL' | OpportunityStage)}>
+                <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todas</SelectItem>
+                  {visibleStageSettings.map((item) => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpportunityStageFilterDialogOpen(false)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={opportunityClearFiltersDialogOpen} onOpenChange={setOpportunityClearFiltersDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Limpiar filtros</DialogTitle>
+            <DialogDescription>Esto restaurará la búsqueda y los filtros del pipeline a su estado base.</DialogDescription>
+          </DialogHeader>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+            Se quitarán el texto de búsqueda y la etapa seleccionada.
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpportunityClearFiltersDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={() => { clearFilters(); setOpportunityClearFiltersDialogOpen(false) }}>Limpiar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={opportunityRefreshDialogOpen} onOpenChange={setOpportunityRefreshDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Refrescar pipeline</DialogTitle>
+            <DialogDescription>Vuelve a consultar oportunidades, leads, tareas, etapas, responsables y métricas del panel.</DialogDescription>
+          </DialogHeader>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+            Úsalo cuando quieras traer datos recientes sin recargar toda la página.
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpportunityRefreshDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={() => { void loadData(); setOpportunityRefreshDialogOpen(false) }}>Refrescar ahora</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={opportunityPaletteDialogOpen} onOpenChange={setOpportunityPaletteDialogOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Paletas de cabecera</DialogTitle>
+            <DialogDescription>Aplica una paleta sólida para diferenciar mejor las etapas del pipeline.</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            {stagePaletteToolbar}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpportunityPaletteDialogOpen(false)}>Cerrar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
