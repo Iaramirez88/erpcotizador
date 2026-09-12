@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
-import { Activity, Bot, Copy, Download, Eye, Facebook, Globe, Goal, Instagram, Target, TrendingUp, Upload } from 'lucide-react'
+import { Activity, Bot, Copy, Download, Eye, Facebook, Globe, Goal, Info, Instagram, MoreHorizontal, Target, TrendingUp, Upload } from 'lucide-react'
 import { CrmAddonsMarketplaceCard } from '@/components/crm/crm-addons-marketplace-card'
 import { CrmIntegrationsChatbotBuilderSections } from '@/components/crm/crm-integrations-chatbot-builder-sections'
 import { CrmIntegrationsChatbotFlowSection } from '@/components/crm/crm-integrations-chatbot-flow-section'
@@ -18,11 +18,13 @@ import { ErpPageHero, ErpSectionHeading } from '@/components/dashboard/erp-page-
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   getDefaultChatbotFlowStages,
   getDefaultChatbotQuickActions,
@@ -1198,6 +1200,39 @@ function getTemplatePresetLogo(preset: TemplatePreset): ComponentType<{ classNam
   return Globe
 }
 
+function getChannelLogo(provider: CrmChannelProvider, bridgeKind: CrmBridgeKind): ComponentType<{ className?: string }> {
+  if (bridgeKind === 'GMAIL') return GmailLogo
+  if (bridgeKind === 'OUTLOOK') return OutlookLogo
+  if (bridgeKind === 'GOOGLE_SHEETS') return GoogleSheetsLogo
+  if (bridgeKind === 'GOOGLE_CALENDAR') return GoogleCalendarLogo
+  if (bridgeKind === 'MICROSOFT_365_CALENDAR') return MicrosoftLogo
+  if (bridgeKind === 'SLACK') return SlackLogo
+  if (bridgeKind === 'TEAMS') return TeamsLogo
+  if (bridgeKind === 'META_LEAD_ADS') return MetaLogo
+  if (bridgeKind === 'TIKTOK') return TikTokLogo
+  if (bridgeKind === 'YOUTUBE') return YouTubeLogo
+  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') return WhatsAppLogo
+  if (provider === 'INSTAGRAM_DM') return Instagram
+  if (provider === 'FACEBOOK_PAGE' || provider === 'MESSENGER') return Facebook
+  if (provider === 'WEB_CHATBOT') return Bot
+  if (bridgeKind === 'BOOKING') return Target
+  return Globe
+}
+
+function getChannelLogoWrapClass(provider: CrmChannelProvider, bridgeKind: CrmBridgeKind) {
+  if (bridgeKind === 'BOOKING') return 'border-sky-200 bg-sky-100 text-sky-700'
+  if (bridgeKind === 'SLACK' || bridgeKind === 'TEAMS') return 'border-slate-200 bg-slate-100 text-slate-700'
+  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') return 'border-emerald-200 bg-emerald-100 text-emerald-700'
+  if (provider === 'INSTAGRAM_DM') return 'border-fuchsia-200 bg-fuchsia-100 text-fuchsia-700'
+  if (provider === 'FACEBOOK_PAGE' || provider === 'MESSENGER') return 'border-blue-200 bg-blue-100 text-blue-700'
+  if (provider === 'WEB_CHATBOT') return 'border-violet-200 bg-violet-100 text-violet-700'
+  if (bridgeKind === 'GMAIL' || bridgeKind === 'OUTLOOK') return 'border-amber-200 bg-amber-100 text-amber-700'
+  if (bridgeKind === 'GOOGLE_SHEETS') return 'border-emerald-200 bg-emerald-100 text-emerald-700'
+  if (bridgeKind === 'GOOGLE_CALENDAR' || bridgeKind === 'MICROSOFT_365_CALENDAR') return 'border-cyan-200 bg-cyan-100 text-cyan-700'
+  if (bridgeKind === 'META_LEAD_ADS' || bridgeKind === 'EXTERNAL_FORM') return 'border-fuchsia-200 bg-fuchsia-100 text-fuchsia-700'
+  return 'border-sky-200 bg-sky-100 text-sky-700'
+}
+
 function getTemplatePresetSurface(preset: TemplatePreset) {
   if (preset.bridgeKind === 'BOOKING') {
     return {
@@ -1859,7 +1894,6 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
   const panelShadow = getPanelShadowValue(builderState.panelShadowPreset)
   const previewOffsetX = Number.parseInt(normalizePixelValue(builderState.launcherOffsetX, '60'), 10)
   const previewOffsetY = Number.parseInt(normalizePixelValue(builderState.launcherOffsetY, '60'), 10)
-  const previewAnchorStyle = getPreviewAnchorStyle(builderState.launcherPosition, previewOffsetX, previewOffsetY)
   const welcomeStage = builderState.flowStages.find((item) => item.id === 'welcome') ?? builderState.flowStages[0] ?? null
   const catalogStage = builderState.flowStages.find((item) => item.id === 'catalog') ?? builderState.flowStages[1] ?? welcomeStage
   const welcomeActions = builderState.quickActions.filter((item) => welcomeStage?.quickActionIds.includes(item.id) && item.enabled)
@@ -1867,14 +1901,21 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
   const effectiveMode = mode === 'floating' ? getInitialChatbotPreviewMode(builderState) : mode
   const panelVisible = !builderState.floatingLauncherEnabled || effectiveMode === 'expanded'
   const launcherVisible = builderState.floatingLauncherEnabled && !panelVisible
+  const safeLauncherOffsetX = Math.min(Math.max(previewOffsetX, 8), viewport === 'mobile' ? 34 : 56)
+  const safeLauncherOffsetY = Math.min(Math.max(previewOffsetY, 8), 24)
+  const previewAnchorStyle = getPreviewAnchorStyle(
+    builderState.launcherPosition,
+    launcherVisible ? safeLauncherOffsetX : previewOffsetX,
+    launcherVisible ? safeLauncherOffsetY : previewOffsetY,
+  )
   const launcherLabelVisible = effectiveMode !== 'compact' && launcherMetrics.labelVisible
   const previewHeight = launcherVisible
-    ? Math.max(viewport === 'mobile' ? 220 : 200, previewOffsetY + Number.parseInt(launcherMetrics.buttonHeight, 10) + 72)
+    ? Math.max(viewport === 'mobile' ? 220 : 200, safeLauncherOffsetY + Number.parseInt(launcherMetrics.buttonHeight, 10) + 72)
     : minHeight
   const preChatDepartmentOptions = builderState.preChatFormDepartmentOptions.split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean)
 
   return (
-    <div className="relative overflow-hidden rounded-[26px] border border-emerald-200 p-3 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(16,185,129,0.12), transparent 30%), linear-gradient(180deg, ${builderState.pageBackgroundColor} 0%, ${builderState.pageBackgroundColor} 55%, ${builderState.backgroundColor} 100%)`, minHeight: previewHeight }}>
+    <div className="relative overflow-hidden rounded-[26px] border border-emerald-200 p-3 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(16,185,129,0.12), transparent 30%), linear-gradient(180deg, ${builderState.pageBackgroundColor} 0%, ${builderState.pageBackgroundColor} 55%, ${builderState.backgroundColor} 100%)`, height: launcherVisible ? previewHeight : undefined, minHeight: previewHeight }}>
       <div className="flex h-full px-3 pt-4" style={{ justifyContent: getPreviewJustifyContent(builderState.launcherPosition), paddingBottom: launcherVisible ? 12 : 96 }}>
         <div className="relative flex min-h-full w-full items-end" style={{ maxWidth: viewport === 'mobile' ? 340 : '100%', fontFamily: builderState.fontFamily }}>
           {panelVisible ? <div className="w-full overflow-hidden border border-slate-200 bg-white" style={{ marginTop: 24, marginLeft: builderState.launcherPosition === 'right' ? 'auto' : builderState.launcherPosition === 'center' ? 'auto' : 0, marginRight: builderState.launcherPosition === 'left' ? 'auto' : builderState.launcherPosition === 'center' ? 'auto' : 0, borderRadius: `${normalizePixelValue(builderState.chatShellRadius, '30')}px`, boxShadow: panelShadow }}>
@@ -2146,6 +2187,22 @@ function providerSummary(provider: CrmChannelProvider, bridgeKind: CrmBridgeKind
   if (provider === 'WEB_FORM' && bridgeKind === 'EXTERNAL_FORM') return 'Bridge inbound para formularios externos, landings third-party y capturas server-to-server.'
   if (provider === 'WEB_FORM') return 'Bridge operativo para automatizaciones externas y fuentes no nativas.'
   return 'Canal omnicanal basado en webhook para inbox y mensajería inbound.'
+}
+
+function SectionTitleWithTooltip({ title, tooltip }: { title: string; tooltip: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <CardTitle>{title}</CardTitle>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button type="button" className="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600" aria-label={title}>
+            <Info className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-sm text-xs leading-5">{tooltip}</TooltipContent>
+      </Tooltip>
+    </div>
+  )
 }
 
 function usesMetaProvider(provider: CrmChannelProvider) {
@@ -3705,18 +3762,20 @@ export function CrmIntegrationsClient() {
           Studio de assets
         </button>
       </div>
-      <p className="px-1 text-[13px] text-slate-500 md:text-right">
-        {operationsPanelView === 'preview'
-          ? 'Muestra solo el resumen visual y los accesos rapidos del canal activo.'
-          : operationsPanelView === 'readiness'
-            ? 'Enfoca la revision de preparacion y pendientes antes de pasar a demo o produccion.'
-            : 'Concentra snippets, URLs, tokens y payloads del canal activo en una sola vista dedicada.'}
-      </p>
     </div>
   ) : null
   const selectedIsChatbot = selectedChannel?.provider === 'WEB_CHATBOT'
   const selectedIsPublicWebForm = selectedChannel?.provider === 'WEB_FORM' && (selectedBridgeKind === 'GENERIC' || selectedBridgeKind === 'BOOKING')
   const selectedIsGoogleSheetsBridge = selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'GOOGLE_SHEETS'
+  const operationsPanelTitle = operationsPanelView === 'preview'
+    ? (language === 'en' ? 'Channel preview' : 'Vista previa del canal')
+    : (language === 'en' ? 'Readiness checklist' : 'Checklist de readiness')
+  const operationsPanelTooltip = operationsPanelView === 'preview'
+    ? (language === 'en' ? 'Visual summary and quick actions for the active channel.' : 'Resumen visual y accesos rápidos del canal activo.')
+    : (language === 'en' ? 'Focus the review on preparation and pending items before moving to demo or production.' : 'Enfoca la revisión de preparación y pendientes antes de pasar a demo o producción.')
+  const assetsPanelTooltip = selectedChannel
+    ? (language === 'en' ? `Active channel: ${selectedChannel.name}. Copy scripts, payloads, tokens, and URLs for forms, chatbot, email, and social from here.` : `Canal activo: ${selectedChannel.name}. Desde aquí copias scripts, payloads, tokens y URLs para formularios, chatbot, correo y social.`)
+    : (language === 'en' ? 'Select a channel to view the operational setup.' : 'Selecciona un canal para ver el setup operativo.')
   const selectedChatbotFlowStage = useMemo(() => chatbotBuilderDraft.flowStages.find((item) => item.id === selectedChatbotStageId) ?? chatbotBuilderDraft.flowStages[0] ?? null, [chatbotBuilderDraft.flowStages, selectedChatbotStageId])
   const chatbotCanvasModel = useMemo(() => buildChatbotCanvasModel(chatbotBuilderDraft.flowStages), [chatbotBuilderDraft.flowStages])
   const selectedChatbotConnection = useMemo(
@@ -5001,6 +5060,7 @@ export function CrmIntegrationsClient() {
           formatCompactNumber={formatCompactNumber}
         />
       <TabsContent value="operations" className="space-y-4">
+        <TooltipProvider delayDuration={150}>
         <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <Card className="rounded-[24px] border-slate-200 bg-white/95 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.3)]">
           <CardHeader className="border-b border-slate-100 pb-4">
@@ -5019,7 +5079,8 @@ export function CrmIntegrationsClient() {
               const isActive = channel.id === selectedChannelId
               const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
               const bridgeKind = getBridgeKind(settings)
-              const providerLabel = getChannelProviderLabel(channel.provider, bridgeKind)
+              const ChannelLogo = getChannelLogo(channel.provider, bridgeKind as CrmBridgeKind)
+              const logoWrapClass = getChannelLogoWrapClass(channel.provider, bridgeKind as CrmBridgeKind)
 
               return (
                 <div
@@ -5035,58 +5096,15 @@ export function CrmIntegrationsClient() {
                   }}
                   className={isActive ? `w-full cursor-pointer rounded-[26px] border p-4 text-left shadow-sm ring-2 ring-sky-300 ${channelTone(channel.provider, bridgeKind)}` : `w-full cursor-pointer rounded-[26px] border p-4 text-left shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md ${channelTone(channel.provider, bridgeKind)}`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">{providerLabel}</p>
-                      <p className="mt-1 text-lg font-semibold text-slate-950">{channel.name}</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">{providerSummary(channel.provider, bridgeKind as CrmBridgeKind)}</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${logoWrapClass}`}>
+                        <ChannelLogo className="h-5 w-5" />
+                      </div>
+                      <p className="truncate text-base font-semibold text-slate-950">{channel.name}</p>
                     </div>
-                    <span className="rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{channel.status}</span>
+                    <span className="shrink-0 rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{channel.status}</span>
                   </div>
-
-                  <div className="mt-4 grid gap-2 text-sm text-slate-600">
-                    <div className="flex items-center justify-between">
-                      <span>{language === 'en' ? 'Captures' : 'Capturas'}</span>
-                      <span className="font-semibold text-slate-900">{channel._count?.captures ?? 0}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>{language === 'en' ? 'Conversations' : 'Conversaciones'}</span>
-                      <span className="font-semibold text-slate-900">{channel._count?.conversations ?? 0}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>{language === 'en' ? 'Last webhook' : 'Último webhook'}</span>
-                      <span className="font-medium text-slate-900">{formatDate(channel.lastWebhookAt, language)}</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
-                    <div className="grid gap-1.5">
-                      <Label className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Status' : 'Estado'}</Label>
-                      <Select value={channel.status} onValueChange={(value) => void updateChannelStatus(channel.id, value as ChannelStatus)} disabled={updatingChannelId === channel.id}>
-                        <SelectTrigger className="h-10 rounded-xl border-white/70 bg-white/90"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {CHANNEL_STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-10 rounded-xl border-white/70 bg-white/90"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        void copyText(`endpoint-${channel.id}`, getEndpoint(baseUrl, channel))
-                      }}
-                    >
-                      {copiedKey === `endpoint-${channel.id}` ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy endpoint' : 'Copiar endpoint')}
-                    </Button>
-                  </div>
-
-                  {channel.lastErrorMessage ? (
-                    <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/80 px-3 py-2 text-xs text-rose-700">
-                      {channel.lastErrorMessage}
-                    </div>
-                  ) : null}
                 </div>
               )
             })}
@@ -5099,12 +5117,7 @@ export function CrmIntegrationsClient() {
               <CardHeader className="border-b border-slate-100 pb-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <CardTitle>{operationsPanelView === 'preview' ? (language === 'en' ? 'Channel preview' : 'Vista previa del canal') : (language === 'en' ? 'Readiness checklist' : 'Checklist de readiness')}</CardTitle>
-                    <CardDescription>
-                      {operationsPanelView === 'preview'
-                        ? (language === 'en' ? 'Executive summary and quick actions for the selected channel.' : 'Resumen ejecutivo y accesos rápidos del canal seleccionado.')
-                        : (language === 'en' ? 'Operational review to validate whether the channel is ready for demo or production.' : 'Revisión operativa para validar si el canal ya está listo para demo o producción.')}
-                    </CardDescription>
+                    <SectionTitleWithTooltip title={operationsPanelTitle} tooltip={operationsPanelTooltip} />
                   </div>
                   {operationsPanelSwitcher}
                 </div>
@@ -5118,7 +5131,44 @@ export function CrmIntegrationsClient() {
                         <h3 className="mt-2 text-2xl font-semibold text-slate-950">{selectedChannel.name}</h3>
                         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{providerSummary(selectedChannel.provider, selectedBridgeKind as CrmBridgeKind)}</p>
                       </div>
-                      <span className="rounded-full bg-white/85 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{selectedChannel.status}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-white/85 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{selectedChannel.status}</span>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full bg-white/85 text-slate-600 hover:bg-white hover:text-slate-900">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-60 rounded-2xl">
+                            <DropdownMenuItem onSelect={() => selectedChannel.provider === 'WEB_CHATBOT' ? openEditWizard(selectedChannel, { forceWizard: true }) : openEditWizard(selectedChannel)}>
+                              {selectedChannel.provider === 'WEB_CHATBOT'
+                                ? (language === 'en' ? 'Edit channel setup' : 'Editar configuración')
+                                : (language === 'en' ? 'Edit channel' : 'Editar canal')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => void copyText('selected-endpoint-top', endpoint)}>
+                              {copiedKey === 'selected-endpoint-top' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy endpoint' : 'Copiar endpoint')}
+                            </DropdownMenuItem>
+                            {selectedChannel.provider === 'WEB_CHATBOT' ? (
+                              <DropdownMenuItem asChild>
+                                <Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>
+                                  {language === 'en' ? 'Open Chatbot Studio' : 'Abrir Chatbot Studio'}
+                                </Link>
+                              </DropdownMenuItem>
+                            ) : null}
+                            {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? (
+                              <DropdownMenuItem asChild>
+                                <Link href={selectedChatbotEmbedUrl}>
+                                  {language === 'en' ? 'View iframe' : 'Ver iframe'}
+                                </Link>
+                              </DropdownMenuItem>
+                            ) : null}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-rose-700 focus:text-rose-700" onSelect={() => setDeleteCandidate(selectedChannel)} disabled={deletingChannelId === selectedChannel.id}>
+                              {deletingChannelId === selectedChannel.id ? (language === 'en' ? 'Deleting...' : 'Eliminando...') : (language === 'en' ? 'Delete channel' : 'Eliminar canal')}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
 
                     <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -5133,39 +5183,6 @@ export function CrmIntegrationsClient() {
                       <div className="rounded-2xl border border-white/70 bg-white/85 p-3">
                         <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Last webhook' : 'Último webhook'}</p>
                         <p className="mt-2 text-sm font-semibold text-slate-950">{formatDate(selectedChannel.lastWebhookAt, language)}</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 rounded-2xl border border-slate-200 bg-white/85 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{language === 'en' ? 'Channel management' : 'Gestión del canal'}</p>
-                          <p className="mt-1 text-sm leading-6 text-slate-600">{language === 'en' ? 'Main actions remain visible here and inside the setup wizard.' : 'Las acciones principales quedan visibles aquí y también dentro del wizard de configuración.'}</p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedChannel.provider === 'WEB_CHATBOT' ? (
-                            <>
-                              <Button variant="outline" className="rounded-xl border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100" onClick={() => openEditWizard(selectedChannel, { forceWizard: true })}>
-                                {language === 'en' ? 'Edit channel setup' : 'Editar configuración'}
-                              </Button>
-                              <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
-                                <Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>{language === 'en' ? 'Open Chatbot Studio' : 'Abrir Chatbot Studio'}</Link>
-                              </Button>
-                            </>
-                          ) : (
-                            <Button variant="outline" className="rounded-xl" onClick={() => openEditWizard(selectedChannel)}>
-                              {language === 'en' ? 'Edit channel' : 'Editar canal'}
-                            </Button>
-                          )}
-                          <Button variant="outline" className="rounded-xl" onClick={() => void copyText('selected-endpoint-top', endpoint)}>
-                            {copiedKey === 'selected-endpoint-top' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy endpoint' : 'Copiar endpoint')}
-                          </Button>
-                          {selectedChannel.provider === 'WEB_CHATBOT' ? <Button asChild variant="outline" className="rounded-xl"><Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>{language === 'en' ? 'View Studio' : 'Ver Studio'}</Link></Button> : null}
-                          {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>{language === 'en' ? 'View iframe' : 'Ver iframe'}</Link></Button> : null}
-                          <Button variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => setDeleteCandidate(selectedChannel)} disabled={deletingChannelId === selectedChannel.id}>
-                            {deletingChannelId === selectedChannel.id ? (language === 'en' ? 'Deleting...' : 'Eliminando...') : (language === 'en' ? 'Delete channel' : 'Eliminar canal')}
-                          </Button>
-                        </div>
                       </div>
                     </div>
 
@@ -5613,12 +5630,7 @@ export function CrmIntegrationsClient() {
             <CardHeader className="border-b border-slate-100 pb-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <CardTitle>{language === 'en' ? 'Assets studio' : 'Studio de assets'}</CardTitle>
-                  <CardDescription>
-                    {selectedChannel
-                      ? (language === 'en' ? `Active channel: ${selectedChannel.name}. From here you copy scripts, payloads, tokens, and URLs for forms, chatbot, email, and social.` : `Canal activo: ${selectedChannel.name}. Desde aquí copias scripts, payloads, tokens y URLs para formularios, chatbot, correo y social.`)
-                      : (language === 'en' ? 'Select a channel to view the operational setup.' : 'Selecciona un canal para ver el setup operativo.')}
-                  </CardDescription>
+                  <SectionTitleWithTooltip title={language === 'en' ? 'Assets studio' : 'Studio de assets'} tooltip={assetsPanelTooltip} />
                 </div>
                 {operationsPanelSwitcher}
               </div>
@@ -6260,6 +6272,7 @@ export function CrmIntegrationsClient() {
           ) : null}
         </div>
         </div>
+        </TooltipProvider>
       </TabsContent>
       </Tabs>
 
@@ -6354,8 +6367,7 @@ export function CrmIntegrationsClient() {
           <div className={wizardStep === 'template' ? 'h-full min-h-0' : 'grid h-full min-h-0 gap-0 lg:grid-cols-[0.9fr_1.1fr]'}>
             <div className={wizardStep === 'template' ? 'min-h-0 h-full overflow-y-auto bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,.18),transparent_32%),linear-gradient(180deg,#f8fbff,#ffffff)] p-6' : 'min-h-0 overflow-y-auto border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,.18),transparent_32%),linear-gradient(180deg,#f8fbff,#ffffff)] p-6 lg:border-b-0 lg:border-r'}>
               <DialogHeader>
-                <DialogTitle>{editingChannelId ? 'Editar canal omnicanal' : 'Nuevo canal omnicanal'}</DialogTitle>
-                <DialogDescription>{editingChannelId ? 'Ajusta configuración, demo e iframe desde el mismo wizard sin perder el contexto del canal.' : 'Wizard por pasos para dejar el canal listo, con preview comercial y checklist antes de crearlo.'}</DialogDescription>
+                <DialogTitle>{editingChannelId ? 'Editar canal' : 'Nuevo canal'}</DialogTitle>
               </DialogHeader>
 
               <div className="mt-4 overflow-x-auto pb-1">
@@ -6381,9 +6393,7 @@ export function CrmIntegrationsClient() {
               {wizardStep === 'template' ? (
                 <div className="mt-5 space-y-4 pr-1">
                   <div className="rounded-[26px] border border-slate-200 bg-white/85 p-4 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Paso 1 · Elige el tipo de canal</p>
                     <h3 className="mt-2 text-xl font-semibold text-slate-950">Elige cómo quieres captar tus leads.</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">Selecciona un canal para continuar.</p>
                   </div>
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {TEMPLATE_PRESETS.map((preset) => (
@@ -6420,7 +6430,6 @@ export function CrmIntegrationsClient() {
                 <div className="mt-5 rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vista previa lateral</p>
                   <h3 className="mt-2 text-xl font-semibold text-slate-950">{createForm.name || createPreset.name}</h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">{createPreset.description}</p>
                   <div className="mt-4 space-y-3">
                     <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
                       <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Endpoint estimado</p>
@@ -6542,8 +6551,6 @@ export function CrmIntegrationsClient() {
                 </div>
                 <p className="mt-3 text-sm font-semibold text-slate-900">{createPreset.name}</p>
                 <p className="mt-1 text-sm leading-6 text-slate-600">{createPreset.description}</p>
-                <p className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Objetivo del canal</p>
-                <p className="mt-1 text-sm text-slate-700">{createPreset.focus}</p>
               </div>
 
               <div className="mt-5 flex-1 overflow-y-auto pr-1">

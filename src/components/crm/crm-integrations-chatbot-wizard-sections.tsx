@@ -1,12 +1,14 @@
 "use client"
 
 import type { Dispatch, SetStateAction } from 'react'
+import { Info } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 type ChatbotWizardSection = 'base' | 'brand' | 'launcher' | 'copy'
 
@@ -69,6 +71,7 @@ export function CrmIntegrationsChatbotWizardSections<TForm extends WizardChatbot
   const { form, setForm } = props
 
   return (
+    <TooltipProvider delayDuration={150}>
     <Tabs value={props.section} onValueChange={(value) => props.setSection(value as ChatbotWizardSection)} className="space-y-4">
       <div className="overflow-x-auto pb-1">
         <TabsList className="inline-flex h-auto min-w-max flex-nowrap rounded-2xl border border-slate-200 bg-slate-50 p-1 md:flex-wrap">
@@ -84,8 +87,17 @@ export function CrmIntegrationsChatbotWizardSections<TForm extends WizardChatbot
         <div className="space-y-4">
           <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
             <div className="mb-4">
-              <p className="text-sm font-semibold text-slate-900">Identidad del canal</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">Define cómo aparecerá el chatbot dentro del CRM.</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-slate-900">Identidad del canal</p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600" aria-label="Información de identidad del canal">
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-sm text-xs leading-5">Define cómo aparecerá el chatbot dentro del CRM.</TooltipContent>
+                </Tooltip>
+              </div>
             </div>
             <div className="grid gap-4">
               <div className="grid gap-2">
@@ -97,8 +109,17 @@ export function CrmIntegrationsChatbotWizardSections<TForm extends WizardChatbot
 
           <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
             <div className="mb-4">
-              <p className="text-sm font-semibold text-slate-900">Conexión y acceso</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">Define en qué dominios se podrá publicar el widget.</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-slate-900">Conexión y acceso</p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button type="button" className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600" aria-label="Información de conexión y acceso">
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-sm text-xs leading-5">Define en qué dominios se podrá publicar el widget.</TooltipContent>
+                </Tooltip>
+              </div>
             </div>
             <div className="grid gap-4">
               <div className="grid gap-2">
@@ -181,5 +202,6 @@ export function CrmIntegrationsChatbotWizardSections<TForm extends WizardChatbot
         </div>
       </TabsContent>
     </Tabs>
+    </TooltipProvider>
   )
 }

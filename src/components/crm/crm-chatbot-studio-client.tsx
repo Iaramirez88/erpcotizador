@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Bell, Bot, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Copy, GitBranch, GripVertical, History, Info, Plus, Redo2, Save, Smile, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
+import { AlertTriangle, Bell, Bot, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Copy, GitBranch, GripVertical, History, Info, PanelLeftClose, PanelLeftOpen, Plus, Redo2, Save, Smile, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -1330,6 +1330,20 @@ function createChannelBuilderPreset(mode: 'empty' | 'template'): BuilderState {
   }, emptyFlow.id)
 }
 
+function hasInitializedStudioFlow(settingsJson: Record<string, unknown> | null | undefined) {
+  if (settingsJson?.studioInitialized === true) return true
+
+  const rootLayout = settingsJson?.studioNodeLayout
+  if (rootLayout && typeof rootLayout === 'object' && !Array.isArray(rootLayout) && Object.keys(rootLayout).length > 0) return true
+
+  if (!Array.isArray(settingsJson?.automationFlows)) return false
+  return settingsJson.automationFlows.some((flow) => {
+    if (!flow || typeof flow !== 'object' || Array.isArray(flow)) return false
+    const layout = (flow as Record<string, unknown>).studioNodeLayout
+    return Boolean(layout && typeof layout === 'object' && !Array.isArray(layout) && Object.keys(layout).length > 0)
+  })
+}
+
 function buildSettingsPayload(state: BuilderState) {
   const snapshot = materializeSelectedFlow(state)
   const selectedFlow = snapshot.automationFlows.find((flow) => flow.id === snapshot.selectedFlowId) ?? getDefaultChatbotAutomationFlow()
@@ -1338,6 +1352,7 @@ function buildSettingsPayload(state: BuilderState) {
 
   return {
     ...snapshot.rawSettingsJson,
+    studioInitialized: true,
     chatbotTitle: snapshot.chatbotTitle,
     chatbotPrompt: snapshot.chatbotPrompt,
     assistantName: snapshot.assistantName,
@@ -1517,6 +1532,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const [assigningConversationId, setAssigningConversationId] = useState<string | null>(null)
   const [focusedNode, setFocusedNode] = useState<StudioFocusNode | null>(null)
   const [activeEdgeId, setActiveEdgeId] = useState<string | null>(null)
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
   const [editingNode, setEditingNode] = useState<StudioEditingNode>(null)
   const [activeStudioPanel, setActiveStudioPanel] = useState<StudioPrimaryPanel>('map')
   const [editingVariableId, setEditingVariableId] = useState<string | null>(null)
@@ -1616,6 +1632,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   }, [selectedConversation])
 
   const selectedChannel = useMemo(() => channels.find((item) => item.id === selectedChannelId) ?? null, [channels, selectedChannelId])
+  const studioFlowInitialized = useMemo(() => hasInitializedStudioFlow(builder.rawSettingsJson), [builder.rawSettingsJson])
   const whatsAppReadiness = useMemo(() => getWhatsAppDeliveryReadiness(whatsAppChannels), [whatsAppChannels])
   const whatsAppChannelOptions = useMemo(() => getWhatsAppChannelOptions(whatsAppChannels), [whatsAppChannels])
   const selectedFlow = useMemo(() => builder.automationFlows.find((flow) => flow.id === builder.selectedFlowId) ?? null, [builder.automationFlows, builder.selectedFlowId])
@@ -3486,7 +3503,33 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     setEditingNode(node)
   }
 
+  function initializeSelectedChannelFlow(mode: 'empty' | 'template') {
+    if (!selectedChannelId) return
+    const preset = createChannelBuilderPreset(mode)
+    const nextBuilder = applySelectedFlowToBuilder({
+      ...builder,
+      rawSettingsJson: { ...builder.rawSettingsJson, studioInitialized: true },
+      automationFlows: preset.automationFlows,
+      selectedFlowId: preset.selectedFlowId,
+      flowVariables: preset.flowVariables,
+      assignmentRules: preset.assignmentRules,
+      messageCoherence: preset.messageCoherence,
+    }, preset.selectedFlowId)
+
+    replaceBuilder(nextBuilder, { resetHistory: true })
+    setNotice(mode === 'empty' ? 'Flujo vacío preparado para este canal.' : 'Plantilla base preparada para este canal.')
+    setError(null)
+    setFlowEditMode(true)
+    setMapFullscreen(true)
+    setInspectorOpen(true)
+    setActiveStudioPanel('map')
+  }
+
   function startFlowEditing() {
+    if (!studioFlowInitialized) {
+      setNotice('Elige primero si deseas comenzar con un flujo vacío o con una plantilla.')
+      return
+    }
     setFlowEditMode(true)
     setMapFullscreen(true)
     setInspectorOpen(true)
@@ -4621,22 +4664,35 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     const selectedTemplate = paletteDragKind ? parsePaletteDragValue(paletteDragKind) : null
 
     return (
-      <div className="hidden h-full min-h-0 rounded-[26px] border border-slate-200 bg-white/96 p-3 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.25)] xl:flex xl:flex-col xl:gap-4">
-        <div className="rounded-[20px] border border-slate-200 bg-slate-50/80 px-3 py-3">
+      <div className="hidden h-full min-h-0 rounded-[26px] border border-slate-200 bg-white/96 p-2 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.25)] xl:flex xl:flex-col xl:gap-2.5">
+        <div className="rounded-[18px] border border-slate-200 bg-slate-50/80 px-2 py-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
-                <GitBranch className="h-5 w-5" />
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
+                <GitBranch className="h-4 w-4" />
               </div>
-              <div className="text-sm font-semibold text-slate-900">Bloques y plantillas</div>
+              <div className="text-[9px] font-semibold text-slate-900">Bloques y plantillas</div>
             </div>
-            <InfoHint content="Arrastra al canvas o haz clic para insertar. Si tienes una caja activa, la plantilla se conectará desde ella cuando aplique." label="Ver ayuda de bloques y plantillas" />
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setPaletteRailOpen(false)}
+                  className="h-7 w-7 rounded-lg text-slate-600 hover:bg-white"
+                  aria-label="Ocultar panel de bloques"
+                  title="Ocultar panel de bloques"
+                >
+                  <PanelLeftClose className="!h-[19px] !w-[19px]" />
+                </Button>
+                <InfoHint content="Arrastra al canvas o haz clic para insertar. Si tienes una caja activa, la plantilla se conectará desde ella cuando aplique." label="Ver ayuda de bloques y plantillas" />
+              </div>
           </div>
         </div>
 
-        <div className="space-y-2">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Bloques base</div>
-          <div className="grid gap-2">
+        <div className="space-y-1.5">
+          <div className="text-[8px] font-semibold uppercase tracking-[0.16em] text-slate-500">Bloques base</div>
+          <div className="grid gap-1.5">
             {STUDIO_PALETTE_ITEMS.map((item) => {
               const Icon = item.kind === 'stage' ? Bot : item.kind === 'action' ? Zap : item.kind === 'trigger' ? GitBranch : History
               const dragValue = `block:${item.kind}`
@@ -4648,15 +4704,15 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   onDragStart={(event) => handlePaletteDragStart(event, dragValue)}
                   onDragEnd={handlePaletteDragEnd}
                   onClick={() => handleCreateFromMenu(item.kind)}
-                  className={`flex w-full items-center gap-2 rounded-[18px] border px-2.5 py-2.5 text-left transition ${item.className} ${paletteDragKind === dragValue ? 'scale-[1.01] shadow-sm ring-2 ring-slate-900/10' : ''}`}
+                  className={`flex w-full items-center gap-1.5 rounded-[14px] border px-2 py-1.5 text-left transition ${item.className} ${paletteDragKind === dragValue ? 'scale-[1.01] shadow-sm ring-2 ring-slate-900/10' : ''}`}
                   title={item.description}
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-current/15 bg-white/85">
-                    <Icon className="h-4.5 w-4.5" />
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border border-current/15 bg-white/85">
+                    <Icon className="h-3.5 w-3.5" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="truncate text-xs font-semibold">{item.label}</div>
+                      <div className="truncate text-[8px] font-semibold">{item.label}</div>
                       <InfoHint content={item.description} label={`Ver ayuda de ${item.label}`} className="h-4.5 w-4.5 shrink-0" iconClassName="h-3 w-3" />
                     </div>
                   </div>
@@ -4666,12 +4722,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+        <div className="min-h-0 flex-1 space-y-1.5 overflow-visible pr-0">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Plantillas</div>
-            {selectedTemplate && 'templateId' in selectedTemplate ? <div className="text-[10px] text-slate-400">Lista para soltar</div> : null}
+            <div className="text-[8px] font-semibold uppercase tracking-[0.16em] text-slate-500">Plantillas</div>
+            {selectedTemplate && 'templateId' in selectedTemplate ? <div className="text-[8px] text-slate-400">Lista para soltar</div> : null}
           </div>
-          <div className="grid gap-2">
+          <div className="grid gap-1.5">
             {STUDIO_TEMPLATE_ITEMS.map((template) => {
               const Icon = template.kind === 'stage' ? Bot : template.kind === 'action' ? Zap : template.kind === 'trigger' ? GitBranch : History
               const dragValue = `template:${template.id}`
@@ -4683,16 +4739,16 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   onDragStart={(event) => handlePaletteDragStart(event, dragValue)}
                   onDragEnd={handlePaletteDragEnd}
                   onClick={() => applyTemplate(template.id)}
-                  className={`w-full rounded-[18px] border px-2.5 py-2.5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${template.toneClass} ${paletteDragKind === dragValue ? 'scale-[1.01] shadow-sm ring-2 ring-slate-900/10' : ''}`}
+                  className={`w-full rounded-[14px] border px-2 py-1.5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${template.toneClass} ${paletteDragKind === dragValue ? 'scale-[1.01] shadow-sm ring-2 ring-slate-900/10' : ''}`}
                   title={template.description}
                 >
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-current/15 bg-white/85">
-                      <Icon className="h-4 w-4" />
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border border-current/15 bg-white/85">
+                      <Icon className="h-3.5 w-3.5" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="truncate text-xs font-semibold">{template.label}</div>
+                        <div className="truncate text-[8px] font-semibold">{template.label}</div>
                         <InfoHint content={template.description} label={`Ver ayuda de ${template.label}`} className="h-4.5 w-4.5 shrink-0" iconClassName="h-3 w-3" />
                       </div>
                     </div>
@@ -5131,6 +5187,19 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               <div className={`flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200/80 bg-white/80 text-xs text-slate-500 ${overlay ? 'px-2 py-1.5' : 'px-3 py-2'}`}>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">Zoom {(builder.studioViewport.scale * 100).toFixed(0)}%</span>
+                  {canEditFlow && !showPaletteRail ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setPaletteRailOpen(true)}
+                      className="h-7 w-7"
+                      aria-label="Mostrar panel de bloques"
+                      title="Mostrar panel de bloques"
+                    >
+                      <PanelLeftOpen className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : null}
                   <span>Pan X {Math.round(builder.studioViewport.x)} · Y {Math.round(builder.studioViewport.y)}</span>
                   {canEditFlow ? (
                     <span className={`rounded-full px-2.5 py-1 font-medium ${hasUnsavedChanges ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}`}>
@@ -5139,12 +5208,6 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {canEditFlow ? (
-                    <Button type="button" variant="outline" size="sm" onClick={() => setPaletteRailOpen((current) => !current)}>
-                      {paletteRailOpen ? <ChevronLeft className="mr-1.5 h-3.5 w-3.5" /> : <ChevronRight className="mr-1.5 h-3.5 w-3.5" />}
-                      {paletteRailOpen ? 'Ocultar bloques' : 'Mostrar bloques'}
-                    </Button>
-                  ) : null}
                   {canEditFlow && focusedNode ? (
                     <Button type="button" variant="outline" size="sm" onClick={() => setInspectorOpen((current) => !current)}>
                       {inspectorOpen ? 'Inspector' : 'Mostrar inspector'}
@@ -5226,13 +5289,27 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   {!canEditFlow ? (
                     <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/60 backdrop-blur-[2px]">
                       <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white/96 px-6 py-6 text-center shadow-[0_28px_80px_-40px_rgba(15,23,42,0.35)]">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Vista protegida</div>
-                        <div className="mt-3 text-2xl font-semibold text-slate-900">Editar flujo</div>
-                        <div className="mt-2 text-sm leading-6 text-slate-600">Primero entra en modo edición para reorganizar bloques, abrir el menú de arrastre y trabajar el flujo en pantalla completa sin ruido visual.</div>
-                        <div className="mt-5 flex items-center justify-center gap-3">
-                          <Button type="button" className="rounded-2xl px-5" onClick={startFlowEditing}>Editar flujo</Button>
-                          <Button type="button" variant="outline" className="rounded-2xl px-5" onClick={resetStudioViewport}>Solo centrar vista</Button>
-                        </div>
+                        {!studioFlowInitialized ? (
+                          <>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">Configura el canal de trabajo</div>
+                            <div className="mt-3 text-2xl font-semibold text-slate-900">¿Cómo quieres comenzar?</div>
+                            <div className="mt-2 text-sm leading-6 text-slate-600">Prepara el primer flujo del canal seleccionado antes de abrir el editor.</div>
+                            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                              <Button type="button" variant="outline" className="rounded-2xl px-5" onClick={() => initializeSelectedChannelFlow('empty')}>Crear canal vacío</Button>
+                              <Button type="button" className="rounded-2xl px-5" onClick={() => initializeSelectedChannelFlow('template')}>Crear canal con plantilla</Button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Vista protegida</div>
+                            <div className="mt-3 text-2xl font-semibold text-slate-900">Editar flujo</div>
+                            <div className="mt-2 text-sm leading-6 text-slate-600">Primero entra en modo edición para reorganizar bloques, abrir el menú de arrastre y trabajar el flujo en pantalla completa sin ruido visual.</div>
+                            <div className="mt-5 flex items-center justify-center gap-3">
+                              <Button type="button" className="rounded-2xl px-5" onClick={startFlowEditing}>Editar flujo</Button>
+                              <Button type="button" variant="outline" className="rounded-2xl px-5" onClick={resetStudioViewport}>Solo centrar vista</Button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   ) : null}
@@ -5280,7 +5357,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                           })
                           return (
                             <g key={edge.id}>
-                              <path d={metrics.path} className={`${edge.toneClass} fill-none stroke-[2.5]`} strokeDasharray={edge.dashed ? '6 6' : undefined} />
+                              <path d={metrics.path} className={`${edge.toneClass} fill-none transition-[stroke-width] duration-150`} strokeWidth={hoveredEdgeId === edge.id ? 4.5 : 2.5} strokeDasharray={edge.dashed ? '6 6' : undefined} />
                             </g>
                           )
                         })}
@@ -5328,8 +5405,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                               fill="none"
                               stroke="transparent"
                               strokeWidth="18"
-                              style={{ pointerEvents: 'stroke' }}
+                              style={{ pointerEvents: 'stroke', cursor: canEditFlow ? 'pointer' : 'default' }}
+                              onPointerEnter={() => setHoveredEdgeId(edge.id)}
+                              onPointerLeave={() => setHoveredEdgeId((current) => current === edge.id ? null : current)}
                               onClick={(event) => {
+                                if (!canEditFlow) return
                                 event.stopPropagation()
                                 setContextMenu(null)
                                 setActiveEdgeId((current) => current === edge.id ? null : edge.id)
@@ -5370,31 +5450,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                             ? '__none__'
                             : (edge.targetKind === 'action' || edge.targetKind === 'stage' || edge.targetKind === 'trigger' ? edgeTargetId : builder.pauseNodes.find((pause) => pause.id === edgeSourceId)?.targetStageId || '__none__')
 
-                        return (
-                          <div key={`edge-editor-${edge.id}`} className={`absolute ${isActiveEdge ? 'z-[90]' : 'z-40'}`} style={{ left: `${panelLeft}px`, top: `${panelTop}px` }}>
-                            <button
-                              type="button"
-                              aria-label={`Editar conexión ${edge.label || 'del flujo'}`}
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onContextMenu={(event) => {
-                                if (!canEditFlow) return
-                                event.preventDefault()
-                                event.stopPropagation()
-                                openEdgeContextMenu(edge, panelLeft, Math.max(24, panelTop + 20))
-                              }}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                setContextMenu(null)
-                                setActiveEdgeId((current) => current === edge.id ? null : edge.id)
-                              }}
-                              className={`flex h-6 w-6 items-center justify-center rounded-full border bg-white/96 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.4)] transition hover:border-slate-300 ${isActiveEdge ? 'border-slate-400 ring-2 ring-slate-900/10' : 'border-slate-200'}`}
-                            >
-                              <span className={`inline-block h-2.5 w-2.5 rounded-full ${edge.sourceKind === 'trigger' ? 'bg-amber-400' : edge.targetKind === 'action' ? 'bg-fuchsia-400' : edge.targetKind === 'pause' || edge.sourceKind === 'pause' ? 'bg-sky-400' : 'bg-emerald-400'}`} />
-                            </button>
+                        if (!isActiveEdge) return null
 
-                            {isActiveEdge ? (
+                        return (
+                          <div key={`edge-editor-${edge.id}`} className="absolute z-[90]" style={{ left: `${panelLeft}px`, top: `${panelTop}px` }}>
                               <div
-                                className="mt-2 w-[220px] rounded-2xl border border-slate-200 bg-white/98 p-3 text-xs text-slate-600 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.48)]"
+                                className="w-[220px] rounded-2xl border border-slate-200 bg-white/98 p-3 text-xs text-slate-600 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.48)]"
                                 onPointerDown={(event) => event.stopPropagation()}
                               >
                                 <div className="font-semibold text-slate-900">Editar conexión</div>
@@ -5538,7 +5599,6 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                   ) : null}
                                 </div>
                               </div>
-                            ) : null}
                           </div>
                         )
                       })}
@@ -5799,13 +5859,20 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                               <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Menu de conexión</div>
                               <div className="px-3 pb-2 text-xs leading-5 text-slate-500">{contextMenu.edge.label || 'Ruta del flujo'}</div>
                               <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => {
+                                if (contextMenu.edge) setActiveEdgeId(contextMenu.edge.id)
+                                setContextMenu(null)
+                              }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                <span>Editar conexión</span>
+                                <span>✎</span>
+                              </button>
+                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => {
                                 if (contextMenu.edge?.sourceKind === 'start') {
                                   focusStudioNode({ kind: 'start', id: 'start' })
                                 } else if (contextMenu.edge) {
                                   disconnectEdge(contextMenu.edge)
                                 }
                                 setContextMenu(null)
-                              }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-rose-700 transition hover:bg-rose-50">
+                              }} className="mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-rose-700 transition hover:bg-rose-50">
                                 <span>{contextMenu.edge.sourceKind === 'start' ? 'Editar inicio' : 'Eliminar conexión'}</span>
                                 {contextMenu.edge.sourceKind === 'start' ? <Info className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
                               </button>
@@ -6800,10 +6867,10 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       </Dialog>
 
       <Dialog open={Boolean(editingNode)} onOpenChange={(open) => { if (!open) setEditingNode(null) }}>
-        <DialogContent className="max-h-[86vh] overflow-y-auto sm:max-w-[880px]">
+        <DialogContent className="max-h-[86vh] overflow-x-hidden overflow-y-auto sm:max-w-[880px]">
           {editingStage ? (
             <>
-              <DialogHeader>
+              <DialogHeader className="sticky -top-6 z-20 -mx-6 border-b border-slate-200 bg-white px-6 pb-3 pt-6">
                 <DialogTitle>Editar mensaje del flujo</DialogTitle>
                 <DialogDescription>Define qué dice el bot, qué respuesta debe entender y a qué mensaje o acción debe pasar después.</DialogDescription>
               </DialogHeader>
@@ -6928,7 +6995,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   ))}
                 </div>
               </div>
-              <DialogFooter>
+              <DialogFooter className="sticky -bottom-6 z-20 -mx-6 border-t border-slate-200 bg-white px-6 pb-6 pt-3">
                 <Button variant="outline" onClick={() => setEditingNode(null)}>Cerrar</Button>
               </DialogFooter>
             </>
@@ -6936,7 +7003,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
           {editingTrigger ? (
             <>
-              <DialogHeader>
+              <DialogHeader className="sticky -top-6 z-20 -mx-6 border-b border-slate-200 bg-white px-6 pb-3 pt-6">
                 <DialogTitle>Editar disparador</DialogTitle>
                 <DialogDescription>Define cuándo se activa cada condición del filtro y a qué acción o mensaje debe enviar la conversación.</DialogDescription>
               </DialogHeader>
@@ -7037,7 +7104,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   </div>
                 </div>
               </div>
-              <DialogFooter>
+              <DialogFooter className="sticky -bottom-6 z-20 -mx-6 border-t border-slate-200 bg-white px-6 pb-6 pt-3">
                 <Button variant="outline" onClick={() => setEditingNode(null)}>Cerrar</Button>
               </DialogFooter>
             </>
@@ -7045,7 +7112,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
           {editingAction ? (
             <>
-              <DialogHeader>
+              <DialogHeader className="sticky -top-6 z-20 -mx-6 border-b border-slate-200 bg-white px-6 pb-3 pt-6">
                 <DialogTitle>Editar acción rápida</DialogTitle>
                 <DialogDescription>Configura el comportamiento y el mensaje que dispara esta acción.</DialogDescription>
               </DialogHeader>
@@ -7119,7 +7186,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                 </div>
                 {renderQuickActionAutomationFields(editingAction)}
               </div>
-              <DialogFooter>
+              <DialogFooter className="sticky -bottom-6 z-20 -mx-6 border-t border-slate-200 bg-white px-6 pb-6 pt-3">
                 <Button variant="outline" onClick={() => setEditingNode(null)}>Cerrar</Button>
               </DialogFooter>
             </>
@@ -7127,7 +7194,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
           {editingPause ? (
             <>
-              <DialogHeader>
+              <DialogHeader className="sticky -top-6 z-20 -mx-6 border-b border-slate-200 bg-white px-6 pb-3 pt-6">
                 <DialogTitle>Editar pausa</DialogTitle>
                 <DialogDescription>Define la espera visible entre el mensaje origen y el siguiente mensaje del flujo.</DialogDescription>
               </DialogHeader>
@@ -7174,7 +7241,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <Textarea value={editingPause.description} onChange={(event) => updatePauseNode(editingPause.id, { description: event.target.value })} rows={3} />
                 </div>
               </div>
-              <DialogFooter>
+              <DialogFooter className="sticky -bottom-6 z-20 -mx-6 border-t border-slate-200 bg-white px-6 pb-6 pt-3">
                 <Button variant="outline" onClick={() => setEditingNode(null)}>Cerrar</Button>
               </DialogFooter>
             </>
@@ -7183,10 +7250,10 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       </Dialog>
 
       <Dialog open={Boolean(editingVariable)} onOpenChange={(open) => { if (!open) setEditingVariableId(null) }}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-[88vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl">
           {editingVariable ? (
             <>
-              <DialogHeader>
+              <DialogHeader className="sticky -top-6 z-20 -mx-6 border-b border-slate-200 bg-white px-6 pb-3 pt-6">
                 <DialogTitle>Editar variable</DialogTitle>
                 <DialogDescription>Define cómo se rellena esta variable dentro de los mensajes del flujo.</DialogDescription>
               </DialogHeader>
@@ -7244,7 +7311,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <Textarea value={editingVariable.description} onChange={(event) => updateVariable(editingVariable.id, { description: event.target.value })} rows={3} />
                 </div>
               </div>
-              <DialogFooter>
+              <DialogFooter className="sticky -bottom-6 z-20 -mx-6 border-t border-slate-200 bg-white px-6 pb-6 pt-3">
                 <Button variant="outline" onClick={() => setEditingVariableId(null)}>Cerrar</Button>
               </DialogFooter>
             </>
@@ -7253,8 +7320,8 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       </Dialog>
 
       <Dialog open={coherenceModalOpen} onOpenChange={setCoherenceModalOpen}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-h-[88vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl">
+          <DialogHeader className="sticky -top-6 z-20 -mx-6 border-b border-slate-200 bg-white px-6 pb-3 pt-6">
             <DialogTitle>Editar coherencia</DialogTitle>
             <DialogDescription>Controla el tono, saludo y restricciones globales de redacción del asistente.</DialogDescription>
           </DialogHeader>
@@ -7293,15 +7360,15 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               <Input value={builder.messageCoherence.forbiddenTerms} onChange={(event) => setBuilder((current) => ({ ...current, messageCoherence: { ...current.messageCoherence, forbiddenTerms: event.target.value } }))} />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="sticky -bottom-6 z-20 -mx-6 border-t border-slate-200 bg-white px-6 pb-6 pt-3">
             <Button variant="outline" onClick={() => setCoherenceModalOpen(false)}>Cerrar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={assignmentModalOpen} onOpenChange={setAssignmentModalOpen}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-h-[88vh] overflow-x-hidden overflow-y-auto sm:max-w-2xl">
+          <DialogHeader className="sticky -top-6 z-20 -mx-6 border-b border-slate-200 bg-white px-6 pb-3 pt-6">
             <DialogTitle>Editar asignaciones automáticas</DialogTitle>
             <DialogDescription>Define el responsable por defecto y los desvíos al pedir humano o al calificar un lead.</DialogDescription>
           </DialogHeader>
@@ -7356,7 +7423,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="sticky -bottom-6 z-20 -mx-6 border-t border-slate-200 bg-white px-6 pb-6 pt-3">
             <Button variant="outline" onClick={() => setAssignmentModalOpen(false)}>Cerrar</Button>
           </DialogFooter>
         </DialogContent>

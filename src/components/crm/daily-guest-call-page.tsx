@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Loader2 } from 'lucide-react'
+import { AlertCircle, Loader2, RefreshCcw } from 'lucide-react'
 
 type GuestCallState = 'BOOTING' | 'JOINING' | 'JOINED' | 'LEFT' | 'ERROR'
 
@@ -71,6 +71,9 @@ function formatDailyErrorMessage(error: unknown) {
   if (/notallowederror|permission denied|permissions-policy/i.test(message)) {
     return 'El navegador bloqueó micrófono o cámara para esta llamada. Permítelos en el sitio y vuelve a intentar.'
   }
+  if (/network|networkerror|connection|websocket|ice/i.test(message)) {
+    return 'No se pudo establecer la conexión. Revisa la conexión a internet, VPN o firewall y vuelve a intentar.'
+  }
   return message
 }
 
@@ -82,6 +85,7 @@ export function DailyGuestCallPage() {
   const [error, setError] = useState<string | null>(null)
   const [hashValue, setHashValue] = useState('')
   const [resolvedSession, setResolvedSession] = useState<ResolvedGuestSession | null>(null)
+  const [retryNonce, setRetryNonce] = useState(0)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -147,6 +151,12 @@ export function DailyGuestCallPage() {
       setState('JOINING')
       setError(null)
 
+      const connectionTimeout = window.setTimeout(() => {
+        if (!active) return
+        setError('La conexión está tardando más de lo esperado. Revisa internet, los permisos del navegador y que Daily no esté bloqueado por una VPN o firewall.')
+        setState('ERROR')
+      }, 20000)
+
       try {
         const DailyIframeModule = await import('@daily-co/daily-js')
         if (!active || !containerRef.current) return
@@ -172,9 +182,16 @@ export function DailyGuestCallPage() {
 
         callRef.current = frame
         ensureDailyIframePermissions(containerRef.current)
-        frame.on('joined-meeting', () => setState('JOINED'))
-        frame.on('left-meeting', () => setState('LEFT'))
+        frame.on('joined-meeting', () => {
+          window.clearTimeout(connectionTimeout)
+          setState('JOINED')
+        })
+        frame.on('left-meeting', () => {
+          window.clearTimeout(connectionTimeout)
+          setState('LEFT')
+        })
         frame.on('error', (event) => {
+          window.clearTimeout(connectionTimeout)
           const rawMessage = typeof event?.errorMsg === 'string' ? event.errorMsg : typeof event?.error === 'string' ? event.error : 'No se pudo abrir la llamada.'
           const message = formatDailyErrorMessage(rawMessage)
           setError(message)
@@ -189,6 +206,7 @@ export function DailyGuestCallPage() {
           startAudioOff: false,
         })
       } catch (bootError) {
+        window.clearTimeout(connectionTimeout)
         setError(formatDailyErrorMessage(bootError))
         setState('ERROR')
       }
@@ -202,7 +220,7 @@ export function DailyGuestCallPage() {
       teardownDailyCall(current, containerRef.current)
       callRef.current = null
     }
-  }, [effectiveCallType, session])
+  }, [effectiveCallType, retryNonce, session])
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] px-4 py-6 text-slate-900">
@@ -214,7 +232,15 @@ export function DailyGuestCallPage() {
           {session?.roomName ? <div className="mt-3 text-xs text-slate-500">Sala: {session.roomName}</div> : null}
         </div>
 
-        {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div> : null}
+        {error ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            <div className="flex min-w-0 items-start gap-2"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div>
+            <button type="button" className="inline-flex items-center gap-2 rounded-xl border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-800 hover:bg-rose-100" onClick={() => setRetryNonce((current) => current + 1)}>
+              <RefreshCcw className="h-3.5 w-3.5" />
+              Reintentar
+            </button>
+          </div>
+        ) : null}
 
         <div className="relative h-[78vh] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)]">
           {(state === 'BOOTING' || state === 'JOINING') ? (

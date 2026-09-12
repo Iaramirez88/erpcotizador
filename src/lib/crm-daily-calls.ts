@@ -18,6 +18,7 @@ async function dailyRequest(args: {
     },
     body: args.body ? JSON.stringify(args.body) : undefined,
     cache: 'no-store',
+    signal: AbortSignal.timeout(15000),
   })
 
   const json = await response.json().catch(() => null) as Record<string, unknown> | null
@@ -50,21 +51,48 @@ export async function ensureDailyRoom(args: {
   enableRecording: boolean
   domainHost: string
 }) {
+  const nowSeconds = Math.floor(Date.now() / 1000)
+  const expiresAt = nowSeconds + (8 * 60 * 60)
+  const properties = {
+    exp: expiresAt,
+    eject_at_room_exp: true,
+    start_video_off: args.callType === 'audio',
+    start_audio_off: false,
+    enable_prejoin_ui: true,
+    enable_screenshare: args.callType === 'video',
+    enable_chat: false,
+    enable_people_ui: true,
+    enable_network_ui: false,
+    ...(args.enableRecording ? { enable_recording: 'local' } : {}),
+    lang: 'es',
+  }
   const current = await dailyRequest({
     apiKey: args.apiKey,
     path: `/rooms/${encodeURIComponent(args.roomName)}`,
   })
 
   if (current.ok) {
-    return current.json as DailyRoomResponse
+    const renewed = await dailyRequest({
+      apiKey: args.apiKey,
+      path: `/rooms/${encodeURIComponent(args.roomName)}`,
+      method: 'POST',
+      body: { properties },
+    })
+
+    if (!renewed.ok) {
+      throw new Error((renewed.json?.info as string) || (renewed.json?.error as string) || `Daily devolvió ${renewed.status} al renovar la sala.`)
+    }
+
+    return {
+      ...(renewed.json as DailyRoomResponse),
+      url: (renewed.json?.url as string) || (current.json?.url as string) || `https://${args.domainHost}/${args.roomName}`,
+    }
   }
 
   if (current.status !== 404) {
     throw new Error((current.json?.info as string) || (current.json?.error as string) || `Daily devolvió ${current.status} al consultar la sala.`)
   }
 
-  const nowSeconds = Math.floor(Date.now() / 1000)
-  const expiresAt = nowSeconds + (8 * 60 * 60)
   const created = await dailyRequest({
     apiKey: args.apiKey,
     path: '/rooms',
@@ -72,19 +100,7 @@ export async function ensureDailyRoom(args: {
     body: {
       name: args.roomName,
       privacy: 'private',
-      properties: {
-        exp: expiresAt,
-        eject_at_room_exp: true,
-        start_video_off: args.callType === 'audio',
-        start_audio_off: false,
-        enable_prejoin_ui: true,
-        enable_screenshare: args.callType === 'video',
-        enable_chat: false,
-        enable_people_ui: true,
-        enable_network_ui: false,
-        ...(args.enableRecording ? { enable_recording: 'local' } : {}),
-        lang: 'es',
-      },
+      properties,
     },
   })
 

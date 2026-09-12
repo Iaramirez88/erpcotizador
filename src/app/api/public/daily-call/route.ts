@@ -7,6 +7,7 @@ import { verifyDailyCallInviteToken } from '@/lib/share-token'
 export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest) {
+  try {
   const token = request.nextUrl.searchParams.get('token')
   if (!token) {
     return NextResponse.json({ success: false, error: 'Falta token de invitación.' }, { status: 400 })
@@ -74,4 +75,11 @@ export async function GET(request: NextRequest) {
       expiresAt: guestToken.expiresAt,
     },
   })
+  } catch (error) {
+    console.error('Error resolviendo invitación pública de Daily:', error)
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'No se pudo preparar la llamada con Daily.',
+    }, { status: 502 })
+  }
 }

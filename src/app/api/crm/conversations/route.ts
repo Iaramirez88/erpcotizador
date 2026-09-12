@@ -82,6 +82,7 @@ export async function GET(request: Request) {
     const assignedToUserId = normalizeString(searchParams.get('assignedToUserId'))
     const channelConnectionId = normalizeString(searchParams.get('channelConnectionId'))
     const provider = normalizeString(searchParams.get('provider'))
+    const starter = searchParams.get('starter') === '1'
     const status = parseConversationStatus(searchParams.get('status'))
 
     if (sedeId) {
@@ -112,6 +113,7 @@ export async function GET(request: Request) {
           : {}),
       },
       orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
+      take: starter ? 60 : undefined,
       include: {
         channelConnection: { select: { id: true, name: true, provider: true, status: true, settingsJson: true } },
         assignedTo: { select: { id: true, name: true, email: true } },
@@ -244,6 +246,14 @@ export async function POST(request: Request) {
     })
 
     if (existing) {
+      await prisma.crmConversation.update({
+        where: { id: existing.id },
+        data: {
+          status: 'HUMAN_ACTIVE',
+          resolvedAt: null,
+          assignedToUserId: access.userId,
+        },
+      })
       return NextResponse.json({ success: true, data: { conversationId: existing.id, created: false } })
     }
 

@@ -98,7 +98,7 @@ type ClienteOption = {
   celular?: string | null
 }
 
-type NewConversationMode = 'CLIENTE' | 'LEAD' | 'MANUAL'
+type NewConversationMode = 'HISTORY' | 'CLIENTE' | 'LEAD' | 'MANUAL'
 
 type ConversationListItem = {
   id: string
@@ -1173,8 +1173,10 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [simulatorOpen, setSimulatorOpen] = useState(false)
   const [simulating, setSimulating] = useState(false)
   const [newConversationOpen, setNewConversationOpen] = useState(false)
-  const [newConversationMode, setNewConversationMode] = useState<NewConversationMode>('CLIENTE')
+  const [newConversationMode, setNewConversationMode] = useState<NewConversationMode>('HISTORY')
   const [openingConversation, setOpeningConversation] = useState(false)
+  const [historySearch, setHistorySearch] = useState('')
+  const [historyOptions, setHistoryOptions] = useState<ConversationListItem[]>([])
   const [leadSearch, setLeadSearch] = useState('')
   const [clientSearch, setClientSearch] = useState('')
   const [leadOptions, setLeadOptions] = useState<LeadOption[]>([])
@@ -1234,23 +1236,44 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   })
 
   async function loadConversationStarterOptions() {
-    const [leadRes, clientRes] = await Promise.all([
+    const [historyRes, leadRes, clientRes] = await Promise.all([
+      requestJson<ConversationListItem[]>(`/api/crm/conversations?starter=1${historySearch.trim() ? `&search=${encodeURIComponent(historySearch.trim())}` : ''}`),
       requestJson<LeadOption[]>(`/api/crm/leads${leadSearch.trim() ? `?search=${encodeURIComponent(leadSearch.trim())}` : ''}`),
       requestJson<ClienteOption[]>(`/api/clientes${clientSearch.trim() ? `?search=${encodeURIComponent(clientSearch.trim())}` : ''}`),
     ])
 
-    setLeadOptions(Array.isArray(leadRes.data) ? leadRes.data.slice(0, 12) : [])
-    setClientOptions(Array.isArray(clientRes.data) ? clientRes.data.slice(0, 12) : [])
+    setHistoryOptions(Array.isArray(historyRes.data) ? historyRes.data : [])
+    setLeadOptions(Array.isArray(leadRes.data) ? leadRes.data.filter((item) => item.celular || item.telefono).slice(0, 12) : [])
+    setClientOptions(Array.isArray(clientRes.data) ? clientRes.data.filter((item) => item.celular || item.telefono).slice(0, 12) : [])
   }
 
   function resetNewConversationForm() {
-    setNewConversationMode('CLIENTE')
+    setNewConversationMode('HISTORY')
+    setHistorySearch('')
+    setHistoryOptions([])
     setLeadSearch('')
     setClientSearch('')
     setSelectedLeadId('')
     setSelectedClientId('')
     setManualConversationName('')
     setManualConversationPhone('')
+  }
+
+  function openHistoricalConversation(conversation: ConversationListItem) {
+    setSearch('')
+    setStatusFilter('ALL')
+    setAssignedFilter('ALL')
+    setChannelFilter('ALL')
+    setProviderFilter('ALL')
+    setOriginFilter('ALL')
+    setQueueScope('TEAM')
+    setQueueFocus('ALL')
+    setDatePreset('ALL')
+    setInboxStatusTab('ALL')
+    setConversations((current) => current.some((item) => item.id === conversation.id) ? current : [conversation, ...current])
+    setSelectedConversationId(conversation.id)
+    setNewConversationOpen(false)
+    resetNewConversationForm()
   }
 
   const resetAttachmentComposer = useCallback(() => {
@@ -1266,6 +1289,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   }, [recordingAudio])
 
   async function startNewConversation() {
+    if (newConversationMode === 'HISTORY') return
+
     const payload = newConversationMode === 'CLIENTE'
       ? selectedClientId ? { clienteId: selectedClientId } : null
       : newConversationMode === 'LEAD'
@@ -1494,6 +1519,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       }
 
       setPreparedCallSession(json.data)
+    } catch (error) {
+      setCallError(error instanceof Error ? error.message : 'No se pudo conectar con el servicio de llamadas.')
     } finally {
       setPreparingCall(false)
     }
@@ -1651,7 +1678,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   useEffect(() => {
     if (!newConversationOpen) return
     void loadConversationStarterOptions()
-  }, [clientSearch, leadSearch, newConversationOpen])
+  }, [clientSearch, historySearch, leadSearch, newConversationOpen])
 
   function toggleMuteSelectedConversation() {
     if (!selectedConversationId) return
@@ -4243,19 +4270,43 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
         setNewConversationOpen(open)
         if (!open) resetNewConversationForm()
       }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[calc(100vh-2rem)] max-w-3xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
           <DialogHeader>
             <DialogTitle>Iniciar conversación</DialogTitle>
-            <DialogDescription>Hoy puedes abrir hilos salientes por WhatsApp desde clientes, prospectos o un número manual. Facebook, Instagram, Messenger, TikTok y X siguen entrando por integraciones o inbound.</DialogDescription>
+            <DialogDescription>Retoma un hilo existente de cualquier canal o inicia uno nuevo por WhatsApp.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
+          <div className="min-h-0 overflow-y-auto py-2 pr-1">
+            <div className="grid gap-4">
             <div className="grid gap-2">
-              <div className="grid grid-cols-3 gap-2 rounded-2xl bg-slate-100 p-1">
-                <button type="button" onClick={() => setNewConversationMode('CLIENTE')} className={newConversationMode === 'CLIENTE' ? 'rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm' : 'rounded-xl px-3 py-2 text-sm font-semibold text-slate-500'}>Cliente ERP</button>
-                <button type="button" onClick={() => setNewConversationMode('LEAD')} className={newConversationMode === 'LEAD' ? 'rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm' : 'rounded-xl px-3 py-2 text-sm font-semibold text-slate-500'}>Prospecto CRM</button>
-                <button type="button" onClick={() => setNewConversationMode('MANUAL')} className={newConversationMode === 'MANUAL' ? 'rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm' : 'rounded-xl px-3 py-2 text-sm font-semibold text-slate-500'}>Número manual</button>
+              <div className="grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1 sm:grid-cols-4">
+                <button type="button" onClick={() => setNewConversationMode('HISTORY')} className={newConversationMode === 'HISTORY' ? 'rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm' : 'rounded-xl px-3 py-2 text-sm font-semibold text-slate-500'}>Historial</button>
+                <button type="button" onClick={() => setNewConversationMode('CLIENTE')} className={newConversationMode === 'CLIENTE' ? 'rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm' : 'rounded-xl px-3 py-2 text-sm font-semibold text-slate-500'}>Clientes</button>
+                <button type="button" onClick={() => setNewConversationMode('LEAD')} className={newConversationMode === 'LEAD' ? 'rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm' : 'rounded-xl px-3 py-2 text-sm font-semibold text-slate-500'}>Prospectos</button>
+                <button type="button" onClick={() => setNewConversationMode('MANUAL')} className={newConversationMode === 'MANUAL' ? 'rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm' : 'rounded-xl px-3 py-2 text-sm font-semibold text-slate-500'}>Número</button>
               </div>
             </div>
+
+            {newConversationMode === 'HISTORY' ? (
+              <div className="grid gap-3">
+                <div className="grid gap-2">
+                  <Label>Buscar en conversaciones anteriores</Label>
+                  <Input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} placeholder="Nombre, teléfono, correo o mensaje" />
+                </div>
+                <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                  {historyOptions.map((item) => (
+                    <button key={item.id} type="button" onClick={() => openHistoricalConversation(item)} className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left transition-colors hover:border-blue-300 hover:bg-blue-50/60">
+                      <ChannelProviderBadge provider={item.channelConnection.provider} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-slate-950">{getConversationContactLabel(item)}</span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500">{formatProviderDisplayName(item.channelConnection.provider)} · {item.contactPhone || item.contactEmail || item.channelConnection.name}</span>
+                      </span>
+                      <span className="shrink-0 text-xs text-slate-400">Abrir</span>
+                    </button>
+                  ))}
+                  {historyOptions.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">No hay conversaciones previas que coincidan.</div> : null}
+                </div>
+              </div>
+            ) : null}
 
             {newConversationMode === 'CLIENTE' ? (
               <div className="grid gap-3">
@@ -4308,8 +4359,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
               </div>
             ) : null}
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3 text-xs leading-5 text-slate-600">
-              El sistema abrirá o reutilizará el hilo existente del número seleccionado y lo dejará listo en la bandeja del inbox. Si no hay ventana activa de 24 horas, WhatsApp puede exigir plantilla aprobada para el primer mensaje saliente.
+            {newConversationMode !== 'HISTORY' ? <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3 text-xs leading-5 text-slate-600">Se abrirá o reutilizará el hilo de WhatsApp. Los listados muestran únicamente contactos con celular o teléfono; fuera de la ventana de 24 horas puede requerirse una plantilla aprobada.</div> : null}
             </div>
           </div>
           <DialogFooter className="flex flex-wrap gap-2 sm:justify-between">
@@ -4321,14 +4371,14 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
             </Button>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setNewConversationOpen(false)}>Cancelar</Button>
-              <Button onClick={() => void startNewConversation()} disabled={openingConversation}>{openingConversation ? 'Abriendo...' : 'Abrir conversación'}</Button>
+              {newConversationMode !== 'HISTORY' ? <Button onClick={() => void startNewConversation()} disabled={openingConversation}>{openingConversation ? 'Abriendo...' : 'Abrir WhatsApp'}</Button> : null}
             </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={callDialogOpen} onOpenChange={setCallDialogOpen}>
-        <DialogContent className="z-[320] max-w-3xl rounded-[28px] border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-34px_rgba(15,23,42,0.42)]" overlayClassName="z-[319] bg-slate-950/75 backdrop-blur-[2px]">
+        <DialogContent className="z-[320] max-h-[calc(100vh-2rem)] max-w-3xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-[28px] border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-34px_rgba(15,23,42,0.42)]" overlayClassName="z-[319] bg-slate-950/75 backdrop-blur-[2px]">
           <div className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,.14),transparent_38%),linear-gradient(180deg,#f8fbff,#ffffff)] px-6 py-5">
           <DialogHeader>
             <DialogTitle>{callDialogType === 'audio' ? 'Llamada embebida CRM' : 'Videollamada embebida CRM'}</DialogTitle>
@@ -4337,7 +4387,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
             </DialogDescription>
           </DialogHeader>
           </div>
-          <div className="space-y-4 px-6 py-5">
+          <div className="min-h-0 space-y-4 overflow-y-auto px-6 py-5">
             <div className="grid gap-3 md:grid-cols-2">
               {callSetupItems.map((item) => (
                 <div key={`${item.title}-${item.detail}`} className={item.tone === 'ready' ? 'rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900' : item.tone === 'attention' ? 'rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900' : 'rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800'}>

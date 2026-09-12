@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { AlertCircle, Loader2, PhoneCall, RefreshCcw, Video } from 'lucide-react'
 
 type CallState = 'BOOTING' | 'JOINING' | 'JOINED' | 'LEFT' | 'ERROR'
 
@@ -13,6 +13,7 @@ type Props = {
     joinUrl: string
     ownerToken: string
     ownerDisplayName: string
+    contactLabel: string
     expiresAt: string
     sessionKey: string
   }
@@ -50,6 +51,9 @@ function formatDailyErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : 'No se pudo cargar Daily.'
   if (/notallowederror|permission denied|permissions-policy/i.test(message)) {
     return 'El navegador bloqueó micrófono o cámara para esta llamada. Permítelos en el sitio y vuelve a intentar.'
+  }
+  if (/network|networkerror|connection|websocket|ice/i.test(message)) {
+    return 'No se pudo establecer la conexión. Revisa la conexión a internet, VPN o firewall y vuelve a intentar.'
   }
   return message
 }
@@ -91,6 +95,7 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
   const leftReportedRef = useRef(false)
   const [state, setState] = useState<CallState>('BOOTING')
   const [error, setError] = useState<string | null>(null)
+  const [retryNonce, setRetryNonce] = useState(0)
 
   useEffect(() => {
     onStateChange?.(state)
@@ -106,6 +111,22 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
 
       setState('JOINING')
       setError(null)
+
+      const connectionTimeout = window.setTimeout(() => {
+        if (!active) return
+        const message = 'La conexión está tardando más de lo esperado. Verifica internet, permisos del navegador y que Daily no esté bloqueado por una VPN o firewall.'
+        setError(message)
+        setState('ERROR')
+        void reportSessionEvent({
+          conversationId: session.conversationId,
+          sessionKey: session.sessionKey,
+          roomName: session.roomName,
+          callType: session.callType,
+          event: 'FAILED',
+          occurredAt: new Date().toISOString(),
+          errorMessage: message,
+        })
+      }, 20000)
 
       try {
         const DailyIframeModule = await import('@daily-co/daily-js')
@@ -134,6 +155,7 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
         ensureDailyIframePermissions(containerRef.current)
 
         frame.on('joined-meeting', () => {
+          window.clearTimeout(connectionTimeout)
           const occurredAt = new Date().toISOString()
           startedAtRef.current = occurredAt
           setState('JOINED')
@@ -149,6 +171,7 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
         })
 
         frame.on('left-meeting', () => {
+          window.clearTimeout(connectionTimeout)
           if (leftReportedRef.current) return
           leftReportedRef.current = true
           const occurredAt = new Date().toISOString()
@@ -170,6 +193,7 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
         })
 
         frame.on('error', (event) => {
+          window.clearTimeout(connectionTimeout)
           const rawMessage = typeof event?.errorMsg === 'string'
             ? event.errorMsg
             : typeof event?.error === 'string'
@@ -197,6 +221,7 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
           startAudioOff: false,
         })
       } catch (bootError) {
+        window.clearTimeout(connectionTimeout)
         const message = formatDailyErrorMessage(bootError)
         setError(message)
         setState('ERROR')
@@ -220,13 +245,19 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
       teardownDailyCall(current, containerRef.current)
       callRef.current = null
     }
-  }, [session])
+  }, [retryNonce, session])
 
   return (
     <div className="space-y-3">
       <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="font-semibold text-slate-950">Sala embebida en el CRM</div>
+          <div>
+            <div className="flex items-center gap-2 font-semibold text-slate-950">
+              {session.callType === 'video' ? <Video className="h-4 w-4 text-sky-600" /> : <PhoneCall className="h-4 w-4 text-sky-600" />}
+              {state === 'JOINED' ? `En llamada con ${session.contactLabel}` : state === 'LEFT' ? 'Llamada finalizada' : state === 'ERROR' ? 'No se pudo conectar' : `Llamando a ${session.contactLabel}...`}
+            </div>
+            <div className="mt-1 text-xs text-slate-500">La sala permanecerá abierta mientras el prospecto acepta la invitación.</div>
+          </div>
           <div className={state === 'JOINED' ? 'rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800' : state === 'ERROR' ? 'rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-800' : 'rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700'}>
             {state === 'BOOTING' ? 'Inicializando' : state === 'JOINING' ? 'Conectando' : state === 'JOINED' ? 'En llamada' : state === 'LEFT' ? 'Finalizada' : 'Con error'}
           </div>
@@ -234,14 +265,22 @@ export function CrmDailyCallEmbed({ session, onStateChange }: Props) {
         <div className="mt-1 text-xs text-slate-500">Expira: {new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(session.expiresAt))}</div>
       </div>
 
-      {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div> : null}
+      {error ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          <div className="flex min-w-0 items-start gap-2"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div>
+          <button type="button" className="inline-flex items-center gap-2 rounded-xl border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-800 hover:bg-rose-100" onClick={() => setRetryNonce((current) => current + 1)}>
+            <RefreshCcw className="h-3.5 w-3.5" />
+            Reintentar
+          </button>
+        </div>
+      ) : null}
 
       <div className="relative h-[65vh] overflow-hidden rounded-[24px] border border-slate-200 bg-slate-50">
         {state === 'BOOTING' || state === 'JOINING' ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/80 backdrop-blur-sm">
             <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 shadow-sm">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Preparando Daily...
+              {state === 'BOOTING' ? 'Preparando la sala...' : `Llamando a ${session.contactLabel}...`}
             </div>
           </div>
         ) : null}
