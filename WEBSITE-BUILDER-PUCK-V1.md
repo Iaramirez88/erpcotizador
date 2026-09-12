@@ -40,6 +40,52 @@ Construir dentro de Ordex un modulo de sitios web tipo builder visual, montado s
 - CRMForm
 - Footer
 
+### Landing Suite implementada
+
+- Biblioteca organizada por Estructura, Contenido, Conversión y Navegación.
+- Menú superior editable con logo, enlaces, CTA y posición fija opcional.
+- Hero, secciones, columnas, texto, imagen, CTA y espaciador.
+- Beneficios, métricas, testimonios, precios y preguntas frecuentes con ítems repetibles.
+- Formulario visual de contacto y footer con enlaces repetibles.
+- Ajustes globales de tipografía, fondo, color de texto y separación entre bloques.
+- Render público de ancho completo que comparte la misma configuración del editor.
+- Autoguardado del borrador, estado de cambios pendientes y atajo `Ctrl+S` / `Cmd+S`.
+- Galería opcional de kits de página completa dentro del builder.
+- Confirmación antes de reemplazar un lienzo que ya contiene bloques.
+- Formularios conectables al endpoint real de captura CRM mediante canal Formulario Web.
+- Biblioteca de medios reutilizada desde Drive CRM para logos, fondos, imágenes, avatares, galerías, videos y carruseles.
+- Campo multimedia con miniatura, URL manual, limpieza y filtro por imagen o video.
+- Contenedor responsive con padding y visibilidad independientes para escritorio, tablet y móvil.
+- Bloques avanzados de galería, video, carrusel, mapa y pestañas.
+- Historial de versiones publicadas con restauración no destructiva como borrador.
+
+### Plantillas de embudo incluidas
+
+1. **Órbita SaaS**: promesa, prueba cuantitativa, beneficios, testimonios, planes, FAQ y solicitud de demo.
+2. **Aurea Studio**: aspiración, método, experiencia visual, confianza, objeciones y reserva de valoración.
+3. **Volt Industrial**: problema operativo, impacto financiero, capacidad técnica, reducción de riesgo y solicitud de cotización.
+
+Las plantillas son puntos de partida opcionales. Al aplicarlas se carga un árbol Puck normal: cada bloque, texto, color, enlace, lista e imagen se puede modificar, reordenar, duplicar o eliminar.
+
+Para activar la captura de un `Formulario de contacto`, selecciona el bloque y configura:
+
+- `ID canal Formulario Web`.
+- `Token público del canal`.
+- `Producto o campaña` para identificar el origen dentro del CRM.
+
+En el editor el envío queda desactivado para evitar registros accidentales. En preview/publicación se envían nombre, correo, teléfono, mensaje, landing, referrer y UTMs al endpoint de captura CRM.
+
+### Siguientes fases para paridad tipo Elementor Pro
+
+1. Importación directa de Google Drive/OneDrive a almacenamiento interno, recorte y focal point. Las URLs OAuth temporales no deben guardarse en páginas públicas.
+2. Ampliar estilos responsive a tipografía, margen, orden y controles propios de cada bloque.
+3. Tema global persistido: paleta, tipografías, botones, contenedores y presets reutilizables.
+4. Completar formularios CRM con consentimiento, captcha y automatizaciones posteriores a la captura.
+5. Bloques adicionales: acordeón, equipo, logos, countdown y embeds permitidos.
+6. Plantillas de sección y páginas completas insertables con un clic.
+7. Copiar/pegar entre páginas, revisiones de autoguardado y estilos globales reutilizables.
+8. SEO por página, Open Graph, schema, analytics y optimización de imágenes.
+
 ### Sitios y paginas
 
 - Crear sitio.

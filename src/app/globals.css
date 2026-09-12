@@ -1,6 +1,31 @@
 @import "tailwindcss";
 @import "driver.js/dist/driver.css";
 
+/* Website builder responsive container values are edited independently in Puck. */
+.website-responsive-block {
+  padding: var(--website-padding-desktop, 24px);
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .website-responsive-block {
+    padding: var(--website-padding-tablet, 20px);
+  }
+
+  .website-responsive-block[data-hide-tablet='true'] {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .website-responsive-block {
+    padding: var(--website-padding-mobile, 16px);
+  }
+
+  .website-responsive-block[data-hide-mobile='true'] {
+    display: none;
+  }
+}
+
 :root {
   --background: #ffffff;
   --foreground: #0f172a;

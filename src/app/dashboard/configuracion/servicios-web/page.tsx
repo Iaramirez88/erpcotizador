@@ -1,7 +1,7 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { resolveUserIdFromSession } from '@/lib/session-user'
-import { getWebsiteServicesAccessForUser } from '@/lib/website-services'
+import { getWebsiteServicesAccessForUser, hasWebsiteBuilderPagesForEmpresa } from '@/lib/website-services'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import WebsiteServicesClient from './website-services-client'
 import WebsiteServicesModuleTabs from './website-services-module-tabs'
@@ -19,6 +19,7 @@ export default async function WebsiteServicesPage() {
   if (!access.canAccess) {
     redirect('/dashboard')
   }
+  const showBuilderTab = access.empresaId ? await hasWebsiteBuilderPagesForEmpresa(access.empresaId) : false
 
   return (
     <div className="space-y-4">
@@ -32,7 +33,7 @@ export default async function WebsiteServicesPage() {
         description="Gestiona servicios vendidos, renovaciones, accesos y seguimiento operativo de sitios y componentes web desde una sola vista."
       />
 
-      <WebsiteServicesModuleTabs />
+      <WebsiteServicesModuleTabs showBuilderTab={showBuilderTab} />
       <WebsiteServicesClient />
     </div>
   )

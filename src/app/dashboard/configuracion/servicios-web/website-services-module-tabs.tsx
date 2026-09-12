@@ -4,32 +4,43 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
-const tabs = [
-  {
-    href: '/dashboard/configuracion/servicios-web',
-    label: 'Servicios',
-    match: (pathname: string) => pathname === '/dashboard/configuracion/servicios-web',
-  },
-  {
-    href: '/dashboard/configuracion/servicios-web/sitios',
-    label: 'Sitios',
-    match: (pathname: string) => pathname === '/dashboard/configuracion/servicios-web/sitios',
-  },
-  {
-    href: '/dashboard/configuracion/servicios-web/builder',
-    label: 'Builder visual',
-    match: (pathname: string) => pathname === '/dashboard/configuracion/servicios-web/builder' || pathname.endsWith('/builder'),
-  },
-  {
-    href: '/dashboard/configuracion/servicios-web/plantillas',
-    label: 'Plantillas automáticas',
-    match: (pathname: string) => pathname.startsWith('/dashboard/configuracion/servicios-web/plantillas'),
-  },
-]
+function buildTabs(showBuilderTab: boolean) {
+  const baseTabs = [
+    {
+      href: '/dashboard/configuracion/servicios-web',
+      label: 'Servicios',
+      match: (pathname: string) => pathname === '/dashboard/configuracion/servicios-web',
+    },
+    {
+      href: '/dashboard/configuracion/servicios-web/sitios',
+      label: 'Sitios',
+      match: (pathname: string) => pathname === '/dashboard/configuracion/servicios-web/sitios',
+    },
+    {
+      href: '/dashboard/configuracion/servicios-web/plantillas',
+      label: 'Plantillas automáticas',
+      match: (pathname: string) => pathname.startsWith('/dashboard/configuracion/servicios-web/plantillas'),
+    },
+  ]
 
-export default function WebsiteServicesModuleTabs({ className }: { className?: string }) {
+  if (!showBuilderTab) return baseTabs
+
+  return [
+    baseTabs[0],
+    baseTabs[1],
+    {
+      href: '/dashboard/configuracion/servicios-web/builder',
+      label: 'Builder visual',
+      match: (pathname: string) => pathname === '/dashboard/configuracion/servicios-web/builder' || pathname.endsWith('/builder'),
+    },
+    baseTabs[2],
+  ]
+}
+
+export default function WebsiteServicesModuleTabs({ className, showBuilderTab = true }: { className?: string; showBuilderTab?: boolean }) {
   const pathname = usePathname()
   const safePathname = pathname ?? ''
+  const tabs = buildTabs(showBuilderTab)
 
   return (
     <div className={cn('sticky top-[4.9rem] z-20 overflow-x-auto rounded-[26px] border border-[#2b2e401a] bg-white/96 p-1.5 shadow-[0_16px_32px_-28px_rgba(15,23,42,0.18)] backdrop-blur supports-[backdrop-filter]:bg-white/88', className)}>

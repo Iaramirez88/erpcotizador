@@ -5,7 +5,7 @@ import { ChevronRight, FileText, Folder, ImageIcon, Music2, Search, Video } from
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import type { CrmFileItem, CrmFilesSnapshot, JsonResponse } from '@/components/crm/crm-files-types'
+import type { CrmFileItem, CrmFileItemType, CrmFilesSnapshot, JsonResponse } from '@/components/crm/crm-files-types'
 
 function findFolderNodeByPath(node: CrmFilesSnapshot['tree'] | null | undefined, targetPath: string): CrmFilesSnapshot['tree'] | null {
   if (!node) return null
@@ -31,9 +31,10 @@ type CrmFileLibraryPickerProps = {
   onPick: (item: CrmFileItem) => Promise<void> | void
   title?: string
   allowFolders?: boolean
+  acceptedTypes?: CrmFileItemType[]
 }
 
-export function CrmFileLibraryPicker({ open, onOpenChange, onPick, title = 'Seleccionar desde biblioteca', allowFolders = true }: CrmFileLibraryPickerProps) {
+export function CrmFileLibraryPicker({ open, onOpenChange, onPick, title = 'Seleccionar desde biblioteca', allowFolders = true, acceptedTypes }: CrmFileLibraryPickerProps) {
   const [snapshot, setSnapshot] = useState<CrmFilesSnapshot | null>(null)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -87,10 +88,11 @@ export function CrmFileLibraryPicker({ open, onOpenChange, onPick, title = 'Sele
       itemMap.set(item.path, item)
     }
     return [...itemMap.values()].filter((item) => {
+      if (item.type !== 'folder' && acceptedTypes?.length && !acceptedTypes.includes(item.type)) return false
       if (!term) return true
       return item.name.toLowerCase().includes(term) || item.directoryPath.toLowerCase().includes(term)
     })
-  }, [search, snapshot?.currentPath, snapshot?.items, snapshot?.tree])
+  }, [acceptedTypes, search, snapshot?.currentPath, snapshot?.items, snapshot?.tree])
 
   async function handlePick(item: CrmFileItem) {
     setSubmitting(true)

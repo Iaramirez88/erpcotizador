@@ -1,7 +1,7 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { resolveUserIdFromSession } from '@/lib/session-user'
-import { getWebsiteServicesAccessForUser } from '@/lib/website-services'
+import { getWebsiteServicesAccessForUser, hasWebsiteBuilderPagesForEmpresa } from '@/lib/website-services'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import WebsiteServicesModuleTabs from '../website-services-module-tabs'
 import WebsiteServiceTemplatesClient from './website-service-templates-client'
@@ -19,6 +19,7 @@ export default async function WebsiteServiceTemplatesPage() {
   if (!access.canAccess) {
     redirect('/dashboard')
   }
+  const showBuilderTab = access.empresaId ? await hasWebsiteBuilderPagesForEmpresa(access.empresaId) : false
 
   return (
     <div className="space-y-4">
@@ -33,7 +34,7 @@ export default async function WebsiteServiceTemplatesPage() {
         description="Configura mensajes base para renovaciones, avisos y seguimiento automatizado de sitios web y servicios asociados."
       />
 
-      <WebsiteServicesModuleTabs />
+      <WebsiteServicesModuleTabs showBuilderTab={showBuilderTab} />
       <WebsiteServiceTemplatesClient />
     </div>
   )

@@ -5,7 +5,7 @@ import { resolveUserIdFromSession } from '@/lib/session-user'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import WebsitePageRender from '@/components/website-builder/website-page-render'
 import WebsiteServicesModuleTabs from '../../../../../website-services-module-tabs'
-import { getWebsiteServicesAccessForUser } from '@/lib/website-services'
+import { getWebsiteServicesAccessForUser, hasWebsiteBuilderPagesForEmpresa } from '@/lib/website-services'
 
 export const runtime = 'nodejs'
 
@@ -22,6 +22,7 @@ export default async function WebsiteProjectPagePreviewRoute(
   if (!access.canAccess || !access.empresaId) {
     redirect('/dashboard')
   }
+  const showBuilderTab = await hasWebsiteBuilderPagesForEmpresa(access.empresaId)
 
   const { projectId, pageId } = await props.params
   const page = await prisma.websiteProjectPage.findFirst({
@@ -64,7 +65,7 @@ export default async function WebsiteProjectPagePreviewRoute(
         description={`Vista protegida del borrador actual para ${page.websiteProject.subdomain || 'sitio'} antes de publicar.`}
       />
 
-      <WebsiteServicesModuleTabs />
+      <WebsiteServicesModuleTabs showBuilderTab={showBuilderTab} />
 
       <WebsitePageRender data={page.draftData} />
     </div>

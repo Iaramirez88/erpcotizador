@@ -220,8 +220,18 @@ Si el Postgres queda dentro del mismo servidor, planifica backups:
 - Copia externa (S3/Spaces/otro servidor)
 
 ### Actualizaciones
-- `git pull` + `docker compose up -d --build`
+- `git pull`
+- `BUILDKIT_PROGRESS=plain docker compose -f docker-compose.prod.yml build app ocr`
+- `docker compose -f docker-compose.prod.yml run --rm migrate`
+- `docker compose -f docker-compose.prod.yml run --rm migrate npx prisma migrate status`
+- `docker compose -f docker-compose.prod.yml up -d --no-build`
 - Considera ventanas de mantenimiento (habrá rebuild/restart).
+
+Después de desplegar por primera vez el módulo ROP, carga su catálogo base:
+
+- `docker compose -f docker-compose.prod.yml exec app npm run seed:rop-catalog`
+
+La migración debe terminar antes de reiniciar `app`; generar el cliente Prisma no crea tablas. Si ROP muestra `The table public.rop_companies does not exist` o `public.rop_service_catalog does not exist`, verifica primero el estado con el comando `prisma migrate status` anterior.
 
 Eso actualiza la aplicación. No actualiza Ubuntu ni los paquetes del sistema.
 

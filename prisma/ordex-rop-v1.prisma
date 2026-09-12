@@ -253,6 +253,7 @@ model RopCategory {
   sortOrder     Int              @default(0)
   isActive      Boolean          @default(true)
   subcategories RopSubcategory[]
+  opportunities RopOpportunity[]
 
   @@map("rop_categories")
 }

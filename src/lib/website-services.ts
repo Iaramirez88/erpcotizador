@@ -143,3 +143,15 @@ export function serializeWebsiteService(service: WebsiteServiceRecord) {
     hostingExpiry: getExpiryState(service.hostingExpiresAt),
   }
 }
+
+export async function hasWebsiteBuilderPagesForEmpresa(empresaId: string) {
+  if (!empresaId) return false
+  const count = await prisma.websiteProjectPage.count({
+    where: {
+      websiteProject: {
+        empresaId,
+      },
+    },
+  })
+  return count > 0
+}

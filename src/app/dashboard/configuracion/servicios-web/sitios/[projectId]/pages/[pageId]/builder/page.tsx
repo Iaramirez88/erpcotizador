@@ -5,7 +5,7 @@ import { resolveUserIdFromSession } from '@/lib/session-user'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import WebsiteServicesModuleTabs from '../../../../../website-services-module-tabs'
 import WebsitePageBuilderClient from './website-page-builder-client'
-import { getWebsiteServicesAccessForUser } from '@/lib/website-services'
+import { getWebsiteServicesAccessForUser, hasWebsiteBuilderPagesForEmpresa } from '@/lib/website-services'
 import { normalizeWebsiteBuilderData, serializeWebsiteProjectVersion } from '@/lib/website-builder'
 
 export const runtime = 'nodejs'
@@ -23,6 +23,7 @@ export default async function WebsiteProjectPageBuilderRoute(
   if (!access.canAccess || !access.empresaId) {
     redirect('/dashboard')
   }
+  const showBuilderTab = await hasWebsiteBuilderPagesForEmpresa(access.empresaId)
 
   const { projectId, pageId } = await props.params
   const page = await prisma.websiteProjectPage.findFirst({
@@ -81,7 +82,7 @@ export default async function WebsiteProjectPageBuilderRoute(
         description={`Edita ${page.slug} dentro del sitio ${page.websiteProject.nombre} con bloques controlados de Puck.`}
       />
 
-      <WebsiteServicesModuleTabs />
+      <WebsiteServicesModuleTabs showBuilderTab={showBuilderTab} />
 
       <WebsitePageBuilderClient
         projectId={page.websiteProject.id}
