@@ -22,7 +22,7 @@ import {
   HandCoins,
   LayoutGrid,
   Loader2,
-  Package2,
+  MoreHorizontal,
   Pencil,
   Plus,
   Printer,
@@ -61,6 +61,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { buildWhatsAppWebUrl } from "@/lib/whatsapp-link";
 import { cn } from "@/lib/utils";
 import {
@@ -215,7 +222,7 @@ type TableDraftState = {
 type AutosaveState = "idle" | "saving" | "saved" | "error";
 type RestaurantLane = "TODAS" | "SALON" | "BARRA" | "DOMICILIO";
 type MenuFilter = "FAVORITOS" | Station;
-type DashboardTab = "venta" | "cocina" | "operacion";
+type DashboardTab = "venta" | "cocina" | "operacion" | "recetas";
 type SectionId =
   | "mesas"
   | "menu"
@@ -316,14 +323,20 @@ const TAB_DEFS: Array<{
   {
     id: "operacion",
     label: "Operación",
-    description: "Recetas, consumo, merma y cierre.",
+    description: "Consumo, apertura y cierre de caja.",
+  },
+  {
+    id: "recetas",
+    label: "Recetas",
+    description: "Alta rápida para el menú del día.",
   },
 ];
 
 const TAB_SECTIONS: Record<DashboardTab, SectionId[]> = {
   venta: ["mesas", "menu", "pedido"],
   cocina: ["kds", "comercial", "faltantes"],
-  operacion: ["recetas", "consumo", "cierre"],
+  operacion: ["consumo", "cierre"],
+  recetas: ["recetas"],
 };
 
 const SECTION_META: Record<SectionId, { title: string; description: string }> =
@@ -361,7 +374,7 @@ const SECTION_META: Record<SectionId, { title: string; description: string }> =
       description: "Impacto del turno sobre inventario.",
     },
     cierre: {
-      title: "Merma y cierre",
+      title: "Apertura y cierre de caja",
       description: "Notas finales y cierre del turno.",
     },
   };
@@ -720,6 +733,10 @@ function createDefaultLayoutPrefs(): LayoutPrefs {
       order: [...TAB_SECTIONS.operacion],
       visible: [...TAB_SECTIONS.operacion],
     },
+    recetas: {
+      order: [...TAB_SECTIONS.recetas],
+      visible: [...TAB_SECTIONS.recetas],
+    },
   };
 }
 
@@ -807,6 +824,7 @@ export default function RestauranteClient() {
     createDefaultLayoutPrefs(),
   );
   const [sectionsDialogOpen, setSectionsDialogOpen] = useState(false);
+  const [tableComposerOpen, setTableComposerOpen] = useState(false);
   const [draggingSectionId, setDraggingSectionId] = useState<SectionId | null>(
     null,
   );
@@ -1693,8 +1711,10 @@ export default function RestauranteClient() {
         : selectedTable.tickets.map((ticket) => {
             const matchedShortcut = menuShortcuts.find(
               (item) =>
-                item.materialId === ticket.materialId ||
-                item.recipeId === ticket.recipeId ||
+                (Boolean(ticket.materialId) &&
+                  item.materialId === ticket.materialId) ||
+                (Boolean(ticket.recipeId) &&
+                  item.recipeId === ticket.recipeId) ||
                 normalizeRestaurantText(item.name) ===
                   normalizeRestaurantText(ticket.dishName),
             );
@@ -2598,6 +2618,20 @@ export default function RestauranteClient() {
     updateTabLayout(activeTab, () => defaults[activeTab]);
   }
 
+  function openNewTableDialog() {
+    setActiveTab("venta");
+    updateTabLayout("venta", (current) => ({
+      ...current,
+      visible: current.visible.includes("mesas")
+        ? current.visible
+        : ["mesas", ...current.visible],
+      order: current.order.includes("mesas")
+        ? current.order
+        : ["mesas", ...current.order],
+    }));
+    setTableComposerOpen(true);
+  }
+
   function handleSectionDragStart(
     event: DragEvent<HTMLDivElement>,
     sectionId: SectionId,
@@ -2662,63 +2696,6 @@ export default function RestauranteClient() {
     if (sectionId === "mesas")
       return (
         <div className="space-y-5">
-          <div className="grid gap-3 rounded-[26px] border border-slate-200 bg-white p-4 lg:grid-cols-[1.4fr_0.9fr_0.9fr_auto] lg:items-end">
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-600">Nueva mesa o canal</span>
-              <Input
-                value={tableDraft.name}
-                onChange={(event) =>
-                  setTableDraft((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                placeholder="Mesa terraza / Barra 2 / Rappi"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-600">Color</span>
-              <Input
-                type="color"
-                value={tableDraft.color}
-                onChange={(event) =>
-                  setTableDraft((current) => ({
-                    ...current,
-                    color: event.target.value,
-                  }))
-                }
-                className="h-11 rounded-2xl p-1"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-600">Modo base</span>
-              <Select
-                value={tableDraft.serviceMode}
-                onValueChange={(value) =>
-                  setTableDraft((current) => ({
-                    ...current,
-                    serviceMode: value as RestaurantServiceMode,
-                  }))
-                }
-              >
-                <SelectTrigger className="rounded-2xl bg-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="DINE_IN">En mesa</SelectItem>
-                  <SelectItem value="TAKEAWAY">Para llevar</SelectItem>
-                  <SelectItem value="DELIVERY">Domicilio</SelectItem>
-                </SelectContent>
-              </Select>
-            </label>
-            <Button
-              type="button"
-              className="rounded-2xl bg-orange-500 text-white hover:bg-orange-600"
-              onClick={addTable}
-            >
-              <Plus className="mr-2 h-4 w-4" /> Crear mesa
-            </Button>
-          </div>
           <div className="rounded-[30px] border border-slate-200 bg-slate-50/90 p-3">
             <div className="flex flex-wrap gap-2">
               {laneOptions.map((lane, index) => {
@@ -2778,14 +2755,6 @@ export default function RestauranteClient() {
                   {selectedTable.tickets.length} productos cargados
                 </div>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-2xl border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                onClick={deleteSelectedTable}
-              >
-                <Trash2 className="mr-2 h-4 w-4" /> Eliminar mesa
-              </Button>
             </div>
           ) : null}
           <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
@@ -2909,6 +2878,16 @@ export default function RestauranteClient() {
                 </div>
               );
             })}
+            <button
+              type="button"
+              onClick={openNewTableDialog}
+              className="group relative flex min-h-[210px] w-full flex-col items-center justify-center rounded-[22px] border-2 border-dashed border-slate-300 bg-white/80 text-slate-500 transition hover:border-orange-300 hover:bg-orange-50/50 hover:text-orange-600"
+            >
+              <Plus className="h-10 w-10" />
+              <span className="mt-3 text-sm font-semibold opacity-0 transition group-hover:opacity-100">
+                Crear mesa
+              </span>
+            </button>
           </div>
         </div>
       );
@@ -4045,13 +4024,6 @@ export default function RestauranteClient() {
                       </p>
                     </div>
                   </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Button asChild variant="outline" className="rounded-2xl">
-                        <Link href="/dashboard/restaurante/ingredientes">
-                          <Package2 className="mr-2 h-4 w-4" /> Ingredientes y recetas
-                        </Link>
-                      </Button>
-                    </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-[24px] border border-orange-100 bg-orange-50 px-4 py-3">
@@ -4164,15 +4136,6 @@ export default function RestauranteClient() {
                         variant="outline"
                         className="justify-start rounded-2xl border-slate-200 bg-white"
                       >
-                        <Link href="/dashboard/pos/venta-rapida">
-                          Caja rápida
-                        </Link>
-                      </Button>
-                      <Button
-                        asChild
-                        variant="outline"
-                        className="justify-start rounded-2xl border-slate-200 bg-white"
-                      >
                         <Link href="/dashboard/inventario">Inventario</Link>
                       </Button>
                       <Button
@@ -4263,24 +4226,38 @@ export default function RestauranteClient() {
                           }
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="rounded-2xl border-slate-200 bg-white"
-                          onClick={() => setSectionsDialogOpen(true)}
-                        >
-                          <Settings2 className="mr-2 h-4 w-4" /> Insertar secciones
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="rounded-2xl border-slate-200 bg-white"
-                          onClick={resetActiveTabLayout}
-                        >
-                          Restablecer vista
-                        </Button>
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-10 w-10 rounded-2xl border-slate-200 bg-white"
+                          >
+                            <MoreHorizontal className="h-5 w-5" />
+                            <span className="sr-only">Abrir acciones del tablero</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-64 rounded-xl">
+                          <DropdownMenuItem onSelect={() => setSectionsDialogOpen(true)}>
+                            <Settings2 className="mr-2 h-4 w-4" /> Insertar secciones
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={resetActiveTabLayout}>
+                            Restablecer vista
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={openNewTableDialog}>
+                            <Plus className="mr-2 h-4 w-4" /> Nueva mesa o canal
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onSelect={deleteSelectedTable}
+                            disabled={!selectedTable}
+                            className="text-red-600 focus:bg-red-50 focus:text-red-700"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" /> Eliminar mesa activa
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                     {TAB_DEFS.map((tab) => (
                       <TabsContent
@@ -4405,7 +4382,14 @@ export default function RestauranteClient() {
                     </div>
                   </div>
                 </div>
-                <div className="space-y-3 border-b border-white/10 px-6 py-5">
+                <details className="group order-2 shrink-0 border-t border-white/10 bg-slate-950">
+                  <summary className="cursor-pointer list-none px-6 py-4 text-sm font-semibold text-white [&::-webkit-details-marker]:hidden">
+                    <span className="flex items-center justify-between gap-3">
+                      Información del cliente y servicio
+                      <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-90" />
+                    </span>
+                  </summary>
+                  <div className="max-h-[42vh] space-y-3 overflow-y-auto border-t border-white/10 px-6 py-5">
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
                       Cliente
@@ -4558,12 +4542,29 @@ export default function RestauranteClient() {
                       </div>
                     </>
                   ) : null}
-                </div>
-                <div className="flex-1 space-y-3 overflow-auto px-6 py-5">
-                  <div className="rounded-[20px] border border-dashed border-white/10 bg-white/5 p-4">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                      <Bike className="h-4 w-4 text-orange-300" /> Otros cargos o productos fuera de lista
+                  </div>
+                </details>
+                <div className="order-1 flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-6 py-5">
+                  <div className="order-1 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-white">Productos en la mesa</div>
+                      <div className="mt-1 text-xs text-slate-400">
+                        {selectedTableItemCount === 0
+                          ? "0 elementos a la mesa"
+                          : `${selectedTableItemCount} elemento${selectedTableItemCount === 1 ? "" : "s"} en la mesa`}
+                      </div>
                     </div>
+                    <ShoppingBasket className="h-5 w-5 text-orange-300" />
+                  </div>
+                  <details className="group order-2 rounded-[20px] border border-dashed border-white/10 bg-white/5 p-4">
+                    <summary className="cursor-pointer list-none text-sm font-semibold text-white [&::-webkit-details-marker]:hidden">
+                      <span className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-2">
+                          <Bike className="h-4 w-4 text-orange-300" /> Otros cargos o productos fuera de lista
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-90" />
+                      </span>
+                    </summary>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       <Input
                         value={manualChargeDraft.name}
@@ -4612,12 +4613,12 @@ export default function RestauranteClient() {
                         <Plus className="mr-2 h-4 w-4" /> Agregar como Otros
                       </Button>
                     </div>
-                  </div>
+                  </details>
                   {selectedTableSaleItems.length ? (
                     selectedTableSaleItems.map((item) => (
                       <div
                         key={item.key}
-                        className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3"
+                        className="order-1 rounded-[20px] border border-white/10 bg-white/5 px-4 py-3"
                       >
                         <div className="flex items-start gap-3">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -4667,14 +4668,14 @@ export default function RestauranteClient() {
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-[20px] border border-dashed border-white/15 px-4 py-8 text-sm text-slate-400">
-                      Todavía no hay productos en esta mesa.
+                    <div className="order-1 rounded-[20px] border border-dashed border-white/15 px-4 py-8 text-center text-sm text-slate-400">
+                      0 elementos en la mesa. Selecciona un producto del catálogo para comenzar.
                     </div>
                   )}
                   {saleSubmitState.kind !== "idle" ? (
                     <div
                       className={cn(
-                        "rounded-[18px] px-4 py-3 text-sm",
+                        "order-3 rounded-[18px] px-4 py-3 text-sm",
                         saleSubmitState.kind === "error"
                           ? "bg-rose-500/15 text-rose-100"
                           : saleSubmitState.kind === "success"
@@ -4686,7 +4687,7 @@ export default function RestauranteClient() {
                     </div>
                   ) : null}
                 </div>
-                <div className="border-t border-white/10 px-6 py-4">
+                <div className="order-3 border-t border-white/10 px-6 py-4">
                   <Button
                     className="w-full rounded-2xl bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-70"
                     onClick={openSaleCheckout}
@@ -5266,6 +5267,81 @@ export default function RestauranteClient() {
                 onClick={() => setSectionsDialogOpen(false)}
               >
                 Listo
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={tableComposerOpen} onOpenChange={setTableComposerOpen}>
+          <DialogContent className="rounded-[28px] border-slate-200 sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Nueva mesa o canal</DialogTitle>
+              <DialogDescription>
+                Crea una mesa adicional para sala, barra o domicilio.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3 py-2 sm:grid-cols-2">
+              <label className="space-y-1 text-sm sm:col-span-2">
+                <span className="text-slate-600">Nombre</span>
+                <Input
+                  value={tableDraft.name}
+                  onChange={(event) =>
+                    setTableDraft((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  placeholder="Mesa terraza / Barra 2 / Rappi"
+                />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-slate-600">Color</span>
+                <Input
+                  type="color"
+                  value={tableDraft.color}
+                  onChange={(event) =>
+                    setTableDraft((current) => ({
+                      ...current,
+                      color: event.target.value,
+                    }))
+                  }
+                  className="h-11 rounded-2xl p-1"
+                />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-slate-600">Modo base</span>
+                <Select
+                  value={tableDraft.serviceMode}
+                  onValueChange={(value) =>
+                    setTableDraft((current) => ({
+                      ...current,
+                      serviceMode: value as RestaurantServiceMode,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="rounded-2xl bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DINE_IN">En mesa</SelectItem>
+                    <SelectItem value="TAKEAWAY">Para llevar</SelectItem>
+                    <SelectItem value="DELIVERY">Domicilio</SelectItem>
+                  </SelectContent>
+                </Select>
+              </label>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setTableComposerOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                className="rounded-2xl bg-orange-500 text-white hover:bg-orange-600"
+                onClick={() => {
+                  addTable();
+                  setTableComposerOpen(false);
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" /> Crear mesa
               </Button>
             </DialogFooter>
           </DialogContent>

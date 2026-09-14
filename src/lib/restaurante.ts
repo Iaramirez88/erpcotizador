@@ -144,8 +144,6 @@ export const DEFAULT_RESTAURANT_TABLES: DiningTable[] = [
   { id: 'm2', name: 'Mesa 2', color: getDefaultTableColor(1), status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
   { id: 'm3', name: 'Mesa 3', color: getDefaultTableColor(2), status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
   { id: 'm4', name: 'Mesa 4', color: getDefaultTableColor(3), status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
-  { id: 'barra', name: 'Barra', color: getDefaultTableColor(4), status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DINE_IN', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
-  { id: 'dom', name: 'Domicilios', color: getDefaultTableColor(5), status: 'LIBRE', guestName: '', guests: 0, note: '', serviceMode: 'DELIVERY', courierType: 'NONE', courierLabel: '', lastInvoiceId: null, lastInvoiceNumber: null, lastSaleAt: null, lastSaleTotal: null, tickets: [] },
 ]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
