@@ -228,13 +228,17 @@ export async function GET(
             additionalFieldDescription: parsedObservaciones.extraMeta?.additionalFieldDescription || null,
             additionalQuantity: safeNumber(parsedObservaciones.extraMeta?.additionalQuantity, 0),
             additionalValue: safeNumber(parsedObservaciones.extraMeta?.additionalValue, 0),
-            referenceImage: parsedObservaciones.extraMeta?.referenceImage?.url
-              ? {
-                  name: sanitizeText(parsedObservaciones.extraMeta.referenceImage.name, 'Referencia') || 'Referencia',
-                  url: parsedObservaciones.extraMeta.referenceImage.url,
-                  scalePct: parsedObservaciones.extraMeta.referenceImage.scalePct,
-                }
-              : null,
+            referenceImage: (() => {
+              const reference = parsedObservaciones.extraMeta?.referenceImage
+              const url = normalizePublicUrl(reference?.url, origin)
+              return reference && url
+                ? {
+                    name: sanitizeText(reference.name, 'Referencia') || 'Referencia',
+                    url,
+                    scalePct: reference.scalePct,
+                  }
+                : null
+            })(),
             material: item.material
               ? {
                   nombre: sanitizeText(item.material.nombre, ''),

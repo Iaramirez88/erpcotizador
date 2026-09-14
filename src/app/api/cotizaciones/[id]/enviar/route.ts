@@ -8,6 +8,7 @@ import { getReactPdfRenderer, pdfToBuffer } from '@/lib/react-pdf-node';
 import { requireEmpresaIdForUser } from '@/lib/rbac';
 import { applyOpportunityStageAutomation } from '@/lib/crm';
 import { getRequestBaseUrl } from '@/lib/app-url'
+import { parseQuoteItemObservaciones } from '@/lib/quote-item-metadata'
 
 export const runtime = 'nodejs';
 
@@ -121,6 +122,7 @@ export async function POST(
           email: cotizacion.vendedor.email,
         },
         items: cotizacion.items.map((item) => {
+          const parsedObservaciones = parseQuoteItemObservaciones(item.observaciones)
           const unidad = String(item.unidad || '').trim().toLowerCase()
           const anchoM = typeof item.ancho === 'number' ? item.ancho / 100 : null
           const altoM = typeof item.alto === 'number' ? item.alto / 100 : null
@@ -151,6 +153,21 @@ export async function POST(
             instalacion: item.instalacion,
             costoInstalacion: item.costoInstalacion,
             imagenUrl: materialImage || placeholder,
+            additionalFieldTitle: parsedObservaciones.extraMeta?.additionalFieldTitle || null,
+            additionalFieldDescription: parsedObservaciones.extraMeta?.additionalFieldDescription || null,
+            additionalQuantity: Number(parsedObservaciones.extraMeta?.additionalQuantity ?? 0) || 0,
+            additionalValue: Number(parsedObservaciones.extraMeta?.additionalValue ?? 0) || 0,
+            referenceImage: (() => {
+              const reference = parsedObservaciones.extraMeta?.referenceImage
+              const url = normalizePublicUrl(reference?.url, origin)
+              return reference && url
+                ? {
+                    name: reference.name || 'Referencia',
+                    url,
+                    scalePct: reference.scalePct,
+                  }
+                : null
+            })(),
             material: item.material
               ? {
                   nombre: item.material.nombre,

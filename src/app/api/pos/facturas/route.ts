@@ -23,6 +23,7 @@ import {
   type PosFinalizePaymentInput,
 } from '@/lib/pos-payments'
 import { createPosInvoiceAuditEvent } from '@/lib/pos-invoice-audit'
+import { applyStockAdjustments, extractRestaurantStockAdjustmentsFromPayments } from '@/lib/pos-finalization'
 import { ensureWorkOrderFromInvoice, resolveClienteIdForPosInvoice, WorkOrderClientResolutionError } from '@/lib/work-orders'
 import { reserveNextPosInvoiceNumber } from '@/lib/pos-numbering'
 
@@ -506,6 +507,20 @@ export async function POST(request: Request) {
             })
           }
         }
+
+        await applyStockAdjustments(tx, {
+          empresaId,
+          sedeId: access.sedeId,
+          userId: createdBy?.id ?? null,
+          warehouseId,
+          sourceType: InventoryMovementSourceType.POS_INVOICE,
+          sourceId: invoice.id,
+          note: `Consumo receta factura ${invoice.numero}`,
+          direction: 'OUT',
+          lines: extractRestaurantStockAdjustmentsFromPayments(
+            paymentsFinal.map((payment) => ({ metadata: payment.metadata ?? null })),
+          ),
+        })
       }
 
       let workOrder = null

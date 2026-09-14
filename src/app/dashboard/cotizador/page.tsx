@@ -236,6 +236,16 @@ function mapLibraryFileToReferenceImage(item: CrmFileItem): ItemCotizacion['refe
   }
 }
 
+function normalizePreviewAssetUrl(value: string) {
+  const url = value.trim()
+  if (!url || typeof window === 'undefined') return url
+  try {
+    return new URL(url, window.location.origin).toString()
+  } catch {
+    return url
+  }
+}
+
 function parseAdditionalValueInput(value: string): number {
   const raw = value.trim()
   if (!raw) return 0
@@ -360,7 +370,7 @@ function normalizePreviewCotizacion(raw: unknown): CotizacionPdfData & { id: str
         referenceImage: parsedObservaciones.extraMeta?.referenceImage?.url
           ? {
               name: parsedObservaciones.extraMeta.referenceImage.name || 'Referencia',
-              url: parsedObservaciones.extraMeta.referenceImage.url,
+              url: normalizePreviewAssetUrl(parsedObservaciones.extraMeta.referenceImage.url),
               scalePct: parsedObservaciones.extraMeta.referenceImage.scalePct,
             }
           : null,
@@ -1874,8 +1884,8 @@ export default function CotizadorPage() {
       <Dialog open={!!itemExtrasEditor} onOpenChange={(open) => {
         if (!open) setItemExtrasEditor(null)
       }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[90dvh] max-w-2xl flex-col overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
             <DialogTitle>Campo adicional, valor extra e imagen de referencia</DialogTitle>
             <DialogDescription>
               Aquí puedes agregar un renglón extra con descripción, cantidad, valor unitario y una imagen de referencia para la cotización PDF.
@@ -1883,7 +1893,7 @@ export default function CotizadorPage() {
           </DialogHeader>
 
           {itemExtrasEditor ? (
-            <div className="space-y-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
               <div className="space-y-2">
                 <Label htmlFor="item-extra-title">Título del campo adicional</Label>
                 <Input
@@ -2003,7 +2013,7 @@ export default function CotizadorPage() {
             </div>
           ) : null}
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t bg-white px-6 py-4">
             <Button type="button" variant="outline" onClick={() => setItemExtrasEditor(null)}>
               Cancelar
             </Button>

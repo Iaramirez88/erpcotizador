@@ -616,30 +616,6 @@ function getTicketGroupingKey(ticket: {
   return `${baseKey}|note:${noteKey}`;
 }
 
-function formatRestaurantStockError(details: {
-  materialId?: string;
-  materialNombre?: string | null;
-  required?: number;
-  warehouseNombre?: string | null;
-  warehouseAvailable?: number | null;
-  globalAvailable?: number | null;
-}) {
-  const material = details.materialNombre || details.materialId || "Producto";
-  const required =
-    typeof details.required === "number" ? formatNumber(details.required) : "N/D";
-  const warehouseName = details.warehouseNombre || "bodega principal";
-  const warehouseAvailable =
-    typeof details.warehouseAvailable === "number"
-      ? formatNumber(details.warehouseAvailable)
-      : "N/D";
-  const globalAvailable =
-    typeof details.globalAvailable === "number"
-      ? formatNumber(details.globalAvailable)
-      : "N/D";
-
-  return `Stock insuficiente para ${material}. Requiere ${required}, disponible en ${warehouseName}: ${warehouseAvailable}, stock global: ${globalAvailable}.`;
-}
-
 function guessStationFromCategory(category: string | null): Station {
   const normalized = normalizeRestaurantText(category ?? "");
   if (
@@ -2318,7 +2294,50 @@ export default function RestauranteClient() {
             tableNote: selectedTable.note,
             splitCount: selectedSplitCount,
           }),
-          asDraft: true,
+          payments:
+            checkoutTotal > 0
+              ? [
+                  {
+                    method: getRestaurantPosPaymentMethod(selectedPaymentMethod),
+                    amount: checkoutTotal,
+                    provider: "MANUAL",
+                    status: "PAID",
+                    flow: getRestaurantPaymentFlow(selectedPaymentMethod),
+                    source: "NONE",
+                    metadata: {
+                      cashReceived:
+                        selectedPaymentMethod === "CASH"
+                          ? cashReceivedAmount
+                          : null,
+                      cashChangeDue:
+                        selectedPaymentMethod === "CASH"
+                          ? cashChangeDue
+                          : null,
+                      tipAmount,
+                      tipPercentage: tipAmount > 0 ? tipPercentage : null,
+                      roundingAdjustment,
+                      splitCount: selectedSplitCount,
+                      restaurantPaymentChannel:
+                        selectedPaymentMethod === "NEQUI" ||
+                        selectedPaymentMethod === "DAVIPLATA" ||
+                        selectedPaymentMethod === "BANK_TRANSFER"
+                          ? selectedPaymentMethod
+                          : null,
+                      serviceMode: selectedTable.serviceMode,
+                      courierType: selectedTable.courierType,
+                      courierLabel: selectedTable.courierLabel || null,
+                      restaurantSale: {
+                        version: 1,
+                        tableName: selectedTable.name,
+                        serviceMode: selectedTable.serviceMode,
+                        tipAmount,
+                        tipPercentage: tipAmount > 0 ? tipPercentage : null,
+                        stockItems: restaurantRecipeStockItems,
+                      },
+                    },
+                  },
+                ]
+              : [],
           items: [
             ...selectedTableSaleItems.map((item) => ({
               materialId: item.materialId,
@@ -2365,82 +2384,6 @@ export default function RestauranteClient() {
       }
 
       const invoiceData = salePayload.data;
-
-      const finalizeResponse = await fetch(
-        `/api/pos/facturas/${invoiceData.id}/finalizar`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            payments:
-              checkoutTotal > 0
-                ? [
-                    {
-                      method: getRestaurantPosPaymentMethod(selectedPaymentMethod),
-                      amount: checkoutTotal,
-                      provider: "MANUAL",
-                      status: "PAID",
-                      flow: getRestaurantPaymentFlow(selectedPaymentMethod),
-                      source: "NONE",
-                      metadata: {
-                        cashReceived:
-                          selectedPaymentMethod === "CASH"
-                            ? cashReceivedAmount
-                            : null,
-                        cashChangeDue:
-                          selectedPaymentMethod === "CASH"
-                            ? cashChangeDue
-                            : null,
-                        tipAmount,
-                        tipPercentage: tipAmount > 0 ? tipPercentage : null,
-                        roundingAdjustment,
-                        splitCount: selectedSplitCount,
-                        restaurantPaymentChannel:
-                          selectedPaymentMethod === "NEQUI" ||
-                          selectedPaymentMethod === "DAVIPLATA" ||
-                          selectedPaymentMethod === "BANK_TRANSFER"
-                            ? selectedPaymentMethod
-                            : null,
-                        serviceMode: selectedTable.serviceMode,
-                        courierType: selectedTable.courierType,
-                        courierLabel: selectedTable.courierLabel || null,
-                        restaurantSale: {
-                          version: 1,
-                          tableName: selectedTable.name,
-                          serviceMode: selectedTable.serviceMode,
-                          tipAmount,
-                          tipPercentage: tipAmount > 0 ? tipPercentage : null,
-                          stockItems: restaurantRecipeStockItems,
-                        },
-                      },
-                    },
-                  ]
-                : [],
-          }),
-        },
-      );
-      const finalizePayload = (await finalizeResponse
-        .json()
-        .catch(() => null)) as {
-        success?: boolean;
-        error?: string;
-        details?: {
-          materialId?: string;
-          materialNombre?: string | null;
-          required?: number;
-          warehouseNombre?: string | null;
-          warehouseAvailable?: number | null;
-          globalAvailable?: number | null;
-        };
-      } | null;
-      if (!finalizeResponse.ok || !finalizePayload?.success) {
-        if (finalizePayload?.details) {
-          throw new Error(formatRestaurantStockError(finalizePayload.details));
-        }
-        throw new Error(
-          finalizePayload?.error ?? "No se pudo finalizar la venta POS.",
-        );
-      }
 
       const warnings: string[] = [];
 
@@ -5095,6 +5038,21 @@ export default function RestauranteClient() {
                       <span className="text-3xl font-semibold text-slate-950">{formatCurrency(checkoutTotal)}</span>
                     </div>
                   </div>
+                  {saleSubmitState.kind !== "idle" ? (
+                    <div
+                      role="status"
+                      className={cn(
+                        "rounded-[20px] border px-4 py-3 text-sm font-medium",
+                        saleSubmitState.kind === "error"
+                          ? "border-red-200 bg-red-50 text-red-700"
+                          : saleSubmitState.kind === "success"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-sky-200 bg-sky-50 text-sky-700",
+                      )}
+                    >
+                      {saleSubmitState.message}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>

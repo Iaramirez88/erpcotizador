@@ -2539,16 +2539,16 @@ export default function PosPage() {
     return action
   }
 
-  async function anular(invoiceId: string) {
-    const ok = window.confirm(t('pos.confirm.voidInvoice'))
+  async function eliminarVenta(invoiceId: string) {
+    const ok = window.confirm('¿Eliminar definitivamente esta venta? Esta acción no se puede deshacer.')
     if (!ok) return
 
     setError(null)
     try {
-      const res = await fetch(`/api/pos/facturas/${invoiceId}/anular`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const res = await fetch(`/api/pos/facturas/${invoiceId}`, { method: 'DELETE' })
       const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string }
       if (!res.ok || !json.success) {
-        setError(json.error || t('pos.errors.voidInvoiceFailed'))
+        setError(json.error || 'No se pudo eliminar la venta.')
         return
       }
       await loadAll()
@@ -2831,9 +2831,9 @@ export default function PosPage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => {
                               e.preventDefault();
-                              void anular(inv.id);
+                              void eliminarVenta(inv.id);
                             }}>
-                              {t('pos.actions.void')}
+                              Eliminar venta
                             </DropdownMenuItem>
                           </MobileActionsMenu>
                         </div>
@@ -2973,8 +2973,8 @@ export default function PosPage() {
                                 size="sm"
                                 variant="outline"
                                 className="h-9 w-9 rounded-full p-0 text-red-600 hover:text-red-700"
-                                title={t('pos.actions.void')}
-                                onClick={() => void anular(inv.id)}
+                                title="Eliminar venta"
+                                onClick={() => void eliminarVenta(inv.id)}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
