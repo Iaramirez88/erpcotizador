@@ -85,6 +85,18 @@ En producción, lo ideal es que el servicio `app` **no** publique `3000:3000` a 
 3. Levanta el stack:
   - `docker compose -f docker-compose.prod.yml up -d --build`
 
+### D) Subdominios gratuitos del Website Builder
+
+Para publicar sitios como `empresa.sgdigitalordex.com`:
+
+1. En Cloudflare crea un registro `A` con nombre `*` apuntando a la IP pública del VPS.
+2. Déjalo inicialmente como **DNS only** para que Caddy complete los desafíos HTTP/TLS de cada certificado.
+3. Define `NEXT_PUBLIC_WEBSITE_BASE_DOMAIN=sgdigitalordex.com` en `.env`.
+4. Reconstruye `app` porque la variable `NEXT_PUBLIC_*` se integra durante el build.
+5. Reinicia `caddy` para cargar el bloque HTTPS dinámico.
+
+Caddy consulta `/api/public/sites/allow-domain` antes de emitir cada certificado. El endpoint solo autoriza subdominios registrados que tengan al menos una página publicada; no retires esta restricción porque evitaría abuso y límites de la autoridad certificadora.
+
 Nota de performance:
 - El compose de producción ya reutiliza una sola imagen Node para `app`, `worker` y `migrate`.
 - En cada despliegue solo deberían reconstruirse `app` y `ocr`; `worker` y `migrate` arrancan desde la misma imagen ya construida.

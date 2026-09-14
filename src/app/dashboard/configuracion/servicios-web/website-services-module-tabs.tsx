@@ -17,6 +17,11 @@ function buildTabs(showBuilderTab: boolean) {
       match: (pathname: string) => pathname === '/dashboard/configuracion/servicios-web/sitios',
     },
     {
+      href: '/dashboard/configuracion/servicios-web/dominios',
+      label: 'Dominios',
+      match: (pathname: string) => pathname.startsWith('/dashboard/configuracion/servicios-web/dominios'),
+    },
+    {
       href: '/dashboard/configuracion/servicios-web/plantillas',
       label: 'Plantillas automáticas',
       match: (pathname: string) => pathname.startsWith('/dashboard/configuracion/servicios-web/plantillas'),
@@ -34,6 +39,7 @@ function buildTabs(showBuilderTab: boolean) {
       match: (pathname: string) => pathname === '/dashboard/configuracion/servicios-web/builder' || pathname.endsWith('/builder'),
     },
     baseTabs[2],
+    baseTabs[3],
   ]
 }
 

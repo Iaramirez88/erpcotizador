@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ModuleKey, PosInvoiceStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { reversePosInvoiceStock } from '@/lib/pos-finalization'
 import { resolveClienteIdForPosInvoice } from '@/lib/work-orders'
 
 export const runtime = 'nodejs'
@@ -220,6 +221,45 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   } catch (error) {
     console.error('Error al obtener factura POS:', error)
     return NextResponse.json({ error: 'Error al obtener factura POS' }, { status: 500 })
+  }
+}
+
+export async function DELETE(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+  try {
+    const access = await requireApiAccess(ModuleKey.POS, 'ADMIN')
+    if (!access.ok) return access.response
+    if (!access.isSystemSuperAdmin && access.membershipRole !== 'ADMIN') {
+      return NextResponse.json({ error: 'Solo un administrador puede eliminar ventas.' }, { status: 403 })
+    }
+
+    const { id } = await ctx.params
+    const deleted = await prisma.$transaction(async (tx) => {
+      const reversed = await reversePosInvoiceStock(tx, {
+        empresaId: access.empresaId,
+        sedeId: access.sedeId,
+        userId: access.userId,
+        invoiceId: id,
+        notePrefix: 'Eliminación administrativa POS',
+      })
+      await tx.posInvoice.delete({ where: { id } })
+      return { id: reversed.id, numero: reversed.numero }
+    })
+
+    return NextResponse.json({ success: true, data: deleted })
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'INVOICE_NOT_FOUND') {
+        return NextResponse.json({ error: 'Factura no encontrada' }, { status: 404 })
+      }
+      if (error.message === 'INVOICE_HAS_RETURNS') {
+        return NextResponse.json({ error: 'No se puede eliminar una venta con devoluciones.' }, { status: 400 })
+      }
+      if (error.message === 'INVOICE_STATUS_NOT_ALLOWED') {
+        return NextResponse.json({ error: 'El estado de la venta no permite eliminarla.' }, { status: 400 })
+      }
+    }
+    console.error('Error al eliminar factura POS:', error)
+    return NextResponse.json({ error: 'No se pudo eliminar la venta.' }, { status: 500 })
   }
 }
 

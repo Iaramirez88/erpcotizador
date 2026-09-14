@@ -72,12 +72,32 @@ export type ShortageNote = {
   resolved: boolean
 }
 
+export type RestaurantSalesBreakdown = {
+  cash: number
+  card: number
+  nequi: number
+  daviplata: number
+  bankTransfer: number
+  other: number
+  netTotal: number
+}
+
+export type RestaurantCashRegister = {
+  openingCoins: number
+  openingCash: number
+  openedAt: string | null
+  closingCash: number | null
+  closedAt: string | null
+  closingSales: RestaurantSalesBreakdown | null
+}
+
 export type RestaurantBoardState = {
   tables: DiningTable[]
   recipes: Recipe[]
   shortages: ShortageNote[]
   activityLog: RestaurantActivityLog[]
   closingNotes: string
+  cashRegister: RestaurantCashRegister
 }
 
 export type RestaurantBoardSummary = {
@@ -233,6 +253,14 @@ export function createEmptyRestaurantBoard(): RestaurantBoardState {
     shortages: [],
     activityLog: [],
     closingNotes: '',
+    cashRegister: {
+      openingCoins: 0,
+      openingCash: 0,
+      openedAt: null,
+      closingCash: null,
+      closedAt: null,
+      closingSales: null,
+    },
   }
 }
 
@@ -355,12 +383,36 @@ export function sanitizeRestaurantBoard(value: unknown): RestaurantBoardState {
         .filter(Boolean) as RestaurantActivityLog[]
     : []
 
+  const cashRegister = isRecord(value.cashRegister) ? value.cashRegister : {}
+  const closingSales = isRecord(cashRegister.closingSales) ? cashRegister.closingSales : null
+  const cleanMoney = (amount: unknown) => Math.max(0, cleanNumberOrNull(amount) ?? 0)
+
   return {
     tables: hasTablesArray ? tables : createEmptyRestaurantBoard().tables,
     recipes,
     shortages,
     activityLog,
     closingNotes: cleanText(value.closingNotes),
+    cashRegister: {
+      openingCoins: cleanMoney(cashRegister.openingCoins),
+      openingCash: cleanMoney(cashRegister.openingCash),
+      openedAt: cleanText(cashRegister.openedAt) || null,
+      closingCash: cashRegister.closingCash === null || cashRegister.closingCash === undefined
+        ? null
+        : cleanMoney(cashRegister.closingCash),
+      closedAt: cleanText(cashRegister.closedAt) || null,
+      closingSales: closingSales
+        ? {
+            cash: cleanMoney(closingSales.cash),
+            card: cleanMoney(closingSales.card),
+            nequi: cleanMoney(closingSales.nequi),
+            daviplata: cleanMoney(closingSales.daviplata),
+            bankTransfer: cleanMoney(closingSales.bankTransfer),
+            other: cleanMoney(closingSales.other),
+            netTotal: cleanMoney(closingSales.netTotal),
+          }
+        : null,
+    },
   }
 }
 

@@ -27,6 +27,60 @@ export function slugifyWebsiteBuilderValue(value: string) {
     .slice(0, 60) || 'sitio'
 }
 
+export const WEBSITE_RESERVED_SUBDOMAINS = new Set([
+  'admin',
+  'api',
+  'app',
+  'assets',
+  'cdn',
+  'dashboard',
+  'ftp',
+  'mail',
+  'smtp',
+  'soporte',
+  'support',
+  'www',
+])
+
+export function normalizeWebsiteSubdomain(value: unknown) {
+  return slugifyWebsiteBuilderValue(String(value ?? '')).slice(0, 60)
+}
+
+export function validateWebsiteSubdomain(value: unknown) {
+  const rawValue = String(value ?? '').trim().toLowerCase()
+  const subdomain = normalizeWebsiteSubdomain(rawValue)
+
+  if (!rawValue || rawValue !== subdomain) {
+    return { ok: false as const, error: 'Usa solo letras minúsculas, números y guiones.' }
+  }
+  if (subdomain.length < 3) {
+    return { ok: false as const, error: 'El subdominio debe tener al menos 3 caracteres.' }
+  }
+  if (WEBSITE_RESERVED_SUBDOMAINS.has(subdomain)) {
+    return { ok: false as const, error: 'Este subdominio está reservado por Ordex.' }
+  }
+
+  return { ok: true as const, subdomain }
+}
+
+export function buildWebsitePublicUrl(
+  subdomain: string,
+  pageSlug?: string | null,
+  isHome?: boolean,
+  baseDomain = process.env.NEXT_PUBLIC_WEBSITE_BASE_DOMAIN,
+) {
+  const safeSubdomain = normalizeWebsiteSubdomain(subdomain)
+  const normalizedBaseDomain = normalizeWebsiteBuilderHost(baseDomain)
+  if (!normalizedBaseDomain) return buildWebsitePublicPath(safeSubdomain, pageSlug, isHome)
+
+  const pathname = !pageSlug || isHome || pageSlug === 'inicio'
+    ? '/'
+    : `/${slugifyWebsiteBuilderValue(pageSlug)}`
+  const protocol = normalizedBaseDomain === 'localhost' || normalizedBaseDomain.endsWith('.localhost') ? 'http' : 'https'
+  const port = typeof window !== 'undefined' && normalizedBaseDomain === 'localhost' ? window.location.port : ''
+  return `${protocol}://${safeSubdomain}.${normalizedBaseDomain}${port ? `:${port}` : ''}${pathname}`
+}
+
 export function normalizeWebsiteBuilderHost(value: string | null | undefined) {
   return String(value ?? '')
     .trim()

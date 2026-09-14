@@ -1,6 +1,9 @@
 {
   # Email recomendado para Let's Encrypt (opcional)
   # email admin@tu-dominio.com
+  on_demand_tls {
+    ask http://app:3000/api/public/sites/allow-domain
+  }
 }
 
 # Hosts que van a servir la app.
@@ -15,5 +18,16 @@ sgdigitalordex.com, www.sgdigitalordex.com {
   }
 
   # Ajusta si quieres límites/timeout adicionales
+  reverse_proxy app:3000
+}
+
+# Sitios gratuitos publicados como empresa.sgdigitalordex.com.
+# Requiere un registro DNS wildcard *.sgdigitalordex.com apuntando a este servidor.
+https:// {
+  tls {
+    on_demand
+  }
+
+  encode zstd gzip
   reverse_proxy app:3000
 }

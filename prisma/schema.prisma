@@ -2202,7 +2202,7 @@ model WebsiteProject {
 
   nombre String
   slug   String
-  subdomain String?
+  subdomain String? @unique
   primaryDomain String?
   status String @default("DRAFT")
   templateKey String?
@@ -2221,7 +2221,6 @@ model WebsiteProject {
   updatedAt DateTime @updatedAt
 
   @@unique([empresaId, slug])
-  @@unique([empresaId, subdomain])
   @@index([empresaId, status])
   @@index([websiteServiceId])
   @@map("website_projects")

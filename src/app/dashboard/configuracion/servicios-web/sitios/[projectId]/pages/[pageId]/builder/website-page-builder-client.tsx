@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/hooks/use-toast'
 import { websiteBuilderPuckConfig } from '@/components/website-builder/puck-config'
-import { buildWebsitePublicPath } from '@/lib/website-builder'
+import { buildWebsitePublicUrl } from '@/lib/website-builder'
 import { cloneWebsiteFunnelTemplateData, WEBSITE_FUNNEL_TEMPLATES, type WebsiteFunnelTemplate } from '@/lib/website-builder-funnel-templates'
 import { useUiStore } from '@/lib/ui-store'
 import { cn } from '@/lib/utils'
@@ -89,7 +89,7 @@ export default function WebsitePageBuilderClient({
   const dataRevisionRef = useRef(0)
   const savingDraftRef = useRef(false)
   const previewPath = `/dashboard/configuracion/servicios-web/sitios/${projectId}/pages/${pageId}/preview`
-  const publicPath = buildWebsitePublicPath(projectSubdomain, pageSlug, isHome)
+  const publicPath = buildWebsitePublicUrl(projectSubdomain, pageSlug, isHome)
 
   useEffect(() => {
     setPinnedActions(readPinnedActions())

@@ -208,6 +208,70 @@ export function extractRestaurantStockAdjustmentsFromPayments(payments: Array<{ 
   return []
 }
 
+export async function reversePosInvoiceStock(
+  tx: Prisma.TransactionClient,
+  args: { empresaId: string; sedeId: string; userId: string; invoiceId: string; notePrefix?: string },
+) {
+  const invoice = await tx.posInvoice.findUnique({
+    where: { id: args.invoiceId },
+    select: {
+      id: true,
+      numero: true,
+      status: true,
+      empresaId: true,
+      sedeId: true,
+      warehouseId: true,
+      payments: { where: { status: PosPaymentStatus.PAID }, select: { metadata: true } },
+      items: { select: { materialId: true, quantity: true } },
+    },
+  })
+
+  if (!invoice || invoice.empresaId !== args.empresaId || invoice.sedeId !== args.sedeId) {
+    throw new Error('INVOICE_NOT_FOUND')
+  }
+
+  const hasReturns = (await tx.posReturn.count({
+    where: { invoiceId: invoice.id, empresaId: args.empresaId, sedeId: args.sedeId },
+  })) > 0
+  if (hasReturns) throw new Error('INVOICE_HAS_RETURNS')
+
+  if (invoice.status === PosInvoiceStatus.VOID) {
+    return { id: invoice.id, numero: invoice.numero, status: invoice.status, reversed: false }
+  }
+  if (invoice.status === PosInvoiceStatus.DRAFT) {
+    return { id: invoice.id, numero: invoice.numero, status: invoice.status, reversed: false }
+  }
+  if (invoice.status !== PosInvoiceStatus.PAID) throw new Error('INVOICE_STATUS_NOT_ALLOWED')
+
+  const notePrefix = args.notePrefix ?? 'Anulación POS'
+  await applyStockAdjustments(tx, {
+    empresaId: args.empresaId,
+    sedeId: args.sedeId,
+    userId: args.userId,
+    warehouseId: invoice.warehouseId,
+    sourceType: InventoryMovementSourceType.POS_INVOICE,
+    sourceId: invoice.id,
+    note: `${notePrefix} factura ${invoice.numero}`,
+    direction: 'IN',
+    lines: invoice.items
+      .filter((item) => Boolean(item.materialId) && item.quantity > 0)
+      .map((item) => ({ materialId: item.materialId!, quantity: item.quantity })),
+  })
+  await applyStockAdjustments(tx, {
+    empresaId: args.empresaId,
+    sedeId: args.sedeId,
+    userId: args.userId,
+    warehouseId: invoice.warehouseId,
+    sourceType: InventoryMovementSourceType.POS_INVOICE,
+    sourceId: invoice.id,
+    note: `${notePrefix} receta factura ${invoice.numero}`,
+    direction: 'IN',
+    lines: extractRestaurantStockAdjustmentsFromPayments(invoice.payments),
+  })
+
+  return { id: invoice.id, numero: invoice.numero, status: invoice.status, reversed: true }
+}
+
 export async function finalizeInvoice(
   tx: Prisma.TransactionClient,
   args: {

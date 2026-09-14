@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
-import { buildWebsitePublicPath } from '@/lib/website-builder'
+import { buildWebsitePublicUrl } from '@/lib/website-builder'
 
 type WebsiteProjectPageItem = {
   id: string
@@ -249,7 +249,7 @@ export default function WebsiteProjectsClient() {
                       </div>
                       <div className="flex items-center gap-2">
                         <Button asChild size="sm" variant="outline">
-                          <Link href={buildWebsitePublicPath(project.subdomain || project.slug, page.slug, page.isHome)} target="_blank" rel="noreferrer">
+                          <Link href={buildWebsitePublicUrl(project.subdomain || project.slug, page.slug, page.isHome)} target="_blank" rel="noreferrer">
                             <ExternalLink className="h-3.5 w-3.5" />
                             Ver sitio
                           </Link>

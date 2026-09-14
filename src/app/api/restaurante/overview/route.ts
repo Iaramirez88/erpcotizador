@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { PosInvoiceStatus, RestauranteTurnoStatus } from '@prisma/client'
+import { PosInvoiceStatus, PosPaymentStatus, RestauranteTurnoStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { computeRestaurantBoardSummary, sanitizeRestaurantBoard } from '@/lib/restaurante'
@@ -14,6 +14,12 @@ function addDays(date: Date, days: number) {
   const next = new Date(date)
   next.setDate(next.getDate() + days)
   return next
+}
+
+function getPaymentChannel(metadata: unknown) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  const value = (metadata as Record<string, unknown>).restaurantPaymentChannel
+  return typeof value === 'string' ? value : null
 }
 
 export async function GET() {
@@ -58,7 +64,6 @@ export async function GET() {
           createdAt: { gte: todayStart },
         },
         orderBy: [{ createdAt: 'desc' }],
-        take: 12,
         select: {
           id: true,
           numero: true,
@@ -78,6 +83,10 @@ export async function GET() {
           },
           returns: {
             select: { total: true },
+          },
+          payments: {
+            where: { status: PosPaymentStatus.PAID },
+            select: { method: true, amount: true, metadata: true },
           },
         },
       }),
@@ -220,6 +229,33 @@ export async function GET() {
 
     const purchaseTotal = weekPurchases.reduce((sum, purchase) => sum + (purchase.total ?? 0), 0)
     const salesTotal = sales.reduce((sum, sale) => sum + sale.total, 0)
+    const turnOpenedAt = currentTurno?.openedAt ?? todayStart
+    const turnSales = sales.filter((sale) => new Date(sale.createdAt) >= turnOpenedAt)
+    const paymentBreakdown = turnSales.reduce(
+      (totals, sale) => {
+        const invoice = todayInvoices.find((item) => item.id === sale.id)
+        if (!invoice || sale.total <= 0) return totals
+        const paidTotal = invoice.payments.reduce((sum, payment) => sum + Math.max(0, payment.amount ?? 0), 0)
+        const allocationBase = paidTotal > 0 ? paidTotal : sale.total
+
+        for (const payment of invoice.payments) {
+          const netAmount = sale.total * (Math.max(0, payment.amount ?? 0) / allocationBase)
+          const channel = getPaymentChannel(payment.metadata)
+          if (payment.method === 'CASH') totals.cash += netAmount
+          else if (channel === 'NEQUI') totals.nequi += netAmount
+          else if (channel === 'DAVIPLATA') totals.daviplata += netAmount
+          else if (channel === 'BANK_TRANSFER') totals.bankTransfer += netAmount
+          else if (payment.method === 'CARD' || payment.method === 'DEBIT_CARD' || payment.method === 'CREDIT_CARD') totals.card += netAmount
+          else if (payment.method === 'TRANSFER') totals.bankTransfer += netAmount
+          else totals.other += netAmount
+        }
+
+        if (!invoice.payments.length) totals.other += sale.total
+        totals.netTotal += sale.total
+        return totals
+      },
+      { cash: 0, card: 0, nequi: 0, daviplata: 0, bankTransfer: 0, other: 0, netTotal: 0 },
+    )
 
     const normalizedBoard = currentTurno ? sanitizeRestaurantBoard(currentTurno.boardData) : null
 
@@ -230,6 +266,7 @@ export async function GET() {
           id: access.sedeId,
           nombre: sede?.nombre ?? 'Sede actual',
         },
+        canDeleteSales: access.isSystemSuperAdmin || access.membershipRole === 'ADMIN',
         currentTurno: currentTurno
           ? {
               id: currentTurno.id,
@@ -247,8 +284,9 @@ export async function GET() {
           total: salesTotal,
           count: sales.length,
           average: sales.length ? salesTotal / sales.length : 0,
-          tickets: sales,
+          tickets: sales.slice(0, 12),
         },
+        turnSales: paymentBreakdown,
         purchasesWeek: {
           total: purchaseTotal,
           count: weekPurchases.length,

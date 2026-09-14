@@ -89,6 +89,7 @@ type OverviewData = {
     id: string;
     nombre: string;
   };
+  canDeleteSales: boolean;
   currentTurno: {
     id: string;
     title: string | null;
@@ -121,6 +122,15 @@ type OverviewData = {
         total: number;
       }>;
     }>;
+  };
+  turnSales: {
+    cash: number;
+    card: number;
+    nequi: number;
+    daviplata: number;
+    bankTransfer: number;
+    other: number;
+    netTotal: number;
   };
   purchasesWeek: {
     total: number;
@@ -237,7 +247,9 @@ type MenuShortcut = {
 type RestaurantCheckoutPaymentMethod =
   | "CASH"
   | "CARD"
-  | "TRANSFER"
+  | "NEQUI"
+  | "DAVIPLATA"
+  | "BANK_TRANSFER"
   | "OTHER";
 
 type TableTicketLineItem = KitchenTicket & {
@@ -270,7 +282,7 @@ type ManualChargeDraft = {
 
 type RestaurantTransactionDialogState = {
   open: boolean;
-  mode: "VOID" | "REFUND" | null;
+  mode: "VOID" | "REFUND" | "DELETE" | null;
   invoiceId: string;
   invoiceNumber: string;
   invoiceTotal: number;
@@ -489,16 +501,39 @@ function getRestaurantPaymentMethodLabel(
   method: RestaurantCheckoutPaymentMethod,
 ) {
   if (method === "CARD") return "Tarjeta / datáfono";
-  if (method === "TRANSFER") return "Transferencia";
+  if (method === "NEQUI") return "Nequi";
+  if (method === "DAVIPLATA") return "Daviplata";
+  if (method === "BANK_TRANSFER") return "Transferencia bancaria";
   if (method === "OTHER") return "Otro";
   return "Efectivo";
 }
 
 function getRestaurantPaymentFlow(method: RestaurantCheckoutPaymentMethod) {
   if (method === "CARD") return "DATAPHONE" as const;
-  if (method === "TRANSFER") return "QR" as const;
+  if (method === "NEQUI" || method === "DAVIPLATA") return "QR" as const;
+  if (method === "BANK_TRANSFER") return "LINK" as const;
   if (method === "OTHER") return "LINK" as const;
   return "CASH" as const;
+}
+
+function getRestaurantPosPaymentMethod(method: RestaurantCheckoutPaymentMethod) {
+  if (method === "CASH" || method === "CARD" || method === "OTHER") return method;
+  return "TRANSFER" as const;
+}
+
+function addSaleToPaymentBreakdown(
+  breakdown: OverviewData["turnSales"],
+  method: RestaurantCheckoutPaymentMethod,
+  amount: number,
+) {
+  const next = { ...breakdown, netTotal: breakdown.netTotal + amount };
+  if (method === "CASH") next.cash += amount;
+  else if (method === "CARD") next.card += amount;
+  else if (method === "NEQUI") next.nequi += amount;
+  else if (method === "DAVIPLATA") next.daviplata += amount;
+  else if (method === "BANK_TRANSFER") next.bankTransfer += amount;
+  else next.other += amount;
+  return next;
 }
 
 function formatRestaurantServiceModeLabel(value: RestaurantServiceMode) {
@@ -1129,16 +1164,46 @@ export default function RestauranteClient() {
       setSelectedTableId(board.tables[0]!.id);
   }, [board.tables, selectedTableId]);
 
+  function openCashRegister() {
+    setBoard((current) => ({
+      ...current,
+      cashRegister: {
+        ...current.cashRegister,
+        openedAt: current.cashRegister.openedAt ?? new Date().toISOString(),
+        closingCash: null,
+        closedAt: null,
+        closingSales: null,
+      },
+    }));
+    setSaleSubmitState({ kind: "success", message: "Caja abierta y monto inicial registrado." });
+  }
+
   async function closeTurno() {
     if (isClosingTurno) return;
     if (!currentTurnoId && isPristineBoard) return;
     try {
       setIsClosingTurno(true);
       setError(null);
+      const closingBoard = {
+        ...board,
+        cashRegister: {
+          ...board.cashRegister,
+          closedAt: new Date().toISOString(),
+          closingSales: overview?.turnSales ?? {
+            cash: 0,
+            card: 0,
+            nequi: 0,
+            daviplata: 0,
+            bankTransfer: 0,
+            other: 0,
+            netTotal: 0,
+          },
+        },
+      };
       const response = await fetch("/api/restaurante/turnos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: currentTurnoId, action: "CLOSE", board }),
+        body: JSON.stringify({ id: currentTurnoId, action: "CLOSE", board: closingBoard }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.ok)
@@ -2079,7 +2144,7 @@ export default function RestauranteClient() {
   }
 
   function openTransactionDialog(
-    mode: "VOID" | "REFUND",
+    mode: "VOID" | "REFUND" | "DELETE",
     ticket: OverviewData["salesToday"]["tickets"][number],
   ) {
     setTransactionDialogState({
@@ -2102,7 +2167,15 @@ export default function RestauranteClient() {
 
     setSubmittingTransaction(true);
     try {
-      if (transactionDialogState.mode === "VOID") {
+      if (transactionDialogState.mode === "DELETE") {
+        const response = await fetch(`/api/pos/facturas/${transactionDialogState.invoiceId}`, {
+          method: "DELETE",
+        });
+        const payload = (await response.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.error ?? "No se pudo eliminar la venta.");
+        }
+      } else if (transactionDialogState.mode === "VOID") {
         const response = await fetch(`/api/pos/facturas/${transactionDialogState.invoiceId}/anular`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2163,7 +2236,9 @@ export default function RestauranteClient() {
       setSaleSubmitState({
         kind: "success",
         message:
-          transactionDialogState.mode === "VOID"
+          transactionDialogState.mode === "DELETE"
+            ? `Venta ${transactionDialogState.invoiceNumber} eliminada.`
+            : transactionDialogState.mode === "VOID"
             ? `Factura ${transactionDialogState.invoiceNumber} anulada.`
             : `Devolución registrada sobre ${transactionDialogState.invoiceNumber}.`,
       });
@@ -2301,7 +2376,7 @@ export default function RestauranteClient() {
               checkoutTotal > 0
                 ? [
                     {
-                      method: selectedPaymentMethod,
+                      method: getRestaurantPosPaymentMethod(selectedPaymentMethod),
                       amount: checkoutTotal,
                       provider: "MANUAL",
                       status: "PAID",
@@ -2320,6 +2395,12 @@ export default function RestauranteClient() {
                         tipPercentage: tipAmount > 0 ? tipPercentage : null,
                         roundingAdjustment,
                         splitCount: selectedSplitCount,
+                        restaurantPaymentChannel:
+                          selectedPaymentMethod === "NEQUI" ||
+                          selectedPaymentMethod === "DAVIPLATA" ||
+                          selectedPaymentMethod === "BANK_TRANSFER"
+                            ? selectedPaymentMethod
+                            : null,
                         serviceMode: selectedTable.serviceMode,
                         courierType: selectedTable.courierType,
                         courierLabel: selectedTable.courierLabel || null,
@@ -2434,6 +2515,11 @@ export default function RestauranteClient() {
         current
           ? {
               ...current,
+              turnSales: addSaleToPaymentBreakdown(
+                current.turnSales,
+                selectedPaymentMethod,
+                invoiceData.total,
+              ),
               salesToday: {
                 ...current.salesToday,
                 total: current.salesToday.total + invoiceData.total,
@@ -2477,7 +2563,42 @@ export default function RestauranteClient() {
           : current,
       );
 
-      closeTable(selectedTable.id);
+      const releasedBoard: RestaurantBoardState = {
+        ...board,
+        tables: board.tables.map((table) =>
+          table.id === selectedTable.id
+            ? {
+                ...table,
+                status: "LIBRE",
+                guestName: "",
+                guests: 0,
+                note: "",
+                lastInvoiceId: invoiceData.id,
+                lastInvoiceNumber: invoiceData.numero,
+                lastSaleAt: soldAt,
+                lastSaleTotal: invoiceData.total,
+                tickets: [],
+              }
+            : table,
+        ),
+      };
+      setBoard(releasedBoard);
+      const turnoResponse = await fetch("/api/restaurante/turnos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: currentTurnoId, action: "SAVE", board: releasedBoard }),
+      });
+      const turnoPayload = (await turnoResponse.json().catch(() => null)) as {
+        ok?: boolean;
+        data?: OverviewData["currentTurno"];
+      } | null;
+      if (turnoResponse.ok && turnoPayload?.ok && turnoPayload.data) {
+        setCurrentTurnoId(turnoPayload.data.id);
+        setCurrentTurnoStatus(turnoPayload.data.status);
+        lastPersistedSnapshotRef.current = JSON.stringify(releasedBoard);
+      } else {
+        warnings.push("La mesa se liberó, pero no se pudo confirmar su guardado en el turno.");
+      }
       setPaymentDialogOpen(false);
       setProductPickerOpen(false);
       setCustomerNotificationsEnabled(false);
@@ -3411,6 +3532,16 @@ export default function RestauranteClient() {
                       >
                         <HandCoins className="mr-2 h-4 w-4" /> Devolución
                       </Button>
+                      {overview?.canDeleteSales ? (
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          className="rounded-2xl"
+                          onClick={() => openTransactionDialog("DELETE", ticket)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" /> Eliminar venta
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                 ))}
@@ -3771,6 +3902,55 @@ export default function RestauranteClient() {
       );
     return (
       <div className="space-y-4">
+        <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Apertura de caja</div>
+              <div className="mt-1 text-sm text-emerald-900">
+                {board.cashRegister.openedAt ? `Abierta ${formatDateTime(board.cashRegister.openedAt)}` : "Registra el fondo inicial antes de operar."}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-emerald-700">Total apertura</div>
+              <div className="text-xl font-semibold text-emerald-950">
+                {formatCurrency(board.cashRegister.openingCoins + board.cashRegister.openingCash)}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="restaurant-opening-coins">Monedas</Label>
+              <Input
+                id="restaurant-opening-coins"
+                type="number"
+                min={0}
+                disabled={Boolean(board.cashRegister.openedAt)}
+                value={board.cashRegister.openingCoins || ""}
+                onChange={(event) => setBoard((current) => ({ ...current, cashRegister: { ...current.cashRegister, openingCoins: Math.max(0, Number(event.target.value) || 0) } }))}
+                placeholder="0"
+                className="bg-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="restaurant-opening-cash">Billetes / efectivo</Label>
+              <Input
+                id="restaurant-opening-cash"
+                type="number"
+                min={0}
+                disabled={Boolean(board.cashRegister.openedAt)}
+                value={board.cashRegister.openingCash || ""}
+                onChange={(event) => setBoard((current) => ({ ...current, cashRegister: { ...current.cashRegister, openingCash: Math.max(0, Number(event.target.value) || 0) } }))}
+                placeholder="0"
+                className="bg-white"
+              />
+            </div>
+          </div>
+          {!board.cashRegister.openedAt ? (
+            <Button type="button" className="mt-3 w-full rounded-2xl" onClick={openCashRegister}>
+              <HandCoins className="mr-2 h-4 w-4" /> Abrir caja
+            </Button>
+          ) : null}
+        </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-[20px] bg-slate-50 px-4 py-3">
             <div className="text-xs uppercase tracking-[0.18em] text-slate-500">
@@ -3828,6 +4008,43 @@ export default function RestauranteClient() {
             </div>
           </div>
         </div>
+        <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-4">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Ventas netas del turno</div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {[
+              ["Efectivo", overview?.turnSales.cash ?? 0],
+              ["Tarjetas", overview?.turnSales.card ?? 0],
+              ["Nequi", overview?.turnSales.nequi ?? 0],
+              ["Daviplata", overview?.turnSales.daviplata ?? 0],
+              ["Transferencia bancaria", overview?.turnSales.bankTransfer ?? 0],
+              ["Otros", overview?.turnSales.other ?? 0],
+            ].map(([label, amount]) => (
+              <div key={String(label)} className="rounded-2xl bg-slate-50 px-3 py-3">
+                <div className="text-xs text-slate-500">{label}</div>
+                <div className="mt-1 font-semibold text-slate-950">{formatCurrency(Number(amount))}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-3">
+            <span className="text-sm font-semibold text-slate-700">Total neto</span>
+            <span className="text-xl font-semibold text-slate-950">{formatCurrency(overview?.turnSales.netTotal ?? 0)}</span>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="restaurant-closing-cash">Efectivo contado al cierre</Label>
+          <Input
+            id="restaurant-closing-cash"
+            type="number"
+            min={0}
+            value={board.cashRegister.closingCash ?? ""}
+            onChange={(event) => setBoard((current) => ({ ...current, cashRegister: { ...current.cashRegister, closingCash: Math.max(0, Number(event.target.value) || 0) } }))}
+            placeholder="Monto físico contado en caja"
+            className="rounded-2xl"
+          />
+          <p className="text-xs text-slate-500">
+            Esperado en efectivo: {formatCurrency(board.cashRegister.openingCoins + board.cashRegister.openingCash + (overview?.turnSales.cash ?? 0))}
+          </p>
+        </div>
         <Textarea
           value={board.closingNotes}
           onChange={(event) =>
@@ -3843,7 +4060,7 @@ export default function RestauranteClient() {
           className="w-full rounded-2xl"
           variant="destructive"
           onClick={() => void closeTurno()}
-          disabled={isClosingTurno}
+          disabled={isClosingTurno || !board.cashRegister.openedAt || board.cashRegister.closingCash === null}
         >
           {isClosingTurno ? "Cerrando turno..." : "Cerrar turno"}
         </Button>
@@ -4734,7 +4951,9 @@ export default function RestauranteClient() {
                       <SelectContent>
                         <SelectItem value="CASH">Efectivo</SelectItem>
                         <SelectItem value="CARD">Tarjeta / datáfono</SelectItem>
-                        <SelectItem value="TRANSFER">Transferencia</SelectItem>
+                        <SelectItem value="NEQUI">Nequi</SelectItem>
+                        <SelectItem value="DAVIPLATA">Daviplata</SelectItem>
+                        <SelectItem value="BANK_TRANSFER">Transferencia bancaria</SelectItem>
                         <SelectItem value="OTHER">Otro</SelectItem>
                       </SelectContent>
                     </Select>
@@ -4991,10 +5210,16 @@ export default function RestauranteClient() {
           <DialogContent className="rounded-[28px] border-slate-200 sm:max-w-md">
             <DialogHeader>
               <DialogTitle>
-                {transactionDialogState.mode === "VOID" ? "Anular venta" : "Registrar devolución"}
+                {transactionDialogState.mode === "DELETE"
+                  ? "Eliminar venta"
+                  : transactionDialogState.mode === "VOID"
+                    ? "Anular venta"
+                    : "Registrar devolución"}
               </DialogTitle>
               <DialogDescription>
-                {transactionDialogState.mode === "VOID"
+                {transactionDialogState.mode === "DELETE"
+                  ? `La venta ${transactionDialogState.invoiceNumber} se eliminará definitivamente y se revertirá su inventario.`
+                  : transactionDialogState.mode === "VOID"
                   ? `La factura ${transactionDialogState.invoiceNumber} se marcará como anulada.`
                   : `Se registrará una devolución completa sobre ${transactionDialogState.invoiceNumber}.`}
               </DialogDescription>
@@ -5024,7 +5249,9 @@ export default function RestauranteClient() {
               <Button type="button" onClick={() => void submitTransactionAction()} disabled={submittingTransaction}>
                 {submittingTransaction
                   ? "Procesando..."
-                  : transactionDialogState.mode === "VOID"
+                  : transactionDialogState.mode === "DELETE"
+                    ? "Eliminar definitivamente"
+                    : transactionDialogState.mode === "VOID"
                     ? "Anular factura"
                     : "Registrar devolución"}
               </Button>

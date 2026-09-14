@@ -5,6 +5,7 @@ import {
   normalizeString,
   serializeWebsiteProject,
   slugifyWebsiteBuilderValue,
+  validateWebsiteSubdomain,
 } from '@/lib/website-builder'
 import { requireWebsiteBuilderAccess, toWebsiteBuilderInputJsonValue } from '@/lib/website-builder-server'
 
@@ -23,6 +24,22 @@ async function buildUniqueProjectSlug(empresaId: string, value: string) {
   }
 
   return `${base}-${Date.now()}`
+}
+
+async function buildUniqueSubdomain(value: string) {
+  const base = slugifyWebsiteBuilderValue(value)
+
+  for (let index = 0; index < 100; index += 1) {
+    const candidate = index === 0 ? base : `${base}-${index + 1}`
+    if (!validateWebsiteSubdomain(candidate).ok) continue
+    const existing = await prisma.websiteProject.findUnique({
+      where: { subdomain: candidate },
+      select: { id: true },
+    })
+    if (!existing?.id) return candidate
+  }
+
+  return `${base.slice(0, 47)}-${Date.now()}`
 }
 
 export async function GET() {
@@ -74,6 +91,7 @@ export async function POST(req: NextRequest) {
   }
 
   const slug = await buildUniqueProjectSlug(guard.access.empresaId!, nombre)
+  const subdomain = await buildUniqueSubdomain(nombre)
   const homeData = toWebsiteBuilderInputJsonValue(defaultWebsiteBuilderData())
 
   const created = await prisma.websiteProject.create({
@@ -81,7 +99,7 @@ export async function POST(req: NextRequest) {
       empresaId: guard.access.empresaId!,
       nombre,
       slug,
-      subdomain: slug,
+      subdomain,
       status: 'DRAFT',
       createdByUserId: guard.userId,
       updatedByUserId: guard.userId,

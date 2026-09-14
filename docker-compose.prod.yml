@@ -65,6 +65,7 @@ services:
       target: web
       args:
         BUILD_MAX_OLD_SPACE_SIZE: ${BUILD_MAX_OLD_SPACE_SIZE:-1536}
+        NEXT_PUBLIC_WEBSITE_BASE_DOMAIN: ${NEXT_PUBLIC_WEBSITE_BASE_DOMAIN:-sgdigitalordex.com}
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL}
@@ -75,6 +76,7 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL:-}
       AUTH_TRUST_HOST: ${AUTH_TRUST_HOST:-true}
       APP_URL: ${APP_URL:-}
+      NEXT_PUBLIC_WEBSITE_BASE_DOMAIN: ${NEXT_PUBLIC_WEBSITE_BASE_DOMAIN:-sgdigitalordex.com}
       SHARE_TOKEN_SECRET: ${SHARE_TOKEN_SECRET:-}
 
       OCR_SERVICE_URL: ${OCR_SERVICE_URL:-http://ocr:8001}

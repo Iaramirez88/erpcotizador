@@ -1,87 +1,10 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
-import {
-  InventoryMovementSourceType,
-  ModuleKey,
-  PosInvoiceStatus,
-  type Prisma,
-} from '@prisma/client'
-import { applyStockAdjustments, extractRestaurantStockAdjustmentsFromPayments } from '@/lib/pos-finalization'
+import { ModuleKey, PosInvoiceStatus } from '@prisma/client'
+import { reversePosInvoiceStock } from '@/lib/pos-finalization'
 
 export const runtime = 'nodejs'
-
-async function reverseInvoiceStock(tx: Prisma.TransactionClient, args: { empresaId: string; sedeId: string; userId: string; invoiceId: string }) {
-  const invoice = await tx.posInvoice.findUnique({
-    where: { id: args.invoiceId },
-    select: {
-      id: true,
-      numero: true,
-      status: true,
-      empresaId: true,
-      sedeId: true,
-      warehouseId: true,
-      payments: { where: { status: 'PAID' }, select: { metadata: true } },
-      items: { select: { materialId: true, quantity: true } },
-    },
-  })
-
-  if (!invoice || invoice.empresaId !== args.empresaId || invoice.sedeId !== args.sedeId) {
-    throw new Error('INVOICE_NOT_FOUND')
-  }
-
-  const hasReturns =
-    (await tx.posReturn.count({
-      where: { invoiceId: invoice.id, empresaId: args.empresaId, sedeId: args.sedeId },
-    })) > 0
-
-  if (hasReturns) {
-    throw new Error('INVOICE_HAS_RETURNS')
-  }
-
-  if (invoice.status === PosInvoiceStatus.VOID) {
-    return { id: invoice.id, numero: invoice.numero, status: invoice.status, reversed: false }
-  }
-
-  if (invoice.status === PosInvoiceStatus.DRAFT) {
-    await tx.posInvoice.update({ where: { id: invoice.id }, data: { status: PosInvoiceStatus.VOID }, select: { id: true } })
-    return { id: invoice.id, numero: invoice.numero, status: PosInvoiceStatus.VOID, reversed: false }
-  }
-
-  if (invoice.status !== PosInvoiceStatus.PAID) {
-    throw new Error('INVOICE_STATUS_NOT_ALLOWED')
-  }
-
-  await applyStockAdjustments(tx, {
-    empresaId: args.empresaId,
-    sedeId: args.sedeId,
-    userId: args.userId,
-    warehouseId: invoice.warehouseId,
-    sourceType: InventoryMovementSourceType.POS_INVOICE,
-    sourceId: invoice.id,
-    note: `Anulación POS factura ${invoice.numero}`,
-    direction: 'IN',
-    lines: invoice.items
-      .filter((item) => Boolean(item.materialId) && item.quantity > 0)
-      .map((item) => ({ materialId: item.materialId!, quantity: item.quantity })),
-  })
-
-  await applyStockAdjustments(tx, {
-    empresaId: args.empresaId,
-    sedeId: args.sedeId,
-    userId: args.userId,
-    warehouseId: invoice.warehouseId,
-    sourceType: InventoryMovementSourceType.POS_INVOICE,
-    sourceId: invoice.id,
-    note: `Reversa receta factura ${invoice.numero}`,
-    direction: 'IN',
-    lines: extractRestaurantStockAdjustmentsFromPayments(invoice.payments),
-  })
-
-  await tx.posInvoice.update({ where: { id: invoice.id }, data: { status: PosInvoiceStatus.VOID }, select: { id: true } })
-
-  return { id: invoice.id, numero: invoice.numero, status: PosInvoiceStatus.VOID, reversed: true }
-}
 
 type PostBody = {
   note?: string
@@ -98,9 +21,18 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     // Reservado para futura auditoría / nota de anulación
     void ((await request.json().catch(() => null)) as Partial<PostBody> | null)
 
-    const result = await prisma.$transaction((tx) =>
-      reverseInvoiceStock(tx, { empresaId, sedeId: access.sedeId, userId: access.userId, invoiceId: id })
-    )
+    const result = await prisma.$transaction(async (tx) => {
+      const reversed = await reversePosInvoiceStock(tx, {
+        empresaId,
+        sedeId: access.sedeId,
+        userId: access.userId,
+        invoiceId: id,
+      })
+      if (reversed.status !== PosInvoiceStatus.VOID) {
+        await tx.posInvoice.update({ where: { id }, data: { status: PosInvoiceStatus.VOID }, select: { id: true } })
+      }
+      return { ...reversed, status: PosInvoiceStatus.VOID }
+    })
 
     return NextResponse.json({ success: true, data: result })
   } catch (error) {
