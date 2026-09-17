@@ -165,9 +165,11 @@ type TaskItem = {
 
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
 type QuickTaskPanelMode = 'attachments' | 'custom-fields' | 'history' | 'note'
-type ExtraTaskColumn = 'attachments' | 'custom-fields' | 'history' | 'note'
+type ExtraTaskColumn = 'attachments' | 'custom-fields' | 'history' | 'note' | 'duration' | 'deadline' | 'delay-days'
 type TaskSortDirection = 'asc' | 'desc'
 type TaskViewMode = 'SPACE' | 'MINE' | 'ALL_SPACES'
+type TaskPeriodFilter = 'ALL' | 'WEEK' | 'MONTH' | 'QUARTER'
+type TaskLayoutMode = 'TABLE' | 'BOXES'
 type DragPayload = { type: 'project'; projectId: string } | { type: 'task'; taskId: string }
 type TaskWorkspaceSettings = { requireTaskCancellationReason: boolean }
 type TaskWorkspaceBootstrap = { workspaces: Workspace[]; settings: TaskWorkspaceSettings }
@@ -525,8 +527,69 @@ const TASK_EXTRA_COLUMNS_STORAGE_KEY = 'crm-task-workspaces:task-extra-columns'
 const TASK_PRIORITY_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-priority-column-visible'
 const TASK_CREATED_AT_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-created-at-column-visible'
 const TASK_PAGE_SIZE_STORAGE_KEY = 'crm-task-workspaces:task-page-size'
+const TASK_PERIOD_FILTER_STORAGE_KEY = 'crm-task-workspaces:task-period-filter'
+const TASK_LAYOUT_STORAGE_KEY = 'crm-task-workspaces:task-layout-mode'
 const LAST_WORKSPACE_STORAGE_KEY = 'crm-task-workspaces:last-workspace-id'
 const TASK_AUTO_REFRESH_MS = 15_000
+
+const DAY_IN_MS = 24 * 60 * 60 * 1000
+
+function getTaskReferenceDate(task: TaskItem) {
+  return task.dueAt || task.createdAt
+}
+
+function isTaskInCurrentPeriod(task: TaskItem, period: TaskPeriodFilter) {
+  if (period === 'ALL') return true
+  const reference = new Date(getTaskReferenceDate(task))
+  if (Number.isNaN(reference.getTime())) return false
+
+  const now = new Date()
+  if (period === 'WEEK') {
+    const mondayOffset = (now.getDay() + 6) % 7
+    const weekStart = new Date(now)
+    weekStart.setHours(0, 0, 0, 0)
+    weekStart.setDate(now.getDate() - mondayOffset)
+    const weekEnd = new Date(weekStart)
+    weekEnd.setDate(weekStart.getDate() + 7)
+    return reference >= weekStart && reference < weekEnd
+  }
+
+  if (period === 'MONTH') {
+    return reference.getFullYear() === now.getFullYear() && reference.getMonth() === now.getMonth()
+  }
+
+  const currentQuarter = Math.floor(now.getMonth() / 3)
+  const taskQuarter = Math.floor(reference.getMonth() / 3)
+  return reference.getFullYear() === now.getFullYear() && taskQuarter === currentQuarter
+}
+
+function getTaskDurationHours(task: TaskItem) {
+  const start = new Date(task.createdAt).getTime()
+  const end = new Date(task.completedAt || Date.now()).getTime()
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0
+  return Math.max(0, Math.round((end - start) / (60 * 60 * 1000)))
+}
+
+function getTaskDelayDays(task: TaskItem) {
+  if (!task.dueAt) return 0
+  const dueTime = new Date(task.dueAt).getTime()
+  if (!Number.isFinite(dueTime)) return 0
+  const effectiveEnd = new Date(task.completedAt || Date.now()).getTime()
+  const diff = effectiveEnd - dueTime
+  if (diff <= 0) return 0
+  return Math.ceil(diff / DAY_IN_MS)
+}
+
+function getTaskDeadlineMeta(task: TaskItem) {
+  if (!task.dueAt) {
+    return { label: 'Sin plazo', badgeClass: 'bg-slate-100 text-slate-700 border-slate-200' }
+  }
+  const delayDays = getTaskDelayDays(task)
+  if (delayDays > 0) {
+    return { label: 'Demorada', badgeClass: 'bg-rose-500 text-white border-rose-400' }
+  }
+  return { label: 'Vigente', badgeClass: 'bg-emerald-500 text-white border-emerald-400' }
+}
 
 function normalizePinnedTaskIds(value: unknown) {
   if (!Array.isArray(value)) return [] as string[]
@@ -608,6 +671,7 @@ export function CrmTaskWorkspacesClient() {
   const [assigneeSearch, setAssigneeSearch] = useState('')
   const [detailAssigneeSearch, setDetailAssigneeSearch] = useState('')
   const [noteDraft, setNoteDraft] = useState('')
+  const [detailHistoryVisibleCount, setDetailHistoryVisibleCount] = useState(5)
   const [quickTaskPanel, setQuickTaskPanel] = useState<{ taskId: string; mode: QuickTaskPanelMode } | null>(null)
   const [quickNoteDraft, setQuickNoteDraft] = useState('')
   const [savingQuickNote, setSavingQuickNote] = useState(false)
@@ -615,6 +679,8 @@ export function CrmTaskWorkspacesClient() {
   const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>('MINE')
   const [taskColumnWidth, setTaskColumnWidth] = useState(150)
   const [taskSortDirection, setTaskSortDirection] = useState<TaskSortDirection>('desc')
+  const [taskPeriodFilter, setTaskPeriodFilter] = useState<TaskPeriodFilter>('ALL')
+  const [taskLayoutMode, setTaskLayoutMode] = useState<TaskLayoutMode>('TABLE')
   const [taskPageSize, setTaskPageSize] = useState(10)
   const [taskPage, setTaskPage] = useState(1)
   const [showPriorityColumn, setShowPriorityColumn] = useState(true)
@@ -666,9 +732,13 @@ export function CrmTaskWorkspacesClient() {
   const totalTaskColumnCount = useMemo(() => 7 + visibleExtraTaskColumns.length + (showCrossWorkspaceColumn ? 1 : 0) + (showPriorityColumn ? 1 : 0) + (showCreatedAtColumn ? 1 : 0), [showCreatedAtColumn, showCrossWorkspaceColumn, showPriorityColumn, visibleExtraTaskColumns.length])
   const taskGridTemplate = useMemo(() => `repeat(${totalTaskColumnCount}, ${clampedTaskColumnWidth}px)`, [clampedTaskColumnWidth, totalTaskColumnCount])
   const taskTableMinWidth = useMemo(() => clampedTaskColumnWidth * totalTaskColumnCount + 32, [clampedTaskColumnWidth, totalTaskColumnCount])
+  const shouldShowWorkspacePanel = workspaces.length > 0 && !workspacePanelCollapsed
   const quickTask = useMemo(() => quickTaskPanel ? tasks.find((task) => task.id === quickTaskPanel.taskId) ?? null : null, [quickTaskPanel, tasks])
   const quickTaskLatestHistory = useMemo(() => getLatestTaskHistoryEntry(quickTask), [quickTask])
   const selectedTaskHistory = useMemo(() => getSortedTaskHistoryEntries(selectedTask?.history), [selectedTask])
+  const visibleTaskHistoryEntries = useMemo(() => selectedTaskHistory.slice(0, detailHistoryVisibleCount), [detailHistoryVisibleCount, selectedTaskHistory])
+  const canLoadMoreTaskHistory = detailHistoryVisibleCount < selectedTaskHistory.length
+  const canCollapseTaskHistory = selectedTaskHistory.length > 5 && !canLoadMoreTaskHistory
   const selectedTaskCanEdit = Boolean(selectedTask && currentUserId && (!selectedTask.workspace?.id || editableWorkspaceIds.has(selectedTask.workspace.id)))
   const quickTaskCanEdit = Boolean(quickTask && currentUserId && (!quickTask.workspace?.id || editableWorkspaceIds.has(quickTask.workspace.id)))
   const canEditTasks = Boolean(selectedWorkspace?.permissions?.canEditTasks || selectedTaskCanEdit || quickTaskCanEdit)
@@ -841,6 +911,11 @@ export function CrmTaskWorkspacesClient() {
   }, [customFieldDraft, detailDialogOpen, detailForm])
 
   useEffect(() => {
+    if (!detailDialogOpen) return
+    setDetailHistoryVisibleCount(5)
+  }, [detailDialogOpen, selectedTask?.id])
+
+  useEffect(() => {
     if (detailDialogOpen) return
     if (!selectedTask) return
     closeDetailDialog()
@@ -861,7 +936,7 @@ export function CrmTaskWorkspacesClient() {
       }
       const savedExtraColumns = JSON.parse(window.localStorage.getItem(TASK_EXTRA_COLUMNS_STORAGE_KEY) || '[]') as unknown
       if (Array.isArray(savedExtraColumns)) {
-        setVisibleExtraTaskColumns(savedExtraColumns.filter((item): item is ExtraTaskColumn => item === 'attachments' || item === 'custom-fields' || item === 'history' || item === 'note'))
+        setVisibleExtraTaskColumns(savedExtraColumns.filter((item): item is ExtraTaskColumn => item === 'attachments' || item === 'custom-fields' || item === 'history' || item === 'note' || item === 'duration' || item === 'deadline' || item === 'delay-days'))
       }
       const savedPriorityColumn = window.localStorage.getItem(TASK_PRIORITY_COLUMN_STORAGE_KEY)
       if (savedPriorityColumn === 'true' || savedPriorityColumn === 'false') {
@@ -874,6 +949,14 @@ export function CrmTaskWorkspacesClient() {
       const savedPageSize = Number(window.localStorage.getItem(TASK_PAGE_SIZE_STORAGE_KEY) || '')
       if ([10, 20, 30, 50].includes(savedPageSize)) {
         setTaskPageSize(savedPageSize)
+      }
+      const savedPeriodFilter = window.localStorage.getItem(TASK_PERIOD_FILTER_STORAGE_KEY)
+      if (savedPeriodFilter === 'ALL' || savedPeriodFilter === 'WEEK' || savedPeriodFilter === 'MONTH' || savedPeriodFilter === 'QUARTER') {
+        setTaskPeriodFilter(savedPeriodFilter)
+      }
+      const savedLayoutMode = window.localStorage.getItem(TASK_LAYOUT_STORAGE_KEY)
+      if (savedLayoutMode === 'TABLE' || savedLayoutMode === 'BOXES') {
+        setTaskLayoutMode(savedLayoutMode)
       }
     } catch {
       // ignore
@@ -889,14 +972,22 @@ export function CrmTaskWorkspacesClient() {
       window.localStorage.setItem(TASK_PRIORITY_COLUMN_STORAGE_KEY, String(showPriorityColumn))
       window.localStorage.setItem(TASK_CREATED_AT_COLUMN_STORAGE_KEY, String(showCreatedAtColumn))
       window.localStorage.setItem(TASK_PAGE_SIZE_STORAGE_KEY, String(taskPageSize))
+      window.localStorage.setItem(TASK_PERIOD_FILTER_STORAGE_KEY, taskPeriodFilter)
+      window.localStorage.setItem(TASK_LAYOUT_STORAGE_KEY, taskLayoutMode)
     } catch {
       // ignore
     }
-  }, [clampedTaskColumnWidth, showCreatedAtColumn, showPriorityColumn, taskPageSize, visibleExtraTaskColumns, workspacePanelCollapsed])
+  }, [clampedTaskColumnWidth, showCreatedAtColumn, showPriorityColumn, taskLayoutMode, taskPageSize, taskPeriodFilter, visibleExtraTaskColumns, workspacePanelCollapsed])
 
   useEffect(() => {
     setTaskPage(1)
-  }, [search, selectedProjectId, selectedWorkspaceId, showArchived, taskPageSize, taskSortDirection, taskViewMode])
+  }, [search, selectedProjectId, selectedWorkspaceId, showArchived, taskPageSize, taskPeriodFilter, taskSortDirection, taskViewMode])
+
+  useEffect(() => {
+    if (!loading && workspaces.length === 0) {
+      setWorkspacePanelCollapsed(true)
+    }
+  }, [loading, workspaces.length])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1020,13 +1111,14 @@ export function CrmTaskWorkspacesClient() {
       const haystack = [task.title, task.description, task.createdBy?.name, task.workspace?.name, task.lead?.nombre, task.opportunity?.title, task.cliente?.nombre, ...task.assignments.map((assignment) => assignment.user.name || assignment.user.email || ''), ...(task.customFieldsJson || []).map((field) => `${field.label} ${field.textValue || field.file?.name || ''}`)].filter(Boolean).join(' ').toLowerCase()
       return haystack.includes(term)
     })
+    const periodScopedTasks = matchingTasks.filter((task) => isTaskInCurrentPeriod(task, taskPeriodFilter))
 
-    const pinnedVisibleIds = pinnedTaskIds.filter((taskId) => matchingTasks.some((task) => task.id === taskId))
+    const pinnedVisibleIds = pinnedTaskIds.filter((taskId) => periodScopedTasks.some((task) => task.id === taskId))
     const pinnedIndex = new Map(pinnedVisibleIds.map((taskId, index) => [taskId, index]))
-    const orderedVisibleIds = orderedTaskIds.filter((taskId) => matchingTasks.some((task) => task.id === taskId) && !pinnedVisibleIds.includes(taskId))
+    const orderedVisibleIds = orderedTaskIds.filter((taskId) => periodScopedTasks.some((task) => task.id === taskId) && !pinnedVisibleIds.includes(taskId))
     const orderedIndex = new Map(orderedVisibleIds.map((taskId, index) => [taskId, index]))
 
-    return [...matchingTasks].sort((left, right) => {
+    return [...periodScopedTasks].sort((left, right) => {
       const leftPinnedIndex = pinnedIndex.get(left.id)
       const rightPinnedIndex = pinnedIndex.get(right.id)
       if (leftPinnedIndex !== undefined || rightPinnedIndex !== undefined) {
@@ -1045,7 +1137,14 @@ export function CrmTaskWorkspacesClient() {
       const rightTime = new Date(right.createdAt).getTime()
       return taskSortDirection === 'asc' ? leftTime - rightTime : rightTime - leftTime
     })
-  }, [orderedTaskIds, pinnedTaskIds, search, selectedProjectId, taskSortDirection, taskViewMode, tasks])
+  }, [orderedTaskIds, pinnedTaskIds, search, selectedProjectId, taskPeriodFilter, taskSortDirection, taskViewMode, tasks])
+
+  const tasksByStatus = useMemo(() => ({
+    OPEN: filteredTasks.filter((task) => task.status === 'OPEN'),
+    IN_PROGRESS: filteredTasks.filter((task) => task.status === 'IN_PROGRESS'),
+    DONE: filteredTasks.filter((task) => task.status === 'DONE'),
+    CANCELED: filteredTasks.filter((task) => task.status === 'CANCELED'),
+  }), [filteredTasks])
 
   const totalTaskPages = useMemo(() => Math.max(1, Math.ceil(filteredTasks.length / taskPageSize)), [filteredTasks.length, taskPageSize])
   const paginatedTasks = useMemo(() => {
@@ -1242,6 +1341,11 @@ export function CrmTaskWorkspacesClient() {
       members: workspace.members.map((member) => ({ userId: member.userId, role: member.role })),
     })
     setWorkspaceSettingsOpen(true)
+  }
+
+  function openWorkspaceCreationDialog() {
+    setWorkspaceForm({ name: '', description: '', scope: 'SEDE', visibility: 'PRIVATE', sedeId: '', sedeIds: [], ownerUserId: '', memberUserIds: [] })
+    setWorkspaceDialogOpen(true)
   }
 
   function openProjectDialog(workspaceId = selectedWorkspaceId, project?: WorkspaceProject | null) {
@@ -2030,6 +2134,31 @@ export function CrmTaskWorkspacesClient() {
     )
   }
 
+  function renderTaskDurationColumn(task: TaskItem) {
+    const hours = getTaskDurationHours(task)
+    return (
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium text-slate-700">{hours} h</p>
+        <p className="truncate text-xs text-slate-500">{task.completedAt ? 'Duración real' : 'Tiempo transcurrido'}</p>
+      </div>
+    )
+  }
+
+  function renderTaskDeadlineColumn(task: TaskItem) {
+    const deadline = getTaskDeadlineMeta(task)
+    return <span className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-semibold ${deadline.badgeClass}`}>{deadline.label}</span>
+  }
+
+  function renderTaskDelayDaysColumn(task: TaskItem) {
+    const delayDays = getTaskDelayDays(task)
+    return (
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium text-slate-700">{delayDays}</p>
+        <p className="truncate text-xs text-slate-500">día(s) de demora</p>
+      </div>
+    )
+  }
+
   function toggleExtraTaskColumn(column: ExtraTaskColumn, checked: boolean) {
     setVisibleExtraTaskColumns((current) => {
       if (checked) {
@@ -2045,7 +2174,28 @@ export function CrmTaskWorkspacesClient() {
         breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Proyectos' }]}
         title="Tareas y proyectos"
         description="Crea tareas de forma directa, relaciónalas opcionalmente con proyectos o listas existentes, y centraliza el seguimiento con responsables, evidencia y estados claros."
-        actions={<div className="flex flex-wrap items-center gap-2"><Button className="rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => openTaskCreationDialog('')}><Plus className="mr-2 h-4 w-4" />Crear tarea</Button></div>}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button className="rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => openTaskCreationDialog('')}>
+              <Plus className="mr-2 h-4 w-4" />Crear tarea
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="rounded-2xl">
+                  <Plus className="mr-2 h-4 w-4" />Más
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52 rounded-2xl p-1.5">
+                <DropdownMenuItem onSelect={() => openWorkspaceCreationDialog()}>
+                  Crear proyecto
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void openProjectDialog(selectedWorkspaceId)} disabled={!selectedWorkspaceId}>
+                  Crear lista
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        }
         stats={[
           { label: 'Proyectos', value: workspaces.length, hint: 'Contextos colaborativos visibles', tone: 'sky' },
           { label: 'No iniciadas', value: filteredTasks.filter((task) => task.status === 'OPEN' && !task.archivedAt).length, hint: 'Pendiente de arrancar', tone: 'amber' },
@@ -2056,10 +2206,10 @@ export function CrmTaskWorkspacesClient() {
 
       <div
         ref={workspaceGridRef}
-        className={`grid gap-4 xl:min-h-0 xl:overflow-hidden ${workspacePanelCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[320px_minmax(0,1fr)]'}`}
+        className={`grid gap-4 xl:min-h-0 xl:overflow-hidden ${shouldShowWorkspacePanel ? 'xl:grid-cols-[320px_minmax(0,1fr)]' : 'xl:grid-cols-[minmax(0,1fr)]'}`}
         style={workspaceViewportHeight ? { height: `${workspaceViewportHeight}px` } : undefined}
       >
-        {!workspacePanelCollapsed ? (
+        {shouldShowWorkspacePanel ? (
           <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)] xl:flex xl:h-full xl:min-h-0 xl:flex-col xl:overflow-hidden">
             <CardHeader className="border-b border-slate-100 pb-5">
               <CardTitle className="text-xl">Proyectos</CardTitle>
@@ -2244,7 +2394,7 @@ export function CrmTaskWorkspacesClient() {
                 </div>
                 <div className="flex flex-col gap-2 lg:items-end">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Tooltip>
+                    {workspaces.length > 0 ? <Tooltip>
                       <TooltipTrigger asChild>
                         <Button variant="outline" className="h-9 gap-2 rounded-xl px-3 sm:w-9 sm:px-0" onClick={() => setWorkspacePanelCollapsed((current) => !current)} aria-label={workspacePanelCollapsed ? 'Mostrar espacios' : 'Ocultar espacios'}>
                           <LayoutPanelLeft className="h-4 w-4" />
@@ -2252,7 +2402,7 @@ export function CrmTaskWorkspacesClient() {
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>{workspacePanelCollapsed ? 'Mostrar proyectos' : 'Ocultar proyectos'}</TooltipContent>
-                    </Tooltip>
+                    </Tooltip> : null}
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button variant={taskViewMode === 'MINE' ? 'default' : 'outline'} className="h-9 gap-2 rounded-xl px-3 sm:w-9 sm:px-0" onClick={handleShowMyTasks} aria-label="Ver mis tareas">
@@ -2307,6 +2457,16 @@ export function CrmTaskWorkspacesClient() {
                           Fecha de creación
                         </DropdownMenuCheckboxItem>
                         <DropdownMenuSeparator />
+                        <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('duration')} onCheckedChange={(checked) => toggleExtraTaskColumn('duration', Boolean(checked))}>
+                          Duración (horas)
+                        </DropdownMenuCheckboxItem>
+                        <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('deadline')} onCheckedChange={(checked) => toggleExtraTaskColumn('deadline', Boolean(checked))}>
+                          Cumplimiento plazo
+                        </DropdownMenuCheckboxItem>
+                        <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('delay-days')} onCheckedChange={(checked) => toggleExtraTaskColumn('delay-days', Boolean(checked))}>
+                          Días de demora
+                        </DropdownMenuCheckboxItem>
+                        <DropdownMenuSeparator />
                         <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('attachments')} onCheckedChange={(checked) => toggleExtraTaskColumn('attachments', Boolean(checked))}>
                           Adjuntos
                         </DropdownMenuCheckboxItem>
@@ -2321,6 +2481,26 @@ export function CrmTaskWorkspacesClient() {
                         </DropdownMenuCheckboxItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    <Select value={taskPeriodFilter} onValueChange={(value) => setTaskPeriodFilter(value as TaskPeriodFilter)}>
+                      <SelectTrigger className="h-9 w-[145px] rounded-xl bg-white text-xs">
+                        <SelectValue placeholder="Periodo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">Todo</SelectItem>
+                        <SelectItem value="WEEK">Esta semana</SelectItem>
+                        <SelectItem value="MONTH">Este mes</SelectItem>
+                        <SelectItem value="QUARTER">Este trimestre</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={taskLayoutMode} onValueChange={(value) => setTaskLayoutMode(value as TaskLayoutMode)}>
+                      <SelectTrigger className="h-9 w-[120px] rounded-xl bg-white text-xs">
+                        <SelectValue placeholder="Vista" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="TABLE">Tabla</SelectItem>
+                        <SelectItem value="BOXES">Cajas</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <div className="hidden items-center gap-2 rounded-xl border border-slate-200 px-2.5 py-2 lg:flex">
                       <span className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Ancho</span>
                       <input
@@ -2354,6 +2534,33 @@ export function CrmTaskWorkspacesClient() {
             </CardHeader>
             <CardContent className="min-w-0 p-0 xl:flex-1 xl:min-h-0 xl:overflow-hidden">
             <div className="flex h-full min-h-0 flex-col">
+              {taskLayoutMode === 'BOXES' ? (
+                <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-4 py-4">
+                  <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+                    {(['OPEN', 'IN_PROGRESS', 'DONE', 'CANCELED'] as TaskStatus[]).map((status) => (
+                      <Card key={status} className="rounded-2xl border-slate-200">
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-base">{STATUS_META[status].label}</CardTitle>
+                          <CardDescription>{tasksByStatus[status].length} tarea(s)</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                          {tasksByStatus[status].length ? tasksByStatus[status].slice(0, 12).map((task) => (
+                            <button key={task.id} type="button" onClick={() => void loadTaskDetail(task.id)} className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left hover:bg-slate-50">
+                              <p className="truncate text-sm font-semibold text-slate-900">{task.title}</p>
+                              <p className="mt-1 truncate text-xs text-slate-500">{task.workspace?.name || 'Sin proyecto'} · {task.project?.name || 'Sin lista'}</p>
+                              <div className="mt-2 flex items-center justify-between text-[11px] text-slate-600">
+                                <span>{formatDate(task.dueAt, 'Sin fecha')}</span>
+                                <span>{getTaskDelayDays(task)} día(s) demora</span>
+                              </div>
+                            </button>
+                          )) : <p className="text-xs text-slate-500">No hay tareas en este estado para el periodo seleccionado.</p>}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {taskLayoutMode === 'TABLE' ? (
               <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
                 <div className="w-max min-h-full" style={{ minWidth: `${taskTableMinWidth}px` }}>
                   <div className="grid gap-3 border-b border-slate-100 bg-white px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:sticky xl:top-0 xl:z-10" style={{ gridTemplateColumns: taskGridTemplate }}>
@@ -2366,6 +2573,9 @@ export function CrmTaskWorkspacesClient() {
                   <span>Estado</span>
                   <span>Entrega</span>
                   {showCreatedAtColumn ? <button type="button" className="inline-flex items-center gap-1 text-left hover:text-slate-900" onClick={() => setTaskSortDirection((current) => current === 'asc' ? 'desc' : 'asc')}><span>Creada</span><ArrowDownUp className="h-3.5 w-3.5" /></button> : null}
+                  {visibleExtraTaskColumns.includes('duration') ? <span>Duración (h)</span> : null}
+                  {visibleExtraTaskColumns.includes('deadline') ? <span>Cumplimiento plazo</span> : null}
+                  {visibleExtraTaskColumns.includes('delay-days') ? <span>Días demora</span> : null}
                   {visibleExtraTaskColumns.includes('attachments') ? <span>Adjuntos</span> : null}
                   {visibleExtraTaskColumns.includes('custom-fields') ? <span>Campos</span> : null}
                   {visibleExtraTaskColumns.includes('history') ? <span>Último cambio</span> : null}
@@ -2416,6 +2626,9 @@ export function CrmTaskWorkspacesClient() {
                       <div className="overflow-hidden">{renderTaskStatusControl(task)}</div>
                       <div className="truncate text-slate-600">{task.completedAt ? `Completada: ${formatDate(task.completedAt, 'Sin fecha')}` : formatDate(task.dueAt, 'Sin fecha')}</div>
                       {showCreatedAtColumn ? <div className="overflow-hidden">{renderTaskCreatedAtColumn(task)}</div> : null}
+                      {visibleExtraTaskColumns.includes('duration') ? <div className="overflow-hidden">{renderTaskDurationColumn(task)}</div> : null}
+                      {visibleExtraTaskColumns.includes('deadline') ? <div className="overflow-hidden">{renderTaskDeadlineColumn(task)}</div> : null}
+                      {visibleExtraTaskColumns.includes('delay-days') ? <div className="overflow-hidden">{renderTaskDelayDaysColumn(task)}</div> : null}
                       {visibleExtraTaskColumns.includes('attachments') ? <div className="overflow-hidden">{renderTaskAttachmentsColumn(task)}</div> : null}
                       {visibleExtraTaskColumns.includes('custom-fields') ? <div className="overflow-hidden">{renderTaskCustomFieldsColumn(task)}</div> : null}
                       {visibleExtraTaskColumns.includes('history') ? <div className="overflow-hidden">{renderTaskHistoryColumn(task)}</div> : null}
@@ -2450,6 +2663,8 @@ export function CrmTaskWorkspacesClient() {
                   {!filteredTasks.length ? <div className="px-6 py-8 text-sm text-slate-500">{taskViewMode === 'MINE' ? 'No tienes tareas asignadas para mostrar.' : taskViewMode === 'ALL_SPACES' ? 'No hay tareas para mostrar en tus proyectos asignados.' : selectedWorkspace ? (selectedProject ? 'No hay tareas para mostrar en esta lista.' : selectedWorkspace.projects.length ? 'No hay tareas para mostrar en este proyecto.' : 'Todavía no hay tareas en este proyecto. Puedes crear una tarea directa o agregar una lista.') : 'Selecciona un proyecto para ver tareas o usa Crear tarea para registrar una nueva.'}</div> : null}
                 </div>
               </div>
+              ) : null}
+              {taskLayoutMode === 'TABLE' ? (
               <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/90 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
                   <span>{filteredTasks.length ? `Mostrando ${visibleTaskRange.start}-${visibleTaskRange.end} de ${filteredTasks.length} tareas` : 'Sin tareas para paginar'}</span>
@@ -2482,6 +2697,12 @@ export function CrmTaskWorkspacesClient() {
                   </Button>
                 </div>
               </div>
+              ) : (
+                <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/90 px-4 py-3 text-xs text-slate-600">
+                  <span>{filteredTasks.length} tarea(s) en el periodo seleccionado</span>
+                  <span>Vista en cajas tipo Monday</span>
+                </div>
+              )}
             </div>
             </CardContent>
           </TooltipProvider>
@@ -2618,7 +2839,7 @@ export function CrmTaskWorkspacesClient() {
 
       <Dialog open={taskDialogOpen} onOpenChange={(open) => { setTaskDialogOpen(open); if (!open) setTaskRelationOptionsOpen(false) }}><DialogContent className="max-h-[90vh] max-w-[760px] overflow-y-auto"><DialogHeader><DialogTitle>Nueva tarea</DialogTitle><DialogDescription>Crea una tarea directa y relaciónala de forma opcional con un proyecto o una lista existente.</DialogDescription></DialogHeader><div className="grid gap-3 py-1.5"><div className="grid gap-1.5"><Label>Título</Label><Input value={taskForm.title} onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} /></div><div className="grid gap-1.5"><Label>Descripción</Label><Textarea value={taskForm.description} onChange={(event) => setTaskForm((current) => ({ ...current, description: event.target.value }))} rows={4} /></div><div className="grid gap-3 md:grid-cols-2"><div className="grid gap-1.5"><Label>Estado inicial</Label><Select value={taskForm.status} onValueChange={(value) => setTaskForm((current) => ({ ...current, status: value as TaskStatus }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="OPEN">No iniciado</SelectItem><SelectItem value="IN_PROGRESS">En curso</SelectItem><SelectItem value="DONE">Finalizada</SelectItem><SelectItem value="CANCELED">Cancelada</SelectItem></SelectContent></Select></div><div className="grid gap-1.5"><Label>Prioridad</Label><Select value={taskForm.priority} onValueChange={(value) => setTaskForm((current) => ({ ...current, priority: value as TaskPriority }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="LOW">Baja</SelectItem><SelectItem value="NORMAL">Normal</SelectItem><SelectItem value="HIGH">Alta</SelectItem></SelectContent></Select></div></div><div className="flex justify-end"><Button type="button" variant="outline" className="rounded-xl" onClick={() => setTaskRelationOptionsOpen((current) => !current)}>{taskRelationOptionsOpen ? 'Ocultar opcional' : 'Opcional'}</Button></div>{taskRelationOptionsOpen ? <div className="space-y-3"><div className="grid gap-3 md:grid-cols-2"><div className="grid gap-1.5"><Label>Relacionar con proyecto</Label><Select value={taskForm.workspaceId || '__none__'} onValueChange={(value) => setTaskForm((current) => ({ ...current, workspaceId: value === '__none__' ? '' : value, projectId: value === '__none__' ? '' : current.projectId }))}><SelectTrigger><SelectValue placeholder="Sin proyecto" /></SelectTrigger><SelectContent><SelectItem value="__none__">Sin proyecto</SelectItem>{editableWorkspaces.map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}</SelectContent></Select></div><div className="grid gap-1.5"><Label>Relacionar con lista</Label><Select value={taskForm.projectId || '__none__'} onValueChange={(value) => setTaskForm((current) => ({ ...current, projectId: value === '__none__' ? '' : value }))}><SelectTrigger><SelectValue placeholder="Sin lista" /></SelectTrigger><SelectContent><SelectItem value="__none__">Sin lista</SelectItem>{(taskFormWorkspace?.projects || []).map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent></Select></div></div><div className="flex justify-end"><Button type="button" variant="outline" className="rounded-xl" onClick={() => setWorkspaceDialogOpen(true)}>Crear proyecto</Button></div></div> : null}<div className="grid gap-1.5"><Label>Color de la tarea</Label><div className="flex flex-wrap items-center gap-2.5">{COLOR_PRESETS.map((color) => <button key={color} type="button" className={normalizeHex(taskForm.colorHex) === color ? 'h-9 w-9 rounded-full ring-4 ring-slate-300' : 'h-9 w-9 rounded-full ring-1 ring-slate-200'} style={{ backgroundColor: color }} onClick={() => setTaskForm((current) => ({ ...current, colorHex: color }))} />)}<Input type="color" value={normalizeHex(taskForm.colorHex)} onChange={(event) => setTaskForm((current) => ({ ...current, colorHex: event.target.value.toUpperCase() }))} className="h-9 w-12 rounded-lg p-1" /></div></div><div className="grid gap-3 md:grid-cols-2"><div className="grid gap-1.5"><Label>Fecha y hora de entrega</Label><Input type="datetime-local" value={taskForm.dueAt} onChange={(event) => setTaskForm((current) => ({ ...current, dueAt: event.target.value }))} /></div><div className="rounded-xl border border-slate-200 p-3" style={{ background: `linear-gradient(135deg, ${normalizeHex(taskForm.colorHex)} 0%, #ffffff 120%)` }}><p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/80">Vista rápida</p><p className="mt-1.5 font-semibold text-white">{taskForm.title || 'Nueva tarea'}</p><p className="mt-1 text-sm text-white/85">{formatStatus(taskForm.status)} · {PRIORITY_META[taskForm.priority].label}</p><p className="mt-2 text-xs text-white/80">Creado por: {users.find((user) => user.id === currentUserId)?.name || 'Usuario actual'}</p></div></div><div className="grid gap-1.5"><Label>Responsables</Label><Input value={assigneeSearch} onChange={(event) => setAssigneeSearch(event.target.value)} placeholder="Busca usuarios por nombre o correo..." /><div className="max-h-40 space-y-1.5 overflow-y-auto rounded-xl border border-slate-200 p-2.5">{taskAssigneeCandidates.map((user) => { const selected = taskForm.assignedToUserIds.includes(user.id); const isCurrentUser = user.id === currentUserId; return <button key={user.id} type="button" onClick={() => { if (isCurrentUser && selected) return; setTaskForm((current) => ({ ...current, assignedToUserIds: selected ? current.assignedToUserIds.filter((item) => item !== user.id) : [...current.assignedToUserIds, user.id] })) }} className={selected ? 'flex w-full items-center justify-between rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-left' : 'flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-left'}><span>{getUserLabel(user)}</span><span className="text-xs text-slate-500">{isCurrentUser ? 'Creador y responsable' : selected ? 'Asignado' : 'Asignar'}</span></button>})}</div></div></div><DialogFooter><Button variant="outline" onClick={() => { setTaskDialogOpen(false); setTaskRelationOptionsOpen(false) }}>Cancelar</Button><Button onClick={() => void handleCreateTask()} disabled={savingTask || !canCreateTask}>{savingTask ? 'Guardando...' : 'Crear tarea'}</Button></DialogFooter></DialogContent></Dialog>
 
-      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}><DialogContent className="max-w-5xl max-h-[94vh] overflow-y-auto"><DialogHeader><DialogTitle>{detailForm.title || 'Detalle de tarea'}</DialogTitle><DialogDescription>Edita todos los campos operativos, adjunta evidencia, agrega campos personalizados y controla el color visual de la tarea desde este modal.</DialogDescription></DialogHeader><input ref={attachmentInputRef} type="file" accept={attachmentAccept()} className="hidden" onChange={(event) => void handleAttachmentFile(event.target.files?.[0] || null)} /><input ref={customFieldFileInputRef} type="file" accept={attachmentAccept()} className="hidden" onChange={(event) => void handleCustomFieldFile(event.target.files?.[0] || null)} /><div className="grid gap-4 py-2"><Card className="overflow-hidden border-0 shadow-none"><CardContent className="rounded-[28px] border p-5" style={{ background: `radial-gradient(circle at top right, ${normalizeHex(detailForm.colorHex)}33, transparent 30%), linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)`, borderColor: `${normalizeHex(detailForm.colorHex)}55` }}><div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]"><div className="space-y-4"><div className="grid gap-2"><Label>Título</Label><Input value={detailForm.title} onChange={(event) => setDetailForm((current) => ({ ...current, title: event.target.value }))} disabled={!canEditTasks} /></div><div className="grid gap-2"><Label>Descripción</Label><Textarea value={detailForm.description} onChange={(event) => setDetailForm((current) => ({ ...current, description: event.target.value }))} rows={5} disabled={!canEditTasks} /></div></div><div className="space-y-4"><div className="grid gap-2"><Label>Estado</Label><Select value={detailForm.status} onValueChange={(value) => setDetailForm((current) => ({ ...current, status: value as TaskStatus }))} disabled={!canEditTasks}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="OPEN">No iniciado</SelectItem><SelectItem value="IN_PROGRESS">En curso</SelectItem><SelectItem value="DONE">Finalizada</SelectItem><SelectItem value="CANCELED">Cancelada</SelectItem></SelectContent></Select></div><div className="grid gap-2"><Label>Prioridad</Label><Select value={detailForm.priority} onValueChange={(value) => setDetailForm((current) => ({ ...current, priority: value as TaskPriority }))} disabled={!canEditTasks}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="LOW">Baja</SelectItem><SelectItem value="NORMAL">Normal</SelectItem><SelectItem value="HIGH">Alta</SelectItem></SelectContent></Select></div><div className="grid gap-2"><Label>Entrega</Label><Input type="datetime-local" value={detailForm.dueAt} onChange={(event) => setDetailForm((current) => ({ ...current, dueAt: event.target.value }))} disabled={!canEditTasks} /></div><div className="grid gap-2"><Label>Color de la tarea</Label><div className="flex flex-wrap items-center gap-2">{COLOR_PRESETS.map((color) => <button key={color} type="button" className={normalizeHex(detailForm.colorHex) === color ? 'h-9 w-9 rounded-full ring-4 ring-slate-300' : 'h-9 w-9 rounded-full ring-1 ring-slate-200'} style={{ backgroundColor: color }} onClick={() => setDetailForm((current) => ({ ...current, colorHex: color }))} disabled={!canEditTasks} />)}<Input type="color" value={normalizeHex(detailForm.colorHex)} onChange={(event) => setDetailForm((current) => ({ ...current, colorHex: event.target.value.toUpperCase() }))} className="h-10 w-14 rounded-xl p-1" disabled={!canEditTasks} /></div></div></div></div><div className="mt-4 flex flex-wrap gap-2"><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${STATUS_META[detailForm.status].badgeClass}`}>{STATUS_META[detailForm.status].label}</span><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${PRIORITY_META[detailForm.priority].badgeClass}`}>{PRIORITY_META[detailForm.priority].label}</span><span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">Creada: {formatDate(selectedTask?.createdAt, 'Sin fecha')}</span><span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">Actualizada: {formatDate(selectedTask?.updatedAt, 'Sin fecha')}</span></div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Responsables</CardTitle></CardHeader><CardContent className="grid gap-4 md:grid-cols-[220px_1fr]"><div className="grid gap-2"><Label>Asignar colaborador</Label><Input value={detailAssigneeSearch} onChange={(event) => setDetailAssigneeSearch(event.target.value)} placeholder="Correo o nombre" disabled={!canEditTasks} /></div><div className="grid gap-3"><div className="flex flex-wrap gap-2">{detailForm.assignedToUserIds.map((userId) => { const user = users.find((item) => item.id === userId); return <button key={userId} type="button" onClick={() => setDetailForm((current) => ({ ...current, assignedToUserIds: current.assignedToUserIds.filter((item) => item !== userId) }))} className="rounded-full bg-sky-100 px-3 py-1.5 text-sm text-sky-800" disabled={!canEditTasks}>{user?.name || user?.email || userId} ×</button> })}{!detailForm.assignedToUserIds.length ? <span className="text-sm text-slate-400">Sin colaboradores asignados</span> : null}</div><div className="max-h-36 space-y-2 overflow-y-auto rounded-2xl border border-slate-200 p-3">{detailAssigneeCandidates.map((user) => { const selected = detailForm.assignedToUserIds.includes(user.id); return <button key={user.id} type="button" onClick={() => setDetailForm((current) => ({ ...current, assignedToUserIds: selected ? current.assignedToUserIds.filter((item) => item !== user.id) : [...current.assignedToUserIds, user.id] }))} className={selected ? 'flex w-full items-center justify-between rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-left' : 'flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left'} disabled={!canEditTasks}><span>{getUserLabel(user)}</span><span className="text-xs text-slate-500">{selected ? 'Asignado' : 'Agregar'}</span></button> })}</div></div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Adjuntos de la tarea</CardTitle><CardDescription>Sube imágenes, audios, videos o documentos que sirvan como evidencia o referencia directa de la tarea.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap items-center gap-3"><Button variant="outline" onClick={() => attachmentInputRef.current?.click()} disabled={!canEditTasks || uploadingAttachment}>{uploadingAttachment ? 'Subiendo...' : 'Agregar adjunto'}</Button><Button variant="outline" onClick={() => setLibraryPickerOpen(true)} disabled={!canEditTasks}>Elegir desde biblioteca</Button><Button variant="outline" onClick={() => setExternalAttachmentDialogOpen(true)} disabled={!canEditTasks || uploadingAttachment}>Vincular Drive/OneDrive</Button><span className="text-sm text-slate-500">{detailForm.attachmentsJson.length} archivo(s) vinculados</span></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{detailForm.attachmentsJson.map((attachment) => <div key={attachment.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3"><div className="flex items-start justify-between gap-2"><div><p className="font-medium text-slate-950 line-clamp-1">{attachment.name}</p><p className="mt-1 text-xs text-slate-500">{attachment.type.toUpperCase()} · {formatAttachmentSize(attachment.sizeBytes)}</p></div>{canEditTasks ? <Button variant="outline" className="h-8 rounded-lg px-2" onClick={() => setDetailForm((current) => ({ ...current, attachmentsJson: current.attachmentsJson.filter((item) => item.id !== attachment.id) }))}>Quitar</Button> : null}</div><div className="mt-3 rounded-xl border border-slate-200 bg-white p-2">{attachment.type === 'image' ? <div className="relative h-40 w-full overflow-hidden rounded-lg"><Image src={attachment.url} alt={attachment.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, 33vw" unoptimized /></div> : null}{attachment.type === 'audio' ? <audio src={attachment.url} controls className="w-full" /> : null}{attachment.type === 'video' ? <video src={attachment.url} controls className="h-40 w-full rounded-lg bg-black object-cover" /> : null}{attachment.type === 'document' ? <div className="flex h-40 items-center justify-center rounded-lg bg-slate-100 text-sm text-slate-600">Documento disponible</div> : null}</div><a href={attachment.url} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm font-medium text-sky-700 hover:text-sky-900">Abrir archivo</a></div>)}{!detailForm.attachmentsJson.length ? <p className="text-sm text-slate-400">No hay adjuntos todavía.</p> : null}</div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Campos personalizados</CardTitle><CardDescription>Agrega campos de texto o de archivo y luego edítalos o elimínalos individualmente.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 md:grid-cols-[1fr_160px_1fr_140px] md:items-end"><div className="grid gap-2"><Label>Etiqueta</Label><Input value={customFieldDraft.label} onChange={(event) => setCustomFieldDraft((current) => ({ ...current, label: event.target.value }))} disabled={!canEditTasks} /></div><div className="grid gap-2"><Label>Tipo</Label><Select value={customFieldDraft.type} onValueChange={(value) => setCustomFieldDraft((current) => ({ ...current, type: value as TaskCustomFieldType, textValue: '', file: null }))} disabled={!canEditTasks}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TEXT">Texto</SelectItem><SelectItem value="FILE">Archivo</SelectItem></SelectContent></Select></div>{customFieldDraft.type === 'TEXT' ? <div className="grid gap-2"><Label>Valor</Label><Input value={customFieldDraft.textValue} onChange={(event) => setCustomFieldDraft((current) => ({ ...current, textValue: event.target.value }))} disabled={!canEditTasks} /></div> : <div className="grid gap-2"><Label>Archivo</Label><Button variant="outline" onClick={() => { setCustomFieldUploadTarget('new'); customFieldFileInputRef.current?.click() }} disabled={!canEditTasks || uploadingAttachment}>{customFieldDraft.file ? 'Reemplazar archivo' : uploadingAttachment ? 'Subiendo...' : 'Subir archivo'}</Button>{customFieldDraft.file ? <p className="text-xs text-slate-500">{customFieldDraft.file.name}</p> : null}</div>}<Button onClick={handleAddCustomField} disabled={!canEditTasks}>Agregar campo</Button></div><div className="space-y-3">{detailForm.customFieldsJson.map((field) => <div key={field.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="grid gap-3 lg:grid-cols-[1fr_160px_1fr_110px] lg:items-start"><div className="grid gap-2"><Label>Etiqueta</Label><Input value={field.label} onChange={(event) => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, label: event.target.value } : item) }))} disabled={!canEditTasks} /></div><div className="grid gap-2"><Label>Tipo</Label><Select value={field.type} onValueChange={(value) => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, type: value as TaskCustomFieldType, textValue: value === 'TEXT' ? item.textValue || '' : null, file: value === 'FILE' ? item.file || null : null } : item) }))} disabled={!canEditTasks}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TEXT">Texto</SelectItem><SelectItem value="FILE">Archivo</SelectItem></SelectContent></Select></div>{field.type === 'TEXT' ? <div className="grid gap-2"><Label>Contenido</Label><Input value={field.textValue || ''} onChange={(event) => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, textValue: event.target.value } : item) }))} disabled={!canEditTasks} /></div> : <div className="grid gap-2"><Label>Archivo</Label><div className="flex flex-wrap items-center gap-2"><Button variant="outline" onClick={() => { setCustomFieldUploadTarget(field.id); customFieldFileInputRef.current?.click() }} disabled={!canEditTasks || uploadingAttachment}>{field.file ? 'Reemplazar' : 'Subir'}</Button>{field.file ? <Button variant="outline" onClick={() => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, file: null } : item) }))} disabled={!canEditTasks}>Quitar archivo</Button> : null}</div>{field.file ? <a href={field.file.url} target="_blank" rel="noreferrer" className="text-sm font-medium text-sky-700">{field.file.name}</a> : <span className="text-sm text-slate-400">Sin archivo</span>}</div>}<div className="pt-6 lg:pt-7"><Button variant="outline" onClick={() => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.filter((item) => item.id !== field.id) }))} disabled={!canEditTasks}>Quitar</Button></div></div></div>)}{!detailForm.customFieldsJson.length ? <p className="text-sm text-slate-400">No hay campos personalizados todavía.</p> : null}</div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Historial de cambios</CardTitle></CardHeader><CardContent className="space-y-3">{selectedTask?.history.length ? selectedTask.history.map((entry) => <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600"><div className="flex items-center justify-between gap-3"><p className="font-medium text-slate-900">{entry.message}</p><span className="text-xs text-slate-500">{formatDate(entry.createdAt, 'Sin fecha')}</span></div><p className="mt-1 text-xs text-slate-500">{entry.actorUser?.name || entry.actorUser?.email || 'Sistema'} · {entry.type}</p></div>) : <p className="text-sm text-muted-foreground">Sin historial todavía.</p>}</CardContent></Card><Card><CardContent className="grid gap-4 p-4 md:grid-cols-[160px_1fr_140px] md:items-start"><Label className="pt-2">Crear nota</Label><Textarea value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} placeholder="Contenido de la nota" rows={3} disabled={!canEditTasks} /><Button onClick={() => void handleAddNote()} disabled={savingNote || !canEditTasks}>{savingNote ? 'Guardando...' : 'Crear nota'}</Button><div className="md:col-span-3 space-y-2">{noteEntries.length ? noteEntries.map((entry) => <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600"><p className="font-medium text-slate-900">{entry.message}</p><p className="mt-1 text-xs text-slate-500">{entry.actorUser?.name || entry.actorUser?.email || 'Sistema'} · {formatDate(entry.createdAt, 'Sin fecha')}</p></div>) : <p className="text-sm text-muted-foreground">No hay notas.</p>}</div></CardContent></Card><Card><CardContent className="flex items-center justify-between gap-3 p-4"><div><p className="font-medium text-slate-900">Archivo</p><p className="text-sm text-slate-500">Puedes archivar la tarea sin perder historial, adjuntos ni responsables.</p></div><Button variant="outline" onClick={() => setDetailForm((current) => ({ ...current, archived: !current.archived }))} disabled={!canEditTasks}>{detailForm.archived ? 'Quitar de archivo' : 'Archivar tarea'}</Button></CardContent></Card></div><DialogFooter><Button variant="outline" onClick={() => setDetailDialogOpen(false)}>Cerrar</Button><Button onClick={() => void handleSaveDetail()} disabled={savingDetail || !canEditTasks}>{savingDetail ? 'Guardando...' : 'Guardar cambios'}</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}><DialogContent className="max-w-5xl max-h-[94vh] overflow-hidden p-0"><DialogHeader className="sticky top-0 z-10 border-b bg-white px-6 py-4"><DialogTitle>{detailForm.title || 'Detalle de tarea'}</DialogTitle><p className="text-sm text-slate-500">Fecha máxima de entrega: {formatDate(detailForm.dueAt, 'Sin fecha')}</p></DialogHeader><input ref={attachmentInputRef} type="file" accept={attachmentAccept()} className="hidden" onChange={(event) => void handleAttachmentFile(event.target.files?.[0] || null)} /><input ref={customFieldFileInputRef} type="file" accept={attachmentAccept()} className="hidden" onChange={(event) => void handleCustomFieldFile(event.target.files?.[0] || null)} /><div className="grid max-h-[calc(94vh-170px)] gap-4 overflow-y-auto px-6 py-4"><Card className="overflow-hidden border-0 shadow-none"><CardContent className="rounded-[28px] border p-5" style={{ background: `radial-gradient(circle at top right, ${normalizeHex(detailForm.colorHex)}33, transparent 30%), linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)`, borderColor: `${normalizeHex(detailForm.colorHex)}55` }}><div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]"><div className="space-y-4"><div className="grid gap-2"><Label>Título</Label><Input value={detailForm.title} onChange={(event) => setDetailForm((current) => ({ ...current, title: event.target.value }))} disabled={!canEditTasks} /></div><div className="grid gap-2"><Label>Descripción</Label><Textarea value={detailForm.description} onChange={(event) => setDetailForm((current) => ({ ...current, description: event.target.value }))} rows={5} disabled={!canEditTasks} /></div></div><div className="space-y-4"><div className="grid gap-2"><Label>Estado</Label><Select value={detailForm.status} onValueChange={(value) => setDetailForm((current) => ({ ...current, status: value as TaskStatus }))} disabled={!canEditTasks}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="OPEN">No iniciado</SelectItem><SelectItem value="IN_PROGRESS">En curso</SelectItem><SelectItem value="DONE">Finalizada</SelectItem><SelectItem value="CANCELED">Cancelada</SelectItem></SelectContent></Select></div><div className="grid gap-2"><Label>Prioridad</Label><Select value={detailForm.priority} onValueChange={(value) => setDetailForm((current) => ({ ...current, priority: value as TaskPriority }))} disabled={!canEditTasks}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="LOW">Baja</SelectItem><SelectItem value="NORMAL">Normal</SelectItem><SelectItem value="HIGH">Alta</SelectItem></SelectContent></Select></div><div className="grid gap-2"><Label>Entrega</Label><Input type="datetime-local" value={detailForm.dueAt} onChange={(event) => setDetailForm((current) => ({ ...current, dueAt: event.target.value }))} disabled={!canEditTasks} /></div><div className="grid gap-2"><Label>Color de la tarea</Label><div className="flex flex-wrap items-center gap-2">{COLOR_PRESETS.map((color) => <button key={color} type="button" className={normalizeHex(detailForm.colorHex) === color ? 'h-9 w-9 rounded-full ring-4 ring-slate-300' : 'h-9 w-9 rounded-full ring-1 ring-slate-200'} style={{ backgroundColor: color }} onClick={() => setDetailForm((current) => ({ ...current, colorHex: color }))} disabled={!canEditTasks} />)}<Input type="color" value={normalizeHex(detailForm.colorHex)} onChange={(event) => setDetailForm((current) => ({ ...current, colorHex: event.target.value.toUpperCase() }))} className="h-10 w-14 rounded-xl p-1" disabled={!canEditTasks} /></div></div></div></div><div className="mt-4 flex flex-wrap gap-2"><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${STATUS_META[detailForm.status].badgeClass}`}>{STATUS_META[detailForm.status].label}</span><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${PRIORITY_META[detailForm.priority].badgeClass}`}>{PRIORITY_META[detailForm.priority].label}</span><span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">Creada: {formatDate(selectedTask?.createdAt, 'Sin fecha')}</span><span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">Actualizada: {formatDate(selectedTask?.updatedAt, 'Sin fecha')}</span></div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Responsables</CardTitle></CardHeader><CardContent className="grid gap-4 md:grid-cols-[220px_1fr]"><div className="grid gap-2"><Label>Asignar colaborador</Label><Input value={detailAssigneeSearch} onChange={(event) => setDetailAssigneeSearch(event.target.value)} placeholder="Correo o nombre" disabled={!canEditTasks} /></div><div className="grid gap-3"><div className="flex flex-wrap gap-2">{detailForm.assignedToUserIds.map((userId) => { const user = users.find((item) => item.id === userId); return <button key={userId} type="button" onClick={() => setDetailForm((current) => ({ ...current, assignedToUserIds: current.assignedToUserIds.filter((item) => item !== userId) }))} className="rounded-full bg-sky-100 px-3 py-1.5 text-sm text-sky-800" disabled={!canEditTasks}>{user?.name || user?.email || userId} ×</button> })}{!detailForm.assignedToUserIds.length ? <span className="text-sm text-slate-400">Sin colaboradores asignados</span> : null}</div><div className="max-h-36 space-y-2 overflow-y-auto rounded-2xl border border-slate-200 p-3">{detailAssigneeCandidates.map((user) => { const selected = detailForm.assignedToUserIds.includes(user.id); return <button key={user.id} type="button" onClick={() => setDetailForm((current) => ({ ...current, assignedToUserIds: selected ? current.assignedToUserIds.filter((item) => item !== user.id) : [...current.assignedToUserIds, user.id] }))} className={selected ? 'flex w-full items-center justify-between rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-left' : 'flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left'} disabled={!canEditTasks}><span>{getUserLabel(user)}</span><span className="text-xs text-slate-500">{selected ? 'Asignado' : 'Agregar'}</span></button> })}</div></div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Adjuntos de la tarea</CardTitle><CardDescription>Sube imágenes, audios, videos o documentos que sirvan como evidencia o referencia directa de la tarea.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap items-center gap-3"><Button variant="outline" onClick={() => attachmentInputRef.current?.click()} disabled={!canEditTasks || uploadingAttachment}>{uploadingAttachment ? 'Subiendo...' : 'Agregar adjunto'}</Button><Button variant="outline" onClick={() => setLibraryPickerOpen(true)} disabled={!canEditTasks}>Elegir desde biblioteca</Button><Button variant="outline" onClick={() => setExternalAttachmentDialogOpen(true)} disabled={!canEditTasks || uploadingAttachment}>Vincular Drive/OneDrive</Button><span className="text-sm text-slate-500">{detailForm.attachmentsJson.length} archivo(s) vinculados</span></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{detailForm.attachmentsJson.map((attachment) => <div key={attachment.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3"><div className="flex items-start justify-between gap-2"><div><p className="font-medium text-slate-950 line-clamp-1">{attachment.name}</p><p className="mt-1 text-xs text-slate-500">{attachment.type.toUpperCase()} · {formatAttachmentSize(attachment.sizeBytes)}</p></div>{canEditTasks ? <Button variant="outline" className="h-8 rounded-lg px-2" onClick={() => setDetailForm((current) => ({ ...current, attachmentsJson: current.attachmentsJson.filter((item) => item.id !== attachment.id) }))}>Quitar</Button> : null}</div><div className="mt-3 rounded-xl border border-slate-200 bg-white p-2">{attachment.type === 'image' ? <div className="relative h-40 w-full overflow-hidden rounded-lg"><Image src={attachment.url} alt={attachment.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, 33vw" unoptimized /></div> : null}{attachment.type === 'audio' ? <audio src={attachment.url} controls className="w-full" /> : null}{attachment.type === 'video' ? <video src={attachment.url} controls className="h-40 w-full rounded-lg bg-black object-cover" /> : null}{attachment.type === 'document' ? <div className="flex h-40 items-center justify-center rounded-lg bg-slate-100 text-sm text-slate-600">Documento disponible</div> : null}</div><a href={attachment.url} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm font-medium text-sky-700 hover:text-sky-900">Abrir archivo</a></div>)}{!detailForm.attachmentsJson.length ? <p className="text-sm text-slate-400">No hay adjuntos todavía.</p> : null}</div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Campos personalizados</CardTitle><CardDescription>Agrega campos de texto o de archivo y luego edítalos o elimínalos individualmente.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 md:grid-cols-[1fr_160px_1fr_140px] md:items-end"><div className="grid gap-2"><Label>Etiqueta</Label><Input value={customFieldDraft.label} onChange={(event) => setCustomFieldDraft((current) => ({ ...current, label: event.target.value }))} disabled={!canEditTasks} /></div><div className="grid gap-2"><Label>Tipo</Label><Select value={customFieldDraft.type} onValueChange={(value) => setCustomFieldDraft((current) => ({ ...current, type: value as TaskCustomFieldType, textValue: '', file: null }))} disabled={!canEditTasks}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TEXT">Texto</SelectItem><SelectItem value="FILE">Archivo</SelectItem></SelectContent></Select></div>{customFieldDraft.type === 'TEXT' ? <div className="grid gap-2"><Label>Valor</Label><Input value={customFieldDraft.textValue} onChange={(event) => setCustomFieldDraft((current) => ({ ...current, textValue: event.target.value }))} disabled={!canEditTasks} /></div> : <div className="grid gap-2"><Label>Archivo</Label><Button variant="outline" onClick={() => { setCustomFieldUploadTarget('new'); customFieldFileInputRef.current?.click() }} disabled={!canEditTasks || uploadingAttachment}>{customFieldDraft.file ? 'Reemplazar archivo' : uploadingAttachment ? 'Subiendo...' : 'Subir archivo'}</Button>{customFieldDraft.file ? <p className="text-xs text-slate-500">{customFieldDraft.file.name}</p> : null}</div>}<Button onClick={handleAddCustomField} disabled={!canEditTasks}>Agregar campo</Button></div><div className="space-y-3">{detailForm.customFieldsJson.map((field) => <div key={field.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="grid gap-3 lg:grid-cols-[1fr_160px_1fr_110px] lg:items-start"><div className="grid gap-2"><Label>Etiqueta</Label><Input value={field.label} onChange={(event) => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, label: event.target.value } : item) }))} disabled={!canEditTasks} /></div><div className="grid gap-2"><Label>Tipo</Label><Select value={field.type} onValueChange={(value) => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, type: value as TaskCustomFieldType, textValue: value === 'TEXT' ? item.textValue || '' : null, file: value === 'FILE' ? item.file || null : null } : item) }))} disabled={!canEditTasks}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TEXT">Texto</SelectItem><SelectItem value="FILE">Archivo</SelectItem></SelectContent></Select></div>{field.type === 'TEXT' ? <div className="grid gap-2"><Label>Contenido</Label><Input value={field.textValue || ''} onChange={(event) => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, textValue: event.target.value } : item) }))} disabled={!canEditTasks} /></div> : <div className="grid gap-2"><Label>Archivo</Label><div className="flex flex-wrap items-center gap-2"><Button variant="outline" onClick={() => { setCustomFieldUploadTarget(field.id); customFieldFileInputRef.current?.click() }} disabled={!canEditTasks || uploadingAttachment}>{field.file ? 'Reemplazar' : 'Subir'}</Button>{field.file ? <Button variant="outline" onClick={() => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, file: null } : item) }))} disabled={!canEditTasks}>Quitar archivo</Button> : null}</div>{field.file ? <a href={field.file.url} target="_blank" rel="noreferrer" className="text-sm font-medium text-sky-700">{field.file.name}</a> : <span className="text-sm text-slate-400">Sin archivo</span>}</div>}<div className="pt-6 lg:pt-7"><Button variant="outline" onClick={() => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.filter((item) => item.id !== field.id) }))} disabled={!canEditTasks}>Quitar</Button></div></div></div>)}{!detailForm.customFieldsJson.length ? <p className="text-sm text-slate-400">No hay campos personalizados todavía.</p> : null}</div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Historial de cambios</CardTitle></CardHeader><CardContent className="space-y-3">{visibleTaskHistoryEntries.length ? visibleTaskHistoryEntries.map((entry) => <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600"><div className="flex items-center justify-between gap-3"><p className="font-medium text-slate-900">{translateTaskHistoryMessage(entry.message, entry.type)}</p><span className="text-xs text-slate-500">{formatDate(entry.createdAt, 'Sin fecha')}</span></div><p className="mt-1 text-xs text-slate-500">{getUserLabel(entry.actorUser)} · {formatTaskHistoryType(entry.type)}</p></div>) : <p className="text-sm text-muted-foreground">Sin historial todavía.</p>}{selectedTaskHistory.length > 5 ? <div className="pt-1">{canLoadMoreTaskHistory ? <Button variant="outline" className="rounded-xl" onClick={() => setDetailHistoryVisibleCount((current) => Math.min(current + 5, selectedTaskHistory.length))}>Cargar más</Button> : canCollapseTaskHistory ? <Button variant="outline" className="rounded-xl" onClick={() => setDetailHistoryVisibleCount(5)}>Ocultar historial de cambios</Button> : null}</div> : null}</CardContent></Card><Card><CardContent className="grid gap-4 p-4 md:grid-cols-[160px_1fr_140px] md:items-start"><Label className="pt-2">Crear nota</Label><Textarea value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} placeholder="Contenido de la nota" rows={3} disabled={!canEditTasks} /><Button onClick={() => void handleAddNote()} disabled={savingNote || !canEditTasks}>{savingNote ? 'Guardando...' : 'Crear nota'}</Button><div className="md:col-span-3 space-y-2">{noteEntries.length ? noteEntries.map((entry) => <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600"><p className="font-medium text-slate-900">{entry.message}</p><p className="mt-1 text-xs text-slate-500">{entry.actorUser?.name || entry.actorUser?.email || 'Sistema'} · {formatDate(entry.createdAt, 'Sin fecha')}</p></div>) : <p className="text-sm text-muted-foreground">No hay notas.</p>}</div></CardContent></Card><Card><CardContent className="flex items-center justify-between gap-3 p-4"><div><p className="font-medium text-slate-900">Archivo</p><p className="text-sm text-slate-500">Puedes archivar la tarea sin perder historial, adjuntos ni responsables.</p></div><Button variant="outline" onClick={() => setDetailForm((current) => ({ ...current, archived: !current.archived }))} disabled={!canEditTasks}>{detailForm.archived ? 'Quitar de archivo' : 'Archivar tarea'}</Button></CardContent></Card></div><DialogFooter className="sticky bottom-0 z-10 border-t bg-white px-6 py-4"><Button variant="outline" onClick={() => closeDetailDialog()}>Cerrar</Button><Button onClick={() => void handleSaveDetail()} disabled={savingDetail || !canEditTasks}>{savingDetail ? 'Guardando...' : 'Guardar cambios'}</Button></DialogFooter></DialogContent></Dialog>
       <Dialog open={taskMoveDialogOpen} onOpenChange={setTaskMoveDialogOpen}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>Mover tarea</DialogTitle><DialogDescription>Relaciona la tarea con otro proyecto y, si hace falta, con una lista de destino.</DialogDescription></DialogHeader><div className="grid gap-3 py-2"><div className="grid gap-2"><Label>Proyecto de destino</Label><Select value={taskMoveForm.workspaceId || '__none__'} onValueChange={(value) => { const nextWorkspace = editableWorkspaces.find((workspace) => workspace.id === value) ?? null; setTaskMoveForm((current) => ({ ...current, workspaceId: value === '__none__' ? '' : value, projectId: nextWorkspace?.projects.some((project) => project.id === current.projectId) ? current.projectId : '' })) }}><SelectTrigger><SelectValue placeholder="Selecciona un proyecto" /></SelectTrigger><SelectContent>{editableWorkspaces.map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}</SelectContent></Select></div><div className="grid gap-2"><Label>Lista de destino</Label><Select value={taskMoveForm.projectId || '__none__'} onValueChange={(value) => setTaskMoveForm((current) => ({ ...current, projectId: value === '__none__' ? '' : value }))}><SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger><SelectContent><SelectItem value="__none__">Sin lista</SelectItem>{selectedMoveWorkspace?.projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent></Select></div></div><DialogFooter><Button variant="outline" onClick={() => setTaskMoveDialogOpen(false)}>Cancelar</Button><Button onClick={() => void handleMoveTask()} disabled={movingTask}>{movingTask ? 'Moviendo...' : 'Mover tarea'}</Button></DialogFooter></DialogContent></Dialog>
       <Dialog open={projectDialogOpen} onOpenChange={setProjectDialogOpen}><DialogContent className="max-w-[680px]"><DialogHeader><DialogTitle>{projectForm.projectId ? 'Editar lista' : 'Crear lista'}</DialogTitle><DialogDescription>Define el nombre, la descripción y, si hace falta, el proyecto de destino de la lista.</DialogDescription></DialogHeader><div className="grid gap-3 py-1.5"><div className="grid gap-1.5"><Label>Proyecto</Label><Select value={projectForm.workspaceId || '__none__'} onValueChange={(value) => setProjectForm((current) => ({ ...current, workspaceId: value === '__none__' ? '' : value }))}><SelectTrigger><SelectValue placeholder="Selecciona un proyecto" /></SelectTrigger><SelectContent>{manageableWorkspaces.map((workspace) => <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>)}</SelectContent></Select></div><div className="grid gap-1.5"><Label>Nombre de la lista</Label><Input value={projectForm.name} onChange={(event) => setProjectForm((current) => ({ ...current, name: event.target.value }))} placeholder="Pendientes comerciales" /></div><div className="grid gap-1.5"><Label>Descripción</Label><Textarea value={projectForm.description} onChange={(event) => setProjectForm((current) => ({ ...current, description: event.target.value }))} rows={4} placeholder="Objetivo, entregables o contexto operativo de la lista" /></div></div><DialogFooter><Button variant="outline" onClick={() => setProjectDialogOpen(false)}>Cancelar</Button><Button onClick={() => void handleSaveProject()} disabled={savingProject}>{savingProject ? 'Guardando...' : projectForm.projectId ? 'Guardar cambios' : 'Crear lista'}</Button></DialogFooter></DialogContent></Dialog>
       <CrmFileLibraryPicker open={libraryPickerOpen} onOpenChange={setLibraryPickerOpen} onPick={handleLibraryAttachment} title="Seleccionar archivo del repositorio CRM" allowFolders={false} />
