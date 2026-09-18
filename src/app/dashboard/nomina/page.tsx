@@ -188,7 +188,7 @@ export default function NominaDashboardPage() {
   return (
     <div className="space-y-6">
       <ErpPageHero
-        eyebrow={isEmployeeOnly ? 'Mi espacio laboral' : 'RRHH administrativo'}
+        eyebrow={isEmployeeOnly ? 'Mi espacio laboral' : undefined}
         title={<span data-tour="nomina-title">{isEmployeeOnly ? 'Mi nómina y bienestar' : 'Nómina y RRHH'}</span>}
         description={isEmployeeOnly
           ? 'Consulta tu información laboral, vacaciones, desprendibles, beneficios y solicitudes desde un resumen personal sin entrar al backoffice de RRHH.'
@@ -324,20 +324,20 @@ export default function NominaDashboardPage() {
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-5 grid gap-3">
             {adminCards.map((card) => {
               const Icon = card.icon
               return (
-                <Link key={card.title} href={card.href} className={`group rounded-[26px] border bg-gradient-to-br p-5 shadow-[0_16px_36px_-28px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 ${card.tone}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/90 text-slate-700 shadow-sm">
+                <Link key={card.title} href={card.href} className={`group flex w-full items-center gap-4 rounded-[22px] border bg-gradient-to-r p-4 shadow-[0_16px_36px_-28px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 ${card.tone}`}>
+                    <div className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/90 text-slate-700 shadow-sm">
                       <Icon className="h-5 w-5" />
                     </div>
-                    <ArrowRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-0.5" />
-                  </div>
-                  <div className="mt-5 text-lg font-semibold text-slate-950">{card.title}</div>
-                  <div className="mt-2 text-sm font-medium text-slate-700">{card.metric}</div>
-                  <div className="mt-1 text-sm text-slate-500">{card.hint}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-base font-semibold text-slate-950">{card.title}</div>
+                      <div className="mt-1 text-sm font-medium text-slate-700">{card.metric}</div>
+                      <div className="text-sm text-slate-500">{card.hint}</div>
+                    </div>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-0.5" />
                 </Link>
               )
             })}
@@ -351,14 +351,7 @@ export default function NominaDashboardPage() {
           </div>
 
           <div className="mt-4 rounded-[26px] border border-white/80 bg-white/92 p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-lg font-semibold text-slate-950">{portal?.employee?.fullName ?? 'Portal listo para autoservicio'}</div>
-                <div className="mt-1 text-sm text-slate-500">{portal?.employee?.role ?? 'Superficie separada para que cada colaborador vea solo su propia información y solicitudes.'}</div>
-              </div>
-              <BadgeCheck className="h-5 w-5 text-emerald-500" />
-            </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
                 <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Vacaciones</div>
                 <div className="mt-2 text-2xl font-semibold text-slate-950">{portal?.employee?.vacation.availableDays ?? 0}</div>

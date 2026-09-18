@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { Bell, BookOpen, Calculator, CalendarClock, CalendarDays, Contact, FileBarChart, Gift, HandHelping, LayoutGrid, Megaphone, Network, ShieldAlert, TrendingUp, UserPlus, UserRound, UserSearch } from 'lucide-react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { useDashboardAccess } from '@/components/dashboard/dashboard-access-context'
 import { nominaHref, normalizeNominaPathname } from '@/lib/nomina-routes'
@@ -11,6 +12,11 @@ type NominaNavItem = {
   label: string
   href: string
   shortLabel?: string
+  icon: React.ComponentType<{ className?: string }>
+}
+
+type NominaSubnavProps = {
+  orientation?: 'horizontal' | 'vertical'
 }
 
 function isItemActive(pathname: string, href: string) {
@@ -23,47 +29,47 @@ function isItemActive(pathname: string, href: string) {
   return normalizedPathname === href || normalizedPathname.startsWith(href + '/')
 }
 
-export function NominaSubnav() {
+export function NominaSubnav({ orientation = 'horizontal' }: NominaSubnavProps) {
   const pathname = usePathname() ?? ''
   const { language } = useI18n()
   const { canAccessPayrollAdmin, hasPayrollPortal } = useDashboardAccess()
 
   const adminItems: NominaNavItem[] = language === 'en'
     ? [
-        { label: 'Overview', href: nominaHref() },
-        { label: 'Employees', href: nominaHref('empleados') },
-        { label: 'Attendance', href: nominaHref('asistencia'), shortLabel: 'Attend.' },
-        { label: 'Benefits', href: nominaHref('beneficios') },
-        { label: 'Onboarding', href: nominaHref('onboarding') },
-        { label: 'Service', href: nominaHref('servicio-colaborador') },
-        { label: 'Ethics', href: nominaHref('canal-denuncias') },
-        { label: 'Recruiting', href: nominaHref('seleccion') },
-        { label: 'Surveys', href: nominaHref('encuestas') },
-        { label: 'Performance', href: nominaHref('desempeno') },
-        { label: 'Learning', href: nominaHref('capacitaciones') },
-        { label: 'People', href: nominaHref('gestion-personas') },
-        { label: 'Periods', href: nominaHref('periodos') },
-        { label: 'Changes', href: nominaHref('novedades') },
-        { label: 'Settlements', href: nominaHref('liquidaciones'), shortLabel: 'Settle' },
-        { label: 'Reports', href: nominaHref('reportes') },
+        { label: 'Overview', href: nominaHref(), icon: LayoutGrid },
+        { label: 'Employees', href: nominaHref('empleados'), icon: Contact },
+        { label: 'Attendance', href: nominaHref('asistencia'), shortLabel: 'Attend.', icon: CalendarClock },
+        { label: 'Benefits', href: nominaHref('beneficios'), icon: Gift },
+        { label: 'Onboarding', href: nominaHref('onboarding'), icon: UserPlus },
+        { label: 'Service', href: nominaHref('servicio-colaborador'), icon: HandHelping },
+        { label: 'Ethics', href: nominaHref('canal-denuncias'), icon: ShieldAlert },
+        { label: 'Recruiting', href: nominaHref('seleccion'), icon: UserSearch },
+        { label: 'Surveys', href: nominaHref('encuestas'), icon: Bell },
+        { label: 'Performance', href: nominaHref('desempeno'), icon: TrendingUp },
+        { label: 'Learning', href: nominaHref('capacitaciones'), icon: BookOpen },
+        { label: 'People', href: nominaHref('gestion-personas'), icon: Network },
+        { label: 'Periods', href: nominaHref('periodos'), icon: CalendarDays },
+        { label: 'Changes', href: nominaHref('novedades'), icon: Megaphone },
+        { label: 'Settlements', href: nominaHref('liquidaciones'), shortLabel: 'Settle', icon: Calculator },
+        { label: 'Reports', href: nominaHref('reportes'), icon: FileBarChart },
       ]
     : [
-        { label: 'Resumen', href: nominaHref() },
-        { label: 'Empleados', href: nominaHref('empleados') },
-        { label: 'Asistencia', href: nominaHref('asistencia') },
-        { label: 'Beneficios', href: nominaHref('beneficios') },
-        { label: 'Onboarding', href: nominaHref('onboarding') },
-        { label: 'Servicio', href: nominaHref('servicio-colaborador') },
-        { label: 'Denuncias', href: nominaHref('canal-denuncias') },
-        { label: 'Selección', href: nominaHref('seleccion') },
-        { label: 'Encuestas', href: nominaHref('encuestas') },
-        { label: 'Desempeño', href: nominaHref('desempeno') },
-        { label: 'Capacitaciones', href: nominaHref('capacitaciones') },
-        { label: 'Gestión de personas', href: nominaHref('gestion-personas'), shortLabel: 'Personas' },
-        { label: 'Períodos', href: nominaHref('periodos') },
-        { label: 'Novedades', href: nominaHref('novedades') },
-        { label: 'Liquidaciones', href: nominaHref('liquidaciones'), shortLabel: 'Liquidar' },
-        { label: 'Reportes', href: nominaHref('reportes') },
+        { label: 'Resumen', href: nominaHref(), icon: LayoutGrid },
+        { label: 'Empleados', href: nominaHref('empleados'), icon: Contact },
+        { label: 'Asistencia', href: nominaHref('asistencia'), icon: CalendarClock },
+        { label: 'Beneficios', href: nominaHref('beneficios'), icon: Gift },
+        { label: 'Onboarding', href: nominaHref('onboarding'), icon: UserPlus },
+        { label: 'Servicio', href: nominaHref('servicio-colaborador'), icon: HandHelping },
+        { label: 'Denuncias', href: nominaHref('canal-denuncias'), icon: ShieldAlert },
+        { label: 'Selección', href: nominaHref('seleccion'), icon: UserSearch },
+        { label: 'Encuestas', href: nominaHref('encuestas'), icon: Bell },
+        { label: 'Desempeño', href: nominaHref('desempeno'), icon: TrendingUp },
+        { label: 'Capacitaciones', href: nominaHref('capacitaciones'), icon: BookOpen },
+        { label: 'Gestión de personas', href: nominaHref('gestion-personas'), shortLabel: 'Personas', icon: Network },
+        { label: 'Períodos', href: nominaHref('periodos'), icon: CalendarDays },
+        { label: 'Novedades', href: nominaHref('novedades'), icon: Megaphone },
+        { label: 'Liquidaciones', href: nominaHref('liquidaciones'), shortLabel: 'Liquidar', icon: Calculator },
+        { label: 'Reportes', href: nominaHref('reportes'), icon: FileBarChart },
       ]
 
   const portalItem: NominaNavItem | null = hasPayrollPortal
@@ -71,6 +77,7 @@ export function NominaSubnav() {
         label: language === 'en' ? 'My portal' : 'Mi portal',
         href: nominaHref('portal-empleado'),
         shortLabel: 'Portal',
+        icon: UserRound,
       }
     : null
 
@@ -80,8 +87,41 @@ export function NominaSubnav() {
       ? [portalItem]
       : []
 
+  if (orientation === 'vertical') {
+    return (
+      <aside className="hidden xl:block xl:w-[280px] xl:shrink-0">
+        <div className="sticky top-24 rounded-[24px] border border-slate-200 bg-[linear-gradient(160deg,#f7fbff_0%,#ffffff_45%,#f6fffb_100%)] p-3 shadow-[0_24px_50px_-36px_rgba(15,23,42,0.35)]">
+          <nav className="space-y-0.5" aria-label={language === 'en' ? 'Payroll sections' : 'Secciones de nómina'}>
+            {nominaNavItems.map((item) => {
+              const active = isItemActive(pathname, item.href)
+              const Icon = item.icon
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    'group flex h-9 items-center gap-2.5 rounded-xl border px-2.5 text-sm font-medium transition-all',
+                    active
+                      ? 'border-sky-200 bg-sky-50 text-slate-900 shadow-[0_12px_26px_-24px_rgba(2,132,199,0.7)]'
+                      : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white hover:text-slate-900',
+                  )}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  <span className={cn('inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border', active ? 'border-sky-200 bg-white text-sky-700' : 'border-slate-200 bg-white text-slate-500 group-hover:text-slate-700')}>
+                    <Icon className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="truncate">{item.label}</span>
+                </Link>
+              )
+            })}
+          </nav>
+        </div>
+      </aside>
+    )
+  }
+
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto xl:hidden">
       <div className="inline-flex min-w-full gap-2 rounded-[24px] border border-slate-200 bg-slate-50/90 p-1.5">
         {nominaNavItems.map((item) => {
           const active = isItemActive(pathname, item.href)
