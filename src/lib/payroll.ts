@@ -34,6 +34,7 @@ export type PayrollEmployeeRow = {
   sedeId: string
   costCenterId?: string | null
   fullName: string
+  avatarUrl?: string | null
   firstName: string
   middleName?: string | null
   lastName: string

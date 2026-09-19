@@ -2,10 +2,9 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { ImageIcon, Star, Users } from 'lucide-react'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
-import { NominaSurfaceCallout } from '@/components/dashboard/nomina-surface-callout'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,7 +14,6 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import type { PayrollEmployeeRow } from '@/lib/payroll'
 import type { PayrollBenefitOfferingRow, PayrollBenefitRequestRow } from '@/lib/payroll-operations'
 import { Switch } from '@/components/ui/switch'
@@ -59,6 +57,54 @@ function formatDate(value: string | null, locale: string) {
   }
 }
 
+function CatalogImage({ src, alt }: { src: string | null; alt: string }) {
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => setFailed(false), [src])
+
+  return (
+    <div className="flex aspect-[16/7] w-full items-center justify-center overflow-hidden bg-slate-100 text-slate-400">
+      {src && !failed ? <img src={src} alt={alt} className="h-full w-full object-cover" onError={() => setFailed(true)} /> : <ImageIcon className="h-9 w-9" aria-hidden="true" />}
+    </div>
+  )
+}
+
+function BenefitRequestsTable({ rows, language, locale, onEdit, onDelete }: { rows: PayrollBenefitRequestRow[]; language: string; locale: string; onEdit: (item: PayrollBenefitRequestRow) => void; onDelete: (id: string) => void }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <table className="w-full min-w-[980px] border-collapse text-left text-sm">
+        <thead className="bg-slate-50 text-xs font-medium text-slate-500">
+          <tr>
+            <th className="px-3 py-2.5">{language === 'en' ? 'Employee' : 'Colaborador'}</th>
+            <th className="px-3 py-2.5">{language === 'en' ? 'Request' : 'Solicitud'}</th>
+            <th className="px-3 py-2.5">{language === 'en' ? 'Plan / vendor' : 'Plan / aliado'}</th>
+            <th className="px-3 py-2.5 text-right">{language === 'en' ? 'Points' : 'Puntos'}</th>
+            <th className="px-3 py-2.5 text-right">{language === 'en' ? 'Amount' : 'Valor'}</th>
+            <th className="px-3 py-2.5">{language === 'en' ? 'Requested' : 'Solicitada'}</th>
+            <th className="px-3 py-2.5">{language === 'en' ? 'Status' : 'Estado'}</th>
+            <th className="px-3 py-2.5 text-right">{language === 'en' ? 'Actions' : 'Acciones'}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 bg-white">
+          {rows.map((item) => (
+            <tr key={item.id} className="hover:bg-slate-50/70">
+              <td className="whitespace-nowrap px-3 py-2.5 font-medium text-slate-950">{item.employeeName}</td>
+              <td className="max-w-[240px] px-3 py-2.5"><div className="truncate text-slate-800">{item.title}</div><div className="truncate text-xs text-slate-500" title={item.description}>{item.type} · {item.description}</div></td>
+              <td className="px-3 py-2.5"><div className="text-slate-700">{item.planName ?? '—'}</div><div className="text-xs text-slate-500">{item.vendorName ?? '—'}</div></td>
+              <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{item.pointsCost}</td>
+              <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-slate-700">{item.amount != null ? formatCurrency(item.amount) : '—'}</td>
+              <td className="whitespace-nowrap px-3 py-2.5 text-slate-700"><div>{formatDate(item.requestedAt, locale)}</div>{item.approvedAt ? <div className="text-xs text-slate-500">{language === 'en' ? 'Approved' : 'Aprobada'}: {formatDate(item.approvedAt, locale)}</div> : null}</td>
+              <td className="px-3 py-2.5"><span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase text-slate-700">{item.status}</span></td>
+              <td className="px-3 py-2.5"><div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => onEdit(item)}>{language === 'en' ? 'Edit' : 'Editar'}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => onDelete(item.id)}>{language === 'en' ? 'Delete' : 'Eliminar'}</Button></div></td>
+            </tr>
+          ))}
+          {!rows.length ? <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500">{language === 'en' ? 'No requests yet.' : 'No hay solicitudes todavía.'}</td></tr> : null}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export default function NominaBeneficiosPage() {
   const [rows, setRows] = useState<PayrollBenefitRequestRow[]>([])
   const [offerings, setOfferings] = useState<PayrollBenefitOfferingRow[]>([])
@@ -71,9 +117,9 @@ export default function NominaBeneficiosPage() {
   const [offeringForm, setOfferingForm] = useState(EMPTY_OFFERING_FORM)
   const [saving, setSaving] = useState(false)
   const [savingOffering, setSavingOffering] = useState(false)
+  const [offeringImageFile, setOfferingImageFile] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [offeringError, setOfferingError] = useState<string | null>(null)
-  const { mode, setMode } = useDataViewMode('nomina.beneficios', 'grid')
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
 
@@ -130,12 +176,14 @@ export default function NominaBeneficiosPage() {
     setEditingOfferingId(null)
     setOfferingError(null)
     setOfferingForm(EMPTY_OFFERING_FORM)
+    setOfferingImageFile(null)
     setOfferingDialogOpen(true)
   }
 
   function openEditOffering(item: PayrollBenefitOfferingRow) {
     setEditingOfferingId(item.id)
     setOfferingError(null)
+    setOfferingImageFile(null)
     setOfferingForm({
       title: item.title,
       kind: item.kind,
@@ -214,11 +262,24 @@ export default function NominaBeneficiosPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null
+    const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; createdId?: string } | null
     if (!res.ok || !json?.ok) {
       setOfferingError(json?.error ?? (language === 'en' ? 'Unable to save offer' : 'No fue posible guardar la oferta'))
       setSavingOffering(false)
       return
+    }
+    const offeringId = editingOfferingId ?? json.createdId
+    if (offeringImageFile && offeringId) {
+      const imageForm = new FormData()
+      imageForm.set('file', offeringImageFile)
+      const uploadRes = await fetch(`/api/nomina/beneficios/ofertas/${offeringId}/imagen`, { method: 'POST', body: imageForm })
+      const uploadJson = (await uploadRes.json().catch(() => null)) as { ok?: boolean; error?: string } | null
+      if (!uploadRes.ok || !uploadJson?.ok) {
+        setOfferingError(uploadJson?.error ?? (language === 'en' ? 'The offer was saved, but its image could not be uploaded.' : 'La oferta se guardó, pero no fue posible subir la imagen.'))
+        setSavingOffering(false)
+        await load()
+        return
+      }
     }
     setOfferingDialogOpen(false)
     setEditingOfferingId(null)
@@ -259,8 +320,6 @@ export default function NominaBeneficiosPage() {
 
   const payrollAdvances = rows.filter((item) => item.type === 'ADELANTO')
   const otherBenefits = rows.filter((item) => item.type !== 'ADELANTO')
-  const activePlans = offerings.filter((item) => item.kind === 'PLAN')
-  const activePacks = offerings.filter((item) => item.kind === 'PACK')
 
   return (
     <div className="space-y-4">
@@ -287,19 +346,7 @@ export default function NominaBeneficiosPage() {
 
       <NominaSubnav />
 
-      <NominaSurfaceCallout
-        adminTitle={language === 'en' ? 'This backoffice defines catalog offers and approvals.' : 'Este backoffice define catálogo y aprobaciones.'}
-        adminDescription={language === 'en' ? 'RRHH controls which benefit plans, advances and discounts become available or delivered.' : 'RRHH controla qué planes, adelantos y descuentos quedan disponibles o entregados.'}
-        employeeTitle={language === 'en' ? 'The collaborator only sees visible benefits and personal requests.' : 'El colaborador solo ve beneficios visibles y sus solicitudes personales.'}
-        employeeDescription={language === 'en' ? 'Portal visibility, status and delivery here determine what appears in self-service.' : 'La visibilidad, el estado y la entrega aquí determinan lo que aparece en autoservicio.'}
-        primaryHref={nominaHref('portal-empleado')}
-        primaryLabel={language === 'en' ? 'Open collaborator portal' : 'Abrir portal del colaborador'}
-        secondaryHref={nominaHref('servicio-colaborador')}
-        secondaryLabel={language === 'en' ? 'Open service cases' : 'Abrir casos de servicio'}
-      />
-
       <div className="flex justify-end gap-2">
-        <DataViewToggle mode={mode} onChange={setMode} />
         <Button variant="outline" className="rounded-xl" onClick={openCreateOffering}>{copy.offeringActions.create}</Button>
         <Button className="rounded-xl" onClick={openCreate}>{copy.actions.create}</Button>
       </div>
@@ -316,31 +363,8 @@ export default function NominaBeneficiosPage() {
               <CardTitle>{language === 'en' ? 'Points, plans and discount packs' : 'Puntos, planes y packs de descuentos'}</CardTitle>
               <CardDescription>{language === 'en' ? 'Operational request list with plan, vendor and delivery state.' : 'Bandeja operativa de solicitudes con plan, aliado y estado de entrega.'}</CardDescription>
             </CardHeader>
-            <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
-              {otherBenefits.map((item) => (
-                <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-slate-950">{item.title}</div>
-                      <div className="text-sm text-slate-500">{item.employeeName}</div>
-                    </div>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{item.status}</span>
-                  </div>
-                  <p className="mt-3 text-sm text-slate-600">{item.description}</p>
-                  <div className="mt-3 space-y-1 text-sm text-slate-600">
-                    <div>{language === 'en' ? 'Type' : 'Tipo'}: {item.type}</div>
-                    <div>{language === 'en' ? 'Plan' : 'Plan'}: {item.planName ?? '—'}</div>
-                    <div>{language === 'en' ? 'Vendor' : 'Aliado'}: {item.vendorName ?? '—'}</div>
-                    <div>{language === 'en' ? 'Points' : 'Puntos'}: {item.pointsCost}</div>
-                    <div>{language === 'en' ? 'Amount' : 'Valor'}: {item.amount != null ? formatCurrency(item.amount) : '—'}</div>
-                    <div>{language === 'en' ? 'Requested' : 'Solicitada'}: {formatDate(item.requestedAt, locale)}</div>
-                  </div>
-                  <div className="mt-3 flex justify-end gap-2">
-                    <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
-                    <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
-                  </div>
-                </div>
-              ))}
+            <CardContent>
+              <BenefitRequestsTable rows={otherBenefits} language={language} locale={locale} onEdit={openEdit} onDelete={(id) => void handleDelete(id)} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -350,28 +374,8 @@ export default function NominaBeneficiosPage() {
               <CardTitle>{language === 'en' ? 'Payroll advances' : 'Adelantos de nómina'}</CardTitle>
               <CardDescription>{language === 'en' ? 'Requests that anticipate already-worked salary and need approval.' : 'Solicitudes que anticipan salario ya trabajado y requieren aprobación.'}</CardDescription>
             </CardHeader>
-            <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-              {payrollAdvances.map((item) => (
-                <div key={item.id} className="rounded-[22px] border border-sky-200 bg-sky-50/60 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-slate-950">{item.employeeName}</div>
-                      <div className="text-sm text-slate-500">{item.title}</div>
-                    </div>
-                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-800">{item.status}</span>
-                  </div>
-                  <div className="mt-3 space-y-1 text-sm text-slate-600">
-                    <div>{language === 'en' ? 'Plan' : 'Plan'}: {item.planName ?? '—'}</div>
-                    <div>{language === 'en' ? 'Amount' : 'Valor'}: {item.amount != null ? formatCurrency(item.amount) : '—'}</div>
-                    <div>{language === 'en' ? 'Requested' : 'Solicitada'}: {formatDate(item.requestedAt, locale)}</div>
-                    <div>{language === 'en' ? 'Approved' : 'Aprobada'}: {formatDate(item.approvedAt, locale)}</div>
-                  </div>
-                  <div className="mt-3 flex justify-end gap-2">
-                    <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
-                    <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
-                  </div>
-                </div>
-              ))}
+            <CardContent>
+              <BenefitRequestsTable rows={payrollAdvances} language={language} locale={locale} onEdit={openEdit} onDelete={(id) => void handleDelete(id)} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -381,65 +385,47 @@ export default function NominaBeneficiosPage() {
               <CardTitle>{language === 'en' ? 'Benefit plans and discount packs' : 'Planes de beneficios y packs de descuentos'}</CardTitle>
               <CardDescription>{language === 'en' ? 'Real catalog available for future requests, with pricing, spotlight and vendor traceability.' : 'Catálogo real disponible para futuras solicitudes, con pricing, destaque y trazabilidad del aliado.'}</CardDescription>
             </CardHeader>
-            <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
+            <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {offerings.map((item) => (
-                <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-                  <div className="flex items-start justify-between gap-3">
+                <article key={item.id} className="flex overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-sm">
+                  <div className="flex w-full flex-col">
+                    <CatalogImage src={item.imageUrl} alt={item.title} />
+                    <div className="flex flex-1 flex-col p-4">
+                    <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="font-semibold text-slate-950">{item.title}</div>
                       <div className="text-sm text-slate-500">{item.vendorName ?? '—'}</div>
                     </div>
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{item.status}</span>
                   </div>
-                  <p className="mt-3 text-sm text-slate-600">{item.description}</p>
-                  <div className="mt-3 space-y-1 text-sm text-slate-600">
-                    <div>{language === 'en' ? 'Kind' : 'Tipo'}: {item.kind}</div>
-                    <div>{language === 'en' ? 'Category' : 'Categoría'}: {item.category}</div>
-                    <div>{language === 'en' ? 'Pricing' : 'Pricing'}: {item.pricingModel}</div>
-                    <div>{language === 'en' ? 'Points' : 'Puntos'}: {item.pointsCost}</div>
-                    <div>{language === 'en' ? 'Employer cost' : 'Costo empresa'}: {item.employerCost != null ? formatCurrency(item.employerCost) : '—'}</div>
-                    <div>{language === 'en' ? 'Employee copay' : 'Copago colaborador'}: {item.employeeCopay != null ? formatCurrency(item.employeeCopay) : '—'}</div>
-                    <div>{language === 'en' ? 'Discount rate' : 'Descuento'}: {item.discountRate != null ? `${item.discountRate}%` : '—'}</div>
-                    <div>{language === 'en' ? 'Spotlight' : 'Destacado'}: {item.spotlight ? (language === 'en' ? 'Yes' : 'Sí') : 'No'}</div>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-0.5" aria-label={`${item.rating} ${language === 'en' ? 'stars' : 'estrellas'}`}>
+                          {[1, 2, 3, 4, 5].map((star) => <Star key={star} className={star <= item.rating ? 'h-4 w-4 fill-amber-400 text-amber-400' : 'h-4 w-4 text-slate-300'} />)}
+                        </div>
+                        {item.rating === 5 && item.usageCount > 0 ? <span className="text-[10px] font-semibold uppercase text-amber-700">{language === 'en' ? 'Most used' : 'Más usado'}</span> : null}
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-slate-500"><Users className="h-3.5 w-3.5" />{item.usageCount} {language === 'en' ? 'users' : 'colaboradores'}</div>
+                    </div>
+                    <p className="mt-3 line-clamp-2 text-sm text-slate-600">{item.description}</p>
+                    <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-600">
+                      <div>{language === 'en' ? 'Category' : 'Categoría'}: <span className="font-medium text-slate-800">{item.category}</span></div>
+                      <div>{language === 'en' ? 'Pricing' : 'Precio'}: <span className="font-medium text-slate-800">{item.pricingModel}</span></div>
+                      <div>{language === 'en' ? 'Points' : 'Puntos'}: <span className="font-medium text-slate-800">{item.pointsCost}</span></div>
+                      <div>{language === 'en' ? 'Copay' : 'Copago'}: <span className="font-medium text-slate-800">{item.employeeCopay != null ? formatCurrency(item.employeeCopay) : '—'}</span></div>
+                      <div>{language === 'en' ? 'Employer' : 'Empresa'}: <span className="font-medium text-slate-800">{item.employerCost != null ? formatCurrency(item.employerCost) : '—'}</span></div>
+                      <div>{language === 'en' ? 'Discount' : 'Descuento'}: <span className="font-medium text-slate-800">{item.discountRate != null ? `${item.discountRate}%` : '—'}</span></div>
                   </div>
-                  <div className="mt-3 flex justify-end gap-2">
-                    <Button variant="outline" className="rounded-xl" onClick={() => openEditOffering(item)}>{copy.offeringActions.edit}</Button>
-                    <Button variant="outline" className="rounded-xl" onClick={() => void handleDeleteOffering(item.id)}>{copy.offeringActions.remove}</Button>
+                    <div className="mt-auto flex justify-end gap-2 pt-4">
+                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => openEditOffering(item)}>{copy.offeringActions.edit}</Button>
+                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => void handleDeleteOffering(item.id)}>{copy.offeringActions.remove}</Button>
+                    </div>
+                    </div>
                   </div>
-                </div>
+                </article>
               ))}
             </CardContent>
           </Card>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card className="rounded-[26px] border-slate-200">
-              <CardHeader>
-                <CardTitle>{language === 'en' ? 'Active plans' : 'Planes activos'}</CardTitle>
-                <CardDescription>{language === 'en' ? 'Benefits with recurring or structured coverage.' : 'Beneficios con cobertura recurrente o estructurada.'}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {activePlans.map((item) => (
-                  <div key={item.id} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
-                    <div className="font-medium text-slate-950">{item.title}</div>
-                    <div>{item.description}</div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-            <Card className="rounded-[26px] border-slate-200">
-              <CardHeader>
-                <CardTitle>{language === 'en' ? 'Active packs' : 'Packs activos'}</CardTitle>
-                <CardDescription>{language === 'en' ? 'Discount bundles and partner-backed offers.' : 'Combos de descuentos y ofertas respaldadas por aliados.'}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {activePacks.map((item) => (
-                  <div key={item.id} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
-                    <div className="font-medium text-slate-950">{item.title}</div>
-                    <div>{item.description}</div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
         </TabsContent>
       </Tabs>
 
@@ -470,12 +456,18 @@ export default function NominaBeneficiosPage() {
       </Dialog>
 
       <Dialog open={offeringDialogOpen} onOpenChange={setOfferingDialogOpen}>
-        <DialogContent className="max-w-2xl rounded-[28px]">
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto rounded-[28px]">
           <DialogHeader>
             <DialogTitle>{copy.offeringDialog.title}</DialogTitle>
             <DialogDescription>{copy.offeringDialog.description}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-2 md:col-span-2">
+              <Label>{language === 'en' ? 'Catalog image' : 'Imagen del catálogo'}</Label>
+              {editingOfferingId ? <CatalogImage src={offerings.find((item) => item.id === editingOfferingId)?.imageUrl ?? null} alt={offeringForm.title || 'Oferta'} /> : null}
+              <Input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setOfferingImageFile(event.target.files?.[0] ?? null)} />
+              <p className="text-xs text-slate-500">{language === 'en' ? 'JPG, PNG or WebP. Maximum 2 MB.' : 'JPG, PNG o WebP. Máximo 2 MB.'}</p>
+            </div>
             <div className="grid gap-2 md:col-span-2"><Label>{language === 'en' ? 'Title' : 'Título'}</Label><Input value={offeringForm.title} onChange={(event) => setOfferingForm((current) => ({ ...current, title: event.target.value }))} /></div>
             <div className="grid gap-2"><Label>{language === 'en' ? 'Kind' : 'Tipo'}</Label><Select value={offeringForm.kind} onValueChange={(value) => setOfferingForm((current) => ({ ...current, kind: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PLAN">{language === 'en' ? 'Plan' : 'Plan'}</SelectItem><SelectItem value="PACK">{language === 'en' ? 'Pack' : 'Pack'}</SelectItem></SelectContent></Select></div>
             <div className="grid gap-2"><Label>{language === 'en' ? 'Category' : 'Categoría'}</Label><Select value={offeringForm.category} onValueChange={(value) => setOfferingForm((current) => ({ ...current, category: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="SALUD">{language === 'en' ? 'Health' : 'Salud'}</SelectItem><SelectItem value="DESCUENTOS">{language === 'en' ? 'Discounts' : 'Descuentos'}</SelectItem><SelectItem value="FINANCIERO">{language === 'en' ? 'Financial' : 'Financiero'}</SelectItem><SelectItem value="BIENESTAR">{language === 'en' ? 'Wellbeing' : 'Bienestar'}</SelectItem></SelectContent></Select></div>

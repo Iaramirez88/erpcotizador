@@ -3,8 +3,8 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,7 +13,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollTrainingAssignmentRow } from '@/lib/payroll'
 
@@ -41,13 +40,6 @@ function formatDate(value: string | null, locale: string) {
   }
 }
 
-function statusClass(status: string) {
-  if (status === 'COMPLETADA') return 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800'
-  if (status === 'EN_CURSO') return 'rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-800'
-  if (status === 'PLANIFICADA') return 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800'
-  return 'rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700'
-}
-
 export default function NominaCapacitacionesPage() {
   const [rows, setRows] = useState<PayrollTrainingAssignmentRow[]>([])
   const [employees, setEmployees] = useState<PayrollEmployeeRow[]>([])
@@ -56,7 +48,6 @@ export default function NominaCapacitacionesPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { mode, setMode } = useDataViewMode('nomina.capacitaciones', 'grid')
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
 
@@ -193,8 +184,7 @@ export default function NominaCapacitacionesPage() {
 
       <NominaSubnav />
 
-      <div className="flex justify-end gap-2">
-        <DataViewToggle mode={mode} onChange={setMode} />
+      <div className="flex justify-end">
         <Button className="rounded-xl" onClick={openCreate}>{copy.create}</Button>
       </div>
 
@@ -203,39 +193,21 @@ export default function NominaCapacitacionesPage() {
           <CardTitle>{language === 'en' ? 'Training assignments' : 'Asignaciones de formación'}</CardTitle>
           <CardDescription>{language === 'en' ? 'Administrative training tray to assign, complete and certify learning plans before they appear in the collaborator journey.' : 'Bandeja administrativa para asignar, cerrar y certificar planes de formación antes de reflejarlos en la ruta del colaborador.'}</CardDescription>
         </CardHeader>
-        <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
-          {rows.map((item) => (
-            <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-slate-950">{item.title}</div>
-                  <div className="text-sm text-slate-500">{item.category}</div>
-                </div>
-                <span className={statusClass(item.status)}>{item.status}</span>
-              </div>
-              <div className="mt-3 space-y-1 text-sm text-slate-600">
-                <div>{language === 'en' ? 'Employee' : 'Empleado'}: {item.employeeName ?? '—'}</div>
-                <div>{language === 'en' ? 'Modality' : 'Modalidad'}: {item.modality}</div>
-                <div>{language === 'en' ? 'Provider' : 'Proveedor'}: {item.provider ?? '—'}</div>
-                <div>{language === 'en' ? 'Hours' : 'Horas'}: {item.durationHours}</div>
-                <div>{language === 'en' ? 'Due date' : 'Vence'}: {formatDate(item.dueDate ?? null, locale)}</div>
-                <div>{language === 'en' ? 'Completed' : 'Completada'}: {formatDate(item.completedAt ?? null, locale)}</div>
-                <div>{language === 'en' ? 'Score' : 'Score'}: {item.score ?? '—'}</div>
-                <div>{language === 'en' ? 'Owner' : 'Responsable'}: {item.ownerName ?? '—'}</div>
-              </div>
-              {item.summary ? <p className="mt-3 text-sm text-slate-600">{item.summary}</p> : null}
-              {item.certificateUrl ? <div className="mt-3 text-xs text-slate-500">{item.certificateUrl}</div> : null}
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{language === 'en' ? 'Edit' : 'Editar'}</Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{language === 'en' ? 'Delete' : 'Eliminar'}</Button>
-              </div>
-            </div>
-          ))}
+        <CardContent>
+          <NominaCompactTable rows={rows} minWidth="1050px" emptyMessage={language === 'en' ? 'No training assignments yet.' : 'No hay capacitaciones todavía.'} columns={[
+            { key: 'training', label: language === 'en' ? 'Training / employee' : 'Capacitación / colaborador', className: 'max-w-[280px]', render: (item) => <><div className="truncate font-medium text-slate-950">{item.title}</div><div className="truncate text-xs text-slate-700">{item.employeeName ?? '—'}</div><div className="truncate text-xs text-slate-400" title={item.summary ?? ''}>{item.summary ?? item.category}</div></> },
+            { key: 'delivery', label: language === 'en' ? 'Category / modality' : 'Categoría / modalidad', render: (item) => <><div>{item.category}</div><div className="text-xs text-slate-500">{item.modality}</div></> },
+            { key: 'provider', label: language === 'en' ? 'Provider / owner' : 'Proveedor / responsable', className: 'max-w-[190px]', render: (item) => <><div className="truncate">{item.provider ?? '—'}</div><div className="truncate text-xs text-slate-500">{item.ownerName ?? '—'}</div></> },
+            { key: 'duration', label: language === 'en' ? 'Hours / score' : 'Horas / score', className: 'tabular-nums', render: (item) => <><div>{item.durationHours} h</div><div className="text-xs text-slate-500">Score: {item.score ?? '—'}</div></> },
+            { key: 'dates', label: language === 'en' ? 'Due / completed' : 'Vence / completada', className: 'whitespace-nowrap', render: (item) => <><div>{formatDate(item.dueDate ?? null, locale)}</div><div className="text-xs text-slate-500">{formatDate(item.completedAt ?? null, locale)}</div></> },
+            { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
+            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{language === 'en' ? 'Edit' : 'Editar'}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{language === 'en' ? 'Delete' : 'Eliminar'}</Button></div> },
+          ]} />
         </CardContent>
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl rounded-[28px]">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto rounded-[28px]">
           <DialogHeader>
             <DialogTitle>{language === 'en' ? 'Training assignment' : 'Asignación de capacitación'}</DialogTitle>
             <DialogDescription>{language === 'en' ? 'Capture the employee, provider, modality and completion details.' : 'Captura el empleado, proveedor, modalidad y datos de cierre.'}</DialogDescription>

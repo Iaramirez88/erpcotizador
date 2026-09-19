@@ -3,8 +3,8 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,7 +14,6 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollWhistleblowerCaseRow } from '@/lib/payroll'
 
@@ -50,13 +49,6 @@ function formatDate(value: string | null, locale: string) {
   }
 }
 
-function statusClass(status: string) {
-  if (status === 'RESUELTA') return 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800'
-  if (status === 'INVESTIGACION') return 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800'
-  if (status === 'EN_COMITE') return 'rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-800'
-  return 'rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-800'
-}
-
 export default function NominaCanalDenunciasPage() {
   const [rows, setRows] = useState<PayrollWhistleblowerCaseRow[]>([])
   const [employees, setEmployees] = useState<PayrollEmployeeRow[]>([])
@@ -65,7 +57,6 @@ export default function NominaCanalDenunciasPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { mode, setMode } = useDataViewMode('nomina.canal-denuncias', 'grid')
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
 
@@ -208,8 +199,7 @@ export default function NominaCanalDenunciasPage() {
 
       <NominaSubnav />
 
-      <div className="flex justify-end gap-2">
-        <DataViewToggle mode={mode} onChange={setMode} />
+      <div className="flex justify-end">
         <Button className="rounded-xl" onClick={openCreate}>{copy.actions.create}</Button>
       </div>
 
@@ -218,33 +208,16 @@ export default function NominaCanalDenunciasPage() {
           <CardTitle>{language === 'en' ? 'Active confidential cases' : 'Casos confidenciales activos'}</CardTitle>
           <CardDescription>{language === 'en' ? 'Reports under intake, investigation or committee review.' : 'Reportes en recepción, investigación o revisión por comité.'}</CardDescription>
         </CardHeader>
-        <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
-          {activeCases.map((item) => (
-            <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-slate-950">{item.title}</div>
-                  <div className="text-sm text-slate-500">{item.anonymousReport ? (language === 'en' ? 'Anonymous report' : 'Reporte anónimo') : item.employeeName ?? item.reporterName ?? '—'}</div>
-                </div>
-                <span className={statusClass(item.status)}>{item.status}</span>
-              </div>
-              <div className="mt-3 space-y-1 text-sm text-slate-600">
-                <div>{language === 'en' ? 'Category' : 'Categoría'}: {item.category}</div>
-                <div>{language === 'en' ? 'Severity' : 'Severidad'}: {item.severity}</div>
-                <div>{language === 'en' ? 'Confidentiality' : 'Confidencialidad'}: {item.confidentialityLevel}</div>
-                <div>{language === 'en' ? 'Channel' : 'Canal'}: {item.reportedChannel}</div>
-                <div>{language === 'en' ? 'Assigned to' : 'Asignado a'}: {item.assignedToName ?? '—'}</div>
-                <div>{language === 'en' ? 'Area involved' : 'Área involucrada'}: {item.accusedArea ?? '—'}</div>
-                <div>{language === 'en' ? 'Occurred' : 'Ocurrió'}: {formatDate(item.occurredAt ?? null, locale)}</div>
-              </div>
-              <p className="mt-3 text-sm text-slate-600">{item.summary}</p>
-              {item.evidenceSummary ? <div className="mt-3 text-sm text-slate-500">{item.evidenceSummary}</div> : null}
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
-              </div>
-            </div>
-          ))}
+        <CardContent>
+          <NominaCompactTable rows={activeCases} minWidth="1120px" emptyMessage={language === 'en' ? 'No active confidential cases.' : 'No hay casos confidenciales activos.'} columns={[
+            { key: 'case', label: language === 'en' ? 'Reporter / case' : 'Reportante / caso', className: 'max-w-[280px]', render: (item) => <><div className="truncate font-medium text-slate-950">{item.anonymousReport ? (language === 'en' ? 'Anonymous report' : 'Reporte anónimo') : item.employeeName ?? item.reporterName ?? '—'}</div><div className="truncate text-xs text-slate-700">{item.title}</div><div className="truncate text-xs text-slate-400" title={item.summary}>{item.summary}</div></> },
+            { key: 'classification', label: language === 'en' ? 'Category / severity' : 'Categoría / severidad', render: (item) => <><div className="text-slate-700">{item.category}</div><div className="text-xs font-medium text-rose-700">{item.severity} · {item.confidentialityLevel}</div></> },
+            { key: 'channel', label: language === 'en' ? 'Channel / area' : 'Canal / área', render: (item) => <><div className="text-slate-700">{item.reportedChannel}</div><div className="text-xs text-slate-500">{item.accusedArea ?? '—'}</div></> },
+            { key: 'owner', label: language === 'en' ? 'Owner' : 'Responsable', className: 'max-w-[180px]', render: (item) => <div className="truncate text-slate-700">{item.assignedToName ?? '—'}</div> },
+            { key: 'date', label: language === 'en' ? 'Occurred' : 'Ocurrió', className: 'whitespace-nowrap text-slate-700', render: (item) => formatDate(item.occurredAt ?? null, locale) },
+            { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
+            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div> },
+          ]} />
         </CardContent>
       </Card>
 
@@ -253,33 +226,21 @@ export default function NominaCanalDenunciasPage() {
           <CardTitle>{language === 'en' ? 'Resolved investigations' : 'Investigaciones resueltas'}</CardTitle>
           <CardDescription>{language === 'en' ? 'Closed reports with final action and evidence trail.' : 'Reportes cerrados con acción final y trazabilidad de soporte.'}</CardDescription>
         </CardHeader>
-        <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-          {resolvedCases.map((item) => (
-            <div key={item.id} className="rounded-[22px] border border-emerald-200 bg-emerald-50/60 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-slate-950">{item.title}</div>
-                  <div className="text-sm text-slate-500">{item.anonymousReport ? (language === 'en' ? 'Anonymous report' : 'Reporte anónimo') : item.employeeName ?? item.reporterName ?? '—'}</div>
-                </div>
-                <span className={statusClass(item.status)}>{item.status}</span>
-              </div>
-              <div className="mt-3 space-y-1 text-sm text-slate-600">
-                <div>{language === 'en' ? 'Resolved by' : 'Resuelto por'}: {item.resolvedByName ?? '—'}</div>
-                <div>{language === 'en' ? 'Resolved' : 'Resuelto'}: {formatDate(item.resolvedAt ?? null, locale)}</div>
-                <div>{language === 'en' ? 'Follow-up' : 'Seguimiento'}: {item.followUpRequired ? (language === 'en' ? 'Required' : 'Requerido') : (language === 'en' ? 'Closed' : 'Cerrado')}</div>
-              </div>
-              {item.resolution ? <p className="mt-3 text-sm text-slate-600">{item.resolution}</p> : null}
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
-              </div>
-            </div>
-          ))}
+        <CardContent>
+          <NominaCompactTable rows={resolvedCases} minWidth="1000px" emptyMessage={language === 'en' ? 'No resolved investigations.' : 'No hay investigaciones resueltas.'} columns={[
+            { key: 'case', label: language === 'en' ? 'Reporter / case' : 'Reportante / caso', className: 'max-w-[300px]', render: (item) => <><div className="truncate font-medium text-slate-950">{item.anonymousReport ? (language === 'en' ? 'Anonymous report' : 'Reporte anónimo') : item.employeeName ?? item.reporterName ?? '—'}</div><div className="truncate text-xs text-slate-700">{item.title}</div><div className="truncate text-xs text-slate-400">{item.resolution ?? '—'}</div></> },
+            { key: 'category', label: language === 'en' ? 'Category' : 'Categoría', render: (item) => <><div>{item.category}</div><div className="text-xs text-slate-500">{item.severity}</div></> },
+            { key: 'owner', label: language === 'en' ? 'Resolved by' : 'Resuelto por', render: (item) => item.resolvedByName ?? '—' },
+            { key: 'date', label: language === 'en' ? 'Resolved' : 'Resuelto', className: 'whitespace-nowrap', render: (item) => formatDate(item.resolvedAt ?? null, locale) },
+            { key: 'followup', label: language === 'en' ? 'Follow-up' : 'Seguimiento', render: (item) => item.followUpRequired ? (language === 'en' ? 'Required' : 'Requerido') : (language === 'en' ? 'Closed' : 'Cerrado') },
+            { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
+            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div> },
+          ]} />
         </CardContent>
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl rounded-[28px]">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto rounded-[28px]">
           <DialogHeader>
             <DialogTitle>{copy.dialog.title}</DialogTitle>
             <DialogDescription>{copy.dialog.description}</DialogDescription>

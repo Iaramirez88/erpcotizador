@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
@@ -13,7 +12,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollOnboardingJourneyRow, PayrollPeriodRow } from '@/lib/payroll'
 import type { PayrollPeopleOverview } from '@/lib/payroll-people'
@@ -65,10 +63,11 @@ function checklistToText(value: PayrollOnboardingJourneyRow['checklist']) {
 }
 
 function statusClass(status: string) {
-  if (status === 'COMPLETADO') return 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800'
-  if (status === 'BLOQUEADO') return 'rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-800'
-  if (status === 'EN_CURSO') return 'rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-800'
-  return 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800'
+  const base = 'inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase shadow-sm'
+  if (status === 'COMPLETADO' || status === 'COMPLETADA') return `${base} border-emerald-400 bg-emerald-500 text-white`
+  if (status === 'BLOQUEADO' || status === 'BLOQUEADA') return `${base} border-rose-400 bg-rose-500 text-white`
+  if (status === 'EN_CURSO') return `${base} border-amber-300 bg-amber-400 text-slate-950`
+  return `${base} border-slate-800 bg-slate-900 text-white`
 }
 
 export default function NominaOnboardingPage() {
@@ -81,7 +80,6 @@ export default function NominaOnboardingPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { mode, setMode } = useDataViewMode('nomina.onboarding', 'grid')
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
 
@@ -238,8 +236,7 @@ export default function NominaOnboardingPage() {
 
       <NominaSubnav />
 
-      <div className="flex justify-end gap-2">
-        <DataViewToggle mode={mode} onChange={setMode} />
+      <div className="flex justify-end">
         <Button className="rounded-xl" onClick={openCreate}>{copy.actions.create}</Button>
       </div>
 
@@ -248,51 +245,65 @@ export default function NominaOnboardingPage() {
           <CardTitle>{language === 'en' ? 'Operational journey tray' : 'Bandeja operativa de journeys'}</CardTitle>
           <CardDescription>{language === 'en' ? 'Each record tracks phase, responsible owner, dates and checklist handoff with workflows and payroll records.' : 'Cada registro controla fase, responsable, fechas y checklist conectado con workflows y registros de nómina.'}</CardDescription>
         </CardHeader>
-        <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
-          {rows.map((item) => (
-            <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-slate-950">{item.title}</div>
-                  <div className="text-sm text-slate-500">{item.employeeName}</div>
-                </div>
-                <span className={statusClass(item.status)}>{item.status}</span>
-              </div>
-              <div className="mt-3 space-y-1 text-sm text-slate-600">
-                <div>{language === 'en' ? 'Phase' : 'Fase'}: {item.phase}</div>
-                <div>{language === 'en' ? 'Role' : 'Rol'}: {item.employeeRole ?? '—'}</div>
-                <div>{language === 'en' ? 'Location' : 'Ubicación'}: {item.locationLabel ?? '—'}</div>
-                <div>{language === 'en' ? 'Owner' : 'Responsable'}: {item.ownerName ?? '—'}</div>
-                <div>{language === 'en' ? 'Workflow' : 'Workflow'}: {item.workflowTemplateName ?? '—'}</div>
-                <div>{language === 'en' ? 'Period' : 'Período'}: {periods.find((period) => period.id === item.periodId)?.label ?? '—'}</div>
-                <div>{language === 'en' ? 'Start' : 'Inicio'}: {formatDate(item.startDate, locale)}</div>
-                <div>{language === 'en' ? 'Target' : 'Objetivo'}: {formatDate(item.targetDate ?? null, locale)}</div>
-                <div>{language === 'en' ? 'Progress' : 'Avance'}: {item.progress}%</div>
-              </div>
-              {item.welcomeMessage ? <p className="mt-3 text-sm text-slate-600">{item.welcomeMessage}</p> : null}
-              <div className="mt-3 space-y-2 rounded-[20px] bg-slate-50 p-3">
-                {item.checklist.map((step) => (
-                  <div key={step.id} className="flex items-start justify-between gap-3 text-sm">
-                    <div>
-                      <div className="font-medium text-slate-800">{step.title}</div>
-                      <div className="text-slate-500">{step.owner}{step.dueLabel ? ` · ${step.dueLabel}` : ''}</div>
-                    </div>
-                    <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700">{step.status}</span>
-                  </div>
-                ))}
-              </div>
-              {item.notes ? <div className="mt-3 text-sm text-slate-500">{item.notes}</div> : null}
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
-              </div>
-            </div>
-          ))}
+        <CardContent>
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-medium text-slate-500">
+                <tr>
+                  <th className="px-3 py-2.5">{language === 'en' ? 'Employee / journey' : 'Colaborador / journey'}</th>
+                  <th className="px-3 py-2.5">{language === 'en' ? 'Phase / location' : 'Fase / ubicación'}</th>
+                  <th className="px-3 py-2.5">{language === 'en' ? 'Owner / workflow' : 'Responsable / workflow'}</th>
+                  <th className="px-3 py-2.5">{language === 'en' ? 'Dates' : 'Fechas'}</th>
+                  <th className="px-3 py-2.5">Checklist</th>
+                  <th className="px-3 py-2.5">{language === 'en' ? 'Status' : 'Estado'}</th>
+                  <th className="px-3 py-2.5 text-right">{language === 'en' ? 'Actions' : 'Acciones'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {rows.map((item) => {
+                  const completedSteps = item.checklist.filter((step) => step.status === 'COMPLETADA' || step.status === 'COMPLETADO').length
+                  const nextStep = item.checklist.find((step) => step.status !== 'COMPLETADA' && step.status !== 'COMPLETADO')
+                  return (
+                    <tr key={item.id} className="align-middle hover:bg-slate-50/70">
+                      <td className="max-w-[240px] px-3 py-2.5">
+                        <div className="truncate font-medium text-slate-950">{item.employeeName}</div>
+                        <div className="truncate text-xs text-slate-600">{item.title}</div>
+                        <div className="truncate text-xs text-slate-400">{item.employeeRole ?? '—'}</div>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="text-slate-700">{item.phase.replaceAll('_', ' ')}</div>
+                        <div className="text-xs text-slate-500">{item.locationLabel ?? '—'}</div>
+                      </td>
+                      <td className="max-w-[210px] px-3 py-2.5">
+                        <div className="truncate text-slate-700">{item.ownerName ?? '—'}</div>
+                        <div className="truncate text-xs text-slate-500">{item.workflowTemplateName ?? '—'}</div>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">
+                        <div>{formatDate(item.startDate, locale)}</div>
+                        <div className="text-xs text-slate-500">{language === 'en' ? 'Target' : 'Objetivo'}: {formatDate(item.targetDate ?? null, locale)}</div>
+                      </td>
+                      <td className="max-w-[260px] px-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-blue-600" style={{ width: `${Math.min(100, Math.max(0, item.progress))}%` }} /></div>
+                          <span className="text-xs font-semibold text-slate-700">{item.progress}%</span>
+                          <span className="text-xs text-slate-400">{completedSteps}/{item.checklist.length}</span>
+                        </div>
+                        {nextStep ? <div className="mt-1 flex min-w-0 items-center gap-2"><span className="truncate text-xs text-slate-600" title={nextStep.title}>{nextStep.title}</span><span className={statusClass(nextStep.status)}>{nextStep.status.replaceAll('_', ' ')}</span></div> : <div className="mt-1 text-xs text-emerald-700">{language === 'en' ? 'Checklist completed' : 'Checklist completado'}</div>}
+                      </td>
+                      <td className="px-3 py-2.5"><span className={statusClass(item.status)}>{item.status.replaceAll('_', ' ')}</span></td>
+                      <td className="px-3 py-2.5"><div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div></td>
+                    </tr>
+                  )
+                })}
+                {!rows.length ? <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">{language === 'en' ? 'No onboarding journeys yet.' : 'No hay journeys de onboarding todavía.'}</td></tr> : null}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl rounded-[28px]">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto rounded-[28px]">
           <DialogHeader>
             <DialogTitle>{copy.dialog.title}</DialogTitle>
             <DialogDescription>{copy.dialog.description}</DialogDescription>

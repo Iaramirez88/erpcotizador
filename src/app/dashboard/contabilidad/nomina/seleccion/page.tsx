@@ -3,8 +3,8 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,7 +13,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollRecruitmentCandidateRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
@@ -45,12 +44,6 @@ function formatDate(value: string | null, locale: string) {
   }
 }
 
-function statusClass(status: string) {
-  if (status === 'FINALISTA') return 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800'
-  if (status === 'ACTIVO') return 'rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-800'
-  return 'rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700'
-}
-
 export default function NominaSeleccionPage() {
   const [rows, setRows] = useState<PayrollRecruitmentCandidateRow[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -58,7 +51,6 @@ export default function NominaSeleccionPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { mode, setMode } = useDataViewMode('nomina.seleccion', 'grid')
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
 
@@ -185,8 +177,7 @@ export default function NominaSeleccionPage() {
 
       <NominaSubnav />
 
-      <div className="flex justify-end gap-2">
-        <DataViewToggle mode={mode} onChange={setMode} />
+      <div className="flex justify-end">
         <Button className="rounded-xl" onClick={openCreate}>{copy.actions.create}</Button>
       </div>
 
@@ -195,38 +186,22 @@ export default function NominaSeleccionPage() {
           <CardTitle>{language === 'en' ? 'Candidate pipeline' : 'Pipeline de candidatos'}</CardTitle>
           <CardDescription>{language === 'en' ? 'Administrative recruiting tray to qualify candidates before they move into onboarding and employee setup.' : 'Bandeja administrativa de selección para calificar candidatos antes de pasarlos a onboarding y alta laboral.'}</CardDescription>
         </CardHeader>
-        <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
-          {rows.map((item) => (
-            <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-slate-950">{item.candidateName}</div>
-                  <div className="text-sm text-slate-500">{item.openingTitle}</div>
-                </div>
-                <span className={statusClass(item.status)}>{item.status}</span>
-              </div>
-              <div className="mt-3 space-y-1 text-sm text-slate-600">
-                <div>{language === 'en' ? 'Department' : 'Área'}: {item.department}</div>
-                <div>{language === 'en' ? 'Stage' : 'Etapa'}: {item.stage}</div>
-                <div>{language === 'en' ? 'Source' : 'Fuente'}: {item.source}</div>
-                <div>{language === 'en' ? 'Score' : 'Score'}: {item.score}</div>
-                <div>{language === 'en' ? 'Recruiter' : 'Responsable'}: {item.ownerName ?? '—'}</div>
-                <div>{language === 'en' ? 'Start target' : 'Ingreso objetivo'}: {formatDate(item.expectedStartDate ?? null, locale)}</div>
-                <div>{language === 'en' ? 'Salary expectation' : 'Aspiración salarial'}: {item.salaryExpectation != null ? formatCurrency(item.salaryExpectation) : '—'}</div>
-              </div>
-              {item.interviewerNotes ? <p className="mt-3 text-sm text-slate-600">{item.interviewerNotes}</p> : null}
-              {item.decisionSummary ? <div className="mt-3 text-sm text-slate-500">{item.decisionSummary}</div> : null}
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
-              </div>
-            </div>
-          ))}
+        <CardContent>
+          <NominaCompactTable rows={rows} minWidth="1080px" emptyMessage={language === 'en' ? 'No candidates yet.' : 'No hay candidatos todavía.'} columns={[
+            { key: 'candidate', label: language === 'en' ? 'Candidate / opening' : 'Candidato / vacante', className: 'max-w-[260px]', render: (item) => <><div className="truncate font-medium text-slate-950">{item.candidateName}</div><div className="truncate text-xs text-slate-700">{item.openingTitle}</div><div className="truncate text-xs text-slate-400">{item.candidateEmail ?? item.candidatePhone ?? '—'}</div></> },
+            { key: 'area', label: language === 'en' ? 'Area / location' : 'Área / ubicación', render: (item) => <><div>{item.department}</div><div className="text-xs text-slate-500">{item.locationLabel ?? '—'}</div></> },
+            { key: 'pipeline', label: language === 'en' ? 'Stage / source' : 'Etapa / fuente', render: (item) => <><div>{item.stage.replaceAll('_', ' ')}</div><div className="text-xs text-slate-500">{item.source.replaceAll('_', ' ')}</div></> },
+            { key: 'score', label: 'Score', className: 'text-center font-semibold tabular-nums', headerClassName: 'text-center', render: (item) => item.score },
+            { key: 'owner', label: language === 'en' ? 'Recruiter' : 'Responsable', className: 'max-w-[170px]', render: (item) => <div className="truncate">{item.ownerName ?? '—'}</div> },
+            { key: 'terms', label: language === 'en' ? 'Start / expectation' : 'Ingreso / aspiración', className: 'whitespace-nowrap', render: (item) => <><div>{formatDate(item.expectedStartDate ?? null, locale)}</div><div className="text-xs text-slate-500">{item.salaryExpectation != null ? formatCurrency(item.salaryExpectation) : '—'}</div></> },
+            { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
+            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div> },
+          ]} />
         </CardContent>
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl rounded-[28px]">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto rounded-[28px]">
           <DialogHeader>
             <DialogTitle>{copy.dialog.title}</DialogTitle>
             <DialogDescription>{copy.dialog.description}</DialogDescription>

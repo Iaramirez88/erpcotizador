@@ -40,6 +40,7 @@ async function serializeEmployees(empresaId: string): Promise<PayrollEmployeeRow
     orderBy: [{ createdAt: 'desc' }],
     include: {
       sede: { select: { nombre: true } },
+      user: { select: { image: true } },
       costCenter: { select: { name: true } },
       contracts: {
         orderBy: [{ startDate: 'desc' }],
@@ -86,6 +87,7 @@ async function serializeEmployees(empresaId: string): Promise<PayrollEmployeeRow
       sedeId: employee.sedeId,
       costCenterId: employee.costCenterId,
       fullName: buildPayrollEmployeeFullName(employee),
+      avatarUrl: employee.user?.image ?? null,
       firstName: employee.firstName,
       middleName: employee.middleName,
       lastName: employee.lastName,

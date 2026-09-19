@@ -3,9 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
-import { NominaSurfaceCallout } from '@/components/dashboard/nomina-surface-callout'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,7 +13,6 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollEmployeeServiceCaseRow, PayrollPeriodRow } from '@/lib/payroll'
 
@@ -48,10 +45,57 @@ function formatDate(value: string | null, locale: string) {
 }
 
 function statusClass(status: string) {
-  if (status === 'RESUELTO') return 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800'
-  if (status === 'EN_GESTION') return 'rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-800'
-  if (status === 'EN_ESPERA') return 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800'
-  return 'rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700'
+  const base = 'inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase shadow-sm'
+  if (status === 'RESUELTO') return `${base} border-emerald-400 bg-emerald-500 text-white`
+  if (status === 'EN_GESTION') return `${base} border-amber-300 bg-amber-400 text-slate-950`
+  if (status === 'EN_ESPERA') return `${base} border-sky-400 bg-sky-500 text-white`
+  return `${base} border-slate-800 bg-slate-900 text-white`
+}
+
+function priorityClass(priority: string) {
+  if (priority === 'ALTA') return 'border-rose-200 bg-rose-100 text-rose-800'
+  if (priority === 'BAJA') return 'border-sky-200 bg-sky-100 text-sky-800'
+  return 'border-slate-200 bg-slate-100 text-slate-700'
+}
+
+function ServiceCasesTable({ rows, language, locale, onEdit, onDelete }: { rows: PayrollEmployeeServiceCaseRow[]; language: string; locale: string; onEdit: (item: PayrollEmployeeServiceCaseRow) => void; onDelete: (id: string) => void }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <table className="w-full min-w-[1160px] border-collapse text-left text-sm">
+        <thead className="bg-slate-50 text-xs font-medium text-slate-500">
+          <tr>
+            <th className="px-3 py-2.5">{language === 'en' ? 'Employee / case' : 'Colaborador / caso'}</th>
+            <th className="px-3 py-2.5">{language === 'en' ? 'Category / channel' : 'Categoría / canal'}</th>
+            <th className="px-3 py-2.5">{language === 'en' ? 'Owner / period' : 'Responsable / período'}</th>
+            <th className="px-3 py-2.5">{language === 'en' ? 'Priority / SLA' : 'Prioridad / SLA'}</th>
+            <th className="px-3 py-2.5">{language === 'en' ? 'Dates' : 'Fechas'}</th>
+            <th className="px-3 py-2.5">{language === 'en' ? 'Portal' : 'Portal'}</th>
+            <th className="px-3 py-2.5">{language === 'en' ? 'Status' : 'Estado'}</th>
+            <th className="px-3 py-2.5 text-right">{language === 'en' ? 'Actions' : 'Acciones'}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 bg-white">
+          {rows.map((item) => (
+            <tr key={item.id} className="align-middle hover:bg-slate-50/70">
+              <td className="max-w-[280px] px-3 py-2.5">
+                <div className="truncate font-medium text-slate-950">{item.employeeName}</div>
+                <div className="truncate text-xs text-slate-700">{item.title}</div>
+                <div className="truncate text-xs text-slate-400" title={item.summary}>{item.summary}</div>
+              </td>
+              <td className="px-3 py-2.5"><div className="text-slate-700">{item.category}</div><div className="text-xs text-slate-500">{item.channel}</div></td>
+              <td className="max-w-[190px] px-3 py-2.5"><div className="truncate text-slate-700">{item.status === 'RESUELTO' ? item.resolvedByName ?? item.assignedToName ?? '—' : item.assignedToName ?? '—'}</div><div className="truncate text-xs text-slate-500">{item.periodLabel}</div></td>
+              <td className="px-3 py-2.5"><span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-semibold ${priorityClass(item.priority)}`}>{item.priority}</span><div className="mt-1 text-xs text-slate-500">SLA: {item.slaHours}h</div></td>
+              <td className="whitespace-nowrap px-3 py-2.5 text-slate-700"><div>{formatDate(item.requestedAt, locale)}</div><div className="text-xs text-slate-500">{item.resolvedAt ? `${language === 'en' ? 'Resolved' : 'Resuelto'}: ${formatDate(item.resolvedAt, locale)}` : item.firstResponseAt ? `${language === 'en' ? 'Response' : 'Respuesta'}: ${formatDate(item.firstResponseAt, locale)}` : (language === 'en' ? 'No response yet' : 'Sin respuesta')}</div></td>
+              <td className="px-3 py-2.5"><span className={item.portalVisibility ? 'text-xs font-medium text-emerald-700' : 'text-xs text-slate-400'}>{item.portalVisibility ? (language === 'en' ? 'Visible' : 'Visible') : (language === 'en' ? 'Internal' : 'Interno')}</span></td>
+              <td className="px-3 py-2.5"><span className={statusClass(item.status)}>{item.status.replaceAll('_', ' ')}</span></td>
+              <td className="px-3 py-2.5"><div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => onEdit(item)}>{language === 'en' ? 'Edit' : 'Editar'}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => onDelete(item.id)}>{language === 'en' ? 'Delete' : 'Eliminar'}</Button></div></td>
+            </tr>
+          ))}
+          {!rows.length ? <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500">{language === 'en' ? 'No service cases in this queue.' : 'No hay casos de servicio en esta bandeja.'}</td></tr> : null}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 export default function NominaServicioColaboradorPage() {
@@ -63,7 +107,6 @@ export default function NominaServicioColaboradorPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { mode, setMode } = useDataViewMode('nomina.servicio-colaborador', 'grid')
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
 
@@ -216,19 +259,7 @@ export default function NominaServicioColaboradorPage() {
 
       <NominaSubnav />
 
-      <NominaSurfaceCallout
-        adminTitle={language === 'en' ? 'Service tickets are triaged and resolved here.' : 'Aquí se radican, priorizan y resuelven los casos.'}
-        adminDescription={language === 'en' ? 'RRHH defines SLA, response, resolution and portal visibility for each collaborator request.' : 'RRHH define SLA, respuesta, resolución y visibilidad en portal para cada solicitud del colaborador.'}
-        employeeTitle={language === 'en' ? 'The collaborator only sees the request status and final response.' : 'El colaborador solo ve el estado de su caso y la respuesta final.'}
-        employeeDescription={language === 'en' ? 'This separates the internal handling workflow from the self-service experience.' : 'Esto separa el flujo interno de atención de la experiencia de autoservicio.'}
-        primaryHref={nominaHref('portal-empleado')}
-        primaryLabel={language === 'en' ? 'Open collaborator portal' : 'Abrir portal del colaborador'}
-        secondaryHref={nominaHref('canal-denuncias')}
-        secondaryLabel={language === 'en' ? 'Open ethics cases' : 'Abrir casos éticos'}
-      />
-
-      <div className="flex justify-end gap-2">
-        <DataViewToggle mode={mode} onChange={setMode} />
+      <div className="flex justify-end">
         <Button className="rounded-xl" onClick={openCreate}>{copy.actions.create}</Button>
       </div>
 
@@ -237,33 +268,8 @@ export default function NominaServicioColaboradorPage() {
           <CardTitle>{language === 'en' ? 'Active service queue' : 'Cola activa de servicio'}</CardTitle>
           <CardDescription>{language === 'en' ? 'Requests that still need action, response or supporting documentation.' : 'Solicitudes que todavía requieren gestión, respuesta o soporte documental.'}</CardDescription>
         </CardHeader>
-        <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
-          {openCases.map((item) => (
-            <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-slate-950">{item.title}</div>
-                  <div className="text-sm text-slate-500">{item.employeeName}</div>
-                </div>
-                <span className={statusClass(item.status)}>{item.status}</span>
-              </div>
-              <div className="mt-3 space-y-1 text-sm text-slate-600">
-                <div>{language === 'en' ? 'Category' : 'Categoría'}: {item.category}</div>
-                <div>{language === 'en' ? 'Priority' : 'Prioridad'}: {item.priority}</div>
-                <div>{language === 'en' ? 'Channel' : 'Canal'}: {item.channel}</div>
-                <div>{language === 'en' ? 'Assigned to' : 'Asignado a'}: {item.assignedToName ?? '—'}</div>
-                <div>{language === 'en' ? 'Period' : 'Período'}: {item.periodLabel}</div>
-                <div>{language === 'en' ? 'SLA' : 'SLA'}: {item.slaHours}h</div>
-                <div>{language === 'en' ? 'Requested' : 'Solicitado'}: {formatDate(item.requestedAt, locale)}</div>
-              </div>
-              <p className="mt-3 text-sm text-slate-600">{item.summary}</p>
-              {item.notes ? <div className="mt-3 text-sm text-slate-500">{item.notes}</div> : null}
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
-              </div>
-            </div>
-          ))}
+        <CardContent>
+          <ServiceCasesTable rows={openCases} language={language} locale={locale} onEdit={openEdit} onDelete={(id) => void handleDelete(id)} />
         </CardContent>
       </Card>
 
@@ -272,33 +278,13 @@ export default function NominaServicioColaboradorPage() {
           <CardTitle>{language === 'en' ? 'Resolved and portal-visible cases' : 'Casos resueltos y visibles en portal'}</CardTitle>
           <CardDescription>{language === 'en' ? 'Closed requests with response traceability and employee-facing visibility.' : 'Solicitudes cerradas con trazabilidad de respuesta y visibilidad hacia el colaborador.'}</CardDescription>
         </CardHeader>
-        <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-          {resolvedCases.map((item) => (
-            <div key={item.id} className="rounded-[22px] border border-emerald-200 bg-emerald-50/60 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-slate-950">{item.title}</div>
-                  <div className="text-sm text-slate-500">{item.employeeName}</div>
-                </div>
-                <span className={statusClass(item.status)}>{item.status}</span>
-              </div>
-              <div className="mt-3 space-y-1 text-sm text-slate-600">
-                <div>{language === 'en' ? 'Resolved by' : 'Resuelto por'}: {item.resolvedByName ?? '—'}</div>
-                <div>{language === 'en' ? 'Resolved' : 'Resuelto'}: {formatDate(item.resolvedAt ?? null, locale)}</div>
-                <div>{language === 'en' ? 'Portal visible' : 'Visible en portal'}: {item.portalVisibility ? (language === 'en' ? 'Yes' : 'Sí') : 'No'}</div>
-              </div>
-              {item.resolution ? <p className="mt-3 text-sm text-slate-600">{item.resolution}</p> : null}
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
-              </div>
-            </div>
-          ))}
+        <CardContent>
+          <ServiceCasesTable rows={resolvedCases} language={language} locale={locale} onEdit={openEdit} onDelete={(id) => void handleDelete(id)} />
         </CardContent>
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl rounded-[28px]">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto rounded-[28px]">
           <DialogHeader>
             <DialogTitle>{copy.dialog.title}</DialogTitle>
             <DialogDescription>{copy.dialog.description}</DialogDescription>

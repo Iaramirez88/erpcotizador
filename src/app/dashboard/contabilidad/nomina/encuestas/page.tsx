@@ -3,8 +3,8 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,7 +14,6 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollSurveyCampaignRow } from '@/lib/payroll'
 
@@ -44,13 +43,6 @@ function formatDate(value: string | null, locale: string) {
   }
 }
 
-function statusClass(status: string) {
-  if (status === 'ACTIVA') return 'rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-800'
-  if (status === 'CERRADA') return 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800'
-  if (status === 'PROGRAMADA') return 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800'
-  return 'rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700'
-}
-
 export default function NominaEncuestasPage() {
   const [rows, setRows] = useState<PayrollSurveyCampaignRow[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -58,7 +50,6 @@ export default function NominaEncuestasPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { mode, setMode } = useDataViewMode('nomina.encuestas', 'grid')
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
 
@@ -186,8 +177,7 @@ export default function NominaEncuestasPage() {
 
       <NominaSubnav />
 
-      <div className="flex justify-end gap-2">
-        <DataViewToggle mode={mode} onChange={setMode} />
+      <div className="flex justify-end">
         <Button className="rounded-xl" onClick={openCreate}>{copy.actions.create}</Button>
       </div>
 
@@ -196,40 +186,22 @@ export default function NominaEncuestasPage() {
           <CardTitle>{language === 'en' ? 'Survey campaigns' : 'Campañas de encuestas'}</CardTitle>
           <CardDescription>{language === 'en' ? 'Administrative survey tray to configure audiences and timing before the collaborator answers in a separated surface.' : 'Bandeja administrativa para configurar audiencia y fechas antes de que el colaborador responda en una superficie separada.'}</CardDescription>
         </CardHeader>
-        <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
-          {rows.map((item) => (
-            <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-slate-950">{item.title}</div>
-                  <div className="text-sm text-slate-500">{item.category}</div>
-                </div>
-                <span className={statusClass(item.status)}>{item.status}</span>
-              </div>
-              <div className="mt-3 space-y-1 text-sm text-slate-600">
-                <div>{language === 'en' ? 'Audience' : 'Audiencia'}: {item.audience}</div>
-                <div>{language === 'en' ? 'Channel' : 'Canal'}: {item.channel}</div>
-                <div>{language === 'en' ? 'Anonymous' : 'Anónima'}: {item.anonymous ? (language === 'en' ? 'Yes' : 'Sí') : 'No'}</div>
-                <div>{language === 'en' ? 'Questions' : 'Preguntas'}: {item.questionsCount}</div>
-                <div>{language === 'en' ? 'Invited' : 'Invitados'}: {item.invitedCount}</div>
-                <div>{language === 'en' ? 'Responses' : 'Respuestas'}: {item.responsesCount}</div>
-                <div>{language === 'en' ? 'Average' : 'Promedio'}: {item.averageScore ?? '—'}</div>
-                <div>{language === 'en' ? 'Open' : 'Apertura'}: {formatDate(item.opensAt ?? null, locale)}</div>
-                <div>{language === 'en' ? 'Close' : 'Cierre'}: {formatDate(item.closesAt ?? null, locale)}</div>
-              </div>
-              {item.summary ? <p className="mt-3 text-sm text-slate-600">{item.summary}</p> : null}
-              {item.notes ? <div className="mt-3 text-sm text-slate-500">{item.notes}</div> : null}
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
-              </div>
-            </div>
-          ))}
+        <CardContent>
+          <NominaCompactTable rows={rows} minWidth="1120px" emptyMessage={language === 'en' ? 'No survey campaigns available.' : 'No hay campañas de encuestas disponibles.'} columns={[
+            { key: 'survey', label: language === 'en' ? 'Survey / category' : 'Encuesta / categoría', className: 'max-w-[280px]', render: (item) => <><div className="truncate font-medium text-slate-950">{item.title}</div><div className="text-xs text-slate-500">{item.category}</div><div className="truncate text-xs text-slate-400" title={item.summary ?? ''}>{item.summary ?? '—'}</div></> },
+            { key: 'audience', label: language === 'en' ? 'Audience / channel' : 'Audiencia / canal', className: 'max-w-[190px]', render: (item) => <><div className="truncate">{item.audience}</div><div className="text-xs text-slate-500">{item.channel} · {item.anonymous ? (language === 'en' ? 'Anonymous' : 'Anónima') : (language === 'en' ? 'Identified' : 'Identificada')}</div></> },
+            { key: 'questions', label: language === 'en' ? 'Questions' : 'Preguntas', className: 'text-center tabular-nums', headerClassName: 'text-center', render: (item) => item.questionsCount },
+            { key: 'participation', label: language === 'en' ? 'Responses / invited' : 'Respuestas / invitados', className: 'text-center tabular-nums', headerClassName: 'text-center', render: (item) => <><div>{item.responsesCount} / {item.invitedCount}</div><div className="text-xs text-slate-500">{item.invitedCount ? `${Math.round((item.responsesCount / item.invitedCount) * 100)}%` : '0%'}</div></> },
+            { key: 'score', label: language === 'en' ? 'Average' : 'Promedio', className: 'text-center font-semibold tabular-nums', headerClassName: 'text-center', render: (item) => item.averageScore ?? '—' },
+            { key: 'dates', label: language === 'en' ? 'Open / close' : 'Apertura / cierre', className: 'whitespace-nowrap', render: (item) => <><div>{formatDate(item.opensAt ?? null, locale)}</div><div className="text-xs text-slate-500">{formatDate(item.closesAt ?? null, locale)}</div></> },
+            { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
+            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div> },
+          ]} />
         </CardContent>
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl rounded-[28px]">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto rounded-[28px]">
           <DialogHeader>
             <DialogTitle>{copy.dialog.title}</DialogTitle>
             <DialogDescription>{copy.dialog.description}</DialogDescription>

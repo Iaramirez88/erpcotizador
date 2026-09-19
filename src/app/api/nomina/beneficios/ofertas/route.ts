@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'title, kind, category y description son requeridos' }, { status: 400 })
   }
 
-  await prisma.payrollBenefitOffering.create({
+  const created = await prisma.payrollBenefitOffering.create({
     data: {
       empresaId: access.empresaId,
       title,
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
   })
 
   const data = await serializePayrollBenefitOfferings(access.empresaId)
-  return NextResponse.json({ ok: true, data })
+  return NextResponse.json({ ok: true, data, createdId: created.id })
 }
 
 export async function PUT(request: NextRequest) {

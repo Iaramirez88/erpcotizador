@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
@@ -13,7 +12,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollPeriodRow } from '@/lib/payroll'
 import type { PayrollAttendanceEntryRow } from '@/lib/payroll-operations'
@@ -50,7 +48,6 @@ export default function NominaAsistenciaPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { mode, setMode } = useDataViewMode('nomina.asistencia', 'grid')
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
 
@@ -195,8 +192,7 @@ export default function NominaAsistenciaPage() {
 
       <NominaSubnav />
 
-      <div className="flex justify-end gap-2">
-        <DataViewToggle mode={mode} onChange={setMode} />
+      <div className="flex justify-end">
         <Button className="rounded-xl" onClick={openCreate}>{copy.actions.create}</Button>
       </div>
 
@@ -205,41 +201,75 @@ export default function NominaAsistenciaPage() {
           <CardTitle>{copy.title}</CardTitle>
           <CardDescription>{language === 'en' ? 'Administrative attendance tray used to validate presence, overtime and leave before payroll processing.' : 'Bandeja administrativa para validar presencia, horas extra y permisos antes del procesamiento de nómina.'}</CardDescription>
         </CardHeader>
-        <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
-          <div className="rounded-[22px] border border-amber-200 bg-amber-50/60 p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">{language === 'en' ? 'Overtime summary' : 'Resumen horas extra'}</div>
-            <div className="mt-2 text-2xl font-semibold text-slate-950">{Math.round((rows.reduce((sum, item) => sum + item.overtimeMinutes, 0) / 60) * 10) / 10} h</div>
-            <div className="text-sm text-slate-600">{rows.reduce((sum, item) => sum + item.overtimeMinutes, 0)} {language === 'en' ? 'minutes recorded across shifts.' : 'minutos registrados en asistencia.'}</div>
-          </div>
-          <div className="rounded-[22px] border border-emerald-200 bg-emerald-50/60 p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-800">{language === 'en' ? 'Vacation entries' : 'Registros de vacaciones'}</div>
-            <div className="mt-2 text-2xl font-semibold text-slate-950">{rows.filter((item) => item.status === 'VACACIONES').length}</div>
-            <div className="text-sm text-slate-600">{language === 'en' ? 'Approved attendance rows marked as vacation.' : 'Registros aprobados de asistencia marcados como vacaciones.'}</div>
-          </div>
-          {rows.map((item) => (
-            <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-slate-950">{item.employeeName}</div>
-                  <div className="text-sm text-slate-500">{item.shiftName} · {formatDate(item.entryDate, locale)}</div>
-                </div>
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{item.status}</span>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2">
+              <div>
+                <div className="text-xs font-medium text-amber-800">{language === 'en' ? 'Overtime' : 'Horas extra'}</div>
+                <div className="text-xs text-slate-500">{rows.reduce((sum, item) => sum + item.overtimeMinutes, 0)} min</div>
               </div>
-              <div className="mt-3 space-y-1 text-sm text-slate-600">
-                <div>{copy.labels.period}: {item.periodLabel}</div>
-                <div>{copy.labels.checkIn}: {formatDate(item.checkInAt, locale)}</div>
-                <div>{copy.labels.checkOut}: {formatDate(item.checkOutAt, locale)}</div>
-                <div>{copy.labels.late}: {item.minutesLate}</div>
-                <div>{copy.labels.overtime}: {item.overtimeMinutes}</div>
-                <div>{copy.labels.leave}: {item.leaveType ?? '—'}</div>
-                <div>{copy.labels.notes}: {item.notes ?? '—'}</div>
-              </div>
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
-              </div>
+              <div className="text-lg font-semibold text-slate-950">{Math.round((rows.reduce((sum, item) => sum + item.overtimeMinutes, 0) / 60) * 10) / 10} h</div>
             </div>
-          ))}
+            <div className="flex items-center justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2">
+              <div>
+                <div className="text-xs font-medium text-emerald-800">{language === 'en' ? 'Vacation entries' : 'Vacaciones'}</div>
+                <div className="text-xs text-slate-500">{language === 'en' ? 'Approved records' : 'Registros aprobados'}</div>
+              </div>
+              <div className="text-lg font-semibold text-slate-950">{rows.filter((item) => item.status === 'VACACIONES').length}</div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full min-w-[1050px] border-collapse text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-medium text-slate-500">
+                <tr>
+                  <th className="px-3 py-2.5">{copy.labels.employee}</th>
+                  <th className="px-3 py-2.5">{copy.labels.date} / {copy.labels.shift}</th>
+                  <th className="px-3 py-2.5">{copy.labels.checkIn}</th>
+                  <th className="px-3 py-2.5">{copy.labels.checkOut}</th>
+                  <th className="px-3 py-2.5 text-right">{copy.labels.late}</th>
+                  <th className="px-3 py-2.5 text-right">{copy.labels.overtime}</th>
+                  <th className="px-3 py-2.5">{copy.labels.status}</th>
+                  <th className="px-3 py-2.5 text-right">{language === 'en' ? 'Actions' : 'Acciones'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {rows.map((item) => (
+                  <tr key={item.id} className="align-middle hover:bg-slate-50/70">
+                    <td className="max-w-[220px] px-3 py-2.5">
+                      <div className="truncate font-medium text-slate-950">{item.employeeName}</div>
+                      <div className="truncate text-xs text-slate-500">{item.periodLabel}{item.leaveType ? ` · ${item.leaveType}` : ''}</div>
+                      {item.notes ? <div className="truncate text-xs text-slate-400" title={item.notes}>{item.notes}</div> : null}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="whitespace-nowrap text-slate-700">{formatDate(item.entryDate, locale)}</div>
+                      <div className="text-xs text-slate-500">{item.shiftName}</div>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{formatDate(item.checkInAt, locale)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{formatDate(item.checkOutAt, locale)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{item.minutesLate}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{item.overtimeMinutes}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase text-slate-700">{item.status}</span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex justify-end gap-1.5">
+                        <Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
+                        <Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {!rows.length ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500">
+                      {language === 'en' ? 'No attendance records yet.' : 'No hay registros de asistencia todavía.'}
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
 

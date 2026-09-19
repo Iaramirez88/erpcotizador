@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { Bell, BookOpen, Calculator, CalendarClock, CalendarDays, Contact, FileBarChart, Gift, HandHelping, LayoutGrid, Megaphone, Network, ShieldAlert, TrendingUp, UserPlus, UserRound, UserSearch } from 'lucide-react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { useDashboardAccess } from '@/components/dashboard/dashboard-access-context'
+import { useNominaNavigation } from '@/components/dashboard/nomina-navigation-context'
 import { nominaHref, normalizeNominaPathname } from '@/lib/nomina-routes'
 import { cn } from '@/lib/utils'
 
@@ -33,6 +34,7 @@ export function NominaSubnav({ orientation = 'horizontal' }: NominaSubnavProps) 
   const pathname = usePathname() ?? ''
   const { language } = useI18n()
   const { canAccessPayrollAdmin, hasPayrollPortal } = useDashboardAccess()
+  const navigation = useNominaNavigation()
 
   const adminItems: NominaNavItem[] = language === 'en'
     ? [
@@ -86,6 +88,8 @@ export function NominaSubnav({ orientation = 'horizontal' }: NominaSubnavProps) 
     : portalItem
       ? [portalItem]
       : []
+
+  if (navigation && !navigation.menuVisible) return null
 
   if (orientation === 'vertical') {
     return (

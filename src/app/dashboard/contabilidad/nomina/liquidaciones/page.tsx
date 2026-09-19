@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -13,7 +13,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollPeriodRow, PayrollSettlementRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
@@ -49,7 +48,6 @@ export default function NominaLiquidacionesPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
-  const { mode, setMode } = useDataViewMode('nomina.liquidaciones', 'list')
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
 
@@ -274,7 +272,6 @@ export default function NominaLiquidacionesPage() {
 
       <div className="flex justify-end" data-tour="nomina-liquidaciones-actions">
         <div className="flex flex-wrap gap-2">
-          <DataViewToggle mode={mode} onChange={setMode} />
           <Button className="rounded-xl" onClick={openCreate}>{copy.actions.create}</Button>
         </div>
       </div>
@@ -284,42 +281,22 @@ export default function NominaLiquidacionesPage() {
           <CardTitle>{copy.list.title}</CardTitle>
           <CardDescription>{copy.list.description}</CardDescription>
         </CardHeader>
-        <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-          {rows.map((settlement) => (
-            <div key={settlement.id} className={mode === 'grid' ? 'rounded-[22px] border border-slate-200 bg-white p-4' : 'rounded-[18px] border border-slate-200 bg-white px-4 py-3'}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-slate-950">{settlement.employeeName}</div>
-                  <div className="text-sm text-slate-500">{copy.labels.retirementDate}: {formatDate(settlement.retirementDate, locale)} · {copy.labels.reason}: {copy.reasons[settlement.reason]}</div>
-                </div>
-                <span className={settlement.status === 'PAGADA' ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800' : settlement.status === 'LIQUIDADA' ? 'rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-800' : 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800'}>
-                  {copy.statuses[settlement.status]}
-                </span>
-              </div>
-              <div className="mt-3 grid gap-2 text-sm text-slate-600 md:grid-cols-3">
-                <div>{copy.labels.workedDays}: {settlement.workedDays}</div>
-                <div>{copy.labels.payout}: {formatCurrency(settlement.total)}</div>
-                <div>{copy.labels.accounting}: {copy.accountingStatus[settlement.accountingStatus]}</div>
-              </div>
-              <div className="mt-2 grid gap-2 text-sm text-slate-500 md:grid-cols-3">
-                <div>{copy.labels.period}: {settlement.periodId ? periods.find((period) => period.id === settlement.periodId)?.label ?? copy.labels.noPeriod : copy.labels.noPeriod}</div>
-                <div>{copy.labels.liquidationDate}: {formatDate(settlement.liquidationDate, locale)}</div>
-                <div>{copy.labels.paymentDate}: {formatDate(settlement.paymentDate, locale)}</div>
-              </div>
-              <div className="mt-2 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">El total incluye automáticamente horas extra y vacaciones validadas del colaborador hasta la fecha de retiro.</div>
-              {settlement.notes ? <div className="mt-2 text-sm text-slate-600">{copy.labels.notes}: {settlement.notes}</div> : null}
-              {settlement.accountingStatus === 'PENDIENTE' && settlement.total > 0 ? <div className="mt-3 flex justify-end"><Button variant="outline" className="rounded-xl" onClick={() => void contabilizar(settlement.id)}>{copy.actions.post}</Button></div> : null}
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" className="rounded-xl" onClick={() => openEdit(settlement)}>{copy.actions.edit}</Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(settlement.id)}>{copy.actions.remove}</Button>
-              </div>
-            </div>
-          ))}
+        <CardContent>
+          <NominaCompactTable rows={rows} minWidth="1240px" emptyMessage={language === 'en' ? 'No settlements available.' : 'No hay liquidaciones disponibles.'} columns={[
+            { key: 'employee', label: language === 'en' ? 'Employee / reason' : 'Empleado / motivo', className: 'max-w-[240px]', render: (settlement) => <><div className="truncate font-medium text-slate-950">{settlement.employeeName}</div><div className="text-xs text-slate-500">{copy.reasons[settlement.reason]}</div>{settlement.notes ? <div className="truncate text-xs text-slate-400" title={settlement.notes}>{settlement.notes}</div> : null}</> },
+            { key: 'period', label: copy.labels.period, className: 'max-w-[180px]', render: (settlement) => <div className="truncate">{settlement.periodId ? periods.find((period) => period.id === settlement.periodId)?.label ?? copy.labels.noPeriod : copy.labels.noPeriod}</div> },
+            { key: 'dates', label: language === 'en' ? 'Exit / settlement' : 'Retiro / liquidación', className: 'whitespace-nowrap', render: (settlement) => <><div>{formatDate(settlement.retirementDate, locale)}</div><div className="text-xs text-slate-500">{formatDate(settlement.liquidationDate, locale)}</div></> },
+            { key: 'payment', label: copy.labels.paymentDate, className: 'whitespace-nowrap', render: (settlement) => formatDate(settlement.paymentDate, locale) },
+            { key: 'days', label: copy.labels.workedDays, className: 'text-center tabular-nums', headerClassName: 'text-center', render: (settlement) => settlement.workedDays },
+            { key: 'total', label: copy.labels.payout, className: 'whitespace-nowrap text-right font-semibold tabular-nums', headerClassName: 'text-right', render: (settlement) => formatCurrency(settlement.total) },
+            { key: 'status', label: copy.labels.status, render: (settlement) => <div className="space-y-1"><NominaStatusBadge status={copy.statuses[settlement.status]} /><div><NominaStatusBadge status={copy.accountingStatus[settlement.accountingStatus]} /></div></div> },
+            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (settlement) => <div className="flex justify-end gap-1.5">{settlement.accountingStatus === 'PENDIENTE' && settlement.total > 0 ? <Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void contabilizar(settlement.id)}>{copy.actions.post}</Button> : null}<Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(settlement)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(settlement.id)}>{copy.actions.remove}</Button></div> },
+          ]} />
         </CardContent>
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl rounded-[28px]">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto rounded-[28px]">
           <DialogHeader>
             <DialogTitle>{editingId ? copy.dialog.titleEdit : copy.dialog.titleCreate}</DialogTitle>
             <DialogDescription>{copy.dialog.description}</DialogDescription>

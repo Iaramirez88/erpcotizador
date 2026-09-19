@@ -2,14 +2,12 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { Building2, FileBarChart2, Network, ShieldCheck, Workflow } from 'lucide-react'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollPeopleOverview } from '@/lib/payroll-people'
 
@@ -22,17 +20,8 @@ function formatDate(value: string | null, locale: string) {
   }
 }
 
-function statusClass(status: string) {
-  const normalized = status.toUpperCase()
-  if (normalized === 'ACTIVE' || normalized === 'PUBLISHED' || normalized === 'READY') {
-    return 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800'
-  }
-  return 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800'
-}
-
 export default function NominaGestionPersonasPage() {
   const [overview, setOverview] = useState<PayrollPeopleOverview | null>(null)
-  const { mode, setMode } = useDataViewMode('nomina.gestion-personas', 'grid')
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
 
@@ -77,13 +66,6 @@ export default function NominaGestionPersonasPage() {
           generated: 'Generated',
           executed: 'Executed',
         },
-        referenceModules: [
-          { icon: Network, title: 'Organizational structure', description: 'New database-backed layer to visualize areas, hierarchy and leadership.' },
-          { icon: Building2, title: 'Employee portal', description: 'Portal cards show current self-service and communication entry points.' },
-          { icon: ShieldCheck, title: 'Users and profiles', description: 'Linked to current users, company scope and payroll employee records.' },
-          { icon: Workflow, title: 'Workflows', description: 'Templates for onboarding, vacation approvals and compensation changes.' },
-          { icon: FileBarChart2, title: 'Reporting', description: 'People analytics outputs connected to active payroll records.' },
-        ],
       }
     : {
         eyebrow: 'People admin',
@@ -125,13 +107,6 @@ export default function NominaGestionPersonasPage() {
           generated: 'Generado',
           executed: 'Ejecutado',
         },
-        referenceModules: [
-          { icon: Network, title: 'Estructura organizacional', description: 'Nueva capa persistida para visualizar áreas, jerarquía y liderazgo.' },
-          { icon: Building2, title: 'Portal del colaborador', description: 'Las tarjetas del portal muestran los puntos actuales de autoservicio y comunicación.' },
-          { icon: ShieldCheck, title: 'Usuarios y perfiles', description: 'Se conecta con usuarios actuales, alcance de empresa y ficha del empleado.' },
-          { icon: Workflow, title: 'Workflows', description: 'Plantillas para onboarding, aprobación de vacaciones y cambios de compensación.' },
-          { icon: FileBarChart2, title: 'Reportería', description: 'Salidas de people analytics conectadas a registros activos de nómina.' },
-        ],
       }
 
   useEffect(() => {
@@ -174,7 +149,7 @@ export default function NominaGestionPersonasPage() {
 
       <NominaSubnav />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Card className="flex-1 rounded-[24px] border-sky-200 bg-sky-50/70 shadow-[0_20px_40px_-32px_rgba(14,116,144,0.35)]">
           <CardHeader>
             <CardTitle>{copy.architectureTitle}</CardTitle>
@@ -210,47 +185,23 @@ export default function NominaGestionPersonasPage() {
             </Button>
           </CardContent>
         </Card>
-        <DataViewToggle mode={mode} onChange={setMode} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-5">
-        {copy.referenceModules.map((item) => {
-          const Icon = item.icon
-          return (
-            <Card key={item.title} className="rounded-[24px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.28)]">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base"><Icon className="h-4.5 w-4.5 text-sky-700" /> {item.title}</CardTitle>
-                <CardDescription>{item.description}</CardDescription>
-              </CardHeader>
-            </Card>
-          )
-        })}
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="space-y-4">
         <Card className="rounded-[26px] border-slate-200">
           <CardHeader>
             <CardTitle>{copy.sections.org[0]}</CardTitle>
             <CardDescription>{copy.sections.org[1]}</CardDescription>
           </CardHeader>
-          <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-            {overview?.orgUnits.map((item) => (
-              <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-slate-950">{item.name}</div>
-                    <div className="text-sm text-slate-500">{item.code} · {item.level}</div>
-                  </div>
-                  <span className={statusClass(item.status)}>{item.status}</span>
-                </div>
-                <div className="mt-3 space-y-1 text-sm text-slate-600">
-                  <div>{copy.labels.parent}: {item.parentName ?? '—'}</div>
-                  <div>{copy.labels.manager}: {item.managerName ?? '—'}</div>
-                  <div>{copy.labels.site}: {item.sede ?? '—'}</div>
-                  <div>Headcount: {item.headcount}</div>
-                </div>
-              </div>
-            ))}
+          <CardContent>
+            <NominaCompactTable rows={overview?.orgUnits ?? []} minWidth="820px" emptyMessage={language === 'en' ? 'No organizational units.' : 'No hay unidades organizacionales.'} columns={[
+              { key: 'unit', label: language === 'en' ? 'Unit / code' : 'Unidad / código', render: (item) => <><div className="font-medium text-slate-950">{item.name}</div><div className="text-xs text-slate-500">{item.code} · {item.level}</div></> },
+              { key: 'parent', label: copy.labels.parent, render: (item) => item.parentName ?? '—' },
+              { key: 'manager', label: copy.labels.manager, render: (item) => item.managerName ?? '—' },
+              { key: 'site', label: copy.labels.site, render: (item) => item.sede ?? '—' },
+              { key: 'headcount', label: 'Headcount', className: 'text-center font-semibold tabular-nums', headerClassName: 'text-center', render: (item) => item.headcount },
+              { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
+            ]} />
           </CardContent>
         </Card>
 
@@ -259,32 +210,16 @@ export default function NominaGestionPersonasPage() {
             <CardTitle>{copy.sections.portal[0]}</CardTitle>
             <CardDescription>{copy.sections.portal[1]}</CardDescription>
           </CardHeader>
-          <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-            {overview?.portalHighlights.map((item) => (
-              <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-slate-950">{item.title}</div>
-                    <div className="text-sm text-slate-500">{item.category}</div>
-                  </div>
-                  <span className={statusClass(item.status)}>{item.status}</span>
-                </div>
-                <p className="mt-3 text-sm text-slate-600">{item.summary}</p>
-                <div className="mt-3 space-y-1 text-sm text-slate-600">
-                  <div>{copy.labels.audience}: {item.audience}</div>
-                  <div>{item.metricLabel ?? 'KPI'}: {item.metricValue ?? '—'}</div>
-                  <div>{copy.labels.employee}: {item.employeeName ?? '—'}</div>
-                  <div>{copy.labels.generated}: {formatDate(item.publishedAt, locale)}</div>
-                </div>
-                {item.actionUrl ? (
-                  <div className="mt-3">
-                    <Button asChild variant="outline" className="rounded-xl bg-slate-50">
-                      <Link href={item.actionUrl}>{item.actionLabel ?? copy.labels.action}</Link>
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            ))}
+          <CardContent>
+            <NominaCompactTable rows={overview?.portalHighlights ?? []} minWidth="1020px" emptyMessage={language === 'en' ? 'No portal publications.' : 'No hay publicaciones del portal.'} columns={[
+              { key: 'content', label: language === 'en' ? 'Content / category' : 'Contenido / categoría', className: 'max-w-[300px]', render: (item) => <><div className="truncate font-medium text-slate-950">{item.title}</div><div className="text-xs text-slate-500">{item.category}</div><div className="truncate text-xs text-slate-400" title={item.summary}>{item.summary}</div></> },
+              { key: 'audience', label: copy.labels.audience, render: (item) => item.audience },
+              { key: 'employee', label: copy.labels.employee, render: (item) => item.employeeName ?? '—' },
+              { key: 'metric', label: language === 'en' ? 'Metric' : 'Métrica', className: 'text-center tabular-nums', headerClassName: 'text-center', render: (item) => <><div className="font-semibold">{item.metricValue ?? '—'}</div><div className="text-xs text-slate-500">{item.metricLabel ?? 'KPI'}</div></> },
+              { key: 'date', label: copy.labels.generated, className: 'whitespace-nowrap', render: (item) => formatDate(item.publishedAt, locale) },
+              { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
+              { key: 'action', label: copy.labels.action, headerClassName: 'text-right', render: (item) => item.actionUrl ? <div className="flex justify-end"><Button asChild size="sm" variant="outline" className="h-8 rounded-lg px-2.5"><Link href={item.actionUrl}>{item.actionLabel ?? copy.labels.action}</Link></Button></div> : '—' },
+            ]} />
           </CardContent>
         </Card>
 
@@ -293,25 +228,15 @@ export default function NominaGestionPersonasPage() {
             <CardTitle>{copy.sections.access[0]}</CardTitle>
             <CardDescription>{copy.sections.access[1]}</CardDescription>
           </CardHeader>
-          <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-            {overview?.accessProfiles.map((item) => (
-              <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-slate-950">{item.profileName}</div>
-                    <div className="text-sm text-slate-500">{item.roleLabel} · {item.scopeLabel}</div>
-                  </div>
-                  <span className={statusClass(item.status)}>{item.status}</span>
-                </div>
-                <div className="mt-3 space-y-1 text-sm text-slate-600">
-                  <div>{copy.labels.user}: {item.userName ?? item.userEmail ?? '—'}</div>
-                  <div>{copy.labels.employee}: {item.employeeName ?? '—'}</div>
-                  <div>{copy.labels.permissions}: {item.permissions.join(', ') || '—'}</div>
-                  <div>{copy.labels.reviewed}: {formatDate(item.lastReviewedAt, locale)}</div>
-                  <div>{copy.labels.accessed}: {formatDate(item.lastAccessAt, locale)}</div>
-                </div>
-              </div>
-            ))}
+          <CardContent>
+            <NominaCompactTable rows={overview?.accessProfiles ?? []} minWidth="1120px" emptyMessage={language === 'en' ? 'No access profiles.' : 'No hay perfiles de acceso.'} columns={[
+              { key: 'profile', label: language === 'en' ? 'Profile / scope' : 'Perfil / alcance', render: (item) => <><div className="font-medium text-slate-950">{item.profileName}</div><div className="text-xs text-slate-500">{item.roleLabel} · {item.scopeLabel}</div></> },
+              { key: 'user', label: copy.labels.user, render: (item) => item.userName ?? item.userEmail ?? '—' },
+              { key: 'employee', label: copy.labels.employee, render: (item) => item.employeeName ?? '—' },
+              { key: 'permissions', label: copy.labels.permissions, className: 'max-w-[300px]', render: (item) => <div className="truncate" title={item.permissions.join(', ')}>{item.permissions.join(', ') || '—'}</div> },
+              { key: 'dates', label: language === 'en' ? 'Reviewed / accessed' : 'Revisado / acceso', className: 'whitespace-nowrap', render: (item) => <><div>{formatDate(item.lastReviewedAt, locale)}</div><div className="text-xs text-slate-500">{formatDate(item.lastAccessAt, locale)}</div></> },
+              { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
+            ]} />
           </CardContent>
         </Card>
 
@@ -320,55 +245,34 @@ export default function NominaGestionPersonasPage() {
             <CardTitle>{copy.sections.workflows[0]}</CardTitle>
             <CardDescription>{copy.sections.workflows[1]}</CardDescription>
           </CardHeader>
-          <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-            {overview?.workflowTemplates.map((item) => (
-              <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-slate-950">{item.name}</div>
-                    <div className="text-sm text-slate-500">{item.category}</div>
-                  </div>
-                  <span className={statusClass(item.status)}>{item.status}</span>
-                </div>
-                <div className="mt-3 space-y-1 text-sm text-slate-600">
-                  <div>{copy.labels.owner}: {item.ownerName ?? '—'}</div>
-                  <div>{copy.labels.trigger}: {item.triggerType}</div>
-                  <div>SLA: {item.slaHours}h</div>
-                  <div>{language === 'en' ? 'Automation' : 'Automatización'}: {item.automationLevel}</div>
-                  <div>{language === 'en' ? 'Steps' : 'Pasos'}: {item.stepCount}</div>
-                  <div>{copy.labels.executed}: {formatDate(item.lastExecutedAt, locale)}</div>
-                </div>
-              </div>
-            ))}
+          <CardContent>
+            <NominaCompactTable rows={overview?.workflowTemplates ?? []} minWidth="1000px" emptyMessage={language === 'en' ? 'No workflow templates.' : 'No hay plantillas de workflow.'} columns={[
+              { key: 'workflow', label: language === 'en' ? 'Workflow / category' : 'Workflow / categoría', render: (item) => <><div className="font-medium text-slate-950">{item.name}</div><div className="text-xs text-slate-500">{item.category}</div></> },
+              { key: 'owner', label: copy.labels.owner, render: (item) => item.ownerName ?? '—' },
+              { key: 'trigger', label: copy.labels.trigger, render: (item) => item.triggerType },
+              { key: 'operation', label: language === 'en' ? 'SLA / automation' : 'SLA / automatización', render: (item) => <><div>{item.slaHours} h</div><div className="text-xs text-slate-500">{item.automationLevel} · {item.stepCount} {language === 'en' ? 'steps' : 'pasos'}</div></> },
+              { key: 'executed', label: copy.labels.executed, className: 'whitespace-nowrap', render: (item) => formatDate(item.lastExecutedAt, locale) },
+              { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
+            ]} />
           </CardContent>
         </Card>
 
-        <Card className="rounded-[26px] border-slate-200 xl:col-span-2">
+        <Card className="rounded-[26px] border-slate-200">
           <CardHeader>
             <CardTitle>{copy.sections.reports[0]}</CardTitle>
             <CardDescription>{copy.sections.reports[1]}</CardDescription>
           </CardHeader>
-          <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
-            {overview?.reports.map((item) => (
-              <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-slate-950">{item.name}</div>
-                    <div className="text-sm text-slate-500">{item.category}</div>
-                  </div>
-                  <span className={statusClass(item.status)}>{item.status}</span>
-                </div>
-                <div className="mt-3 space-y-1 text-sm text-slate-600">
-                  <div>{copy.labels.cadence}: {item.cadence}</div>
-                  <div>{copy.labels.audience}: {item.audience}</div>
-                  <div>{language === 'en' ? 'Metric' : 'Métrica'}: {item.metricValue}</div>
-                  <div>{language === 'en' ? 'Trend' : 'Tendencia'}: {item.metricTrend ?? '—'}</div>
-                  <div>{copy.labels.filters}: {item.filtersSummary ?? '—'}</div>
-                  <div>{copy.labels.owner}: {item.ownerName ?? '—'}</div>
-                  <div>{copy.labels.generated}: {formatDate(item.lastGeneratedAt, locale)}</div>
-                </div>
-              </div>
-            ))}
+          <CardContent>
+            <NominaCompactTable rows={overview?.reports ?? []} minWidth="1120px" emptyMessage={language === 'en' ? 'No people reports.' : 'No hay reportes de personas.'} columns={[
+              { key: 'report', label: language === 'en' ? 'Report / category' : 'Reporte / categoría', render: (item) => <><div className="font-medium text-slate-950">{item.name}</div><div className="text-xs text-slate-500">{item.category}</div></> },
+              { key: 'cadence', label: copy.labels.cadence, render: (item) => item.cadence },
+              { key: 'audience', label: copy.labels.audience, render: (item) => item.audience },
+              { key: 'metric', label: language === 'en' ? 'Metric / trend' : 'Métrica / tendencia', className: 'text-right tabular-nums', headerClassName: 'text-right', render: (item) => <><div className="font-semibold">{item.metricValue}</div><div className="text-xs text-slate-500">{item.metricTrend ?? '—'}</div></> },
+              { key: 'filters', label: copy.labels.filters, className: 'max-w-[230px]', render: (item) => <div className="truncate" title={item.filtersSummary ?? ''}>{item.filtersSummary ?? '—'}</div> },
+              { key: 'owner', label: copy.labels.owner, render: (item) => item.ownerName ?? '—' },
+              { key: 'generated', label: copy.labels.generated, className: 'whitespace-nowrap', render: (item) => formatDate(item.lastGeneratedAt, locale) },
+              { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
+            ]} />
           </CardContent>
         </Card>
       </div>

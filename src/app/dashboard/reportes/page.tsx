@@ -330,6 +330,7 @@ type ResizeState = {
   startY: number;
   startWidth: number;
   startHeight: number;
+  containerWidth: number;
   view: WidgetView;
 };
 
@@ -373,10 +374,10 @@ const DEFAULT_REPORT_TEMPLATES: ReportTemplate[] = [
 ];
 
 const DEFAULT_REPORT_WIDGETS: ReportWidget[] = [
-  { id: 'widget-kpi-sales', source: 'ventas', view: 'kpi', title: 'Ventas totales', metric: 'ventasTotales', width: 1, height: 176 },
-  { id: 'widget-kpi-orders', source: 'ordenes', view: 'kpi', title: 'Órdenes de trabajo', metric: 'ordenesTrabajo', width: 1, height: 176 },
-  { id: 'widget-kpi-quotes', source: 'cotizaciones', view: 'kpi', title: 'Cotizaciones', metric: 'cotizacionesTotales', width: 1, height: 176 },
-  { id: 'widget-kpi-customers', source: 'clientes', view: 'kpi', title: 'Clientes activos', metric: 'clientesActivos', width: 1, height: 176 },
+  { id: 'widget-kpi-sales', source: 'ventas', view: 'kpi', title: 'Ventas totales', metric: 'ventasTotales', width: 25, height: 176 },
+  { id: 'widget-kpi-orders', source: 'ordenes', view: 'kpi', title: 'Órdenes de trabajo', metric: 'ordenesTrabajo', width: 25, height: 176 },
+  { id: 'widget-kpi-quotes', source: 'cotizaciones', view: 'kpi', title: 'Cotizaciones', metric: 'cotizacionesTotales', width: 25, height: 176 },
+  { id: 'widget-kpi-customers', source: 'clientes', view: 'kpi', title: 'Clientes activos', metric: 'clientesActivos', width: 25, height: 176 },
 ];
 
 const DEFAULT_REPORT_PREFS: ReportBuilderState = {
@@ -574,8 +575,10 @@ function reorderWidgets(widgets: ReportWidget[], fromId: string, toId: string, p
   return next;
 }
 
+const WIDGET_WIDTHS = [25, 33, 50, 66, 75, 100] as const;
+
 function defaultWidgetWidth(view: WidgetView) {
-  return view === 'kpi' ? 1 : 2;
+  return view === 'kpi' ? 25 : 50;
 }
 
 function defaultWidgetHeight(view: WidgetView) {
@@ -584,7 +587,21 @@ function defaultWidgetHeight(view: WidgetView) {
 
 function clampWidgetWidth(value: number | undefined, view: WidgetView) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return defaultWidgetWidth(view);
-  return Math.max(1, Math.min(4, Math.round(value)));
+  const legacyWidth = Number.isInteger(value) && value >= 1 && value <= 4 ? value * 25 : value;
+  return WIDGET_WIDTHS.reduce((closest, width) => (
+    Math.abs(width - legacyWidth) < Math.abs(closest - legacyWidth) ? width : closest
+  ));
+}
+
+function widgetWidthClass(width: number | undefined, view: WidgetView) {
+  switch (clampWidgetWidth(width, view)) {
+    case 100: return 'md:col-span-12';
+    case 75: return 'md:col-span-9';
+    case 66: return 'md:col-span-8';
+    case 50: return 'md:col-span-6';
+    case 33: return 'md:col-span-4';
+    default: return 'md:col-span-3';
+  }
 }
 
 function clampWidgetHeight(value: number | undefined, view: WidgetView) {
@@ -1948,6 +1965,7 @@ export default function ReportesPage() {
   function handleResizeStart(widget: ReportWidget, event: React.PointerEvent<HTMLButtonElement>) {
     event.preventDefault();
     event.stopPropagation();
+    const grid = event.currentTarget.closest('[data-report-widget-grid]');
     const nextResizeState: ResizeState = {
       widgetId: widget.id,
       pointerId: event.pointerId,
@@ -1955,6 +1973,7 @@ export default function ReportesPage() {
       startY: event.clientY,
       startWidth: clampWidgetWidth(widget.width, widget.view),
       startHeight: clampWidgetHeight(widget.height, widget.view),
+      containerWidth: grid?.getBoundingClientRect().width ?? window.innerWidth,
       view: widget.view,
     };
     setResizeState(nextResizeState);
@@ -1968,7 +1987,7 @@ export default function ReportesPage() {
       if (event.pointerId !== activeResize.pointerId) return;
       const deltaX = event.clientX - activeResize.startX;
       const deltaY = event.clientY - activeResize.startY;
-      const nextWidth = clampWidgetWidth(activeResize.startWidth + deltaX / 170, activeResize.view);
+      const nextWidth = clampWidgetWidth(activeResize.startWidth + (deltaX / activeResize.containerWidth) * 100, activeResize.view);
       const nextHeight = clampWidgetHeight(activeResize.startHeight + deltaY, activeResize.view);
       const nextWidgets = reportPrefsRef.current.builder.widgets.map((widget) => (
         widget.id === activeResize.widgetId
@@ -2149,18 +2168,10 @@ export default function ReportesPage() {
     const totalPages = Math.max(1, Math.ceil(listRows.length / limit));
     const visibleRows = listRows.slice((currentPage - 1) * limit, currentPage * limit);
     const compact = activeTemplate.density === 'compact' || mode === 'preview';
-    const widgetWidth = clampWidgetWidth(widget.width, widget.view);
     const widgetHeight = clampWidgetHeight(widget.height, widget.view);
-    const spanClass = widgetWidth >= 4
-      ? 'md:col-span-2 xl:col-span-4'
-      : widgetWidth === 3
-        ? 'md:col-span-2 xl:col-span-3'
-        : widgetWidth === 2
-          ? 'md:col-span-2 xl:col-span-2'
-          : '';
     const shellClass = widget.view === 'kpi'
-      ? `rounded-[24px] border-slate-200 bg-white shadow-sm ${spanClass}`.trim()
-      : `rounded-[24px] border-slate-200 bg-white shadow-sm md:col-span-2 ${spanClass}`.trim();
+      ? 'rounded-[24px] border-slate-200 bg-white shadow-sm'
+      : 'rounded-[24px] border-slate-200 bg-white shadow-sm';
     const chartHeight = Math.max(190, widgetHeight - (compact ? 112 : 126));
     const isResizingThisWidget = mode === 'page' && resizeState?.widgetId === widget.id;
 
@@ -2414,7 +2425,7 @@ export default function ReportesPage() {
                       </button>
                       <div>
                         <div className="text-sm font-medium text-slate-900">{widget.title}</div>
-                        <div className="text-xs text-slate-500">{viewLabel(widget.view)} · fuente {widget.source} · ancho {clampWidgetWidth(widget.width, widget.view)} columnas · alto {clampWidgetHeight(widget.height, widget.view)} px</div>
+                        <div className="text-xs text-slate-500">{viewLabel(widget.view)} · fuente {widget.source} · ancho {clampWidgetWidth(widget.width, widget.view)}% · alto {clampWidgetHeight(widget.height, widget.view)} px</div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -2549,9 +2560,9 @@ export default function ReportesPage() {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Ancho en columnas</Label>
-                  <Input type="number" min={1} max={4} value={clampWidgetWidth(activeWidgetSettings.width, activeWidgetSettings.view)} onChange={(e) => updateWidget(activeWidgetSettings.id, { width: Number(e.target.value) || 1 })} />
-                  <div className="text-xs text-slate-500">1 a 4 columnas en escritorio amplio.</div>
+                  <Label>Ancho del bloque (%)</Label>
+                  <Input type="number" min={25} max={100} value={clampWidgetWidth(activeWidgetSettings.width, activeWidgetSettings.view)} onChange={(e) => updateWidget(activeWidgetSettings.id, { width: Number(e.target.value) || 25 })} />
+                  <div className="text-xs text-slate-500">25%, 33%, 50%, 66%, 75% o 100%.</div>
                 </div>
                 <div className="space-y-2">
                   <Label>Alto del bloque</Label>
@@ -2560,10 +2571,10 @@ export default function ReportesPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {[1, 2, 3, 4].map((width) => (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {WIDGET_WIDTHS.map((width) => (
                   <Button key={width} type="button" variant={clampWidgetWidth(activeWidgetSettings.width, activeWidgetSettings.view) === width ? 'default' : 'outline'} onClick={() => updateWidget(activeWidgetSettings.id, { width })}>
-                    {width} col
+                    {width}%
                   </Button>
                 ))}
               </div>
@@ -2727,11 +2738,11 @@ export default function ReportesPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-12" data-report-widget-grid>
             {reportPrefs.builder.widgets.map((widget) => (
               <div
                 key={widget.id}
-                className={['relative space-y-2 transition-all', draggingWidgetId === widget.id ? 'opacity-60' : ''].filter(Boolean).join(' ')}
+                className={['relative space-y-2 transition-all', widgetWidthClass(widget.width, widget.view), draggingWidgetId === widget.id ? 'opacity-60' : ''].filter(Boolean).join(' ')}
                 onDragOver={(event) => handleWidgetDragOver(widget.id, event)}
                 onDrop={(event) => handleWidgetDrop(widget.id, event)}
               >
@@ -2744,11 +2755,8 @@ export default function ReportesPage() {
                 {resizeState?.widgetId === widget.id ? (
                   <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-[24px]">
                     <div className="absolute inset-0 bg-sky-50/22" />
-                    <div className="absolute inset-y-0 left-1/4 border-l border-dashed border-sky-300/90" />
-                    <div className="absolute inset-y-0 left-2/4 border-l border-dashed border-sky-300/90" />
-                    <div className="absolute inset-y-0 left-3/4 border-l border-dashed border-sky-300/90" />
                     <div className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full border border-sky-200 bg-white/95 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700 shadow-sm">
-                      Snap: {clampWidgetWidth(widget.width, widget.view)} col · {clampWidgetHeight(widget.height, widget.view)} px
+                      Ancho: {clampWidgetWidth(widget.width, widget.view)}% · Alto: {clampWidgetHeight(widget.height, widget.view)} px
                     </div>
                   </div>
                 ) : null}

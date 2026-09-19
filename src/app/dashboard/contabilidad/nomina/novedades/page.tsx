@@ -5,8 +5,8 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -14,7 +14,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollNoveltyRow, PayrollPeriodRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
@@ -55,7 +54,6 @@ export default function NominaNovedadesPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
-  const { mode, setMode } = useDataViewMode('nomina.novedades', 'list')
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
 
@@ -363,7 +361,6 @@ export default function NominaNovedadesPage() {
 
       <div className="flex justify-end" data-tour="nomina-novedades-actions">
         <div className="flex flex-wrap gap-2">
-          <DataViewToggle mode={mode} onChange={setMode} />
           <Button className="rounded-xl" onClick={openCreate}>{copy.actions.create}</Button>
         </div>
       </div>
@@ -379,34 +376,16 @@ export default function NominaNovedadesPage() {
               <CardTitle>{copy.sections.operationalTitle}</CardTitle>
               <CardDescription>{copy.sections.operationalDescription}</CardDescription>
             </CardHeader>
-            <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-              {operativas.map((item) => (
-                <div key={item.id} className={mode === 'grid' ? 'rounded-[22px] border border-slate-200 bg-white p-4' : 'rounded-[18px] border border-slate-200 bg-white px-4 py-3'}>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-slate-950">{item.employeeName}</div>
-                      <div className="text-sm text-slate-500">{item.periodLabel}</div>
-                    </div>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{copy.types[item.type]}</span>
-                  </div>
-                  <div className="mt-2 text-sm text-slate-600">{item.detail}</div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                    {typeof item.amount === 'number' ? <span className="rounded-full border border-slate-200 px-2.5 py-1">{copy.labels.value}: {formatCurrency(item.amount)}</span> : null}
-                    {typeof item.days === 'number' ? <span className="rounded-full border border-slate-200 px-2.5 py-1">{copy.labels.days}: {item.days}</span> : null}
-                    {typeof item.quantity === 'number' ? <span className="rounded-full border border-slate-200 px-2.5 py-1">{copy.labels.quantity}: {item.quantity}</span> : null}
-                    <span className="rounded-full border border-slate-200 px-2.5 py-1">{copy.statuses[item.status]}</span>
-                    <span className="rounded-full border border-slate-200 px-2.5 py-1">{copy.labels.source}: {item.source}</span>
-                    <span className="rounded-full border border-slate-200 px-2.5 py-1">{formatDate(item.occurredOn, locale)}</span>
-                    <span className="rounded-full border border-slate-200 px-2.5 py-1">{item.supportUrl ? copy.labels.attachmentPresent : copy.labels.attachmentMissing}</span>
-                  </div>
-                  {(item.type === 'HORA_EXTRA' || item.type === 'VACACIONES') && typeof item.amount === 'number' ? <div className="mt-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">Valor calculado automáticamente desde salario base {item.type === 'HORA_EXTRA' ? 'y horas reportadas' : 'y días liquidados'}.</div> : null}
-                  {item.supportUrl ? <div className="mt-2"><Link href={item.supportUrl} target="_blank" className="text-sm font-medium text-sky-700">{copy.labels.openAttachment}</Link></div> : null}
-                  <div className="mt-3 flex justify-end gap-2">
-                    <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
-                    <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
-                  </div>
-                </div>
-              ))}
+            <CardContent>
+              <NominaCompactTable rows={operativas} minWidth="1120px" emptyMessage={language === 'en' ? 'No payroll changes available.' : 'No hay novedades disponibles.'} columns={[
+                { key: 'employee', label: language === 'en' ? 'Employee / detail' : 'Empleado / detalle', className: 'max-w-[280px]', render: (item) => <><div className="truncate font-medium text-slate-950">{item.employeeName}</div><div className="truncate text-xs text-slate-500" title={item.detail}>{item.detail}</div></> },
+                { key: 'type', label: copy.labels.type, render: (item) => <><div>{copy.types[item.type]}</div><div className="text-xs text-slate-500">{item.source}</div></> },
+                { key: 'period', label: copy.labels.period, className: 'max-w-[180px]', render: (item) => <><div className="truncate">{item.periodLabel ?? copy.labels.noPeriod}</div><div className="text-xs text-slate-500">{formatDate(item.occurredOn, locale)}</div></> },
+                { key: 'values', label: language === 'en' ? 'Value / quantity' : 'Valor / cantidad', className: 'whitespace-nowrap text-right tabular-nums', headerClassName: 'text-right', render: (item) => <><div>{typeof item.amount === 'number' ? formatCurrency(item.amount) : '—'}</div><div className="text-xs text-slate-500">{item.days != null ? `${item.days} ${copy.labels.days.toLowerCase()}` : item.quantity != null ? `${item.quantity} ${copy.labels.quantity.toLowerCase()}` : '—'}</div></> },
+                { key: 'support', label: copy.labels.attachment, render: (item) => item.supportUrl ? <Link href={item.supportUrl} target="_blank" className="font-medium text-sky-700">{copy.labels.openAttachment}</Link> : <span className="text-slate-400">{copy.labels.attachmentMissing}</span> },
+                { key: 'status', label: copy.labels.status, render: (item) => <NominaStatusBadge status={copy.statuses[item.status]} /> },
+                { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div> },
+              ]} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -416,38 +395,23 @@ export default function NominaNovedadesPage() {
               <CardTitle>{copy.sections.leaveTitle}</CardTitle>
               <CardDescription>{copy.sections.leaveDescription}</CardDescription>
             </CardHeader>
-            <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-              {incapacidades.map((item) => (
-                <div key={item.id} className={mode === 'grid' ? 'rounded-[22px] border border-amber-200 bg-amber-50/60 p-4' : 'rounded-[18px] border border-amber-200 bg-amber-50/60 px-4 py-3'}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-slate-950">{item.employeeName}</div>
-                      <div className="text-sm text-slate-600">{item.detail}</div>
-                    </div>
-                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">{copy.statuses[item.status]}</span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-                    <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{item.periodLabel}</span>
-                    <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{copy.labels.days}: {item.days ?? 0}</span>
-                    {typeof item.amount === 'number' ? <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{copy.labels.value}: {formatCurrency(item.amount)}</span> : null}
-                    <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{copy.labels.supportNumber}: {item.supportNumber ?? '—'}</span>
-                    <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{formatDate(item.startsAt, locale)} - {formatDate(item.endsAt, locale)}</span>
-                    <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{item.supportUrl ? copy.labels.attachmentPresent : copy.labels.attachmentMissing}</span>
-                  </div>
-                  {item.supportUrl ? <div className="mt-2"><Link href={item.supportUrl} target="_blank" className="text-sm font-medium text-sky-700">{copy.labels.openAttachment}</Link></div> : null}
-                  <div className="mt-3 flex justify-end gap-2">
-                    <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
-                    <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
-                  </div>
-                </div>
-              ))}
+            <CardContent>
+              <NominaCompactTable rows={incapacidades} minWidth="1080px" emptyMessage={language === 'en' ? 'No medical leave records.' : 'No hay incapacidades registradas.'} columns={[
+                { key: 'employee', label: language === 'en' ? 'Employee / detail' : 'Empleado / detalle', className: 'max-w-[260px]', render: (item) => <><div className="truncate font-medium text-slate-950">{item.employeeName}</div><div className="truncate text-xs text-slate-500">{item.detail}</div></> },
+                { key: 'period', label: copy.labels.period, className: 'max-w-[170px]', render: (item) => <div className="truncate">{item.periodLabel ?? copy.labels.noPeriod}</div> },
+                { key: 'dates', label: language === 'en' ? 'From / to' : 'Desde / hasta', className: 'whitespace-nowrap', render: (item) => <><div>{formatDate(item.startsAt, locale)}</div><div className="text-xs text-slate-500">{formatDate(item.endsAt, locale)}</div></> },
+                { key: 'value', label: language === 'en' ? 'Days / value' : 'Días / valor', className: 'whitespace-nowrap text-right tabular-nums', headerClassName: 'text-right', render: (item) => <><div>{item.days ?? 0} {copy.labels.days.toLowerCase()}</div><div className="text-xs text-slate-500">{typeof item.amount === 'number' ? formatCurrency(item.amount) : '—'}</div></> },
+                { key: 'support', label: copy.labels.supportNumber, render: (item) => <><div>{item.supportNumber ?? '—'}</div>{item.supportUrl ? <Link href={item.supportUrl} target="_blank" className="text-xs font-medium text-sky-700">{copy.labels.openAttachment}</Link> : <div className="text-xs text-slate-400">{copy.labels.attachmentMissing}</div>}</> },
+                { key: 'status', label: copy.labels.status, render: (item) => <NominaStatusBadge status={copy.statuses[item.status]} /> },
+                { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div> },
+              ]} />
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl rounded-[28px]">
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto rounded-[28px]">
           <DialogHeader>
             <DialogTitle>{editingId ? copy.dialog.titleEdit : copy.dialog.titleCreate}</DialogTitle>
             <DialogDescription>{copy.dialog.description}</DialogDescription>

@@ -1,10 +1,10 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
+import { UserRound } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
-import { NominaSurfaceCallout } from '@/components/dashboard/nomina-surface-callout'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useI18n } from '@/components/providers/i18n-provider'
@@ -14,7 +14,6 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollContractRow, PayrollEmployeeRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
@@ -76,6 +75,33 @@ const EMPTY_CONTRACT_FORM = {
   notes: '',
 }
 
+function EmployeeDetailRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="grid gap-1 border-b border-slate-100 py-2.5 last:border-b-0 sm:grid-cols-[150px_1fr] sm:gap-4">
+      <dt className="text-xs font-medium text-slate-500">{label}</dt>
+      <dd className="break-words text-sm font-medium text-slate-900">{value || '—'}</dd>
+    </div>
+  )
+}
+
+function EmployeeAvatar({ name, src }: { name: string; src?: string | null }) {
+  const [imageFailed, setImageFailed] = useState(false)
+
+  useEffect(() => {
+    setImageFailed(false)
+  }, [src])
+
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-slate-500">
+      {src && !imageFailed ? (
+        <img src={src} alt={name} className="h-full w-full object-cover" onError={() => setImageFailed(true)} />
+      ) : (
+        <UserRound className="h-5 w-5" aria-hidden="true" />
+      )}
+    </div>
+  )
+}
+
 export default function NominaEmpleadosPage() {
   const [employees, setEmployees] = useState<PayrollEmployeeRow[]>([])
   const [contracts, setContracts] = useState<PayrollContractRow[]>([])
@@ -87,13 +113,13 @@ export default function NominaEmpleadosPage() {
   const [editingContractId, setEditingContractId] = useState<string | null>(null)
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false)
   const [contractDialogOpen, setContractDialogOpen] = useState(false)
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false)
   const [savingEmployee, setSavingEmployee] = useState(false)
   const [savingContract, setSavingContract] = useState(false)
   const [employeeError, setEmployeeError] = useState<string | null>(null)
   const [contractError, setContractError] = useState<string | null>(null)
   const [employeeForm, setEmployeeForm] = useState(EMPTY_EMPLOYEE_FORM)
   const [contractForm, setContractForm] = useState(EMPTY_CONTRACT_FORM)
-  const { mode, setMode } = useDataViewMode('nomina.empleados', 'list')
   const { language } = useI18n()
 
   const copy = language === 'en'
@@ -444,6 +470,11 @@ export default function NominaEmpleadosPage() {
     setEmployeeDialogOpen(true)
   }
 
+  function openEmployeeDetail(employeeId: string) {
+    setSelectedEmployeeId(employeeId)
+    setDetailDialogOpen(true)
+  }
+
   function openEditEmployee(employee: PayrollEmployeeRow) {
     setEditingEmployeeId(employee.id)
     setEmployeeError(null)
@@ -636,17 +667,6 @@ export default function NominaEmpleadosPage() {
 
       <NominaSubnav />
 
-      <NominaSurfaceCallout
-        adminTitle={language === 'en' ? 'Employee records and contracts are managed here.' : 'Aquí se gestionan fichas laborales y contratos.'}
-        adminDescription={language === 'en' ? 'RRHH updates employment data, salary structure, affiliations and accounting assignment from this workspace.' : 'RRHH actualiza datos laborales, estructura salarial, afiliaciones y asignación contable desde esta estación.'}
-        employeeTitle={language === 'en' ? 'The collaborator only sees approved personal data in the portal.' : 'El colaborador solo ve sus datos aprobados en el portal.'}
-        employeeDescription={language === 'en' ? 'Contact changes and self-service requests happen in the employee portal, not in this admin tray.' : 'Los cambios de contacto y solicitudes de autoservicio ocurren en el portal del colaborador, no en esta bandeja administrativa.'}
-        primaryHref={nominaHref('portal-empleado')}
-        primaryLabel={language === 'en' ? 'Open collaborator portal' : 'Abrir portal del colaborador'}
-        secondaryHref={nominaHref('servicio-colaborador')}
-        secondaryLabel={language === 'en' ? 'Go to service center' : 'Ir a servicio al colaborador'}
-      />
-
       <Card className="rounded-[24px] border-sky-200 bg-sky-50/70">
         <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm text-slate-700">
           <div>{copy.banner.text}</div>
@@ -661,62 +681,44 @@ export default function NominaEmpleadosPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-        <div className="space-y-4">
+      <div className="space-y-4">
           <Card className="rounded-[26px] border-slate-200" data-tour="nomina-empleados-list">
             <CardHeader>
-              <div className="flex items-center justify-between gap-3">
-                <CardTitle>{copy.directory.title}</CardTitle>
-                <DataViewToggle mode={mode} onChange={setMode} />
-              </div>
+              <CardTitle>{copy.directory.title}</CardTitle>
               <CardDescription>{copy.directory.description}</CardDescription>
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.directory.searchPlaceholder} className="mt-2 rounded-xl" />
             </CardHeader>
             <CardContent className="space-y-3">
               {!filteredEmployees.length ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">{copy.directory.empty}</div> : null}
-              {mode === 'grid'
-                ? <div className="grid gap-3 md:grid-cols-2">{filteredEmployees.map((employee) => (
-                    <button
-                      key={employee.id}
-                      type="button"
-                      onClick={() => setSelectedEmployeeId(employee.id)}
-                      className={selectedEmployee?.id === employee.id ? 'w-full rounded-[22px] border border-sky-300 bg-sky-50/70 p-4 text-left' : 'w-full rounded-[22px] border border-slate-200 bg-white p-4 text-left'}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-950">{employee.fullName}</p>
-                          <p className="text-sm text-slate-500">{employee.role} · {employee.document}</p>
-                        </div>
-                        <span className={employee.status === 'ACTIVE' ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800' : employee.status === 'SUSPENDED' ? 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800' : 'rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700'}>{employeeStatusLabel[employee.status as keyof typeof employeeStatusLabel] ?? employee.status}</span>
-                      </div>
-                      <div className="mt-2 grid gap-1 text-sm text-slate-600">
-                        <div>{employee.sede}</div>
-                        <div>{employee.contractType ? (contractTypeLabel[employee.contractType as keyof typeof contractTypeLabel] ?? employee.contractType) : copy.detail.noContract} · {employee.frequency ? (frequencyLabel[employee.frequency as keyof typeof frequencyLabel] ?? employee.frequency) : copy.detail.noFrequency}</div>
-                        <div>{copy.contractDialog.baseSalary}: {formatCurrency(employee.salary)}</div>
-                      </div>
-                    </button>
-                  ))}</div>
-                : filteredEmployees.map((employee) => (
-                    <button
-                      key={employee.id}
-                      type="button"
-                      onClick={() => setSelectedEmployeeId(employee.id)}
-                      className={selectedEmployee?.id === employee.id ? 'w-full rounded-[18px] border border-sky-300 bg-sky-50/70 px-4 py-3 text-left' : 'w-full rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-left'}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-950">{employee.fullName}</p>
-                          <p className="truncate text-xs text-slate-500">{employee.role} · {employee.document}</p>
-                        </div>
-                        <span className={employee.status === 'ACTIVE' ? 'rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-800' : employee.status === 'SUSPENDED' ? 'rounded-full bg-amber-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800' : 'rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700'}>{employeeStatusLabel[employee.status as keyof typeof employeeStatusLabel] ?? employee.status}</span>
-                      </div>
-                      <div className="mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-3">
-                        <div>{employee.sede}</div>
-                        <div>{employee.contractType ? (contractTypeLabel[employee.contractType as keyof typeof contractTypeLabel] ?? employee.contractType) : copy.detail.noContract}</div>
-                        <div>{formatCurrency(employee.salary)}</div>
-                      </div>
-                    </button>
-                  ))}
+              {filteredEmployees.map((employee) => (
+                <div key={employee.id} className="grid gap-3 rounded-[18px] border border-slate-200 bg-white px-4 py-3 md:grid-cols-[minmax(180px,1.5fr)_minmax(120px,0.9fr)_minmax(120px,0.9fr)_minmax(100px,0.7fr)_auto] md:items-center">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <EmployeeAvatar name={employee.fullName} src={employee.avatarUrl} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-950">{employee.fullName}</p>
+                      <p className="truncate text-xs text-slate-500">{employee.role} · {employee.document}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-medium text-slate-400">{copy.detail.branch}</p>
+                    <p className="truncate text-sm text-slate-700">{employee.sede}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-medium text-slate-400">{copy.detail.contract}</p>
+                    <p className="truncate text-sm text-slate-700">{employee.contractType ? (contractTypeLabel[employee.contractType as keyof typeof contractTypeLabel] ?? employee.contractType) : copy.detail.noContract}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-medium text-slate-400">{copy.detail.salary}</p>
+                    <p className="text-sm text-slate-700">{formatCurrency(employee.salary)}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                    <span className={employee.status === 'ACTIVE' ? 'rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-800' : employee.status === 'SUSPENDED' ? 'rounded-full bg-amber-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800' : 'rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700'}>{employeeStatusLabel[employee.status as keyof typeof employeeStatusLabel] ?? employee.status}</span>
+                    <Button size="sm" variant="outline" className="rounded-xl" onClick={() => openEmployeeDetail(employee.id)}>
+                      {language === 'en' ? 'View full profile' : 'Ver ficha completa'}
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
 
@@ -755,101 +757,95 @@ export default function NominaEmpleadosPage() {
               ))}
             </CardContent>
           </Card>
-        </div>
-
-        <Card className="rounded-[26px] border-slate-200">
-          <CardHeader>
-            <CardTitle>{selectedEmployee?.fullName ?? copy.detail.emptyTitle}</CardTitle>
-            <CardDescription>{selectedEmployee ? `${selectedEmployee.role} · ${selectedEmployee.code}` : copy.detail.emptyDescription}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm text-slate-600">
-            {selectedEmployee ? (
-              <>
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button variant="outline" className="rounded-xl" onClick={() => openEditEmployee(selectedEmployee)}>{copy.detail.editEmployee}</Button>
-                  <Button variant="outline" className="rounded-xl" onClick={() => void handleDeleteEmployee(selectedEmployee)}>{copy.detail.deleteEmployee}</Button>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{copy.detail.employment}</div>
-                    <div className="mt-2 space-y-1">
-                      <div><span className="font-medium text-slate-900">{copy.detail.start}:</span> {selectedEmployee.startDate}</div>
-                      <div><span className="font-medium text-slate-900">{copy.detail.end}:</span> {selectedEmployee.endDate || copy.detail.active}</div>
-                      <div><span className="font-medium text-slate-900">{copy.detail.contract}:</span> {selectedEmployee.contractType ? (contractTypeLabel[selectedEmployee.contractType as keyof typeof contractTypeLabel] ?? selectedEmployee.contractType) : copy.detail.noContract}</div>
-                      <div><span className="font-medium text-slate-900">{copy.detail.frequency}:</span> {selectedEmployee.frequency ? (frequencyLabel[selectedEmployee.frequency as keyof typeof frequencyLabel] ?? selectedEmployee.frequency) : copy.detail.noFrequency}</div>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{copy.detail.socialSecurity}</div>
-                    <div className="mt-2 space-y-1">
-                      <div><span className="font-medium text-slate-900">{copy.detail.eps}:</span> {selectedEmployee.eps}</div>
-                      <div><span className="font-medium text-slate-900">{copy.detail.pension}:</span> {selectedEmployee.pension}</div>
-                      <div><span className="font-medium text-slate-900">{copy.detail.arl}:</span> {selectedEmployee.arlRiskClass}</div>
-                      <div><span className="font-medium text-slate-900">{copy.detail.bankAccount}:</span> {selectedEmployee.bankAccount}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">Horas extra</div>
-                    <div className="mt-2 text-2xl font-semibold text-slate-950">{selectedEmployee.overtimeHours} h</div>
-                    <div className="text-sm text-slate-600">{selectedEmployee.overtimeMinutes} minutos acumulados desde asistencia.</div>
-                  </div>
-                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-800">Vacaciones</div>
-                    <div className="mt-2 text-2xl font-semibold text-slate-950">{selectedEmployee.vacation.availableDays} días</div>
-                    <div className="mt-2 grid gap-1 text-sm text-slate-600">
-                      <div>Ganados: {selectedEmployee.vacation.earnedDays} días / {selectedEmployee.vacation.earnedHours} horas</div>
-                      <div>Tomados: {selectedEmployee.vacation.takenDays} días / {selectedEmployee.vacation.takenHours} horas</div>
-                      <div>Disponibles: {selectedEmployee.vacation.availableHours} horas</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{copy.detail.accounting}</div>
-                  <div className="mt-2 grid gap-2 md:grid-cols-3">
-                    <div><span className="font-medium text-slate-900">{copy.detail.branch}:</span> {selectedEmployee.sede}</div>
-                    <div><span className="font-medium text-slate-900">{copy.detail.costCenter}:</span> {selectedEmployee.costCenter}</div>
-                    <div><span className="font-medium text-slate-900">{copy.detail.salary}:</span> {formatCurrency(selectedEmployee.salary)}</div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{copy.detail.activeContract}</div>
-                      <div className="mt-1 text-sm text-slate-600">{selectedContract ? `${contractTypeLabel[selectedContract.contractType as keyof typeof contractTypeLabel] ?? selectedContract.contractType} · ${frequencyLabel[selectedContract.frequency as keyof typeof frequencyLabel] ?? selectedContract.frequency} · ${formatCurrency(selectedContract.salary)}` : copy.detail.noActiveContract}</div>
-                      {selectedContract ? <div className="mt-2 grid gap-1 text-sm text-slate-500"><div>Prórrogas registradas: {selectedContract.extensionCount}</div><div>Recordatorio administrativo: {selectedContract.renewalReminderDays} días antes</div><div>Destino de alerta: {selectedContract.adminOnlyReminder ? 'Solo administradores' : 'Usuarios autorizados del módulo'}</div><div>Vencimiento: {selectedContract.endDate ? `${selectedContract.endDate.slice(0, 10)}${selectedContract.daysToExpiration != null ? ` · ${selectedContract.daysToExpiration} día(s)` : ''}` : 'Sin fecha final'}</div>{selectedContract.lastExtensionDate ? <div>Última prórroga: {selectedContract.lastExtensionDate.slice(0, 10)}{selectedContract.lastExtensionReason ? ` · ${selectedContract.lastExtensionReason}` : ''}</div> : null}</div> : null}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedContract ? <Button variant="outline" className="rounded-xl" onClick={() => openEditContract(selectedContract)}>{copy.detail.editContract}</Button> : null}
-                      {selectedContract ? <Button variant="outline" className="rounded-xl" onClick={() => void handleDeleteContract(selectedContract)}>{copy.detail.deleteContract}</Button> : null}
-                      <Button className="rounded-xl" onClick={() => openCreateContract(selectedEmployee.id)}>{copy.detail.createContract}</Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{copy.detail.alerts}</div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {selectedEmployee.alerts.map((alert) => (
-                      <span key={alert} className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900">
-                        {alert}
-                      </span>
-                    ))}
-                    {!selectedEmployee.alerts.length ? <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">{copy.detail.noAlerts}</span> : null}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div>{copy.detail.noSelection}</div>
-            )}
-          </CardContent>
-        </Card>
       </div>
+
+      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto rounded-[28px] p-0">
+          {selectedEmployee ? (
+            <>
+              <DialogHeader className="border-b border-slate-200 bg-slate-50/70 px-6 py-5 text-left">
+                <DialogTitle className="text-xl">{selectedEmployee.fullName}</DialogTitle>
+                <DialogDescription>{selectedEmployee.role} · {selectedEmployee.document} · {employeeStatusLabel[selectedEmployee.status as keyof typeof employeeStatusLabel] ?? selectedEmployee.status}</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 px-6 py-5 md:grid-cols-2">
+                <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <h3 className="font-semibold text-slate-950">{language === 'en' ? 'Identity and contact' : 'Identidad y contacto'}</h3>
+                  <dl className="mt-2">
+                    <EmployeeDetailRow label={language === 'en' ? 'Employee code' : 'Código'} value={selectedEmployee.code} />
+                    <EmployeeDetailRow label={language === 'en' ? 'Document' : 'Documento'} value={selectedEmployee.document} />
+                    <EmployeeDetailRow label={copy.detail.personalEmail} value={selectedEmployee.personalEmail} />
+                    <EmployeeDetailRow label={copy.detail.phone} value={selectedEmployee.phone} />
+                    <EmployeeDetailRow label={copy.detail.city} value={selectedEmployee.city} />
+                    <EmployeeDetailRow label={copy.detail.address} value={selectedEmployee.address} />
+                  </dl>
+                </section>
+
+                <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <h3 className="font-semibold text-slate-950">{copy.detail.employment}</h3>
+                  <dl className="mt-2">
+                    <EmployeeDetailRow label={language === 'en' ? 'Role' : 'Cargo'} value={selectedEmployee.role} />
+                    <EmployeeDetailRow label={copy.detail.start} value={selectedEmployee.startDate} />
+                    <EmployeeDetailRow label={copy.detail.end} value={selectedEmployee.endDate || copy.detail.active} />
+                    <EmployeeDetailRow label={copy.detail.contract} value={selectedEmployee.contractType ? (contractTypeLabel[selectedEmployee.contractType as keyof typeof contractTypeLabel] ?? selectedEmployee.contractType) : copy.detail.noContract} />
+                    <EmployeeDetailRow label={copy.detail.frequency} value={selectedEmployee.frequency ? (frequencyLabel[selectedEmployee.frequency as keyof typeof frequencyLabel] ?? selectedEmployee.frequency) : copy.detail.noFrequency} />
+                    <EmployeeDetailRow label={copy.detail.salary} value={formatCurrency(selectedEmployee.salary)} />
+                    <EmployeeDetailRow label={copy.detail.branch} value={selectedEmployee.sede} />
+                    <EmployeeDetailRow label={copy.detail.costCenter} value={selectedEmployee.costCenter} />
+                  </dl>
+                </section>
+
+                <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <h3 className="font-semibold text-slate-950">{copy.detail.socialSecurity}</h3>
+                  <dl className="mt-2">
+                    <EmployeeDetailRow label={copy.detail.eps} value={selectedEmployee.eps} />
+                    <EmployeeDetailRow label={copy.detail.pension} value={selectedEmployee.pension} />
+                    <EmployeeDetailRow label={copy.detail.arl} value={[selectedEmployee.arlEntity, selectedEmployee.arlRiskClass].filter(Boolean).join(' · ')} />
+                    <EmployeeDetailRow label={copy.detail.bankAccount} value={selectedEmployee.bankAccount} />
+                  </dl>
+                </section>
+
+                <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <h3 className="font-semibold text-slate-950">{language === 'en' ? 'Time and balances' : 'Tiempo y saldos'}</h3>
+                  <dl className="mt-2">
+                    <EmployeeDetailRow label={language === 'en' ? 'Overtime' : 'Horas extra'} value={`${selectedEmployee.overtimeHours} h (${selectedEmployee.overtimeMinutes} min)`} />
+                    <EmployeeDetailRow label={language === 'en' ? 'Vacation earned' : 'Vacaciones ganadas'} value={`${selectedEmployee.vacation.earnedDays} días · ${selectedEmployee.vacation.earnedHours} h`} />
+                    <EmployeeDetailRow label={language === 'en' ? 'Vacation taken' : 'Vacaciones tomadas'} value={`${selectedEmployee.vacation.takenDays} días · ${selectedEmployee.vacation.takenHours} h`} />
+                    <EmployeeDetailRow label={language === 'en' ? 'Available vacation' : 'Vacaciones disponibles'} value={`${selectedEmployee.vacation.availableDays} días · ${selectedEmployee.vacation.availableHours} h`} />
+                  </dl>
+                </section>
+
+                <section className="rounded-2xl border border-slate-200 bg-white p-4 md:col-span-2">
+                  <h3 className="font-semibold text-slate-950">{copy.detail.activeContract}</h3>
+                  {selectedContract ? (
+                    <dl className="mt-2 grid gap-x-6 md:grid-cols-2">
+                      <EmployeeDetailRow label={copy.detail.contract} value={contractTypeLabel[selectedContract.contractType as keyof typeof contractTypeLabel] ?? selectedContract.contractType} />
+                      <EmployeeDetailRow label={copy.detail.frequency} value={frequencyLabel[selectedContract.frequency as keyof typeof frequencyLabel] ?? selectedContract.frequency} />
+                      <EmployeeDetailRow label={language === 'en' ? 'Expiration' : 'Vencimiento'} value={selectedContract.endDate?.slice(0, 10) || (language === 'en' ? 'No end date' : 'Sin fecha final')} />
+                      <EmployeeDetailRow label={language === 'en' ? 'Extensions' : 'Prórrogas'} value={selectedContract.extensionCount} />
+                      <EmployeeDetailRow label={language === 'en' ? 'Reminder' : 'Recordatorio'} value={`${selectedContract.renewalReminderDays} ${language === 'en' ? 'days before' : 'días antes'}`} />
+                      <EmployeeDetailRow label={language === 'en' ? 'Alert visibility' : 'Visibilidad de alerta'} value={selectedContract.adminOnlyReminder ? (language === 'en' ? 'Administrators only' : 'Solo administradores') : (language === 'en' ? 'Authorized module users' : 'Usuarios autorizados del módulo')} />
+                    </dl>
+                  ) : <p className="mt-2 text-sm text-slate-500">{copy.detail.noActiveContract}</p>}
+                </section>
+
+                <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 md:col-span-2">
+                  <h3 className="font-semibold text-slate-950">{copy.detail.alerts}</h3>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {selectedEmployee.alerts.map((alert) => <span key={alert} className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900">{alert}</span>)}
+                    {!selectedEmployee.alerts.length ? <span className="text-sm text-slate-500">{copy.detail.noAlerts}</span> : null}
+                  </div>
+                  {selectedEmployee.notes ? <p className="mt-3 border-t border-slate-200 pt-3 text-sm text-slate-600">{selectedEmployee.notes}</p> : null}
+                </section>
+              </div>
+              <DialogFooter className="border-t border-slate-200 bg-white px-6 py-4">
+                <Button variant="outline" onClick={() => openEditEmployee(selectedEmployee)}>{copy.detail.editEmployee}</Button>
+                {selectedContract ? <Button variant="outline" onClick={() => openEditContract(selectedContract)}>{copy.detail.editContract}</Button> : null}
+                <Button onClick={() => openCreateContract(selectedEmployee.id)}>{copy.detail.createContract}</Button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={employeeDialogOpen} onOpenChange={setEmployeeDialogOpen}>
         <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto rounded-[28px]">

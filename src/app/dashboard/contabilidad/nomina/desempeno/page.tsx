@@ -2,10 +2,9 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,7 +13,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeRow, PayrollPerformanceReviewRow } from '@/lib/payroll'
 
@@ -46,13 +44,6 @@ function formatDate(value: string | null, locale: string) {
   }
 }
 
-function statusClass(status: string) {
-  if (status === 'CERRADA') return 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800'
-  if (status === 'EN_CALIBRACION') return 'rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-800'
-  if (status === 'ABIERTA') return 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800'
-  return 'rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700'
-}
-
 export default function NominaDesempenoPage() {
   const [rows, setRows] = useState<PayrollPerformanceReviewRow[]>([])
   const [employees, setEmployees] = useState<PayrollEmployeeRow[]>([])
@@ -61,7 +52,6 @@ export default function NominaDesempenoPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { mode, setMode } = useDataViewMode('nomina.desempeno', 'grid')
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
 
@@ -210,8 +200,7 @@ export default function NominaDesempenoPage() {
 
       <NominaSubnav />
 
-      <div className="flex justify-end gap-2">
-        <DataViewToggle mode={mode} onChange={setMode} />
+      <div className="flex justify-end">
         <Button className="rounded-xl" onClick={openCreate}>{copy.create}</Button>
       </div>
 
@@ -220,44 +209,22 @@ export default function NominaDesempenoPage() {
           <CardTitle>{copy.cardTitle}</CardTitle>
           <CardDescription>{copy.cardDescription}</CardDescription>
         </CardHeader>
-        <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}>
-          {rows.map((item) => (
-            <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-slate-950">{item.cycleTitle}</div>
-                  <div className="text-sm text-slate-500">{item.reviewType}</div>
-                </div>
-                <span className={statusClass(item.status)}>{item.status}</span>
-              </div>
-              <div className="mt-3 space-y-1 text-sm text-slate-600">
-                <div>{language === 'en' ? 'Employee' : 'Empleado'}: {item.employeeName ?? '—'}</div>
-                <div>{language === 'en' ? 'Manager' : 'Líder'}: {item.managerName ?? '—'}</div>
-                <div>{language === 'en' ? 'Competency focus' : 'Foco de competencia'}: {item.competencyFocus}</div>
-                <div>{language === 'en' ? 'Score' : 'Score'}: {item.score ?? '—'}</div>
-                <div>{language === 'en' ? 'Target' : 'Meta'}: {item.targetScore ?? '—'}</div>
-                <div>{language === 'en' ? 'Sales target' : 'Meta ventas'}: {item.salesTargetAmount ?? '—'}</div>
-                <div>{language === 'en' ? 'Sales achieved' : 'Ventas logradas'}: {item.salesAchievedAmount ?? '—'}</div>
-                <div>{language === 'en' ? 'Deals achieved' : 'Negocios logrados'}: {item.salesAchievedDeals ?? '—'} / {item.salesTargetDeals ?? '—'}</div>
-                <div>{language === 'en' ? 'Goal progress' : 'Cumplimiento'}: {item.goalProgressPercent != null ? `${item.goalProgressPercent}%` : '—'}</div>
-                <div>{language === 'en' ? 'Due date' : 'Vence'}: {formatDate(item.dueDate ?? null, locale)}</div>
-                <div>{language === 'en' ? 'Completed' : 'Completada'}: {formatDate(item.completedAt ?? null, locale)}</div>
-                <div>{language === 'en' ? 'Owner' : 'Responsable'}: {item.ownerName ?? '—'}</div>
-              </div>
-              {item.chartSeries.length ? <div className="mt-4 h-48 rounded-2xl border border-slate-200 bg-slate-50/70 p-3"><ResponsiveContainer width="100%" height="100%"><BarChart data={item.chartSeries}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={11} /><YAxis tickLine={false} axisLine={false} fontSize={11} /><Tooltip formatter={(value: number) => value.toLocaleString('es-CO')} /><Bar dataKey="target" name={language === 'en' ? 'Target' : 'Meta'} fill="#94a3b8" radius={[8, 8, 0, 0]} /><Bar dataKey="actual" name={language === 'en' ? 'Actual' : 'Real'} fill="#0f766e" radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer></div> : null}
-              {item.summary ? <p className="mt-3 text-sm text-slate-600">{item.summary}</p> : null}
-              {item.developmentPlan ? <div className="mt-3 text-sm text-slate-500">{item.developmentPlan}</div> : null}
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{language === 'en' ? 'Edit' : 'Editar'}</Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{language === 'en' ? 'Delete' : 'Eliminar'}</Button>
-              </div>
-            </div>
-          ))}
+        <CardContent>
+          <NominaCompactTable rows={rows} minWidth="1240px" emptyMessage={language === 'en' ? 'No performance reviews available.' : 'No hay evaluaciones de desempeño disponibles.'} columns={[
+            { key: 'review', label: language === 'en' ? 'Cycle / employee' : 'Ciclo / empleado', className: 'max-w-[260px]', render: (item) => <><div className="truncate font-medium text-slate-950">{item.cycleTitle}</div><div className="truncate text-xs text-slate-700">{item.employeeName ?? '—'}</div><div className="text-xs text-slate-400">{item.reviewType.replaceAll('_', ' ')}</div></> },
+            { key: 'focus', label: language === 'en' ? 'Focus / manager' : 'Foco / líder', className: 'max-w-[210px]', render: (item) => <><div className="truncate">{item.competencyFocus}</div><div className="truncate text-xs text-slate-500">{item.managerName ?? item.ownerName ?? '—'}</div></> },
+            { key: 'score', label: language === 'en' ? 'Score / target' : 'Score / meta', className: 'text-center font-semibold tabular-nums', headerClassName: 'text-center', render: (item) => <><div>{item.score ?? '—'} / {item.targetScore ?? '—'}</div><div className="text-xs font-normal text-slate-500">{item.goalProgressPercent != null ? `${item.goalProgressPercent}%` : '—'}</div></> },
+            { key: 'sales', label: language === 'en' ? 'Sales actual / target' : 'Ventas real / meta', className: 'whitespace-nowrap text-right tabular-nums', headerClassName: 'text-right', render: (item) => <><div>{item.salesAchievedAmount?.toLocaleString(locale) ?? '—'}</div><div className="text-xs text-slate-500">{item.salesTargetAmount?.toLocaleString(locale) ?? '—'}</div></> },
+            { key: 'deals', label: language === 'en' ? 'Deals actual / target' : 'Negocios real / meta', className: 'text-center tabular-nums', headerClassName: 'text-center', render: (item) => `${item.salesAchievedDeals ?? '—'} / ${item.salesTargetDeals ?? '—'}` },
+            { key: 'dates', label: language === 'en' ? 'Due / completed' : 'Vence / completada', className: 'whitespace-nowrap', render: (item) => <><div>{formatDate(item.dueDate ?? null, locale)}</div><div className="text-xs text-slate-500">{formatDate(item.completedAt ?? null, locale)}</div></> },
+            { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
+            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{language === 'en' ? 'Edit' : 'Editar'}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{language === 'en' ? 'Delete' : 'Eliminar'}</Button></div> },
+          ]} />
         </CardContent>
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl rounded-[28px]">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto rounded-[28px]">
           <DialogHeader>
             <DialogTitle>{language === 'en' ? 'Performance review' : 'Evaluación de desempeño'}</DialogTitle>
             <DialogDescription>{language === 'en' ? 'Capture the cycle, employee, score and development plan.' : 'Captura el ciclo, empleado, score y plan de desarrollo.'}</DialogDescription>

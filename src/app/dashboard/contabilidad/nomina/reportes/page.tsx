@@ -4,9 +4,8 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
-import { NominaSurfaceCallout } from '@/components/dashboard/nomina-surface-callout'
+import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -15,7 +14,6 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollEmployeeDocumentRow, PayrollEmployeeRow, PayrollPayslipRow, PayrollPeriodRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
@@ -69,7 +67,6 @@ export default function NominaReportesPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
-  const { mode, setMode } = useDataViewMode('nomina.reportes', 'list')
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
 
@@ -337,19 +334,7 @@ export default function NominaReportesPage() {
 
       <NominaSubnav />
 
-      <NominaSurfaceCallout
-        adminTitle={language === 'en' ? 'Document delivery and signature workflow are managed here.' : 'Aquí se administra la entrega documental y el flujo de firma.'}
-        adminDescription={language === 'en' ? 'RRHH publishes, tracks and closes labor documents before or while they are exposed to the collaborator.' : 'RRHH publica, rastrea y cierra documentos laborales antes o durante su exposición al colaborador.'}
-        employeeTitle={language === 'en' ? 'The collaborator only receives visible assets and pending signatures.' : 'El colaborador solo recibe activos visibles y firmas pendientes.'}
-        employeeDescription={language === 'en' ? 'Portal visibility and signature status here define what appears in self-service.' : 'La visibilidad en portal y el estado de firma aquí definen lo que aparece en autoservicio.'}
-        primaryHref={nominaHref('portal-empleado')}
-        primaryLabel={language === 'en' ? 'Open collaborator portal' : 'Abrir portal del colaborador'}
-        secondaryHref={nominaHref('periodos')}
-        secondaryLabel={language === 'en' ? 'Go to payroll cycles' : 'Ir a ciclos de nómina'}
-      />
-
-      <div className="flex justify-end gap-2">
-        <DataViewToggle mode={mode} onChange={setMode} />
+      <div className="flex justify-end">
         <Button className="rounded-xl" onClick={openCreate}>{copy.actions.create}</Button>
       </div>
 
@@ -365,42 +350,16 @@ export default function NominaReportesPage() {
               <CardTitle>{copy.docs.title}</CardTitle>
               <CardDescription>{copy.docs.description}</CardDescription>
             </CardHeader>
-            <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-              {documents.map((item) => (
-                <div key={item.id} className={mode === 'grid' ? 'rounded-[22px] border border-slate-200 bg-white p-4' : 'rounded-[18px] border border-slate-200 bg-white px-4 py-3'}>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-slate-950">{item.title}</div>
-                      <div className="text-sm text-slate-500">{item.employeeName} · {item.periodLabel}</div>
-                    </div>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{item.documentType}</span>
-                  </div>
-                  <div className="mt-3 grid gap-2 text-sm text-slate-600 md:grid-cols-2">
-                    <div>{copy.labels.category}: {item.category}</div>
-                    <div>{copy.labels.status}: {item.status}</div>
-                    <div>{copy.labels.signatureStatus}: {item.signatureStatus}</div>
-                    <div>Aprobación global: {item.approvalStatus}</div>
-                    <div>RRHH: {item.hrApprovalStatus}{item.hrApproverName ? ` · ${item.hrApproverName}` : ''}</div>
-                    <div>Dirección: {item.directorApprovalStatus}{item.directorApproverName ? ` · ${item.directorApproverName}` : ''}</div>
-                    <div>{copy.labels.deliveryChannel}: {item.deliveryChannel}</div>
-                    <div>{copy.labels.visibleInPortal}: {item.visibleInPortal ? copy.yes : copy.no}</div>
-                    <div>{copy.labels.fileFormat}: {item.fileFormat}</div>
-                    <div>Firma en plataforma: {item.signableInPlatform ? copy.yes : copy.no}</div>
-                    <div>{copy.labels.requestedAt}: {formatDate(item.requestedAt, locale)}</div>
-                    <div>{copy.labels.signedAt}: {formatDate(item.signedAt, locale)}</div>
-                  </div>
-                  {item.legalFormName ? <div className="mt-2 text-sm text-slate-600">Formulario legal: {item.legalFormName}</div> : null}
-                  {item.formSummary ? <div className="mt-2 text-sm text-slate-600">Resumen legal: {item.formSummary}</div> : null}
-                  {item.notes ? <div className="mt-2 text-sm text-slate-600">{copy.labels.notes}: {item.notes}</div> : null}
-                  <div className="mt-3 flex justify-end gap-2">
-                    <Button asChild variant="outline" className="rounded-xl">
-                      <Link href={`/api/nomina/documentos/${item.id}/pdf`} target="_blank">Ver PDF legal</Link>
-                    </Button>
-                    <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
-                    <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
-                  </div>
-                </div>
-              ))}
+            <CardContent>
+              <NominaCompactTable rows={documents} minWidth="1320px" emptyMessage={language === 'en' ? 'No labor documents available.' : 'No hay documentos laborales disponibles.'} columns={[
+                { key: 'document', label: language === 'en' ? 'Document / employee' : 'Documento / empleado', className: 'max-w-[280px]', render: (item) => <><div className="truncate font-medium text-slate-950">{item.title}</div><div className="truncate text-xs text-slate-700">{item.employeeName}</div><div className="truncate text-xs text-slate-400">{item.periodLabel ?? copy.labels.noPeriod}</div></> },
+                { key: 'type', label: language === 'en' ? 'Type / category' : 'Tipo / categoría', render: (item) => <><div>{item.documentType}</div><div className="text-xs text-slate-500">{item.category} · {item.fileFormat}</div></> },
+                { key: 'delivery', label: language === 'en' ? 'Delivery / portal' : 'Entrega / portal', render: (item) => <><div>{item.deliveryChannel}</div><div className="text-xs text-slate-500">{copy.labels.visibleInPortal}: {item.visibleInPortal ? copy.yes : copy.no}</div></> },
+                { key: 'approvals', label: language === 'en' ? 'HR / direction' : 'RRHH / dirección', className: 'max-w-[210px]', render: (item) => <><div className="truncate">{item.hrApprovalStatus}{item.hrApproverName ? ` · ${item.hrApproverName}` : ''}</div><div className="truncate text-xs text-slate-500">{item.directorApprovalStatus}{item.directorApproverName ? ` · ${item.directorApproverName}` : ''}</div></> },
+                { key: 'dates', label: language === 'en' ? 'Requested / signed' : 'Solicitado / firmado', className: 'whitespace-nowrap', render: (item) => <><div>{formatDate(item.requestedAt, locale)}</div><div className="text-xs text-slate-500">{formatDate(item.signedAt, locale)}</div></> },
+                { key: 'status', label: copy.labels.status, render: (item) => <div className="space-y-1"><NominaStatusBadge status={item.status} /><div><NominaStatusBadge status={item.signatureStatus} /></div><div className="text-[10px] uppercase text-slate-500">{item.approvalStatus.replaceAll('_', ' ')}</div></div> },
+                { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button asChild size="sm" variant="outline" className="h-8 rounded-lg px-2.5"><Link href={`/api/nomina/documentos/${item.id}/pdf`} target="_blank">PDF</Link></Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div> },
+              ]} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -411,29 +370,22 @@ export default function NominaReportesPage() {
               <CardTitle>{copy.payslips.title}</CardTitle>
               <CardDescription>{copy.payslips.description}</CardDescription>
             </CardHeader>
-            <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-              {payslips.map((receipt) => (
-                <div key={receipt.id} className={mode === 'grid' ? 'flex flex-col gap-3 rounded-[22px] border border-slate-200 bg-white p-4' : 'flex flex-col gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 md:flex-row md:items-center md:justify-between'}>
-                  <div>
-                    <div className="font-semibold text-slate-950">{receipt.employeeName}</div>
-                    <div className="text-sm text-slate-500">{receipt.periodLabel} · {formatDate(receipt.paymentDate, locale)}</div>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm text-slate-600">
-                    <span>{copy.labels.netPay}: {formatCurrency(receipt.netPay)}</span>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{receipt.deliveredBy}</span>
-                    <span className={receipt.signed ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800' : 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800'}>
-                      {receipt.signed ? copy.signed : copy.pending}
-                    </span>
-                  </div>
-                </div>
-              ))}
+            <CardContent>
+              <NominaCompactTable rows={payslips} minWidth="760px" emptyMessage={language === 'en' ? 'No payslips available.' : 'No hay desprendibles disponibles.'} columns={[
+                { key: 'employee', label: copy.labels.employee, render: (receipt) => <div className="font-medium text-slate-950">{receipt.employeeName}</div> },
+                { key: 'period', label: copy.labels.period, render: (receipt) => receipt.periodLabel },
+                { key: 'payment', label: language === 'en' ? 'Payment date' : 'Fecha de pago', className: 'whitespace-nowrap', render: (receipt) => formatDate(receipt.paymentDate, locale) },
+                { key: 'net', label: copy.labels.netPay, className: 'whitespace-nowrap text-right font-semibold tabular-nums', headerClassName: 'text-right', render: (receipt) => formatCurrency(receipt.netPay) },
+                { key: 'delivery', label: language === 'en' ? 'Delivery' : 'Entrega', render: (receipt) => receipt.deliveredBy },
+                { key: 'status', label: copy.labels.status, render: (receipt) => <NominaStatusBadge status={receipt.signed ? copy.signed : copy.pending} /> },
+              ]} />
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl rounded-[28px]">
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto rounded-[28px]">
           <DialogHeader>
             <DialogTitle>{editingId ? copy.dialog.edit : copy.dialog.create}</DialogTitle>
             <DialogDescription>{copy.dialog.description}</DialogDescription>

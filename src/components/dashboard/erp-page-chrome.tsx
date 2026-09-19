@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from "react"
+import { NominaMenuToggle } from '@/components/dashboard/nomina-navigation-context'
 import { InfoHint } from '@/components/ui/info-hint'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { cn } from "@/lib/utils"
@@ -35,7 +36,6 @@ const toneClassName: Record<NonNullable<HeroStat["tone"]>, string> = {
 
 export function ErpPageHero({
   breadcrumbs = [],
-  eyebrow,
   title,
   description,
   actions,
@@ -48,12 +48,8 @@ export function ErpPageHero({
         <div className="grid gap-2 px-3 py-2 lg:px-3.5 lg:py-2.5">
           <div className="space-y-1.5">
             {breadcrumbs.length ? <ErpBreadcrumbs items={breadcrumbs} /> : null}
-            {eyebrow ? (
-              <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700 backdrop-blur dark:border-[#444444] dark:bg-[#1c1c1c] dark:text-[#e0e0e0]">
-                {eyebrow}
-              </div>
-            ) : null}
             <div className="flex items-start gap-2">
+              <NominaMenuToggle />
               <h1 className="max-w-3xl text-lg font-semibold tracking-tight text-slate-950 dark:text-[#e0e0e0] lg:text-[1.65rem]">{title}</h1>
               {description ? <InfoHint content={description} label="Ver descripción de la página" className="mt-0.5" /> : null}
             </div>

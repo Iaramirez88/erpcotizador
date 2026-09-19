@@ -12,7 +12,6 @@ import {
   Gift,
   HandHelping,
   HeartHandshake,
-  LayoutGrid,
   LifeBuoy,
   ShieldAlert,
   Sparkles,
@@ -309,11 +308,7 @@ export default function NominaDashboardPage() {
         <section className="rounded-[30px] border border-slate-200 bg-[linear-gradient(135deg,#eef6ff_0%,#ffffff_42%,#f8fbff_100%)] p-6 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.34)]">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/85 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                <LayoutGrid className="h-3.5 w-3.5" />
-                Backoffice RRHH
-              </div>
-              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">Operación administrativa clara</h2>
+              <h2 className="text-3xl font-semibold tracking-tight text-slate-950">Operación administrativa clara</h2>
               <p className="mt-2 max-w-2xl text-sm text-slate-600">
                 Reclutamiento, empleados, nómina, beneficios, desempeño y cumplimiento desde una sola vista para el equipo administrativo. Menos texto, más decisiones rápidas.
               </p>

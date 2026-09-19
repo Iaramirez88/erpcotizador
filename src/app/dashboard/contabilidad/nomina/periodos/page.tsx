@@ -4,9 +4,8 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
-import { NominaSurfaceCallout } from '@/components/dashboard/nomina-surface-callout'
+import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
-import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -15,7 +14,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { nominaHref } from '@/lib/nomina-routes'
 import type { PayrollPayslipRow, PayrollPeriodRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
@@ -40,7 +38,6 @@ export default function NominaPeriodosPage() {
     paymentDate: '',
     notes: '',
   })
-  const { mode, setMode } = useDataViewMode('nomina.periodos', 'list')
   const { language } = useI18n()
 
   const copy = language === 'en'
@@ -293,20 +290,8 @@ export default function NominaPeriodosPage() {
 
       <NominaSubnav />
 
-      <NominaSurfaceCallout
-        adminTitle={language === 'en' ? 'Payroll cycles, calculation and posting are controlled here.' : 'Aquí se controlan cortes, cálculo y contabilización.'}
-        adminDescription={language === 'en' ? 'This is the operating station for payroll runs, accounting handoff and payslip generation.' : 'Esta es la estación operativa para corridas de nómina, pase contable y generación de desprendibles.'}
-        employeeTitle={language === 'en' ? 'The collaborator only consumes the final outputs.' : 'El colaborador solo consume los resultados finales.'}
-        employeeDescription={language === 'en' ? 'Payslips and documents become visible in the portal after RRHH closes the corresponding cycle.' : 'Los desprendibles y documentos se vuelven visibles en el portal cuando RRHH cierra el ciclo correspondiente.'}
-        primaryHref={nominaHref('reportes')}
-        primaryLabel={language === 'en' ? 'Open documents and payslips' : 'Abrir documentos y desprendibles'}
-        secondaryHref={nominaHref('portal-empleado')}
-        secondaryLabel={language === 'en' ? 'View collaborator portal' : 'Ver portal del colaborador'}
-      />
-
       <div className="flex justify-end" data-tour="nomina-periodos-actions">
         <div className="flex flex-wrap gap-2">
-          <DataViewToggle mode={mode} onChange={setMode} />
           <Button className="rounded-xl" onClick={openCreate}>{copy.create}</Button>
         </div>
       </div>
@@ -318,48 +303,23 @@ export default function NominaPeriodosPage() {
         </TabsList>
 
         <TabsContent value="periodos" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-4">
             <Card className="rounded-[26px] border-slate-200" data-tour="nomina-periodos-list">
               <CardHeader>
                 <CardTitle>{copy.cards.periodsTitle}</CardTitle>
                 <CardDescription>{copy.cards.periodsDescription}</CardDescription>
               </CardHeader>
-              <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-                {periods.map((period) => (
-                  <div key={period.id} className={mode === 'grid' ? 'rounded-[22px] border border-slate-200 bg-white p-4' : 'rounded-[18px] border border-slate-200 bg-white px-4 py-3'}>
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="font-semibold text-slate-950">{period.label}</div>
-                        <div className="text-sm text-slate-500">{period.range}</div>
-                      </div>
-                      <div className="flex gap-2">
-                        <span className={period.status === 'PAGADA' ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800' : period.status === 'CALCULADA' ? 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800' : 'rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700'}>
-                          {periodStatusLabel[period.status as keyof typeof periodStatusLabel] ?? period.status}
-                        </span>
-                        <span className={period.accountingStatus === 'CONTABILIZADA' ? 'rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-800' : 'rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700'}>
-                          {accountingStatusLabel[period.accountingStatus as keyof typeof accountingStatusLabel] ?? period.accountingStatus}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mt-3 grid gap-2 text-sm text-slate-600 md:grid-cols-2 xl:grid-cols-3">
-                      <div>{copy.metrics.employees}: {period.employeesCount}</div>
-                      <div>{copy.metrics.gross}: {formatCurrency(period.grossTotal)}</div>
-                      <div>{copy.metrics.deductions}: {formatCurrency(period.deductionsTotal)}</div>
-                      <div>{copy.metrics.net}: {formatCurrency(period.netTotal)}</div>
-                      <div>{copy.metrics.socialSecurity}: {formatCurrency(period.socialSecurityTotal)}</div>
-                      <div>{copy.metrics.parafiscales}: {formatCurrency(period.parafiscalesTotal)}</div>
-                    </div>
-                    {period.accountingStatus === 'PENDIENTE' && period.status !== 'BORRADOR' ? (
-                      <div className="mt-3 flex justify-end">
-                        <Button variant="outline" className="rounded-xl" onClick={() => void contabilizar(period.id)}>{copy.actions.post}</Button>
-                      </div>
-                    ) : null}
-                    <div className="mt-3 flex justify-end gap-2">
-                      <Button variant="outline" className="rounded-xl" onClick={() => openEdit(period)}>{copy.actions.edit}</Button>
-                      <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(period.id)}>{copy.actions.delete}</Button>
-                    </div>
-                  </div>
-                ))}
+              <CardContent>
+                <NominaCompactTable rows={periods} minWidth="1260px" emptyMessage={copy.empty.periods} columns={[
+                  { key: 'period', label: language === 'en' ? 'Period / range' : 'Período / rango', className: 'max-w-[240px]', render: (period) => <><div className="truncate font-medium text-slate-950">{period.label}</div><div className="text-xs text-slate-500">{period.range}</div><div className="text-xs text-slate-400">{frequencyLabel[period.frequency as keyof typeof frequencyLabel] ?? period.frequency}</div></> },
+                  { key: 'employees', label: copy.metrics.employees, className: 'text-center tabular-nums', headerClassName: 'text-center', render: (period) => period.employeesCount },
+                  { key: 'gross', label: copy.metrics.gross, className: 'whitespace-nowrap text-right tabular-nums', headerClassName: 'text-right', render: (period) => formatCurrency(period.grossTotal) },
+                  { key: 'deductions', label: copy.metrics.deductions, className: 'whitespace-nowrap text-right tabular-nums', headerClassName: 'text-right', render: (period) => formatCurrency(period.deductionsTotal) },
+                  { key: 'net', label: copy.metrics.net, className: 'whitespace-nowrap text-right font-semibold tabular-nums', headerClassName: 'text-right', render: (period) => formatCurrency(period.netTotal) },
+                  { key: 'contributions', label: language === 'en' ? 'Security / taxes' : 'Seguridad / parafiscales', className: 'whitespace-nowrap text-right tabular-nums', headerClassName: 'text-right', render: (period) => <><div>{formatCurrency(period.socialSecurityTotal)}</div><div className="text-xs text-slate-500">{formatCurrency(period.parafiscalesTotal)}</div></> },
+                  { key: 'status', label: copy.dialog.status, render: (period) => <div className="space-y-1"><NominaStatusBadge status={periodStatusLabel[period.status as keyof typeof periodStatusLabel] ?? period.status} /><div><NominaStatusBadge status={accountingStatusLabel[period.accountingStatus as keyof typeof accountingStatusLabel] ?? period.accountingStatus} /></div></div> },
+                  { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (period) => <div className="flex justify-end gap-1.5">{period.accountingStatus === 'PENDIENTE' && period.status !== 'BORRADOR' ? <Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void contabilizar(period.id)}>{copy.actions.post}</Button> : null}<Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(period)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(period.id)}>{copy.actions.delete}</Button></div> },
+                ]} />
               </CardContent>
             </Card>
 
@@ -368,17 +328,15 @@ export default function NominaPeriodosPage() {
                 <CardTitle>{copy.cards.summaryTitle}</CardTitle>
                 <CardDescription>{copy.cards.summaryDescription}</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm text-slate-600">
+              <CardContent className="grid gap-3 text-sm text-slate-600 md:grid-cols-4">
                 {periods[0] ? <>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                     <div className="font-semibold text-slate-950">{periods[0].label}</div>
                     <div className="mt-1">{copy.labels.scheduledPayment}: {periods[0].paymentDate}</div>
                   </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3"><span>{copy.labels.totalGross}</span><strong>{formatCurrency(periods[0].grossTotal)}</strong></div>
-                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3"><span>{copy.metrics.deductions}</span><strong>{formatCurrency(periods[0].deductionsTotal)}</strong></div>
-                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3"><span>{copy.metrics.net}</span><strong>{formatCurrency(periods[0].netTotal)}</strong></div>
-                  </div>
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3"><span>{copy.labels.totalGross}</span><strong>{formatCurrency(periods[0].grossTotal)}</strong></div>
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3"><span>{copy.metrics.deductions}</span><strong>{formatCurrency(periods[0].deductionsTotal)}</strong></div>
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3"><span>{copy.metrics.net}</span><strong>{formatCurrency(periods[0].netTotal)}</strong></div>
                 </> : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4">{copy.empty.periods}</div>}
               </CardContent>
             </Card>
@@ -391,22 +349,15 @@ export default function NominaPeriodosPage() {
               <CardTitle>{copy.cards.payslipsTitle}</CardTitle>
               <CardDescription>{copy.cards.payslipsDescription}</CardDescription>
             </CardHeader>
-            <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
-              {payslips.map((receipt) => (
-                <div key={receipt.id} className={mode === 'grid' ? 'flex flex-col gap-3 rounded-[22px] border border-slate-200 bg-white p-4' : 'flex flex-col gap-2 rounded-[18px] border border-slate-200 bg-white px-4 py-3 md:flex-row md:items-center md:justify-between'}>
-                  <div>
-                    <div className="font-semibold text-slate-950">{receipt.employeeName}</div>
-                    <div className="text-sm text-slate-500">{receipt.periodLabel} · {copy.labels.payment}: {receipt.paymentDate}</div>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm text-slate-600">
-                    <span>{formatCurrency(receipt.netPay)}</span>
-                    <span className={receipt.signed ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800' : 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800'}>
-                      {receipt.signed ? copy.labels.signed : copy.labels.pending}
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{receipt.deliveredBy}</span>
-                  </div>
-                </div>
-              ))}
+            <CardContent>
+              <NominaCompactTable rows={payslips} minWidth="760px" emptyMessage={language === 'en' ? 'No payslips available.' : 'No hay desprendibles disponibles.'} columns={[
+                { key: 'employee', label: language === 'en' ? 'Employee' : 'Empleado', render: (receipt) => <div className="font-medium text-slate-950">{receipt.employeeName}</div> },
+                { key: 'period', label: copy.tabs.periods, render: (receipt) => receipt.periodLabel },
+                { key: 'payment', label: copy.labels.payment, className: 'whitespace-nowrap', render: (receipt) => receipt.paymentDate },
+                { key: 'net', label: copy.metrics.net, className: 'whitespace-nowrap text-right font-semibold tabular-nums', headerClassName: 'text-right', render: (receipt) => formatCurrency(receipt.netPay) },
+                { key: 'delivery', label: language === 'en' ? 'Delivery' : 'Entrega', render: (receipt) => receipt.deliveredBy },
+                { key: 'status', label: copy.dialog.status, render: (receipt) => <NominaStatusBadge status={receipt.signed ? copy.labels.signed : copy.labels.pending} /> },
+              ]} />
             </CardContent>
           </Card>
         </TabsContent>

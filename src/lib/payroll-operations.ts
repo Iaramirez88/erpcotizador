@@ -39,6 +39,7 @@ export type PayrollBenefitRequestRow = {
 export type PayrollBenefitOfferingRow = {
   id: string
   title: string
+  imageUrl: string | null
   kind: string
   category: string
   vendorName: string | null
@@ -50,6 +51,8 @@ export type PayrollBenefitOfferingRow = {
   discountRate: number | null
   spotlight: boolean
   description: string
+  usageCount: number
+  rating: number
 }
 
 export type PayrollNoveltyDemoRow = {
@@ -548,12 +551,35 @@ export async function serializePayrollBenefits(empresaId: string): Promise<Payro
 }
 
 export async function serializePayrollBenefitOfferings(empresaId: string): Promise<PayrollBenefitOfferingRow[]> {
-  const rows = await prisma.payrollBenefitOffering.findMany({
-    where: { empresaId },
-    orderBy: [{ spotlight: 'desc' }, { createdAt: 'desc' }],
-  })
+  const [rows, requests] = await Promise.all([
+    prisma.payrollBenefitOffering.findMany({
+      where: { empresaId },
+      orderBy: [{ spotlight: 'desc' }, { createdAt: 'desc' }],
+    }),
+    prisma.payrollBenefitRequest.findMany({
+      where: { empresaId, status: { in: ['APROBADA', 'ENTREGADA'] } },
+      select: { employeeId: true, title: true, planName: true },
+    }),
+  ])
 
-  return rows.map((item) => ({
+  const normalize = (value: string | null | undefined) => (value ?? '').trim().toLocaleLowerCase()
+  const usageCounts = rows.map((offering) => {
+    const title = normalize(offering.title)
+    return new Set(
+      requests
+        .filter((request) => normalize(request.planName) === title || normalize(request.title) === title)
+        .map((request) => request.employeeId),
+    ).size
+  })
+  const highestUsage = Math.max(0, ...usageCounts)
+
+  return rows.map((item, index) => ({
+    ...(() => {
+      const metadata = item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+        ? item.metadata as Record<string, unknown>
+        : {}
+      return { imageUrl: typeof metadata.imageUrl === 'string' ? metadata.imageUrl : null }
+    })(),
     id: item.id,
     title: item.title,
     kind: item.kind,
@@ -567,5 +593,7 @@ export async function serializePayrollBenefitOfferings(empresaId: string): Promi
     discountRate: item.discountRate ?? null,
     spotlight: item.spotlight,
     description: item.description,
+    usageCount: usageCounts[index],
+    rating: highestUsage > 0 && usageCounts[index] > 0 ? Math.max(1, Math.ceil((usageCounts[index] / highestUsage) * 5)) : 0,
   }))
 }
