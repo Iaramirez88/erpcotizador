@@ -72,9 +72,10 @@ export async function GET() {
   let accessMap: Partial<Record<ModuleKey, AccessLevel>> = {}
   let canManageCustomProductRequests = false
   let canManageProducts = false
+  let canAccessRestaurant = false
   try {
     const sede = await getActiveSedeForUser(userId)
-    const [nextAccessMap, membership, productCapabilities] = await Promise.all([
+    const [nextAccessMap, membership, productCapabilities, restaurantCapability] = await Promise.all([
       getEffectiveAccessMap({ userId, sedeId: sede.id, modules: NAV_MODULES }),
       prisma.sedeMembership.findUnique({
         where: { sedeId_userId: { sedeId: sede.id, userId } },
@@ -86,6 +87,7 @@ export async function GET() {
         userHasCapabilityAccess({ userId, empresaId: sede.empresaId, sedeId: sede.id, domain: 'RECURSOS', subdomain: 'MATERIALS', action: 'CREATE' }),
         userHasCapabilityAccess({ userId, empresaId: sede.empresaId, sedeId: sede.id, domain: 'RECURSOS', subdomain: 'MATERIALS', action: 'UPDATE' }),
       ]),
+      userHasCapabilityAccess({ userId, empresaId: sede.empresaId, sedeId: sede.id, domain: 'VERTICALES', subdomain: 'RESTAURANTE', action: 'READ', directGrantOnly: true }),
     ])
     accessMap = nextAccessMap
     configAccess = nextAccessMap.CONFIG ?? 'NONE'
@@ -93,6 +95,7 @@ export async function GET() {
     materialsAccess = nextAccessMap.MATERIALES ?? 'NONE'
     canManageCustomProductRequests = membership?.role === 'ADMIN' || membership?.role === 'MANAGER'
     canManageProducts = ACCESS_ORDER[materialsAccess] >= ACCESS_ORDER.WRITE || productCapabilities.some(Boolean)
+    canAccessRestaurant = restaurantCapability
   } catch {
     // si algo falla (sede no resuelta, etc), dejamos NONE
   }
@@ -120,6 +123,7 @@ export async function GET() {
           canDeleteOrders,
           canManageProducts: !externalDashboardScope && canManageProducts,
           canManageCustomProductRequests: !externalDashboardScope && canManageCustomProductRequests,
+          canAccessRestaurant: !externalDashboardScope && canAccessRestaurant,
           empresaId,
           isPlanOwner: !externalDashboardScope && isPlanOwner,
           canManageBilling,

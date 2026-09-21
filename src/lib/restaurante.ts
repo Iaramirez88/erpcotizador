@@ -40,6 +40,7 @@ export type RecipeComponent = {
 
 export type Recipe = {
   id: string
+  materialId: string | null
   name: string
   station: Station
   yieldCount: number
@@ -337,6 +338,7 @@ export function sanitizeRestaurantBoard(value: unknown): RestaurantBoardState {
 
           return {
             id: cleanText(recipe.id) || `recipe-${index + 1}`,
+            materialId: cleanText(recipe.materialId) || null,
             name: cleanText(recipe.name) || `Receta ${index + 1}`,
             station: normalizeStation(recipe.station),
             yieldCount: cleanPositiveNumber(recipe.yieldCount, 1),

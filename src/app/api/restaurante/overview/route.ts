@@ -137,6 +137,7 @@ export async function GET() {
           id: true,
           nombre: true,
           categoria: true,
+          restaurantRole: true,
           imagenUrl: true,
           unidadMedida: true,
           stockActual: true,

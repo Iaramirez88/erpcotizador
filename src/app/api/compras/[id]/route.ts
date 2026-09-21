@@ -9,6 +9,8 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import type { EstadoCompra } from "@prisma/client"
 import { requireCapabilityAccess } from "@/lib/api-rbac"
+import { userHasCapabilityAccess } from '@/lib/dashboard-access'
+import { syncLatestRestaurantIngredientCosts } from '@/lib/restaurant-costs'
 
 export const runtime = "nodejs"
 
@@ -21,6 +23,11 @@ function n(value: unknown, fallback = 0) {
   return Number.isFinite(num) ? num : fallback
 }
 
+function parseCalendarDate(value: unknown) {
+  const raw = String(value || "").trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T12:00:00.000Z`) : new Date(raw)
+}
+
 function parseEstadoCompra(value: unknown): EstadoCompra | undefined {
   const v = String(value || "").trim()
   if (v === "BORRADOR" || v === "REGISTRADA" || v === "ANULADA") return v
@@ -29,6 +36,7 @@ function parseEstadoCompra(value: unknown): EstadoCompra | undefined {
 
 type CompraItemInput = {
   descripcion: string
+  materialId?: string | null
   cantidad?: number
   unidad?: string | null
   precioUnitario?: number
@@ -109,6 +117,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       .filter((it) => it && typeof it === "object")
       .map((it, idx) => ({
         descripcion: String(it.descripcion || "").trim(),
+        materialId: it.materialId ? String(it.materialId).trim() : null,
         cantidad: n(it.cantidad, 1),
         unidad: it.unidad ? String(it.unidad) : null,
         precioUnitario: n(it.precioUnitario, 0),
@@ -123,6 +132,21 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const hasItemsUpdate = Array.isArray(body?.items)
     const totals = hasItemsUpdate ? computeTotals(items) : null
+    const materialIds = Array.from(new Set(items.map((item) => item.materialId).filter((materialId): materialId is string => Boolean(materialId))))
+    if (materialIds.length) {
+      const restaurantEnabled = await userHasCapabilityAccess({
+        userId: access.userId,
+        empresaId,
+        sedeId: access.sedeId,
+        domain: 'VERTICALES',
+        subdomain: 'RESTAURANTE',
+        action: 'READ',
+        directGrantOnly: true,
+      })
+      if (!restaurantEnabled) return NextResponse.json({ error: 'El vínculo de ingredientes requiere el vertical Restaurante' }, { status: 403 })
+      const validIngredients = await prisma.material.count({ where: { id: { in: materialIds }, empresaId, restaurantRole: 'INGREDIENT' } })
+      if (validIngredients !== materialIds.length) return NextResponse.json({ error: 'Uno o más ingredientes no son válidos para esta empresa' }, { status: 400 })
+    }
 
     const estadoParsed = body?.estado !== undefined ? parseEstadoCompra(body.estado) : undefined
     if (body?.estado !== undefined && !estadoParsed) {
@@ -143,10 +167,10 @@ export async function PATCH(request: Request, context: RouteContext) {
         await tx.compraItem.deleteMany({ where: { compraId: id } })
       }
 
-      return tx.compra.update({
+      const updated = await tx.compra.update({
         where: { id },
         data: {
-          fechaCompra: body?.fechaCompra !== undefined ? new Date(String(body.fechaCompra)) : undefined,
+          fechaCompra: body?.fechaCompra !== undefined ? parseCalendarDate(body.fechaCompra) : undefined,
           estado: estadoParsed,
 
           proveedorId: body?.proveedorId !== undefined ? (body.proveedorId ? String(body.proveedorId) : null) : undefined,
@@ -178,6 +202,7 @@ export async function PATCH(request: Request, context: RouteContext) {
             ? {
                 create: items.map((it) => ({
                   descripcion: it.descripcion,
+                  materialId: it.materialId,
                   cantidad: it.cantidad,
                   unidad: it.unidad,
                   precioUnitario: it.precioUnitario,
@@ -193,6 +218,8 @@ export async function PATCH(request: Request, context: RouteContext) {
         },
         include: { items: { orderBy: { orden: "asc" } } },
       })
+      if (materialIds.length) await syncLatestRestaurantIngredientCosts(tx, empresaId, materialIds)
+      return updated
     })
 
     return NextResponse.json({ success: true, data: compra })

@@ -3,6 +3,7 @@ import { RestauranteTurnoStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { computeRestaurantBoardSummary, createEmptyRestaurantBoard, sanitizeRestaurantBoard } from '@/lib/restaurante'
+import { syncRestaurantRecipeCosts } from '@/lib/restaurant-costs'
 
 export const runtime = 'nodejs'
 
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
     const now = new Date()
 
     const payload = await prisma.$transaction(async (tx) => {
+      await syncRestaurantRecipeCosts(tx, access.empresaId, board)
       const existing = turnoId
         ? await tx.restauranteTurno.findFirst({
             where: { id: turnoId, empresaId: access.empresaId, sedeId: access.sedeId },
@@ -131,6 +133,12 @@ export async function POST(request: Request) {
     }
     if (error instanceof Error && error.message === 'EMPTY_TURNO') {
       return NextResponse.json({ ok: false, error: 'No hay datos del turno para cerrar' }, { status: 400 })
+    }
+    if (error instanceof Error && error.message === 'INVALID_RECIPE_OUTPUT') {
+      return NextResponse.json({ ok: false, error: 'El producto final debe estar clasificado como preparación de cocina' }, { status: 400 })
+    }
+    if (error instanceof Error && error.message === 'INVALID_RECIPE_COMPONENT') {
+      return NextResponse.json({ ok: false, error: 'Las recetas solo pueden consumir productos clasificados como ingredientes' }, { status: 400 })
     }
     console.error('POST /api/restaurante/turnos error:', error)
     return NextResponse.json({ ok: false, error: 'No se pudo guardar el turno de restaurante' }, { status: 500 })

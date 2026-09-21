@@ -53,11 +53,13 @@ type RopOrderContext = {
 
 type CompraItem = {
   id?: string
+  materialId?: string
   descripcion: string
   cantidad: number
+  unidad: string
   precioUnitario: number
   descuento: number
-  iva: number
+  ivaPorcentaje: number
 }
 
 type Compra = {
@@ -83,8 +85,10 @@ type Compra = {
   autorizado: boolean
   items: Array<{
     id: string
+    materialId: string | null
     descripcion: string
     cantidad: number
+    unidad: string | null
     precioUnitario: number
     descuento: number
     iva: number
@@ -107,6 +111,14 @@ type CompraPago = {
   user?: { name?: string | null; email?: string | null }
 }
 
+type RestaurantIngredient = {
+  id: string
+  nombre: string
+  unidadMedida: string
+  precioCompra: number | null
+  restaurantRole: 'INGREDIENT'
+}
+
 function n(value: unknown, fallback = 0) {
   const num = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(num) ? num : fallback
@@ -127,7 +139,17 @@ function formatCOP(value: number, locale: string) {
 
 function computeLineTotal(item: CompraItem) {
   const base = Math.max(0, n(item.cantidad, 1) * n(item.precioUnitario, 0) - n(item.descuento, 0))
-  return base + n(item.iva, 0)
+  return base + computeLineVat(item)
+}
+
+function computeLineVat(item: CompraItem) {
+  const base = Math.max(0, n(item.cantidad, 1) * n(item.precioUnitario, 0) - n(item.descuento, 0))
+  return base * Math.max(0, n(item.ivaPorcentaje, 0)) / 100
+}
+
+function vatPercentageFromAmounts(item: { cantidad?: number; precioUnitario?: number; descuento?: number; iva?: number }) {
+  const base = Math.max(0, n(item.cantidad, 1) * n(item.precioUnitario, 0) - n(item.descuento, 0))
+  return base > 0 ? n(item.iva, 0) * 100 / base : 0
 }
 
 function computeTotals(items: CompraItem[]) {
@@ -138,10 +160,11 @@ function computeTotals(items: CompraItem[]) {
 
   for (const it of items) {
     const base = Math.max(0, n(it.cantidad, 1) * n(it.precioUnitario, 0) - n(it.descuento, 0))
+    const lineVat = computeLineVat(it)
     subtotalSinIva += base
-    iva += n(it.iva, 0)
+    iva += lineVat
     descuentoTotal += n(it.descuento, 0)
-    total += base + n(it.iva, 0)
+    total += base + lineVat
   }
 
   return { subtotalSinIva, iva, descuentoTotal, subtotalConIva: subtotalSinIva + iva, total }
@@ -210,8 +233,9 @@ export default function ComprasPage() {
   const naText = t('common.na')
   const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('compras.history', 'list')
   const appliedPrefillRef = useRef<string | null>(null)
-  const { hasWriteAccess } = useCurrentUserAccess()
+  const { data: accessData, hasWriteAccess } = useCurrentUserAccess()
   const canManagePurchases = hasWriteAccess('COMPRAS')
+  const canAccessRestaurant = accessData?.canAccessRestaurant === true
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -267,7 +291,8 @@ export default function ComprasPage() {
   const [numeroPedido, setNumeroPedido] = useState('')
   const [sede, setSede] = useState('')
   const [observaciones, setObservaciones] = useState('')
-  const [items, setItems] = useState<CompraItem[]>([{ descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0, iva: 0 }])
+  const [items, setItems] = useState<CompraItem[]>([{ descripcion: '', cantidad: 1, unidad: '', precioUnitario: 0, descuento: 0, ivaPorcentaje: 0 }])
+  const [restaurantIngredients, setRestaurantIngredients] = useState<RestaurantIngredient[]>([])
   const [ropDialogOpen, setRopDialogOpen] = useState(false)
   const [ropLoading, setRopLoading] = useState(false)
   const [ropRecommendations, setRopRecommendations] = useState<RopDiscoveryItem[]>([])
@@ -316,7 +341,7 @@ export default function ComprasPage() {
     setNumeroPedido('')
     setSede('')
     setObservaciones('')
-    setItems([{ descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0, iva: 0 }])
+    setItems([{ descripcion: '', cantidad: 1, unidad: '', precioUnitario: 0, descuento: 0, ivaPorcentaje: 0 }])
     setActiveMode(nextMode)
   }
 
@@ -345,11 +370,12 @@ export default function ComprasPage() {
         ? prefill.items.map((item) => ({
             descripcion: item.descripcion,
             cantidad: n(item.cantidad, 1),
+            unidad: '',
             precioUnitario: n(item.precioUnitario, 0),
             descuento: n(item.descuento, 0),
-            iva: n(item.iva, 0),
+            ivaPorcentaje: vatPercentageFromAmounts(item),
           }))
-        : [{ descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0, iva: 0 }]
+        : [{ descripcion: '', cantidad: 1, unidad: '', precioUnitario: 0, descuento: 0, ivaPorcentaje: 0 }]
     )
       setFormOpen(true)
   }
@@ -371,13 +397,15 @@ export default function ComprasPage() {
       compra.items.length
         ? compra.items.map((item) => ({
             id: item.id,
+            materialId: item.materialId || undefined,
             descripcion: item.descripcion,
             cantidad: n(item.cantidad, 1),
+            unidad: item.unidad || '',
             precioUnitario: n(item.precioUnitario, 0),
             descuento: n(item.descuento, 0),
-            iva: n(item.iva, 0),
+            ivaPorcentaje: vatPercentageFromAmounts(item),
           }))
-        : [{ descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0, iva: 0 }]
+        : [{ descripcion: '', cantidad: 1, unidad: '', precioUnitario: 0, descuento: 0, ivaPorcentaje: 0 }]
     )
       setFormOpen(true)
   }
@@ -486,6 +514,29 @@ export default function ComprasPage() {
   }, [query])
 
   useEffect(() => {
+    if (!canAccessRestaurant) {
+      setRestaurantIngredients([])
+      return
+    }
+
+    let cancelled = false
+    void fetch('/api/materiales?pageSize=all&activo=true')
+      .then((response) => response.json())
+      .then((json) => {
+        if (cancelled) return
+        const materials = Array.isArray(json?.data) ? json.data : []
+        setRestaurantIngredients(materials.filter((material: RestaurantIngredient) => material.restaurantRole === 'INGREDIENT'))
+      })
+      .catch(() => {
+        if (!cancelled) setRestaurantIngredients([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [canAccessRestaurant])
+
+  useEffect(() => {
     const nextMode = searchParams?.get('mode') === 'order' ? 'order' : 'purchase'
     setActiveMode((current) => (current === nextMode ? current : nextMode))
   }, [searchParams])
@@ -512,8 +563,30 @@ export default function ComprasPage() {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)))
   }
 
+  function selectRestaurantIngredient(index: number, materialId: string) {
+    const ingredient = restaurantIngredients.find((item) => item.id === materialId)
+    updateItem(index, ingredient
+      ? {
+          materialId: ingredient.id,
+          descripcion: ingredient.nombre,
+          unidad: ingredient.unidadMedida,
+          precioUnitario: n(ingredient.precioCompra, 0),
+        }
+      : { materialId: undefined })
+  }
+
   function addItem() {
-    setItems((prev) => [...prev, { descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0, iva: 0 }])
+    setItems((prev) => [...prev, { descripcion: '', cantidad: 1, unidad: '', precioUnitario: 0, descuento: 0, ivaPorcentaje: 0 }])
+  }
+
+  function updateItemTotal(index: number, total: number) {
+    setItems((prev) => prev.map((item, itemIndex) => {
+      if (itemIndex !== index) return item
+      const cantidad = Math.max(0.000001, n(item.cantidad, 1))
+      const vatFactor = 1 + Math.max(0, n(item.ivaPorcentaje, 0)) / 100
+      const baseBeforeVat = Math.max(0, n(total, 0)) / vatFactor
+      return { ...item, precioUnitario: (baseBeforeVat + n(item.descuento, 0)) / cantidad }
+    }))
   }
 
   function removeItem(index: number) {
@@ -528,10 +601,13 @@ export default function ComprasPage() {
       const cleanItems = items
         .map((it) => ({
           descripcion: it.descripcion.trim(),
+          materialId: canAccessRestaurant ? (it.materialId || null) : null,
           cantidad: n(it.cantidad, 1),
+          unidad: it.unidad.trim() || null,
           precioUnitario: n(it.precioUnitario, 0),
           descuento: n(it.descuento, 0),
-          iva: n(it.iva, 0),
+          subtotalSinIva: Math.max(0, n(it.cantidad, 1) * n(it.precioUnitario, 0) - n(it.descuento, 0)),
+          iva: computeLineVat(it),
           total: computeLineTotal(it),
         }))
         .filter((it) => it.descripcion)
@@ -818,8 +894,10 @@ export default function ComprasPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
+                        {canAccessRestaurant ? <th className="py-2 text-left">Ingrediente</th> : null}
                         <th className="py-2 text-left">{t('purchases.items.columns.description')}</th>
                         <th className="py-2 text-left">{t('purchases.items.columns.quantity')}</th>
+                        <th className="py-2 text-left">{t('purchases.items.columns.unit')}</th>
                         <th className="py-2 text-left">{t('purchases.items.columns.unitPrice')}</th>
                         <th className="py-2 text-left">{t('purchases.items.columns.discount')}</th>
                         <th className="py-2 text-left">{t('purchases.items.columns.vat')}</th>
@@ -830,11 +908,22 @@ export default function ComprasPage() {
                     <tbody>
                       {items.map((it, idx) => (
                         <tr key={idx} className="border-b align-top">
+                          {canAccessRestaurant ? (
+                            <td className="py-2 pr-2 min-w-[220px]">
+                              <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={it.materialId || ''} onChange={(event) => selectRestaurantIngredient(idx, event.target.value)}>
+                                <option value="">Compra no vinculada</option>
+                                {restaurantIngredients.map((ingredient) => <option key={ingredient.id} value={ingredient.id}>{ingredient.nombre}</option>)}
+                              </select>
+                            </td>
+                          ) : null}
                           <td className="py-2 pr-2 min-w-[280px]">
                             <Input value={it.descripcion} onChange={(e) => updateItem(idx, { descripcion: e.target.value })} placeholder={t('purchases.items.placeholders.description')} />
                           </td>
                           <td className="py-2 pr-2 w-[120px]">
                             <Input type="number" value={it.cantidad} onChange={(e) => updateItem(idx, { cantidad: n(e.target.value, 1) })} />
+                          </td>
+                          <td className="py-2 pr-2 w-[130px]">
+                            <Input value={it.unidad} onChange={(e) => updateItem(idx, { unidad: e.target.value })} placeholder={t('purchases.items.placeholders.unit')} />
                           </td>
                           <td className="py-2 pr-2 w-[160px]">
                             <Input type="number" value={it.precioUnitario} onChange={(e) => updateItem(idx, { precioUnitario: n(e.target.value, 0) })} />
@@ -843,9 +932,14 @@ export default function ComprasPage() {
                             <Input type="number" value={it.descuento} onChange={(e) => updateItem(idx, { descuento: n(e.target.value, 0) })} />
                           </td>
                           <td className="py-2 pr-2 w-[160px]">
-                            <Input type="number" value={it.iva} onChange={(e) => updateItem(idx, { iva: n(e.target.value, 0) })} />
+                            <div className="relative">
+                              <Input className="pr-8" type="number" min="0" step="0.01" value={it.ivaPorcentaje} onChange={(e) => updateItem(idx, { ivaPorcentaje: n(e.target.value, 0) })} />
+                              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-muted-foreground">%</span>
+                            </div>
                           </td>
-                          <td className="py-3 pr-2 whitespace-nowrap">{formatCOP(computeLineTotal(it), locale)}</td>
+                          <td className="py-2 pr-2 w-[170px]">
+                            <Input type="number" min="0" step="0.01" value={computeLineTotal(it)} onChange={(e) => updateItemTotal(idx, n(e.target.value, 0))} />
+                          </td>
                           <td className="py-2 text-right">
                             <Button type="button" variant="outline" onClick={() => removeItem(idx)} disabled={items.length <= 1}>
                               {t('common.remove')}
@@ -948,8 +1042,10 @@ export default function ComprasPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
+                        {canAccessRestaurant ? <th className="py-2 text-left">Ingrediente</th> : null}
                         <th className="py-2 text-left">{t('purchases.items.columns.description')}</th>
                         <th className="py-2 text-left">{t('purchases.items.columns.quantity')}</th>
+                        <th className="py-2 text-left">{t('purchases.items.columns.unit')}</th>
                         <th className="py-2 text-left">{t('purchases.items.columns.unitPrice')}</th>
                         <th className="py-2 text-left">{t('purchases.items.columns.discount')}</th>
                         <th className="py-2 text-left">{t('purchases.items.columns.vat')}</th>
@@ -960,11 +1056,22 @@ export default function ComprasPage() {
                     <tbody>
                       {items.map((it, idx) => (
                         <tr key={idx} className="border-b align-top">
+                          {canAccessRestaurant ? (
+                            <td className="py-2 pr-2 min-w-[220px]">
+                              <select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={it.materialId || ''} onChange={(event) => selectRestaurantIngredient(idx, event.target.value)}>
+                                <option value="">Compra no vinculada</option>
+                                {restaurantIngredients.map((ingredient) => <option key={ingredient.id} value={ingredient.id}>{ingredient.nombre}</option>)}
+                              </select>
+                            </td>
+                          ) : null}
                           <td className="py-2 pr-2 min-w-[280px]">
                             <Input value={it.descripcion} onChange={(e) => updateItem(idx, { descripcion: e.target.value })} placeholder={t('purchases.items.placeholders.description')} />
                           </td>
                           <td className="py-2 pr-2 w-[120px]">
                             <Input type="number" value={it.cantidad} onChange={(e) => updateItem(idx, { cantidad: n(e.target.value, 1) })} />
+                          </td>
+                          <td className="py-2 pr-2 w-[130px]">
+                            <Input value={it.unidad} onChange={(e) => updateItem(idx, { unidad: e.target.value })} placeholder={t('purchases.items.placeholders.unit')} />
                           </td>
                           <td className="py-2 pr-2 w-[160px]">
                             <Input type="number" value={it.precioUnitario} onChange={(e) => updateItem(idx, { precioUnitario: n(e.target.value, 0) })} />
@@ -973,9 +1080,14 @@ export default function ComprasPage() {
                             <Input type="number" value={it.descuento} onChange={(e) => updateItem(idx, { descuento: n(e.target.value, 0) })} />
                           </td>
                           <td className="py-2 pr-2 w-[160px]">
-                            <Input type="number" value={it.iva} onChange={(e) => updateItem(idx, { iva: n(e.target.value, 0) })} />
+                            <div className="relative">
+                              <Input className="pr-8" type="number" min="0" step="0.01" value={it.ivaPorcentaje} onChange={(e) => updateItem(idx, { ivaPorcentaje: n(e.target.value, 0) })} />
+                              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-muted-foreground">%</span>
+                            </div>
                           </td>
-                          <td className="py-3 pr-2 whitespace-nowrap">{formatCOP(computeLineTotal(it), locale)}</td>
+                          <td className="py-2 pr-2 w-[170px]">
+                            <Input type="number" min="0" step="0.01" value={computeLineTotal(it)} onChange={(e) => updateItemTotal(idx, n(e.target.value, 0))} />
+                          </td>
                           <td className="py-2 text-right">
                             <Button type="button" variant="outline" onClick={() => removeItem(idx)} disabled={items.length <= 1}>
                               {t('common.remove')}
@@ -1154,6 +1266,7 @@ export default function ComprasPage() {
                                   <tr className="border-b">
                                     <th className="py-2 text-left">{t('purchases.view.items.columns.description')}</th>
                                     <th className="py-2 text-left">{t('purchases.view.items.columns.qty')}</th>
+                                    <th className="py-2 text-left">{t('purchases.items.columns.unit')}</th>
                                     <th className="py-2 text-left">{t('purchases.view.items.columns.unitPrice')}</th>
                                     <th className="py-2 text-left">{t('purchases.view.items.columns.discount')}</th>
                                     <th className="py-2 text-left">{t('purchases.view.items.columns.vat')}</th>
@@ -1165,6 +1278,7 @@ export default function ComprasPage() {
                                     <tr key={it.id} className="border-b">
                                       <td className="py-2">{it.descripcion}</td>
                                       <td className="py-2">{it.cantidad}</td>
+                                      <td className="py-2">{it.unidad || naText}</td>
                                       <td className="py-2 whitespace-nowrap">{formatCOP(it.precioUnitario, locale)}</td>
                                       <td className="py-2 whitespace-nowrap">{formatCOP(it.descuento, locale)}</td>
                                       <td className="py-2 whitespace-nowrap">{formatCOP(it.iva, locale)}</td>

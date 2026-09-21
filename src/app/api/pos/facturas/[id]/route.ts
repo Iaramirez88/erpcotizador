@@ -46,10 +46,11 @@ function normalizeInvoiceItems(value: unknown) {
         materialId: typeof row.materialId === 'string' && row.materialId.trim() ? row.materialId.trim() : null,
         descripcion: typeof row.descripcion === 'string' ? row.descripcion.trim() : '',
         quantity: Math.max(0, n(row.quantity, 0)),
+        unidadMedida: typeof row.unidadMedida === 'string' ? row.unidadMedida.trim() || null : null,
         unitPrice: Math.max(0, n(row.unitPrice, 0)),
       }
     })
-    .filter((item): item is { materialId: string | null; descripcion: string; quantity: number; unitPrice: number } => Boolean(item && item.quantity > 0))
+    .filter((item): item is { materialId: string | null; descripcion: string; quantity: number; unidadMedida: string | null; unitPrice: number } => Boolean(item && item.quantity > 0))
 }
 
 async function loadInvoiceAuditEvents(invoiceId: string): Promise<InvoiceAuditEventRow[]> {
@@ -133,6 +134,7 @@ async function buildInvoiceDetail(id: string, empresaId: string, sedeId: string)
           id: true,
           descripcion: true,
           quantity: true,
+          unidadMedida: true,
           unitPrice: true,
           total: true,
           material: { select: { id: true, externalId: true, nombre: true, unidadMedida: true } },
@@ -291,7 +293,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
         warehouseId: true,
         items: {
           orderBy: { createdAt: 'asc' },
-          select: { materialId: true, descripcion: true, quantity: true, unitPrice: true, total: true },
+          select: { materialId: true, descripcion: true, quantity: true, unidadMedida: true, unitPrice: true, total: true },
         },
         payments: { select: { id: true } },
         returns: { select: { id: true } },
@@ -343,7 +345,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
 
         const material = await prisma.material.findUnique({
           where: { id: item.materialId },
-          select: { id: true, empresaId: true, nombre: true },
+          select: { id: true, empresaId: true, nombre: true, unidadMedida: true },
         })
 
         if (!material || material.empresaId !== access.empresaId) {
@@ -353,6 +355,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
         return {
           ...item,
           descripcion: item.descripcion || material.nombre,
+          unidadMedida: item.unidadMedida || material.unidadMedida,
         }
       }),
     )
@@ -390,6 +393,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
               materialId: item.materialId,
               descripcion: item.descripcion,
               quantity: item.quantity,
+              unidadMedida: item.unidadMedida,
               unitPrice: item.unitPrice,
               total: item.quantity * item.unitPrice,
             })),

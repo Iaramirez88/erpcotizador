@@ -1534,6 +1534,7 @@ model PosInvoiceItem {
 
   descripcion String
   quantity    Float  @default(1)
+  unidadMedida String?
   unitPrice   Float  @default(0)
   total       Float  @default(0)
 
@@ -3786,6 +3787,7 @@ model Material {
   tipoNombre String?
   categoria String?
   extraFields Json @default("{}")
+  restaurantRole RestaurantProductRole?
 
   // Productos creados vía flujo “personalizado” (requiere aprobación admin)
   isCustom Boolean @default(false)
@@ -3838,6 +3840,7 @@ model Material {
   stocks             InventoryStock[]
   inventoryTransfers InventoryTransfer[]
   inventorySupplyRequestItems InventorySupplyRequestItem[]
+  compraItems CompraItem[]
 
   posInvoiceItems PosInvoiceItem[]
   posReturnItems  PosReturnItem[]
@@ -4105,6 +4108,12 @@ enum TipoMaterial {
   ACRILICO
   PVC
   OTRO
+}
+
+enum RestaurantProductRole {
+  INGREDIENT
+  PREPARATION
+  PHYSICAL_PRODUCT
 }
 
 enum ProductCustomFieldType {
@@ -4444,6 +4453,9 @@ model CompraItem {
   compraId String
   compra   Compra @relation(fields: [compraId], references: [id], onDelete: Cascade)
 
+  materialId String?
+  material   Material? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+
   descripcion    String
   cantidad       Float   @default(1)
   unidad         String?
@@ -4460,6 +4472,7 @@ model CompraItem {
   updatedAt DateTime @updatedAt
 
   @@index([compraId])
+  @@index([materialId])
   @@map("items_compra")
 }
 

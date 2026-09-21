@@ -7,6 +7,7 @@ type MeData = {
   access?: Partial<Record<ModuleKey, AccessLevel>>
   canManageCustomProductRequests?: boolean
   canManageProducts?: boolean
+  canAccessRestaurant?: boolean
 }
 
 const ACCESS_ORDER: Record<AccessLevel, number> = {

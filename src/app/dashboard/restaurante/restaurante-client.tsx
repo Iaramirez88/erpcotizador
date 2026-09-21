@@ -170,6 +170,7 @@ type OverviewData = {
     stockMinimo: number;
     precioCompra: number | null;
     precioUnidad: number | null;
+    restaurantRole: "INGREDIENT" | "PREPARATION" | "PHYSICAL_PRODUCT" | null;
     wastePct: number;
   }>;
   stockAlerts: Array<{
@@ -206,6 +207,7 @@ type TicketFormState = {
 
 type RecipeDraftState = {
   recipeId: string | null;
+  materialId: string;
   name: string;
   station: Station;
   yieldCount: number;
@@ -382,6 +384,7 @@ const SECTION_META: Record<SectionId, { title: string; description: string }> =
 function createRecipeDraft(): RecipeDraftState {
   return {
     recipeId: null,
+    materialId: "",
     name: "",
     station: "COCINA",
     yieldCount: 1,
@@ -1381,7 +1384,10 @@ export default function RestauranteClient() {
     const validComponents = recipeDraft.components.filter(
       (component) => component.materialId && component.quantity > 0,
     );
-    if (!recipeDraft.name.trim() || !validComponents.length) return;
+    const outputMaterial = (overview?.materials ?? []).find(
+      (material) => material.id === recipeDraft.materialId && material.restaurantRole === "PREPARATION",
+    );
+    if (!outputMaterial || !validComponents.length) return;
     setBoard((current) => ({
       ...current,
       recipes: recipeDraft.recipeId
@@ -1389,7 +1395,8 @@ export default function RestauranteClient() {
             recipe.id === recipeDraft.recipeId
               ? {
                   ...recipe,
-                  name: recipeDraft.name.trim(),
+                  materialId: outputMaterial.id,
+                  name: outputMaterial.nombre,
                   station: recipeDraft.station,
                   yieldCount: Math.max(1, Number(recipeDraft.yieldCount) || 1),
                   notes: recipeDraft.notes.trim(),
@@ -1400,7 +1407,8 @@ export default function RestauranteClient() {
         : [
             {
               id: crypto.randomUUID(),
-              name: recipeDraft.name.trim(),
+              materialId: outputMaterial.id,
+              name: outputMaterial.nombre,
               station: recipeDraft.station,
               yieldCount: Math.max(1, Number(recipeDraft.yieldCount) || 1),
               notes: recipeDraft.notes.trim(),
@@ -1417,6 +1425,7 @@ export default function RestauranteClient() {
     if (!recipe) return;
     setRecipeDraft({
       recipeId: recipe.id,
+      materialId: recipe.materialId ?? "",
       name: recipe.name,
       station: recipe.station,
       yieldCount: recipe.yieldCount,
@@ -1575,11 +1584,12 @@ export default function RestauranteClient() {
         const material = materialsById.get(component.materialId);
         return (
           sum +
-          (material?.precioUnidad ?? material?.precioCompra ?? 0) *
+          (material?.precioCompra ?? 0) *
             component.quantity
         );
       }, 0);
-      const averagePrice = matchedProduct
+      const outputMaterial = recipe.materialId ? materialsById.get(recipe.materialId) : null;
+      const averagePrice = outputMaterial?.precioUnidad ?? (matchedProduct
         ? Number(
             (
               matchedProduct.total / Math.max(matchedProduct.quantity, 1)
@@ -1587,14 +1597,14 @@ export default function RestauranteClient() {
           )
         : baseCost > 0
           ? Number((baseCost * 2.4).toFixed(2))
-          : null;
+          : null);
       const recipeLeadMaterial = recipe.components
         .map((component) => materialsById.get(component.materialId))
         .find((material) => Boolean(material?.imagenUrl));
       return {
         id: recipe.id,
         name: recipe.name,
-        materialId: null,
+        materialId: outputMaterial?.id ?? null,
         station: recipe.station,
         recipeId: recipe.id,
         averagePrice,
@@ -1617,7 +1627,9 @@ export default function RestauranteClient() {
     );
     const fromTopProducts: MenuShortcut[] = (overview?.topProducts ?? [])
       .filter(
-        (product) => !existingNames.has(normalizeRestaurantText(product.label)),
+        (product) =>
+          !existingNames.has(normalizeRestaurantText(product.label)) &&
+          materialsById.get(product.materialId ?? "")?.restaurantRole !== "INGREDIENT",
       )
       .map((product) => ({
         id: `top-${product.key}`,
@@ -1641,7 +1653,8 @@ export default function RestauranteClient() {
     const fromInventory: MenuShortcut[] = (overview?.materials ?? [])
       .filter(
         (material) =>
-          !existingNames.has(normalizeRestaurantText(material.nombre)),
+          !existingNames.has(normalizeRestaurantText(material.nombre)) &&
+          (material.restaurantRole === "PHYSICAL_PRODUCT" || material.restaurantRole === null),
       )
       .map((material) => ({
         id: `inventory-${material.id}`,
@@ -3574,17 +3587,20 @@ export default function RestauranteClient() {
               ) : null}
             </div>
             <div className="space-y-1">
-              <Label>Nombre</Label>
-              <Input
-                value={recipeDraft.name}
-                onChange={(event) =>
-                  setRecipeDraft((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                placeholder="Nombre de receta"
-              />
+              <Label>Producto final</Label>
+              <Select value={recipeDraft.materialId || "__none__"} onValueChange={(value) => {
+                const materialId = value === "__none__" ? "" : value;
+                const material = (overview?.materials ?? []).find((item) => item.id === materialId);
+                setRecipeDraft((current) => ({ ...current, materialId, name: material?.nombre ?? "" }));
+              }}>
+                <SelectTrigger className="rounded-2xl"><SelectValue placeholder="Selecciona preparación" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Selecciona preparación</SelectItem>
+                  {(overview?.materials ?? []).filter((material) => material.restaurantRole === "PREPARATION").map((material) => (
+                    <SelectItem key={material.id} value={material.id}>{material.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
@@ -3660,9 +3676,9 @@ export default function RestauranteClient() {
                       <SelectItem value="__none__">
                         Selecciona material
                       </SelectItem>
-                      {(overview?.materials ?? []).map((material) => (
+                      {(overview?.materials ?? []).filter((material) => material.restaurantRole === "INGREDIENT").map((material) => (
                         <SelectItem key={material.id} value={material.id}>
-                          {material.nombre}
+                          {material.nombre} · {material.unidadMedida}
                         </SelectItem>
                       ))}
                     </SelectContent>

@@ -8,14 +8,23 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { canAccessCapability, requireApiAccess } from "@/lib/api-rbac"
-import { InventoryMovementSourceType, InventoryMovementType, ModuleKey, type Prisma } from "@prisma/client"
+import { InventoryMovementSourceType, InventoryMovementType, ModuleKey, RestaurantProductRole, type Prisma } from "@prisma/client"
 import { requireSedeAccess } from "@/lib/rbac"
+import { userHasCapabilityAccess } from '@/lib/dashboard-access'
 
-function normalizeUnidadMedida(value: unknown): 'm2' | 'ml' | 'unidad' {
+const RESTAURANT_UNITS = new Set(['g', 'kg', 'ml', 'l', 'oz', 'lb', 'unidad'])
+
+function normalizeUnidadMedida(value: unknown, restaurantEnabled = false): string {
   const u = String(value ?? '').trim().toLowerCase()
+  if (restaurantEnabled && RESTAURANT_UNITS.has(u)) return u
   if (u === 'm2' || u === 'm²') return 'm2'
   if (u === 'ml' || u === 'm' || u === 'metro') return 'ml'
   return 'unidad'
+}
+
+function normalizeRestaurantRole(value: unknown): RestaurantProductRole | null {
+  const role = String(value ?? '').trim()
+  return Object.values(RestaurantProductRole).includes(role as RestaurantProductRole) ? role as RestaurantProductRole : null
 }
 
 function toPositiveNumberOrNull(value: unknown): number | null {
@@ -154,6 +163,15 @@ export async function PUT(
 
     const { id } = await context.params
     const body = await request.json()
+    const restaurantEnabled = await userHasCapabilityAccess({
+      userId: access.userId,
+      empresaId: access.empresaId,
+      sedeId: access.sedeId,
+      domain: 'VERTICALES',
+      subdomain: 'RESTAURANTE',
+      action: 'READ',
+      directGrantOnly: true,
+    })
 
     const me = await prisma.user.findUnique({
       where: { id: access.userId },
@@ -167,21 +185,15 @@ export async function PUT(
 
     const imagenUrlNorm = typeof body.imagenUrl === 'string' ? body.imagenUrl.trim() : null
 
-    const unidad = normalizeUnidadMedida(body.unidadMedida)
+    const unidad = normalizeUnidadMedida(body.unidadMedida, restaurantEnabled)
+    const restaurantRole = restaurantEnabled ? normalizeRestaurantRole(body.restaurantRole) : undefined
     const isActive = body.activo !== false
 
-    const precioM2N = unidad === 'm2' ? toPositiveNumberOrNull(body.precioM2) : null
-    const precioMetroN = unidad === 'ml' ? toPositiveNumberOrNull(body.precioMetro) : null
-    const precioUnidadN = unidad === 'unidad' ? toPositiveNumberOrNull(body.precioUnidad) : null
+    const precioM2N = !restaurantEnabled && unidad === 'm2' ? toPositiveNumberOrNull(body.precioM2) : null
+    const precioMetroN = !restaurantEnabled && unidad === 'ml' ? toPositiveNumberOrNull(body.precioMetro) : null
+    const precioUnidadN = restaurantEnabled || unidad === 'unidad' ? toPositiveNumberOrNull(body.precioUnidad) : null
 
     const precioCobro = precioM2N ?? precioMetroN ?? precioUnidadN
-    if (isActive && !(precioCobro !== null && precioCobro > 0)) {
-      return NextResponse.json(
-        { error: "Debes indicar un precio de venta válido según la unidad de cobro (m², ml o unidad)." },
-        { status: 400 }
-      )
-    }
-
     const materialExistente = await prisma.material.findUnique({
       where: { id }
     })
@@ -197,6 +209,15 @@ export async function PUT(
       return NextResponse.json(
         { error: "Material no encontrado" },
         { status: 404 }
+      )
+    }
+
+    const effectiveRestaurantRole = restaurantRole ?? materialExistente.restaurantRole
+    const requiresSalePrice = !restaurantEnabled || effectiveRestaurantRole !== RestaurantProductRole.INGREDIENT
+    if (isActive && requiresSalePrice && !(precioCobro !== null && precioCobro > 0)) {
+      return NextResponse.json(
+        { error: "Debes indicar un precio de venta válido según la unidad de cobro." },
+        { status: 400 }
       )
     }
 
@@ -231,7 +252,7 @@ export async function PUT(
 
     const quantityDiscounts = Array.isArray(body.quantityDiscounts) ? body.quantityDiscounts : null
 
-    const nextPrecioCompra = body.precioCompra ? parseFloat(body.precioCompra) : null
+    const nextPrecioCompra = effectiveRestaurantRole === RestaurantProductRole.PREPARATION ? materialExistente.precioCompra : body.precioCompra ? parseFloat(body.precioCompra) : null
     const precioCompraChanged = (materialExistente.precioCompra ?? null) !== (nextPrecioCompra ?? null)
 
     const nextStockRaw = body.stockActual === null || body.stockActual === undefined || body.stockActual === ''
@@ -480,12 +501,13 @@ export async function PUT(
           tipo: body.tipo,
           tipoNombre: typeof body.tipoNombre === 'string' ? body.tipoNombre.trim() || null : null,
           categoria: body.categoria,
+          restaurantRole,
           extraFields: body.extraFields && typeof body.extraFields === 'object' && !Array.isArray(body.extraFields) ? body.extraFields : {},
           imagenUrl: imagenUrlNorm || null,
-          ancho: body.ancho ? parseFloat(body.ancho) : null,
-          largo: body.largo ? parseFloat(body.largo) : null,
-          espesor: body.espesor ? parseFloat(body.espesor) : null,
-          color: body.color,
+          ancho: restaurantEnabled ? null : body.ancho ? parseFloat(body.ancho) : null,
+          largo: restaurantEnabled ? null : body.largo ? parseFloat(body.largo) : null,
+          espesor: restaurantEnabled ? null : body.espesor ? parseFloat(body.espesor) : null,
+          color: restaurantEnabled ? null : body.color,
           precioM2: precioM2N,
           precioMetro: precioMetroN,
           precioUnidad: precioUnidadN,

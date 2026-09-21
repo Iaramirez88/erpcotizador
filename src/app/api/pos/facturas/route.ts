@@ -95,6 +95,7 @@ type InvoiceItemInput = {
   materialId?: string | null
   descripcion?: string
   quantity: number
+  unidadMedida?: string | null
   unitPrice: number
 }
 
@@ -273,7 +274,8 @@ export async function POST(request: Request) {
         const unitPrice = n(it.unitPrice) ?? 0
         const materialId = typeof it.materialId === 'string' ? it.materialId : null
         const descripcion = (typeof it.descripcion === 'string' ? it.descripcion : '').trim()
-        return { materialId, descripcion, quantity, unitPrice }
+        const unidadMedida = (typeof it.unidadMedida === 'string' ? it.unidadMedida : '').trim() || null
+        return { materialId, descripcion, quantity, unidadMedida, unitPrice }
       })
       .filter((it) => it.quantity > 0)
 
@@ -307,7 +309,7 @@ export async function POST(request: Request) {
             if (!material || material.empresaId !== empresaId) {
               throw new Error('MATERIAL_NOT_FOUND')
             }
-            return { ...it, descripcion: it.descripcion || material.nombre, unidadMedida: material.unidadMedida }
+            return { ...it, descripcion: it.descripcion || material.nombre, unidadMedida: it.unidadMedida || material.unidadMedida }
           }
           return { ...it, descripcion: it.descripcion || 'Ítem', unidadMedida: null as string | null }
         })
@@ -381,6 +383,7 @@ export async function POST(request: Request) {
               materialId: it.materialId,
               descripcion: it.descripcion,
               quantity: it.quantity,
+              unidadMedida: it.unidadMedida,
               unitPrice: it.unitPrice,
               total: it.total,
             })),

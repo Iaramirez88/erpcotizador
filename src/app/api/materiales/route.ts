@@ -9,14 +9,23 @@ import { prisma } from "@/lib/prisma"
 import { canAccessCapability, requireApiAccess } from "@/lib/api-rbac"
 import { checkPlanLimit } from "@/lib/plan-limits"
 import { AccessLevel, ModuleKey } from "@prisma/client"
-import type { Prisma } from "@prisma/client"
+import { RestaurantProductRole, type Prisma } from "@prisma/client"
 import { requireSedeAccess } from "@/lib/rbac"
+import { userHasCapabilityAccess } from '@/lib/dashboard-access'
 
-function normalizeUnidadMedida(value: unknown): 'm2' | 'ml' | 'unidad' {
+const RESTAURANT_UNITS = new Set(['g', 'kg', 'ml', 'l', 'oz', 'lb', 'unidad'])
+
+function normalizeUnidadMedida(value: unknown, restaurantEnabled = false): string {
   const u = String(value ?? '').trim().toLowerCase()
+  if (restaurantEnabled && RESTAURANT_UNITS.has(u)) return u
   if (u === 'm2' || u === 'm²') return 'm2'
   if (u === 'ml' || u === 'm' || u === 'metro') return 'ml'
   return 'unidad'
+}
+
+function normalizeRestaurantRole(value: unknown): RestaurantProductRole | null {
+  const role = String(value ?? '').trim()
+  return Object.values(RestaurantProductRole).includes(role as RestaurantProductRole) ? role as RestaurantProductRole : null
 }
 
 function toPositiveNumberOrNull(value: unknown): number | null {
@@ -122,6 +131,7 @@ export async function GET(request: Request) {
     const tipo = searchParams.get('tipo')
     const activo = searchParams.get('activo')
     const unidadMedida = searchParams.get('unidadMedida')
+    const restaurantCatalog = searchParams.get('restaurantCatalog') === 'true'
     const categoria = searchParams.get('categoria')
     const proveedor = searchParams.get('proveedor')
     const withDiscount = searchParams.get('withDiscount')
@@ -211,6 +221,21 @@ export async function GET(request: Request) {
     const where: any = { empresaId }
 
     const andFilters: unknown[] = []
+
+    if (restaurantCatalog) {
+      const restaurantEnabled = await userHasCapabilityAccess({
+        userId: access.userId,
+        empresaId,
+        sedeId: access.sedeId,
+        domain: 'VERTICALES',
+        subdomain: 'RESTAURANTE',
+        action: 'READ',
+        directGrantOnly: true,
+      })
+      if (restaurantEnabled) {
+        andFilters.push({ OR: [{ restaurantRole: null }, { restaurantRole: { in: [RestaurantProductRole.PREPARATION, RestaurantProductRole.PHYSICAL_PRODUCT] } }] })
+      }
+    }
 
     // Productos personalizados: visibles solo para su creador (usuario+sede), excepto ADMIN.
     if (!isAdmin) {
@@ -586,6 +611,15 @@ export async function POST(request: Request) {
     if (!access.ok) return access.response
 
     const empresaId = access.empresaId
+    const restaurantEnabled = await userHasCapabilityAccess({
+      userId: access.userId,
+      empresaId,
+      sedeId: access.sedeId,
+      domain: 'VERTICALES',
+      subdomain: 'RESTAURANTE',
+      action: 'READ',
+      directGrantOnly: true,
+    })
 
     const limit = await checkPlanLimit(empresaId, 'PRODUCTOS_MAX')
     if (!limit.ok) {
@@ -620,6 +654,7 @@ export async function POST(request: Request) {
       warehouseIds: warehouseIdsInput,
       stockScope: stockScopeInput,
     } = body
+    const restaurantRole = restaurantEnabled ? normalizeRestaurantRole(body.restaurantRole) : null
 
     const externalIdNorm = typeof externalId === 'string' ? externalId.trim() : ''
     const externalIdValue = externalIdNorm ? externalIdNorm : null
@@ -649,7 +684,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const unidad = normalizeUnidadMedida(unidadMedida)
+    const unidad = normalizeUnidadMedida(unidadMedida, restaurantEnabled)
     const isActive = activo !== false
 
     const stockActualNRaw = typeof stockActual === 'number' ? stockActual : Number(stockActual)
@@ -742,12 +777,13 @@ export async function POST(request: Request) {
       )
     }
 
-    const precioM2N = unidad === 'm2' ? toPositiveNumberOrNull(precioM2) : null
-    const precioMetroN = unidad === 'ml' ? toPositiveNumberOrNull(precioMetro) : null
-    const precioUnidadN = unidad === 'unidad' ? toPositiveNumberOrNull(precioUnidad) : null
+    const precioM2N = !restaurantEnabled && unidad === 'm2' ? toPositiveNumberOrNull(precioM2) : null
+    const precioMetroN = !restaurantEnabled && unidad === 'ml' ? toPositiveNumberOrNull(precioMetro) : null
+    const precioUnidadN = restaurantEnabled || unidad === 'unidad' ? toPositiveNumberOrNull(precioUnidad) : null
 
     const precioCobro = precioM2N ?? precioMetroN ?? precioUnidadN
-    if (isActive && !(precioCobro !== null && precioCobro > 0)) {
+    const requiresSalePrice = !restaurantEnabled || restaurantRole !== RestaurantProductRole.INGREDIENT
+    if (isActive && requiresSalePrice && !(precioCobro !== null && precioCobro > 0)) {
       return NextResponse.json(
         { error: "Debes indicar un precio de venta válido según la unidad de cobro (m², ml o unidad)." },
         { status: 400 }
@@ -777,16 +813,17 @@ export async function POST(request: Request) {
           tipo,
           tipoNombre: typeof tipoNombre === 'string' ? tipoNombre.trim() || null : null,
           categoria,
+          restaurantRole,
           extraFields: extraFields && typeof extraFields === 'object' && !Array.isArray(extraFields) ? extraFields : {},
           imagenUrl: imagenUrlNorm || null,
-          ancho: ancho ? parseFloat(ancho) : null,
-          largo: largo ? parseFloat(largo) : null,
-          espesor: espesor ? parseFloat(espesor) : null,
-          color,
+          ancho: restaurantEnabled ? null : ancho ? parseFloat(ancho) : null,
+          largo: restaurantEnabled ? null : largo ? parseFloat(largo) : null,
+          espesor: restaurantEnabled ? null : espesor ? parseFloat(espesor) : null,
+          color: restaurantEnabled ? null : color,
           precioM2: precioM2N,
           precioMetro: precioMetroN,
           precioUnidad: precioUnidadN,
-          precioCompra: precioCompra ? parseFloat(precioCompra) : null,
+          precioCompra: restaurantRole === RestaurantProductRole.PREPARATION ? null : precioCompra ? parseFloat(precioCompra) : null,
           stockActual: 0,
           stockMinimo: stockMinimo ? parseFloat(stockMinimo) : 0,
           unidadMedida: unidad,

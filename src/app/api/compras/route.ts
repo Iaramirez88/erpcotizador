@@ -8,11 +8,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import type { EstadoCompra } from "@prisma/client"
 import { requireCapabilityAccess } from "@/lib/api-rbac"
+import { userHasCapabilityAccess } from '@/lib/dashboard-access'
+import { syncLatestRestaurantIngredientCosts } from '@/lib/restaurant-costs'
 
 export const runtime = "nodejs"
 
 type CompraItemInput = {
   descripcion: string
+  materialId?: string | null
   cantidad?: number
   unidad?: string | null
   precioUnitario?: number
@@ -27,6 +30,11 @@ type CompraItemInput = {
 function n(value: unknown, fallback = 0) {
   const num = typeof value === "number" ? value : Number(value)
   return Number.isFinite(num) ? num : fallback
+}
+
+function parseCalendarDate(value: unknown) {
+  const raw = String(value || "").trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T12:00:00.000Z`) : new Date(raw)
 }
 
 function parseEstadoCompra(value: unknown): EstadoCompra | undefined {
@@ -160,13 +168,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "El nombre del proveedor es requerido" }, { status: 400 })
     }
 
-    const fechaCompra = body?.fechaCompra ? new Date(String(body.fechaCompra)) : new Date()
+    const fechaCompra = body?.fechaCompra ? parseCalendarDate(body.fechaCompra) : new Date()
 
     const itemsIn: CompraItemInput[] = Array.isArray(body?.items) ? body.items : []
     const items = itemsIn
       .filter((it) => it && typeof it === "object")
       .map((it, idx) => ({
         descripcion: String(it.descripcion || "").trim(),
+        materialId: it.materialId ? String(it.materialId).trim() : null,
         cantidad: n(it.cantidad, 1),
         unidad: it.unidad ? String(it.unidad) : null,
         precioUnitario: n(it.precioUnitario, 0),
@@ -187,13 +196,29 @@ export async function POST(request: NextRequest) {
     }
 
     const empresaId = sedeCtx.empresaId
+    const restaurantEnabled = await userHasCapabilityAccess({
+      userId: access.userId,
+      empresaId,
+      sedeId: access.sedeId,
+      domain: 'VERTICALES',
+      subdomain: 'RESTAURANTE',
+      action: 'READ',
+      directGrantOnly: true,
+    })
+    const materialIds = Array.from(new Set(items.map((item) => item.materialId).filter((id): id is string => Boolean(id))))
+    if (materialIds.length) {
+      if (!restaurantEnabled) return NextResponse.json({ error: 'El vínculo de ingredientes requiere el vertical Restaurante' }, { status: 403 })
+      const validIngredients = await prisma.material.count({ where: { id: { in: materialIds }, empresaId, restaurantRole: 'INGREDIENT' } })
+      if (validIngredients !== materialIds.length) return NextResponse.json({ error: 'Uno o más ingredientes no son válidos para esta empresa' }, { status: 400 })
+    }
 
     const estadoParsed = body?.estado ? parseEstadoCompra(body.estado) : undefined
     if (body?.estado && !estadoParsed) {
       return NextResponse.json({ error: "Estado inválido. Usa BORRADOR, REGISTRADA o ANULADA" }, { status: 400 })
     }
 
-    const compra = await prisma.compra.create({
+    const compra = await prisma.$transaction(async (tx) => {
+      const created = await tx.compra.create({
       data: {
         fechaCompra,
         estado: estadoParsed,
@@ -231,6 +256,7 @@ export async function POST(request: NextRequest) {
         items: {
           create: items.map((it) => ({
             descripcion: it.descripcion,
+            materialId: it.materialId,
             cantidad: it.cantidad,
             unidad: it.unidad,
             precioUnitario: it.precioUnitario,
@@ -244,6 +270,9 @@ export async function POST(request: NextRequest) {
         },
       },
       include: { items: { orderBy: { orden: "asc" } } },
+      })
+      if (materialIds.length) await syncLatestRestaurantIngredientCosts(tx, empresaId, materialIds)
+      return created
     })
 
     return NextResponse.json({ success: true, data: compra }, { status: 201 })

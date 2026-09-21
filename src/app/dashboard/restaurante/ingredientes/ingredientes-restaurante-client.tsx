@@ -36,6 +36,7 @@ type OverviewData = {
     id: string;
     nombre: string;
     categoria: string | null;
+    restaurantRole: 'INGREDIENT' | 'PREPARATION' | 'PHYSICAL_PRODUCT' | null;
     unidadMedida: string;
     stockActual: number;
     stockMinimo: number;
@@ -47,6 +48,7 @@ type OverviewData = {
 
 type RecipeDraftState = {
   recipeId: string | null;
+  materialId: string;
   name: string;
   station: Station;
   yieldCount: number;
@@ -59,6 +61,7 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 function createRecipeDraft(): RecipeDraftState {
   return {
     recipeId: null,
+    materialId: "",
     name: "",
     station: "COCINA",
     yieldCount: 1,
@@ -161,6 +164,7 @@ export default function IngredientesRestauranteClient() {
   function startRecipeEdit(recipe: Recipe) {
     setRecipeDraft({
       recipeId: recipe.id,
+      materialId: recipe.materialId ?? "",
       name: recipe.name,
       station: recipe.station,
       yieldCount: recipe.yieldCount,
@@ -171,8 +175,9 @@ export default function IngredientesRestauranteClient() {
 
   async function saveRecipe() {
     const validComponents = recipeDraft.components.filter((component) => component.materialId && component.quantity > 0);
-    if (!recipeDraft.name.trim() || !validComponents.length) {
-      setError("Escribe el nombre de la receta y al menos un insumo válido.");
+    const outputMaterial = (overview?.materials ?? []).find((material) => material.id === recipeDraft.materialId && material.restaurantRole === 'PREPARATION');
+    if (!outputMaterial || !validComponents.length) {
+      setError("Selecciona una preparación y al menos un ingrediente válido.");
       return;
     }
 
@@ -183,7 +188,8 @@ export default function IngredientesRestauranteClient() {
             recipe.id === recipeDraft.recipeId
               ? {
                   ...recipe,
-                  name: recipeDraft.name.trim(),
+                  materialId: outputMaterial.id,
+                  name: outputMaterial.nombre,
                   station: recipeDraft.station,
                   yieldCount: Math.max(1, Number(recipeDraft.yieldCount) || 1),
                   notes: recipeDraft.notes.trim(),
@@ -194,7 +200,8 @@ export default function IngredientesRestauranteClient() {
         : [
             {
               id: crypto.randomUUID(),
-              name: recipeDraft.name.trim(),
+              materialId: outputMaterial.id,
+              name: outputMaterial.nombre,
               station: recipeDraft.station,
               yieldCount: Math.max(1, Number(recipeDraft.yieldCount) || 1),
               notes: recipeDraft.notes.trim(),
@@ -349,7 +356,19 @@ export default function IngredientesRestauranteClient() {
             <div className="grid gap-4 lg:grid-cols-2">
               <label className="space-y-1 text-sm">
                 <span className="text-slate-600">Producto final</span>
-                <Input value={recipeDraft.name} onChange={(event) => setRecipeDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Capuchino 16 oz" />
+                <Select value={recipeDraft.materialId || "__none__"} onValueChange={(value) => {
+                  const materialId = value === "__none__" ? "" : value;
+                  const material = (overview?.materials ?? []).find((item) => item.id === materialId);
+                  setRecipeDraft((current) => ({ ...current, materialId, name: material?.nombre ?? "" }));
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Selecciona preparación" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Selecciona preparación</SelectItem>
+                    {(overview?.materials ?? []).filter((material) => material.restaurantRole === 'PREPARATION').map((material) => (
+                      <SelectItem key={material.id} value={material.id}>{material.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
               <label className="space-y-1 text-sm">
                 <span className="text-slate-600">Estación</span>
@@ -379,8 +398,8 @@ export default function IngredientesRestauranteClient() {
                     <SelectTrigger className="bg-white"><SelectValue placeholder="Insumo base" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__none__">Selecciona insumo</SelectItem>
-                      {(overview?.materials ?? []).map((material) => (
-                        <SelectItem key={material.id} value={material.id}>{material.nombre}</SelectItem>
+                      {(overview?.materials ?? []).filter((material) => material.restaurantRole === 'INGREDIENT').map((material) => (
+                        <SelectItem key={material.id} value={material.id}>{material.nombre} · {material.unidadMedida}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -455,7 +474,7 @@ export default function IngredientesRestauranteClient() {
               board.recipes.map((recipe) => {
                 const estimatedCost = recipe.components.reduce((sum, component) => {
                   const material = materialsById.get(component.materialId);
-                  const unitCost = material?.precioUnidad ?? material?.precioCompra ?? 0;
+                  const unitCost = material?.precioCompra ?? 0;
                   return sum + unitCost * component.quantity;
                 }, 0);
                 return (

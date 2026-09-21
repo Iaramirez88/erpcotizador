@@ -49,6 +49,7 @@ interface Material {
   tipo: string
   tipoNombre?: string | null
   categoria?: string | null
+  restaurantRole?: 'INGREDIENT' | 'PREPARATION' | 'PHYSICAL_PRODUCT' | null
   imagenUrl?: string | null
   ancho?: number | null
   largo?: number | null
@@ -135,6 +136,22 @@ const UNIDADES_MEDIDA = [
   { value: "ml", label: "Metro lineal (ml)" },
   { value: "unidad", label: "Unidad" },
 ]
+
+const UNIDADES_RESTAURANTE = [
+  { value: 'unidad', label: 'Unidad (und)' },
+  { value: 'g', label: 'Gramo (g)' },
+  { value: 'kg', label: 'Kilogramo (kg)' },
+  { value: 'ml', label: 'Mililitro (ml)' },
+  { value: 'l', label: 'Litro (l)' },
+  { value: 'oz', label: 'Onza (oz)' },
+  { value: 'lb', label: 'Libra (lb)' },
+]
+
+const RESTAURANT_ROLE_OPTIONS = [
+  { value: 'INGREDIENT', label: 'Ingrediente' },
+  { value: 'PREPARATION', label: 'Preparación de cocina' },
+  { value: 'PHYSICAL_PRODUCT', label: 'Producto físico' },
+] as const
 
 const CUSTOM_FIELD_TYPE_LABELS: Record<ProductCustomFieldDefinition['fieldType'], string> = {
   TEXT: 'Texto corto',
@@ -243,6 +260,7 @@ export default function ProductosPage() {
   const { data: currentUserAccess, hasWriteAccess } = useCurrentUserAccess()
   const canManageProducts = Boolean(currentUserAccess?.canManageProducts) || hasWriteAccess('MATERIALES')
   const isAdmin = Boolean(currentUserAccess?.canManageCustomProductRequests)
+  const isRestaurantVertical = Boolean(currentUserAccess?.canAccessRestaurant)
   
   const [formData, setFormData] = useState({
     externalId: "",
@@ -250,6 +268,7 @@ export default function ProductosPage() {
     tipo: "VINILO",
     tipoNombre: "Vinilo",
     categoria: "",
+    restaurantRole: 'PHYSICAL_PRODUCT' as 'INGREDIENT' | 'PREPARATION' | 'PHYSICAL_PRODUCT',
     imagenUrl: "",
     ancho: "",
     largo: "",
@@ -940,6 +959,7 @@ export default function ProductosPage() {
       tipo: material.tipo,
       tipoNombre: material.tipoNombre ?? TIPOS_MATERIAL.find((item) => item.value === material.tipo)?.label ?? material.tipo,
       categoria: material.categoria ?? "",
+      restaurantRole: material.restaurantRole ?? 'PHYSICAL_PRODUCT',
       imagenUrl: material.imagenUrl ?? "",
       ancho: material.ancho?.toString() || "",
       largo: material.largo?.toString() || "",
@@ -971,6 +991,7 @@ export default function ProductosPage() {
       tipo: material.tipo,
       tipoNombre: material.tipoNombre ?? TIPOS_MATERIAL.find((item) => item.value === material.tipo)?.label ?? material.tipo,
       categoria: material.categoria || "",
+      restaurantRole: material.restaurantRole ?? 'PHYSICAL_PRODUCT',
       imagenUrl: material.imagenUrl ?? "",
       ancho: material.ancho?.toString() || "",
       largo: material.largo?.toString() || "",
@@ -1038,6 +1059,7 @@ export default function ProductosPage() {
       tipo: "VINILO",
       tipoNombre: "Vinilo",
       categoria: "",
+      restaurantRole: 'PHYSICAL_PRODUCT',
       imagenUrl: "",
       ancho: "",
       largo: "",
@@ -1905,7 +1927,7 @@ export default function ProductosPage() {
                 />
               </div>
 
-              {/* Tipo de producto (metraje vs físico) */}
+              {!isRestaurantVertical ? <>
               <div className="col-span-2">
                 <Label htmlFor="tipoProducto">Tipo de producto *</Label>
                 <select
@@ -1923,7 +1945,6 @@ export default function ProductosPage() {
                 </p>
               </div>
 
-              {/* Tipo */}
               <div>
                 <Label htmlFor="tipoNombre">Tipo comercial *</Label>
                 <select
@@ -1949,6 +1970,35 @@ export default function ProductosPage() {
                   Este es el nombre visible del producto dentro del catálogo.
                 </p>
               </div>
+              </> : (
+                <div className="col-span-2">
+                  <Label htmlFor="restaurantRole">Tipo comercial *</Label>
+                  <select
+                    id="restaurantRole"
+                    value={formData.restaurantRole}
+                    onChange={(e) => {
+                      const restaurantRole = e.target.value as typeof formData.restaurantRole
+                      const roleLabel = RESTAURANT_ROLE_OPTIONS.find((option) => option.value === restaurantRole)?.label ?? 'Producto'
+                      setFormData((prev) => ({
+                        ...prev,
+                        restaurantRole,
+                        tipo: 'OTRO',
+                        tipoNombre: roleLabel,
+                        unidadMedida: restaurantRole === 'INGREDIENT' ? 'g' : 'unidad',
+                        precioCompra: restaurantRole === 'PREPARATION' ? '' : prev.precioCompra,
+                        stockActual: restaurantRole === 'PREPARATION' ? '0' : prev.stockActual,
+                      }))
+                    }}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    required
+                  >
+                    {RESTAURANT_ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Los ingredientes solo aparecen en recetas; las preparaciones y productos físicos sí aparecen en la carta.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <Label htmlFor="tipo">Tipo técnico *</Label>
@@ -2054,7 +2104,7 @@ export default function ProductosPage() {
               </div>
 
               {/* Especificaciones */}
-              {tipoProducto === 'METRAJE' ? (
+              {!isRestaurantVertical && tipoProducto === 'METRAJE' ? (
                 <>
                   <div>
                     <Label htmlFor="ancho">Ancho base {unidadCobro === 'm2' ? '(cm)' : '(cm opcional)'}</Label>
@@ -2092,7 +2142,7 @@ export default function ProductosPage() {
                 </>
               ) : null}
 
-              <div>
+              {!isRestaurantVertical ? <div>
                 <Label htmlFor="color">Color</Label>
                 <Input
                   id="color"
@@ -2100,7 +2150,7 @@ export default function ProductosPage() {
                   onChange={(e) => setFormData({ ...formData, color: e.target.value })}
                   placeholder="Blanco, Negro, Transparente..."
                 />
-              </div>
+              </div> : null}
 
               {/* Precios */}
               <div className="col-span-2 border-t pt-4">
@@ -2110,7 +2160,7 @@ export default function ProductosPage() {
                 </p>
               </div>
 
-              {unidadCobro === 'm2' && (
+              {!isRestaurantVertical && unidadCobro === 'm2' && (
                 <div>
                   <Label htmlFor="precioM2">Precio por m²</Label>
                   <Input
@@ -2124,7 +2174,7 @@ export default function ProductosPage() {
                 </div>
               )}
 
-              {unidadCobro === 'ml' && (
+              {!isRestaurantVertical && unidadCobro === 'ml' && (
                 <div>
                   <Label htmlFor="precioMetro">Precio por Metro Lineal</Label>
                   <Input
@@ -2138,9 +2188,9 @@ export default function ProductosPage() {
                 </div>
               )}
 
-              {unidadCobro === 'unidad' && (
+              {(!isRestaurantVertical || formData.restaurantRole !== 'INGREDIENT') && unidadCobro === 'unidad' && (
                 <div>
-                  <Label htmlFor="precioUnidad">Precio por Unidad</Label>
+                  <Label htmlFor="precioUnidad">{isRestaurantVertical ? 'Precio de venta' : 'Precio por Unidad'}</Label>
                   <Input
                     id="precioUnidad"
                     type="number"
@@ -2153,7 +2203,7 @@ export default function ProductosPage() {
               )}
 
               <div>
-                <Label htmlFor="precioCompra">Precio de Compra</Label>
+                <Label htmlFor="precioCompra">{formData.restaurantRole === 'PREPARATION' && isRestaurantVertical ? 'Costo calculado por receta' : 'Precio de Compra'}</Label>
                 <Input
                   id="precioCompra"
                   type="number"
@@ -2161,7 +2211,13 @@ export default function ProductosPage() {
                   value={formData.precioCompra}
                   onChange={(e) => setFormData({ ...formData, precioCompra: e.target.value })}
                   placeholder="12000"
+                  disabled={isRestaurantVertical && formData.restaurantRole === 'PREPARATION'}
                 />
+                {isRestaurantVertical ? <p className="mt-1 text-xs text-muted-foreground">
+                  {formData.restaurantRole === 'PREPARATION'
+                    ? 'Se calcula automáticamente con el costo vigente de los ingredientes de su receta.'
+                    : 'Se actualizará con el costo unitario de la última recepción vinculada.'}
+                </p> : null}
               </div>
 
               {/* Descuentos por cantidad */}
@@ -2222,7 +2278,20 @@ export default function ProductosPage() {
                 <h4 className="font-medium mb-3">Inventario</h4>
               </div>
 
-              {tipoProducto === 'METRAJE' ? (
+              {isRestaurantVertical ? (
+                <div>
+                  <Label htmlFor="unidadMedida">Unidad de medida *</Label>
+                  <select
+                    id="unidadMedida"
+                    value={formData.unidadMedida}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, unidadMedida: e.target.value }))}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    required
+                  >
+                    {UNIDADES_RESTAURANTE.map((unidad) => <option key={unidad.value} value={unidad.value}>{unidad.label}</option>)}
+                  </select>
+                </div>
+              ) : tipoProducto === 'METRAJE' ? (
                 <div>
                   <Label htmlFor="unidadMedida">Se cobra por *</Label>
                   <select
@@ -2267,7 +2336,11 @@ export default function ProductosPage() {
                   value={formData.stockActual}
                   onChange={(e) => setFormData({ ...formData, stockActual: e.target.value })}
                   placeholder="100"
+                  disabled={isRestaurantVertical && formData.restaurantRole === 'PREPARATION'}
                 />
+                {isRestaurantVertical && formData.restaurantRole === 'PREPARATION' ? (
+                  <p className="mt-1 text-xs text-muted-foreground">El inventario se controla mediante los ingredientes de la receta.</p>
+                ) : null}
               </div>
 
               <div>

@@ -292,6 +292,7 @@ type InvoiceDetail = {
     id: string
     descripcion: string
     quantity: number
+    unidadMedida: string | null
     unitPrice: number
     total: number
     material?: { id: string; nombre: string; unidadMedida: string } | null
@@ -411,6 +412,7 @@ type DraftItem = {
   materialId: string
   descripcion: string
   quantity: string
+  unidadMedida?: string
   unitPrice: string
 }
 
@@ -1960,6 +1962,7 @@ export default function PosPage() {
             materialId: item.material?.id || '',
             descripcion: item.descripcion,
             quantity: String(item.quantity),
+            unidadMedida: item.unidadMedida || item.material?.unidadMedida || '',
             unitPrice: String(item.unitPrice),
           }))
         : [{ materialId: '', descripcion: '', quantity: '1', unitPrice: '' }],
@@ -2125,6 +2128,7 @@ export default function PosPage() {
         const m = materials.find((x) => x.id === patch.materialId) ?? null
         if (m) {
           if (!updated.descripcion) updated.descripcion = m.nombre
+          updated.unidadMedida = m.unidadMedida
           if (!updated.unitPrice) updated.unitPrice = String(priceSuggestion(m))
         }
       }
@@ -2268,6 +2272,7 @@ export default function PosPage() {
           materialId: it.materialId || undefined,
           descripcion: it.descripcion?.trim() || undefined,
           quantity: it.quantity,
+          unidadMedida: it.unidadMedida?.trim() || undefined,
           unitPrice: it.unitPrice,
         })),
         payments: saveAsDraft ? undefined : computedPayments.normalized,
@@ -5243,6 +5248,7 @@ export default function PosPage() {
                       <th className="py-2 pr-3">{t('pos.items.columns.material')}</th>
                       <th className="py-2 pr-3">{t('pos.items.columns.description')}</th>
                       <th className="py-2 pr-3">{t('pos.items.columns.quantity')}</th>
+                      <th className="py-2 pr-3">{t('pos.items.columns.unit')}</th>
                       <th className="py-2 pr-3">{t('pos.items.columns.price')}</th>
                       <th className="py-2 pr-3">{t('pos.items.columns.total')}</th>
                       <th className="py-2 pr-2"></th>
@@ -5301,12 +5307,29 @@ export default function PosPage() {
                           </td>
                           <td className="py-1 pr-3">
                             <Input
+                              value={it.unidadMedida || ''}
+                              onChange={(e) => updateItem(idx, { unidadMedida: e.target.value })}
+                              placeholder={t('pos.items.placeholders.unit')}
+                              className="w-28 h-9 text-xs"
+                            />
+                          </td>
+                          <td className="py-1 pr-3">
+                            <Input
                               value={it.unitPrice}
                               onChange={(e) => updateItem(idx, { unitPrice: e.target.value })}
                               className="w-32 h-9 text-xs"
                             />
                           </td>
-                          <td className="py-1 pr-3 font-medium">{formatCurrency(lineTotal)}</td>
+                          <td className="py-1 pr-3">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={lineTotal}
+                              onChange={(e) => updateItem(idx, { unitPrice: String(Math.max(0, n(e.target.value, 0)) / Math.max(qty, 0.000001)) })}
+                              className="w-32 h-9 text-xs"
+                            />
+                          </td>
                           <td className="py-1 pr-2">
                             <Button type="button" size="sm" variant="outline" onClick={() => removeItem(idx)}>
                               {t('common.remove')}
@@ -5621,6 +5644,7 @@ export default function PosPage() {
                         <tr className="text-left text-gray-600 border-b">
                           <th className="py-2 pr-4">{t('pos.items.columns.description')}</th>
                           <th className="py-2 pr-4">{t('pos.items.columns.quantity')}</th>
+                          <th className="py-2 pr-4">{t('pos.items.columns.unit')}</th>
                           <th className="py-2 pr-4">{t('pos.items.columns.price')}</th>
                           <th className="py-2 pr-4">{t('pos.items.columns.total')}</th>
                         </tr>
@@ -5630,6 +5654,7 @@ export default function PosPage() {
                           <tr key={it.id} className="border-b last:border-b-0">
                             <td className="py-2 pr-4 text-gray-900">{it.descripcion}</td>
                             <td className="py-2 pr-4 text-gray-700">{n(it.quantity, 0).toLocaleString(locale)}</td>
+                            <td className="py-2 pr-4 text-gray-700">{it.unidadMedida || it.material?.unidadMedida || t('common.na')}</td>
                             <td className="py-2 pr-4 text-gray-700">{formatCurrency(n(it.unitPrice, 0))}</td>
                             <td className="py-2 pr-4 font-medium">{formatCurrency(n(it.total, 0))}</td>
                           </tr>
