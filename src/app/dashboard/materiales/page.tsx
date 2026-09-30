@@ -7,11 +7,13 @@
 
 import { useCallback, useMemo, useState, useEffect, useRef } from "react"
 import { useSearchParams } from "next/navigation"
+import { Plus } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ImportDialog } from "@/components/import/import-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from '@/components/ui/switch'
 import { Card, CardContent } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -66,6 +68,10 @@ interface Material {
   observaciones?: string | null
   extraFields?: Record<string, unknown> | null
   requiresWorkOrder?: boolean
+  autoCreateWorkOrder?: boolean
+  productKind?: 'FINISHED_GOOD' | 'RAW_MATERIAL' | 'SUPPLY' | 'SERVICE' | 'COMPOSITE'
+  supplyMethod?: 'PURCHASE' | 'MANUFACTURE' | 'MAKE_TO_ORDER' | 'MIXED' | 'INTERNAL_SERVICE'
+  tracksInventory?: boolean
   activo: boolean
   createdAt: string
   stocks?: Array<{
@@ -153,6 +159,30 @@ const RESTAURANT_ROLE_OPTIONS = [
   { value: 'PHYSICAL_PRODUCT', label: 'Producto físico' },
 ] as const
 
+const PRODUCT_KIND_OPTIONS = [
+  { value: 'FINISHED_GOOD', label: 'Producto terminado' },
+  { value: 'RAW_MATERIAL', label: 'Materia prima' },
+  { value: 'SUPPLY', label: 'Insumo' },
+  { value: 'SERVICE', label: 'Servicio' },
+  { value: 'COMPOSITE', label: 'Producto compuesto' },
+] as const
+
+const SUPPLY_METHOD_OPTIONS = [
+  { value: 'PURCHASE', label: 'Compra' },
+  { value: 'MANUFACTURE', label: 'Fabricación' },
+  { value: 'MAKE_TO_ORDER', label: 'Fabricación bajo pedido' },
+  { value: 'MIXED', label: 'Mixto' },
+  { value: 'INTERNAL_SERVICE', label: 'Servicio interno' },
+] as const
+
+function getProductKindLabel(value: Material['productKind']) {
+  return PRODUCT_KIND_OPTIONS.find((option) => option.value === value)?.label ?? 'Producto terminado'
+}
+
+function getSupplyMethodLabel(value: Material['supplyMethod']) {
+  return SUPPLY_METHOD_OPTIONS.find((option) => option.value === value)?.label ?? 'Compra'
+}
+
 const CUSTOM_FIELD_TYPE_LABELS: Record<ProductCustomFieldDefinition['fieldType'], string> = {
   TEXT: 'Texto corto',
   LONG_TEXT: 'Texto largo',
@@ -226,6 +256,9 @@ export default function ProductosPage() {
   const [customRequestsOpen, setCustomRequestsOpen] = useState(false)
   const [myCustomRequestsOpen, setMyCustomRequestsOpen] = useState(false)
   const [productConfigOpen, setProductConfigOpen] = useState(false)
+  const [quickCategoryOpen, setQuickCategoryOpen] = useState(false)
+  const [quickCategoryName, setQuickCategoryName] = useState('')
+  const [quickCategorySaving, setQuickCategorySaving] = useState(false)
   const [typeOptions, setTypeOptions] = useState<ProductTypeOption[]>([])
   const [categoryOptions, setCategoryOptions] = useState<ProductCategoryOption[]>([])
   const [customFieldDefinitions, setCustomFieldDefinitions] = useState<ProductCustomFieldDefinition[]>([])
@@ -288,6 +321,10 @@ export default function ProductosPage() {
     observaciones: "",
     extraFields: {} as Record<string, string | boolean>,
     requiresWorkOrder: false,
+    autoCreateWorkOrder: true,
+    productKind: 'FINISHED_GOOD' as Material['productKind'],
+    supplyMethod: 'PURCHASE' as Material['supplyMethod'],
+    tracksInventory: true,
     activo: true
   })
 
@@ -295,31 +332,13 @@ export default function ProductosPage() {
 
   const baseTypeOptions = useMemo(() => TIPOS_MATERIAL, [])
 
-  const availableTypeOptions = useMemo(() => {
-    const custom = typeOptions.map((option) => ({
-      value: option.nombre,
-      label: option.nombre,
-      baseTipo: option.baseTipo,
-      source: 'custom' as const,
-    }))
-
-    const base = TIPOS_MATERIAL.filter(
-      (tipo) => !custom.some((option) => option.value.toLowerCase() === tipo.label.toLowerCase())
-    ).map((tipo) => ({
-      value: tipo.label,
-      label: tipo.label,
-      baseTipo: tipo.value,
-      source: 'base' as const,
-    }))
-
-    return [...custom, ...base]
-  }, [typeOptions])
-
   const availableCategoryOptions = useMemo(() => {
-    return Array.from(new Set([...CATEGORIAS_SUGERIDAS, ...categoryOptions.map((option) => option.nombre)])).sort((a, b) =>
-      a.localeCompare(b, 'es')
-    )
-  }, [categoryOptions])
+    return Array.from(new Set([
+      ...CATEGORIAS_SUGERIDAS,
+      ...categoryOptions.map((option) => option.nombre),
+      formData.categoria.trim(),
+    ].filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es'))
+  }, [categoryOptions, formData.categoria])
 
   const fetchConfiguracion = useCallback(async () => {
     try {
@@ -557,6 +576,7 @@ export default function ProductosPage() {
       if (next === 'FISICO') {
         return {
           ...prev,
+          tipo: 'OTRO',
           unidadMedida: 'unidad',
           precioM2: '',
           precioMetro: '',
@@ -568,10 +588,37 @@ export default function ProductosPage() {
       const nextUnidad = current === 'ml' || current === 'm' || current === 'metro' ? 'ml' : 'm2'
       return {
         ...prev,
+        tipo: prev.tipo === 'OTRO' ? 'VINILO' : prev.tipo,
         unidadMedida: nextUnidad,
         precioUnidad: '',
       }
     })
+  }
+
+  async function createQuickCategory() {
+    const nombre = quickCategoryName.trim()
+    if (!nombre) return
+
+    setQuickCategorySaving(true)
+    try {
+      const response = await fetch('/api/materiales/configuracion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity: 'categoryOption', nombre }),
+      })
+      const json = await response.json().catch(() => null) as { success?: boolean; error?: string } | null
+      if (!response.ok || !json?.success) {
+        alert(json?.error || 'No se pudo crear la categoría')
+        return
+      }
+
+      await fetchConfiguracion()
+      setFormData((prev) => ({ ...prev, categoria: nombre }))
+      setQuickCategoryName('')
+      setQuickCategoryOpen(false)
+    } finally {
+      setQuickCategorySaving(false)
+    }
   }
 
   useEffect(() => {
@@ -862,6 +909,16 @@ export default function ProductosPage() {
       const method = editingMaterial ? 'PUT' : 'POST'
 
       const { warehouseId, warehouseIds, stockScope, ...restForm } = formData
+      const normalizedCategory = restForm.categoria.trim()
+      const technicalTypeLabel = TIPOS_MATERIAL.find((item) => item.value === restForm.tipo)?.label ?? 'Producto'
+      const normalizedProductData = isRestaurantVertical
+        ? restForm
+        : {
+            ...restForm,
+            tipo: tipoProducto === 'FISICO' ? 'OTRO' : restForm.tipo,
+            tipoNombre: normalizedCategory || technicalTypeLabel,
+            categoria: normalizedCategory,
+          }
       const stockActualN = Number(restForm.stockActual)
       const effectiveWarehouseId = stockScope === 'warehouse' ? (warehouseId || defaultBodegaId || '') : ''
 
@@ -883,7 +940,7 @@ export default function ProductosPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ...restForm,
+          ...normalizedProductData,
           extraFields: Object.fromEntries(
             Object.entries(restForm.extraFields).filter(([, value]) => {
               if (typeof value === 'boolean') return true
@@ -977,6 +1034,10 @@ export default function ProductosPage() {
       observaciones: material.observaciones ?? "",
       extraFields: normalizeExtraFields(material.extraFields),
       requiresWorkOrder: Boolean(material.requiresWorkOrder),
+      autoCreateWorkOrder: material.autoCreateWorkOrder !== false,
+      productKind: material.productKind ?? 'FINISHED_GOOD',
+      supplyMethod: material.supplyMethod ?? 'PURCHASE',
+      tracksInventory: material.tracksInventory !== false,
       activo: material.activo,
     })
     setIsModalOpen(true)
@@ -1009,6 +1070,10 @@ export default function ProductosPage() {
       observaciones: material.observaciones || "",
       extraFields: normalizeExtraFields(material.extraFields),
       requiresWorkOrder: Boolean(material.requiresWorkOrder),
+      autoCreateWorkOrder: material.autoCreateWorkOrder !== false,
+      productKind: material.productKind ?? 'FINISHED_GOOD',
+      supplyMethod: material.supplyMethod ?? 'PURCHASE',
+      tracksInventory: material.tracksInventory !== false,
       activo: material.activo
     })
 
@@ -1079,6 +1144,10 @@ export default function ProductosPage() {
       observaciones: "",
       extraFields: {},
       requiresWorkOrder: false,
+      autoCreateWorkOrder: true,
+      productKind: 'FINISHED_GOOD',
+      supplyMethod: 'PURCHASE',
+      tracksInventory: true,
       activo: true
     })
 
@@ -1254,6 +1323,30 @@ export default function ProductosPage() {
         customFieldDefinitions={customFieldDefinitions}
         onRefresh={fetchConfiguracion}
       />
+      <Dialog open={quickCategoryOpen} onOpenChange={setQuickCategoryOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nueva categoría</DialogTitle>
+            <DialogDescription>Crea una categoría propia para organizar los productos de tu empresa.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="quick-category-name">Nombre</Label>
+            <Input
+              id="quick-category-name"
+              value={quickCategoryName}
+              onChange={(event) => setQuickCategoryName(event.target.value)}
+              placeholder="Ej: Merchandising"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setQuickCategoryOpen(false)} disabled={quickCategorySaving}>Cancelar</Button>
+            <Button type="button" onClick={() => void createQuickCategory()} disabled={quickCategorySaving || !quickCategoryName.trim()}>
+              {quickCategorySaving ? 'Creando...' : 'Crear categoría'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ErpPageHero
         breadcrumbs={[
           { label: 'Inicio', href: '/dashboard' },
@@ -1647,7 +1740,6 @@ export default function ProductosPage() {
               <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
                 {materiales.map((material) => {
                 const tipoLabel = TIPOS_MATERIAL.find((t) => t.value === material.tipo)?.label || material.tipo
-                const tipoComercial = String(material.tipoNombre ?? '').trim()
                 const externalIdTrim = String(material.externalId ?? '').trim()
                 const materialNombreView = externalIdTrim ? `(${externalIdTrim}) ${material.nombre}` : material.nombre
                 const specs = getMaterialSpecs(material)
@@ -1684,8 +1776,8 @@ export default function ProductosPage() {
                             <div className="min-w-0">
                               <div className="truncate font-medium text-foreground">{materialNombreView}</div>
                               <div className="truncate text-xs text-muted-foreground">
-                                {tipoComercial || tipoLabel}
-                                {tipoComercial && tipoComercial !== tipoLabel ? ` · Base: ${tipoLabel}` : ""}
+                                {getProductKindLabel(material.productKind)} · {getSupplyMethodLabel(material.supplyMethod)}
+                                {material.tipo !== 'OTRO' ? ` · ${tipoLabel}` : ''}
                               </div>
                             </div>
                           </div>
@@ -1698,10 +1790,18 @@ export default function ProductosPage() {
                       <div className="mt-3 space-y-2 text-sm">
                         <div className="text-xs text-muted-foreground">{material.categoria ? `${material.categoria}${specs ? ` • ${specs}` : ''}` : specs || 'Sin especificaciones'}</div>
                         <div className="font-semibold text-blue-600">{getPrecioDisplay(material)}</div>
-                        <div className={`text-xs ${stockForView <= material.stockMinimo ? 'font-medium text-red-600' : 'text-muted-foreground'}`}>
-                          Stock: {stockForView} {formatUnidadMedidaLabel(material.unidadMedida)}
-                        </div>
-                        <div className="text-xs text-muted-foreground">Bodega: {wh ? `${wh.nombre}${wh.isDefault ? ' (Principal)' : ''}` : '—'}</div>
+                        {material.tracksInventory !== false ? (
+                          <>
+                            <div className={`text-xs ${stockForView <= material.stockMinimo ? 'font-medium text-red-600' : 'text-muted-foreground'}`}>
+                              Stock: {stockForView} {formatUnidadMedidaLabel(material.unidadMedida)}
+                            </div>
+                            <div className="text-xs text-muted-foreground">Bodega: {wh ? `${wh.nombre}${wh.isDefault ? ' (Principal)' : ''}` : '—'}</div>
+                          </>
+                        ) : (
+                          <div className="text-xs font-medium text-sky-700">
+                            {material.supplyMethod === 'MAKE_TO_ORDER' ? 'Fabricado bajo pedido' : 'No inventariable'}
+                          </div>
+                        )}
                       </div>
 
                       {canManageProducts ? <div className="mt-4 flex justify-end gap-2">
@@ -1739,7 +1839,6 @@ export default function ProductosPage() {
               <div className="divide-y">
                 {materiales.map((material) => {
                 const tipoLabel = TIPOS_MATERIAL.find((t) => t.value === material.tipo)?.label || material.tipo
-                const tipoComercial = String(material.tipoNombre ?? '').trim()
                 const externalIdTrim = String(material.externalId ?? '').trim()
                 const materialNombreView = externalIdTrim ? `(${externalIdTrim}) ${material.nombre}` : material.nombre
                 const specs = getMaterialSpecs(material)
@@ -1779,8 +1878,8 @@ export default function ProductosPage() {
                           ) : null}
                         </div>
                         <div className="text-xs text-muted-foreground truncate">
-                          {tipoComercial || tipoLabel}
-                          {tipoComercial && tipoComercial !== tipoLabel ? ` · Base: ${tipoLabel}` : ""}
+                          {getProductKindLabel(material.productKind)} · {getSupplyMethodLabel(material.supplyMethod)}
+                          {material.tipo !== 'OTRO' ? ` · ${tipoLabel}` : ''}
                           {material.categoria ? ` • ${material.categoria}` : ""}
                           {specs ? ` • ${specs}` : ""}
                         </div>
@@ -1791,14 +1890,20 @@ export default function ProductosPage() {
                           <div className="text-sm font-semibold text-blue-600 whitespace-nowrap">
                             {getPrecioDisplay(material)}
                           </div>
-                          <div
-                            className={`text-xs whitespace-nowrap ${stockForView <= material.stockMinimo ? "text-red-600 font-medium" : "text-muted-foreground"}`}
-                          >
-                            Stock: {stockForView} {formatUnidadMedidaLabel(material.unidadMedida)}
-                          </div>
-                          <div className="text-xs whitespace-nowrap text-muted-foreground">
-                            Bodega: {wh ? `${wh.nombre}${wh.isDefault ? ' (Principal)' : ''}` : '—'}
-                          </div>
+                          {material.tracksInventory !== false ? (
+                            <>
+                              <div className={`text-xs whitespace-nowrap ${stockForView <= material.stockMinimo ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+                                Stock: {stockForView} {formatUnidadMedidaLabel(material.unidadMedida)}
+                              </div>
+                              <div className="text-xs whitespace-nowrap text-muted-foreground">
+                                Bodega: {wh ? `${wh.nombre}${wh.isDefault ? ' (Principal)' : ''}` : '—'}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-xs whitespace-nowrap font-medium text-sky-700">
+                              {material.supplyMethod === 'MAKE_TO_ORDER' ? 'Fabricado bajo pedido' : 'No inventariable'}
+                            </div>
+                          )}
                         </div>
 
                         {canManageProducts ? <div className="md:hidden">
@@ -1929,7 +2034,7 @@ export default function ProductosPage() {
 
               {!isRestaurantVertical ? <>
               <div className="col-span-2">
-                <Label htmlFor="tipoProducto">Tipo de producto *</Label>
+                <Label htmlFor="tipoProducto">Forma de venta *</Label>
                 <select
                   id="tipoProducto"
                   value={tipoProducto}
@@ -1945,31 +2050,6 @@ export default function ProductosPage() {
                 </p>
               </div>
 
-              <div>
-                <Label htmlFor="tipoNombre">Tipo comercial *</Label>
-                <select
-                  id="tipoNombre"
-                  value={formData.tipoNombre}
-                  onChange={(e) => {
-                    const next = e.target.value
-                    const match = availableTypeOptions.find((option) => option.value === next)
-                    setFormData({
-                      ...formData,
-                      tipoNombre: next,
-                      tipo: match?.baseTipo ?? formData.tipo,
-                    })
-                  }}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  required
-                >
-                  {availableTypeOptions.map((tipo) => (
-                    <option key={`${tipo.source}-${tipo.value}`} value={tipo.value}>{tipo.label}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Este es el nombre visible del producto dentro del catálogo.
-                </p>
-              </div>
               </> : (
                 <div className="col-span-2">
                   <Label htmlFor="restaurantRole">Tipo comercial *</Label>
@@ -2000,39 +2080,52 @@ export default function ProductosPage() {
                 </div>
               )}
 
-              <div>
-                <Label htmlFor="tipo">Tipo técnico *</Label>
-                <select
-                  id="tipo"
-                  value={formData.tipo}
-                  onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  required
-                >
-                  {TIPOS_MATERIAL.map(tipo => (
-                    <option key={tipo.value} value={tipo.value}>{tipo.label}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Esto es el material base (vinilo, lona, papel, etc.).
-                </p>
-              </div>
+              {!isRestaurantVertical && tipoProducto === 'METRAJE' ? (
+                <div>
+                  <Label htmlFor="tipo">Material base *</Label>
+                  <select
+                    id="tipo"
+                    value={formData.tipo}
+                    onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    required
+                  >
+                    {TIPOS_MATERIAL.map((tipo) => (
+                      <option key={tipo.value} value={tipo.value}>{tipo.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-1">Identifica el material vendido por m² o metro lineal.</p>
+                </div>
+              ) : null}
 
               {/* Categoría */}
-              <div>
-                <Label htmlFor="categoria">Categoría</Label>
-                <Input
-                  id="categoria"
-                  value={formData.categoria}
-                  onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-                  placeholder="Ej: Merchandising"
-                  list="categoria-sugeridas"
-                />
-                <datalist id="categoria-sugeridas">
-                  {availableCategoryOptions.map((c) => (
-                    <option key={c} value={c} />
-                  ))}
-                </datalist>
+              <div className={tipoProducto === 'FISICO' && !isRestaurantVertical ? 'col-span-2' : undefined}>
+                <Label htmlFor="categoria">Categoría *</Label>
+                <div className="flex gap-2">
+                  <select
+                    id="categoria"
+                    value={formData.categoria}
+                    onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
+                    className="flex h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    required={!isRestaurantVertical}
+                  >
+                    <option value="">Selecciona una categoría</option>
+                    {availableCategoryOptions.map((category) => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    title="Crear categoría"
+                    aria-label="Crear categoría"
+                    onClick={() => setQuickCategoryOpen(true)}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">Agrupa productos para encontrarlos y filtrarlos fácilmente.</p>
               </div>
 
               {/* Imagen */}
@@ -2102,6 +2195,60 @@ export default function ProductosPage() {
                   ) : null}
                 </div>
               </div>
+
+              {!isRestaurantVertical ? (
+                <>
+                  <div className="col-span-2 border-t pt-4">
+                    <h4 className="font-medium">Clasificación</h4>
+                    <p className="mt-1 text-sm text-muted-foreground">Define qué es el producto y cómo se obtiene antes de venderlo.</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="productKind">Tipo de producto *</Label>
+                    <select
+                      id="productKind"
+                      value={formData.productKind}
+                      onChange={(event) => {
+                        const productKind = event.target.value as NonNullable<Material['productKind']>
+                        setFormData((prev) => ({
+                          ...prev,
+                          productKind,
+                          supplyMethod: productKind === 'SERVICE' ? 'INTERNAL_SERVICE' : prev.supplyMethod,
+                          tracksInventory: productKind === 'SERVICE' ? false : prev.tracksInventory,
+                          stockActual: productKind === 'SERVICE' ? '0' : prev.stockActual,
+                          stockMinimo: productKind === 'SERVICE' ? '0' : prev.stockMinimo,
+                        }))
+                      }}
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      required
+                    >
+                      {PRODUCT_KIND_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label htmlFor="supplyMethod">Método de abastecimiento *</Label>
+                    <select
+                      id="supplyMethod"
+                      value={formData.supplyMethod}
+                      onChange={(event) => {
+                        const supplyMethod = event.target.value as NonNullable<Material['supplyMethod']>
+                        setFormData((prev) => ({
+                          ...prev,
+                          supplyMethod,
+                          tracksInventory: supplyMethod === 'MAKE_TO_ORDER' || supplyMethod === 'INTERNAL_SERVICE' ? false : prev.tracksInventory,
+                          requiresWorkOrder: supplyMethod === 'MAKE_TO_ORDER' ? true : prev.requiresWorkOrder,
+                          autoCreateWorkOrder: supplyMethod === 'MAKE_TO_ORDER' ? true : prev.autoCreateWorkOrder,
+                          stockActual: supplyMethod === 'MAKE_TO_ORDER' || supplyMethod === 'INTERNAL_SERVICE' ? '0' : prev.stockActual,
+                          stockMinimo: supplyMethod === 'MAKE_TO_ORDER' || supplyMethod === 'INTERNAL_SERVICE' ? '0' : prev.stockMinimo,
+                        }))
+                      }}
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      required
+                    >
+                      {SUPPLY_METHOD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </div>
+                </>
+              ) : null}
 
               {/* Especificaciones */}
               {!isRestaurantVertical && tipoProducto === 'METRAJE' ? (
@@ -2327,6 +2474,27 @@ export default function ProductosPage() {
                 </div>
               )}
 
+              {!isRestaurantVertical ? (
+                <div className="col-span-2 flex items-center justify-between gap-4 rounded-lg border bg-muted/30 px-4 py-3">
+                  <div>
+                    <Label htmlFor="tracksInventory">Controla inventario</Label>
+                    <p className="mt-1 text-xs text-muted-foreground">Actívalo solo si deben existir unidades físicas antes de vender.</p>
+                  </div>
+                  <Switch
+                    id="tracksInventory"
+                    checked={formData.tracksInventory}
+                    onCheckedChange={(checked) => setFormData((prev) => ({
+                      ...prev,
+                      tracksInventory: checked,
+                      stockActual: checked ? prev.stockActual : '0',
+                      stockMinimo: checked ? prev.stockMinimo : '0',
+                    }))}
+                  />
+                </div>
+              ) : null}
+
+              {formData.tracksInventory ? (
+                <>
               <div>
                 <Label htmlFor="stockActual">Stock Actual</Label>
                 <Input
@@ -2468,6 +2636,16 @@ export default function ProductosPage() {
                   placeholder="10"
                 />
               </div>
+                </>
+              ) : (
+                <div className="col-span-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                  {formData.supplyMethod === 'MAKE_TO_ORDER'
+                    ? 'Fabricado bajo pedido: se puede vender con stock 0 y la producción se inicia mediante orden de trabajo.'
+                    : formData.productKind === 'SERVICE'
+                      ? 'Servicio no inventariable: no requiere stock, bodega ni nivel mínimo.'
+                      : 'Producto no inventariable: no se validará ni descontará stock al venderlo.'}
+                </div>
+              )}
 
               <div>
                 <Label htmlFor="proveedor">Proveedor (opcional)</Label>
@@ -2697,18 +2875,42 @@ export default function ProductosPage() {
                 />
               </div>
 
-              {/* Estado */}
-              <div className="col-span-2">
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.requiresWorkOrder}
-                    onChange={(e) => setFormData({ ...formData, requiresWorkOrder: e.target.checked })}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">Este producto requiere orden de trabajo automática</span>
-                </label>
-              </div>
+              {!isRestaurantVertical ? (
+                <div className="col-span-2 space-y-3 border-t pt-4">
+                  <div>
+                    <h4 className="font-medium">Producción</h4>
+                    <p className="mt-1 text-sm text-muted-foreground">Configura si la venta debe pasar al flujo operativo.</p>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
+                    <div>
+                      <Label htmlFor="requiresWorkOrder">Requiere orden de trabajo</Label>
+                      <p className="mt-1 text-xs text-muted-foreground">La referencia necesita seguimiento de producción o ejecución.</p>
+                    </div>
+                    <Switch
+                      id="requiresWorkOrder"
+                      checked={formData.requiresWorkOrder}
+                      onCheckedChange={(checked) => setFormData((prev) => ({
+                        ...prev,
+                        requiresWorkOrder: checked,
+                        autoCreateWorkOrder: checked ? prev.autoCreateWorkOrder : false,
+                      }))}
+                    />
+                  </div>
+                  {formData.requiresWorkOrder ? (
+                    <div className="flex items-center justify-between gap-4 rounded-lg border px-4 py-3">
+                      <div>
+                        <Label htmlFor="autoCreateWorkOrder">Crear OT automáticamente</Label>
+                        <p className="mt-1 text-xs text-muted-foreground">Se genera al aprobar la cotización o confirmar la venta.</p>
+                      </div>
+                      <Switch
+                        id="autoCreateWorkOrder"
+                        checked={formData.autoCreateWorkOrder}
+                        onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, autoCreateWorkOrder: checked }))}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div className="col-span-2">
                 <label className="flex items-center space-x-2">

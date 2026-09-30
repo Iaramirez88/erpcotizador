@@ -58,6 +58,9 @@ type MaterialMatch = {
   stockMinimo: number
   unidadMedida: string
   requiresWorkOrder: boolean
+  tracksInventory: boolean
+  supplyMethod: 'PURCHASE' | 'MANUFACTURE' | 'MAKE_TO_ORDER' | 'MIXED' | 'INTERNAL_SERVICE'
+  productKind: 'FINISHED_GOOD' | 'RAW_MATERIAL' | 'SUPPLY' | 'SERVICE' | 'COMPOSITE'
 }
 
 type MaterialLookupKind = 'any' | 'product' | 'service'
@@ -1207,6 +1210,11 @@ function formatMaterialPrice(material: MaterialMatch) {
 }
 
 function formatMaterialStock(material: MaterialMatch) {
+  if (!material.tracksInventory) {
+    if (material.supplyMethod === 'MAKE_TO_ORDER') return 'Fabricado bajo pedido'
+    if (material.productKind === 'SERVICE') return 'Servicio disponible'
+    return 'No requiere inventario previo'
+  }
   if (material.stockActual <= 0) return `Sin stock ahora mismo (${material.unidadMedida})`
   if (material.stockActual <= material.stockMinimo) return `Stock bajo: ${material.stockActual} ${material.unidadMedida}`
   return `Stock disponible: ${material.stockActual} ${material.unidadMedida}`
@@ -1312,6 +1320,9 @@ async function resolveCatalogInsight(args: {
           precioUnidad: true,
           stockActual: true,
           stockMinimo: true,
+          tracksInventory: true,
+          supplyMethod: true,
+          productKind: true,
           unidadMedida: true,
           requiresWorkOrder: true,
         },
@@ -1346,6 +1357,9 @@ async function resolveCatalogInsight(args: {
           precioUnidad: true,
           stockActual: true,
           stockMinimo: true,
+          tracksInventory: true,
+          supplyMethod: true,
+          productKind: true,
           unidadMedida: true,
           requiresWorkOrder: true,
         },
@@ -1605,6 +1619,7 @@ async function createBusinessEntityFromChatbot(tx: Prisma.TransactionClient, arg
       empresaId: args.empresaId,
       sedeId: args.sedeId,
       createdById: args.createdById,
+      force: true,
     })
     result.workOrderNumber = workOrder?.numero || null
   }

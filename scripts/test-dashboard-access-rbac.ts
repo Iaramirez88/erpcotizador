@@ -71,6 +71,25 @@ function main() {
   assert(directRopHrefs.includes('/dashboard/rop'), 'Un grant directo debe abrir la ruta de ROP')
   assert(directRopKeys.includes('CORE.ROP'), 'Un grant directo debe resolver CORE.ROP')
 
+  const legacyQuoterContext = createContext({ legacyAccess: { [ModuleKey.COTIZADOR]: 'ADMIN' } })
+  const legacyQuoterKeys = buildAllowedDashboardPermissionKeysFromContext({ context: legacyQuoterContext })
+  assert(legacyQuoterKeys.includes('VENTAS.QUOTER'), 'El acceso general debe mantener disponible el cotizador')
+  assert(!legacyQuoterKeys.includes('VENTAS.QUOTER_AI'), 'Cotizar por IA debe estar apagado sin grant directo')
+  assert(!legacyQuoterKeys.includes('VENTAS.QUOTER_PRODUCTION_TOOLS'), 'Las herramientas de producción deben estar apagadas sin grant directo')
+
+  const directQuoteToolsContext = createContext({
+    legacyAccess: { [ModuleKey.COTIZADOR]: 'READ' },
+    grants: [
+      { domain: 'VENTAS', subdomain: 'QUOTER_AI', action: 'READ', allowed: true, scopeType: 'SEDE', scopeValue: 'sede-test', source: 'DIRECT' },
+      { domain: 'VENTAS', subdomain: 'QUOTER_AI', action: 'EXECUTE', allowed: true, scopeType: 'SEDE', scopeValue: 'sede-test', source: 'DIRECT' },
+      { domain: 'VENTAS', subdomain: 'QUOTER_PRODUCTION_TOOLS', action: 'READ', allowed: true, scopeType: 'SEDE', scopeValue: 'sede-test', source: 'DIRECT' },
+      { domain: 'VENTAS', subdomain: 'QUOTER_PRODUCTION_TOOLS', action: 'EXECUTE', allowed: true, scopeType: 'SEDE', scopeValue: 'sede-test', source: 'DIRECT' },
+    ],
+  })
+  const directQuoteToolsKeys = buildAllowedDashboardPermissionKeysFromContext({ context: directQuoteToolsContext })
+  assert(directQuoteToolsKeys.includes('VENTAS.QUOTER_AI'), 'Un grant directo debe habilitar Cotizar por IA')
+  assert(directQuoteToolsKeys.includes('VENTAS.QUOTER_PRODUCTION_TOOLS'), 'Un grant directo debe habilitar las herramientas de producción')
+
   console.log('OK dashboard-access-rbac')
 }
 

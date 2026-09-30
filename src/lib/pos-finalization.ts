@@ -115,7 +115,8 @@ export async function applyStockAdjustments(
   const deltaSign = args.direction === 'OUT' ? -1 : 1
 
   for (const [materialId, quantity] of aggregate.entries()) {
-    const mat = await tx.material.findUnique({ where: { id: materialId }, select: { stockActual: true, nombre: true } })
+    const mat = await tx.material.findUnique({ where: { id: materialId }, select: { stockActual: true, nombre: true, tracksInventory: true } })
+    if (mat && !mat.tracksInventory) continue
     const globalBefore = mat?.stockActual ?? 0
     const signedDelta = quantity * deltaSign
 

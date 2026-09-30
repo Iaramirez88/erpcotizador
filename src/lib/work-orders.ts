@@ -24,6 +24,7 @@ type QuoteWorkOrderItem = {
   unidadMedida: string | null
   terminados: string[]
   requiresWorkOrder: boolean
+  autoCreateWorkOrder: boolean
 }
 
 type InvoiceWorkOrderItem = {
@@ -34,6 +35,13 @@ type InvoiceWorkOrderItem = {
   subtotal: number
   unidadMedida: string | null
   requiresWorkOrder: boolean
+  autoCreateWorkOrder: boolean
+}
+
+type ManualWorkOrderItem = {
+  descripcion: string
+  cantidad: number
+  especificaciones?: string | null
 }
 
 function parseOrderSequence(numero?: string | null) {
@@ -67,7 +75,7 @@ function buildQuoteSnapshotItems(
     cantidad: number
     precioUnitario: number
     subtotal: number
-    material: { nombre: string; unidadMedida: string; requiresWorkOrder: boolean } | null
+    material: { nombre: string; unidadMedida: string; requiresWorkOrder: boolean; autoCreateWorkOrder: boolean } | null
     terminados: Array<{ terminado: { nombre: string } }>
   }>
 ): QuoteWorkOrderItem[] {
@@ -81,6 +89,7 @@ function buildQuoteSnapshotItems(
       unidadMedida: item.material?.unidadMedida ?? null,
       terminados: item.terminados.map((entry) => entry.terminado.nombre),
       requiresWorkOrder: Boolean(item.material?.requiresWorkOrder),
+      autoCreateWorkOrder: item.material?.autoCreateWorkOrder !== false,
     }))
     .filter((item) => item.cantidad > 0)
 }
@@ -92,7 +101,7 @@ function buildInvoiceSnapshotItems(
     quantity: number
     unitPrice: number
     total: number
-    material: { nombre: string; unidadMedida: string; requiresWorkOrder: boolean } | null
+    material: { nombre: string; unidadMedida: string; requiresWorkOrder: boolean; autoCreateWorkOrder: boolean } | null
   }>
 ): InvoiceWorkOrderItem[] {
   return items
@@ -104,12 +113,13 @@ function buildInvoiceSnapshotItems(
       subtotal: Number(item.total) || 0,
       unidadMedida: item.material?.unidadMedida ?? null,
       requiresWorkOrder: Boolean(item.material?.requiresWorkOrder),
+      autoCreateWorkOrder: item.material?.autoCreateWorkOrder !== false,
     }))
     .filter((item) => item.cantidad > 0)
 }
 
-function hasWorkOrderItems(items: Array<{ requiresWorkOrder: boolean }>) {
-  return items.some((item) => item.requiresWorkOrder)
+function hasWorkOrderItems(items: Array<{ requiresWorkOrder: boolean; autoCreateWorkOrder: boolean }>, force = false) {
+  return items.some((item) => item.requiresWorkOrder && (force || item.autoCreateWorkOrder))
 }
 
 function defaultStages() {
@@ -117,6 +127,80 @@ function defaultStages() {
     nombre: stage.nombre,
     secuencia: stage.secuencia,
   }))
+}
+
+export async function createManualWorkOrder(
+  tx: Prisma.TransactionClient,
+  args: {
+    empresaId: string
+    sedeId: string
+    createdById: string
+    clienteId: string
+    assignedToUserId?: string | null
+    priority?: Prioridad | null
+    fechaEntrega?: Date | null
+    areaResponsable?: string | null
+    observaciones?: string | null
+    items: ManualWorkOrderItem[]
+  }
+) {
+  const cliente = await tx.cliente.findFirst({
+    where: { id: args.clienteId, empresaId: args.empresaId },
+    select: { id: true },
+  })
+  if (!cliente) throw new Error('MANUAL_WORK_ORDER_CLIENT_NOT_FOUND')
+
+  if (args.assignedToUserId) {
+    const membership = await tx.sedeMembership.findUnique({
+      where: { sedeId_userId: { sedeId: args.sedeId, userId: args.assignedToUserId } },
+      select: { id: true },
+    })
+    if (!membership) throw new Error('MANUAL_WORK_ORDER_ASSIGNEE_INVALID')
+  }
+
+  const items = args.items
+    .map((item) => ({
+      descripcion: String(item.descripcion || '').trim(),
+      cantidad: Number(item.cantidad) || 0,
+      especificaciones: String(item.especificaciones || '').trim() || null,
+    }))
+    .filter((item) => item.descripcion && item.cantidad > 0)
+
+  if (!items.length) throw new Error('MANUAL_WORK_ORDER_ITEMS_REQUIRED')
+
+  const numero = await getNextWorkOrderNumber(tx)
+  return tx.ordenTrabajo.create({
+    data: {
+      numero,
+      sedeId: args.sedeId,
+      clienteId: cliente.id,
+      vendedorId: args.createdById,
+      assignedToUserId: args.assignedToUserId || null,
+      assignedAt: args.assignedToUserId ? new Date() : null,
+      fechaInicio: new Date(),
+      fechaEntrega: args.fechaEntrega ?? null,
+      sourceType: 'manual',
+      estado: 'PENDIENTE',
+      prioridad: normalizePriority(args.priority),
+      areaResponsable: args.areaResponsable || null,
+      observaciones: args.observaciones || null,
+      itemsSnapshot: items as Prisma.InputJsonValue,
+      etapas: { create: defaultStages() },
+      events: {
+        create: {
+          type: 'CREATED',
+          title: 'Orden creada manualmente',
+          createdById: args.createdById,
+          details: { sourceType: 'manual' },
+        },
+      },
+    },
+    include: {
+      cliente: true,
+      assignedTo: { select: { id: true, name: true, email: true } },
+      etapas: true,
+    },
+  })
 }
 
 export async function resolveClienteIdForPosInvoice(
@@ -154,6 +238,7 @@ export async function ensureWorkOrderFromQuote(
     createdById: string
     posInvoiceId?: string | null
     priority?: Prioridad | null
+    force?: boolean
   }
 ) {
   const cotizacion = await tx.cotizacion.findFirst({
@@ -187,6 +272,7 @@ export async function ensureWorkOrderFromQuote(
               nombre: true,
               unidadMedida: true,
               requiresWorkOrder: true,
+              autoCreateWorkOrder: true,
             },
           },
           terminados: {
@@ -206,7 +292,7 @@ export async function ensureWorkOrderFromQuote(
   }
 
   const snapshotItems = buildQuoteSnapshotItems(cotizacion.items)
-  if (!hasWorkOrderItems(snapshotItems)) return null
+  if (!hasWorkOrderItems(snapshotItems, args.force)) return null
 
   const existing = await tx.ordenTrabajo.findFirst({
     where: {
@@ -279,6 +365,14 @@ export async function ensureWorkOrderFromQuote(
       etapas: {
         create: defaultStages(),
       },
+      events: {
+        create: {
+          type: 'CREATED',
+          title: `Orden creada desde cotización ${cotizacion.numero}`,
+          createdById: args.createdById,
+          details: { sourceType: 'quotation', sourceId: cotizacion.id },
+        },
+      },
     },
     include: {
       cliente: true,
@@ -299,6 +393,7 @@ export async function ensureWorkOrderFromInvoice(
     sedeId: string
     createdById: string
     priority?: Prioridad | null
+    force?: boolean
   }
 ) {
   const invoice = await tx.posInvoice.findFirst({
@@ -330,6 +425,7 @@ export async function ensureWorkOrderFromInvoice(
               nombre: true,
               unidadMedida: true,
               requiresWorkOrder: true,
+              autoCreateWorkOrder: true,
             },
           },
         },
@@ -349,11 +445,12 @@ export async function ensureWorkOrderFromInvoice(
       createdById: args.createdById,
       posInvoiceId: invoice.id,
       priority: args.priority,
+      force: args.force,
     })
   }
 
   const snapshotItems = buildInvoiceSnapshotItems(invoice.items)
-  if (!hasWorkOrderItems(snapshotItems)) return null
+  if (!hasWorkOrderItems(snapshotItems, args.force)) return null
 
   const clienteId = invoice.clienteId
     ?? (await resolveClienteIdForPosInvoice(tx, {
@@ -436,6 +533,14 @@ export async function ensureWorkOrderFromInvoice(
       ...createPayload,
       etapas: {
         create: defaultStages(),
+      },
+      events: {
+        create: {
+          type: 'CREATED',
+          title: `Orden creada desde factura ${invoice.numero}`,
+          createdById: args.createdById,
+          details: { sourceType: 'invoice', sourceId: invoice.id },
+        },
       },
     },
     include: {

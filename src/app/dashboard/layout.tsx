@@ -48,6 +48,7 @@ export default async function DashboardLayout({
   const userId = await resolveUserIdFromSession(session)
   let allowedModules: string[] | null = null
   let allowedNavHrefs: string[] | null = null
+  let allowedPermissionKeys: string[] | null = null
   let canManageBilling = false
   let canAccessWebsiteServices = false
   let canAccessBackups = false
@@ -87,6 +88,7 @@ export default async function DashboardLayout({
         }),
       ])
       allowedNavHrefs = nextAllowedNavHrefs
+      allowedPermissionKeys = permissionKeys
       canAccessTeamChat = permissionKeys.includes('OPERACIONES.INTERNAL_CHAT')
       canAccessCrmChat = permissionKeys.includes('OPERACIONES.GLOBAL_CHAT_CRM')
       allowedModules = Array.from(new Set([...allowedModules, ...getAllowedModulesFromDashboardHrefs(allowedNavHrefs)]))
@@ -162,6 +164,7 @@ export default async function DashboardLayout({
       <DashboardAccessProvider
         value={{
           allowedNavHrefs,
+          allowedPermissionKeys,
           canAccessPayrollAdmin,
           hasPayrollPortal,
           payrollEntryHref: user.payrollEntryHref,

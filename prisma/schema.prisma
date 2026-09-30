@@ -62,6 +62,8 @@ model User {
   cotizacionesAsignadas Cotizacion[] @relation("CotizacionAssignedTo")
   ordenes      OrdenTrabajo[] @relation("OrdenVendedor")
   ordenesAsignadas OrdenTrabajo[] @relation("OrdenAssignedTo")
+  workOrderQualityReviews OrdenTrabajo[] @relation("WorkOrderQualityReviewedBy")
+  workOrderEvents WorkOrderEvent[] @relation("WorkOrderEventCreatedBy")
   crmLeadsOwned CrmLead[] @relation("CrmLeadOwner")
   crmLeadsCreated CrmLead[] @relation("CrmLeadCreatedBy")
   crmOpportunitiesAssigned CrmOpportunity[] @relation("CrmOpportunityAssignedTo")
@@ -1363,6 +1365,9 @@ model InventorySupplyRequest {
   empresaId String
   empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
+  ordenTrabajoId String?
+  ordenTrabajo   OrdenTrabajo? @relation(fields: [ordenTrabajoId], references: [id], onDelete: SetNull)
+
   requestingWarehouseId String
   requestingWarehouse   InventoryWarehouse @relation("SupplyRequestRequester", fields: [requestingWarehouseId], references: [id], onDelete: Restrict)
 
@@ -1390,6 +1395,7 @@ model InventorySupplyRequest {
   updatedAt DateTime @updatedAt
 
   @@index([empresaId, status, createdAt])
+  @@index([ordenTrabajoId, createdAt])
   @@index([requestingWarehouseId, createdAt])
   @@index([supplyWarehouseId, createdAt])
   @@index([requestingSedeId, createdAt])
@@ -3778,6 +3784,22 @@ enum EstadoCotizacion {
 // MÓDULO DE MATERIALES Y PRECIOS
 // ============================================
 
+enum ProductKind {
+  FINISHED_GOOD
+  RAW_MATERIAL
+  SUPPLY
+  SERVICE
+  COMPOSITE
+}
+
+enum ProductSupplyMethod {
+  PURCHASE
+  MANUFACTURE
+  MAKE_TO_ORDER
+  MIXED
+  INTERNAL_SERVICE
+}
+
 model Material {
   id        String       @id @default(cuid())
   // Identificador/código opcional asignado por el cliente (p.ej. sistema de caja)
@@ -3792,6 +3814,10 @@ model Material {
   // Productos creados vía flujo “personalizado” (requiere aprobación admin)
   isCustom Boolean @default(false)
   requiresWorkOrder Boolean @default(false)
+  autoCreateWorkOrder Boolean @default(true)
+  productKind ProductKind @default(FINISHED_GOOD)
+  supplyMethod ProductSupplyMethod @default(PURCHASE)
+  tracksInventory Boolean @default(true)
 
   // Scope de productos personalizados: solo visibles para el usuario y sede que lo creó
   customOwnerUserId String?
@@ -4165,6 +4191,17 @@ model OrdenTrabajo {
   iva       Float @default(0)
   total     Float @default(0)
 
+  estimatedMaterialCost   Float @default(0)
+  estimatedLaborCost      Float @default(0)
+  estimatedProductionCost Float @default(0)
+  estimatedTransportCost  Float @default(0)
+  estimatedOtherCost      Float @default(0)
+  actualMaterialCost      Float @default(0)
+  actualLaborCost         Float @default(0)
+  actualProductionCost    Float @default(0)
+  actualTransportCost     Float @default(0)
+  actualOtherCost         Float @default(0)
+
   itemsSnapshot Json?
 
   // Proceso de producción
@@ -4178,6 +4215,15 @@ model OrdenTrabajo {
   archivosDiseno Json? // URLs de archivos
   tareaSeguimiento CrmTask? @relation("OrdenTrabajoTask")
 
+  qualityChecklist  Json?
+  qualityResult     WorkOrderQualityResult @default(PENDING)
+  qualityNotes      String? @db.Text
+  qualityReviewedAt DateTime?
+  qualityReviewedById String?
+  qualityReviewedBy User? @relation("WorkOrderQualityReviewedBy", fields: [qualityReviewedById], references: [id], onDelete: SetNull)
+  events WorkOrderEvent[]
+  inventorySupplyRequests InventorySupplyRequest[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -4186,8 +4232,25 @@ model OrdenTrabajo {
   @@index([sedeId, estado], map: "idx_ordenes_sede_estado")
   @@index([sedeId])
   @@index([assignedToUserId])
+  @@index([qualityReviewedById])
   @@index([sourceType, sourceId], map: "idx_ordenes_source")
   @@map("ordenes_trabajo")
+}
+
+model WorkOrderEvent {
+  id        String       @id @default(cuid())
+  ordenId   String
+  orden     OrdenTrabajo @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  type      String       @db.VarChar(40)
+  title     String       @db.VarChar(180)
+  details   Json?
+  createdById String?
+  createdBy User?        @relation("WorkOrderEventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt DateTime     @default(now())
+
+  @@index([ordenId, createdAt], map: "idx_work_order_events_order_created")
+  @@index([createdById])
+  @@map("work_order_events")
 }
 
 model EtapaProduccion {
@@ -4259,6 +4322,13 @@ enum EstadoOrden {
   FACTURADO
   CERRADO
   CANCELADA
+}
+
+enum WorkOrderQualityResult {
+  PENDING
+  APPROVED
+  REJECTED
+  APPROVED_WITH_OBSERVATIONS
 }
 
 enum EstadoEtapa {

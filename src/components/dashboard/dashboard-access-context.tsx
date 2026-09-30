@@ -4,6 +4,7 @@ import { createContext, useContext } from 'react'
 
 type DashboardAccessContextValue = {
   allowedNavHrefs: string[] | null
+  allowedPermissionKeys: string[] | null
   canAccessPayrollAdmin: boolean
   hasPayrollPortal: boolean
   payrollEntryHref: string
@@ -11,6 +12,7 @@ type DashboardAccessContextValue = {
 
 const DashboardAccessContext = createContext<DashboardAccessContextValue>({
   allowedNavHrefs: null,
+  allowedPermissionKeys: null,
   canAccessPayrollAdmin: false,
   hasPayrollPortal: false,
   payrollEntryHref: '/dashboard/nomina',

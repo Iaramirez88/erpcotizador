@@ -7,6 +7,7 @@ import { ModuleKey, type AccessLevel } from '@prisma/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import {
   Dialog,
   DialogContent,
@@ -142,6 +143,10 @@ function hasExplicitLevel(levels: Partial<Record<ModuleKey, AccessLevel>>, modul
 
 function isIsolatedVerticalEntry(entry: ModuleEntry) {
   return entry.capabilityEntries.length > 0 && entry.capabilityEntries.every((capability) => capability.domain === 'VERTICALES')
+}
+
+function isOptionalQuoteTool(capability: CapabilityEntry) {
+  return capability.domain === 'VENTAS' && (capability.subdomain === 'QUOTER_AI' || capability.subdomain === 'QUOTER_PRODUCTION_TOOLS')
 }
 
 export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeAccess, initialSedeRole, modules, initial, initialGlobalAccess, initialCapabilities, canManagePermissionProfiles = false, open: controlledOpen, onOpenChange: controlledOnOpenChange, trigger }: Props) {
@@ -373,11 +378,12 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
       for (const entry of section.entries) {
         for (const capability of entry.capabilityEntries) {
           const capabilityId = `${capability.domain}.${capability.subdomain}`
+          const optionalQuoteTool = isOptionalQuoteTool(capability)
           capabilityMap.set(capabilityId, {
             domain: capability.domain,
             subdomain: capability.subdomain,
             label: capability.label,
-            level: capabilityLevels[capability.permissionKey] ?? effectiveLevel(entry.moduleKey),
+            level: capabilityLevels[capability.permissionKey] ?? (optionalQuoteTool ? 'NONE' : effectiveLevel(entry.moduleKey)),
           })
         }
       }
@@ -559,26 +565,41 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
                             <div className="space-y-2">
                               {entry.capabilityEntries.map((capability) => {
                                 const value = capabilityLevels[capability.permissionKey] ?? 'INHERIT'
-                                const currentLevel = capabilityLevels[capability.permissionKey] ?? (isolatedVerticalEntry ? 'NONE' : effectiveLevel(entry.moduleKey))
+                                const optionalQuoteTool = isOptionalQuoteTool(capability)
+                                const currentLevel = capabilityLevels[capability.permissionKey] ?? (isolatedVerticalEntry || optionalQuoteTool ? 'NONE' : effectiveLevel(entry.moduleKey))
                                 return (
                                   <div key={capability.permissionKey} className="grid gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 md:grid-cols-[minmax(0,1fr)_260px] md:items-center">
                                     <div>
                                       <div className="text-base font-medium text-slate-950">{capability.label}</div>
                                       <div className="text-xs text-slate-500">{section.title} · {entry.label}</div>
                                     </div>
-                                    <select
-                                      value={value}
-                                      onChange={(e) => void updateCapabilityLevel(capability.permissionKey, capability.domain, capability.subdomain, e.target.value as AccessChoice)}
-                                      disabled={!hasSedeAccess}
-                                      className={cn('h-10 w-full rounded-md border px-3 text-sm', getAccessTone(value, currentLevel))}
-                                    >
-                                      <option value="INHERIT">{getAccessLabel('INHERIT')}</option>
-                                      {ACCESS_OPTIONS.map((option) => (
-                                        <option key={option} value={option}>
-                                          {getAccessLabel(option)}
-                                        </option>
-                                      ))}
-                                    </select>
+                                    {optionalQuoteTool ? (
+                                      <div className="flex items-center justify-end gap-3">
+                                        <span className="text-sm font-medium text-slate-700">
+                                          {currentLevel === 'WRITE' || currentLevel === 'ADMIN' ? 'Habilitado' : 'Deshabilitado'}
+                                        </span>
+                                        <Switch
+                                          checked={currentLevel === 'WRITE' || currentLevel === 'ADMIN'}
+                                          onCheckedChange={(checked) => void updateCapabilityLevel(capability.permissionKey, capability.domain, capability.subdomain, checked ? 'WRITE' : 'NONE')}
+                                          disabled={!hasSedeAccess || !canManagePermissionProfiles || Boolean(saving[capability.permissionKey as ModuleKey])}
+                                          aria-label={`${capability.label} para ${displayName}`}
+                                        />
+                                      </div>
+                                    ) : (
+                                      <select
+                                        value={value}
+                                        onChange={(e) => void updateCapabilityLevel(capability.permissionKey, capability.domain, capability.subdomain, e.target.value as AccessChoice)}
+                                        disabled={!hasSedeAccess}
+                                        className={cn('h-10 w-full rounded-md border px-3 text-sm', getAccessTone(value, currentLevel))}
+                                      >
+                                        <option value="INHERIT">{getAccessLabel('INHERIT')}</option>
+                                        {ACCESS_OPTIONS.map((option) => (
+                                          <option key={option} value={option}>
+                                            {getAccessLabel(option)}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    )}
                                   </div>
                                 )
                               })}

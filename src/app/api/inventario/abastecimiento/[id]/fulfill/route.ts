@@ -20,6 +20,7 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
         numero: true,
         status: true,
         taskId: true,
+        ordenTrabajoId: true,
         supplyWarehouseId: true,
         requestingWarehouseId: true,
         supplyWarehouse: { select: { id: true, nombre: true } },
@@ -218,6 +219,18 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
           metadata: {
             inventorySupplyRequestId: current.id,
             nextStatus: 'DONE',
+          },
+        })
+      }
+
+      if (current.ordenTrabajoId) {
+        await tx.workOrderEvent.create({
+          data: {
+            ordenId: current.ordenTrabajoId,
+            type: 'MATERIALS_SUPPLIED',
+            title: `Abastecimiento ${current.numero} completado`,
+            details: { inventorySupplyRequestId: current.id },
+            createdById: access.userId,
           },
         })
       }

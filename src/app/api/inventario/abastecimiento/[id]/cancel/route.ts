@@ -27,6 +27,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         status: true,
         note: true,
         taskId: true,
+        ordenTrabajoId: true,
         requestingWarehouse: { select: { id: true, nombre: true, sedeId: true } },
         supplyWarehouse: { select: { id: true, nombre: true, sedeId: true } },
         requestedBy: { select: { id: true, name: true, email: true } },
@@ -162,6 +163,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             message: `Motivo: ${reason}`,
           })
         }
+      }
+
+      if (current.ordenTrabajoId) {
+        await tx.workOrderEvent.create({
+          data: {
+            ordenId: current.ordenTrabajoId,
+            type: 'MATERIALS_REQUEST_CANCELLED',
+            title: `Abastecimiento ${current.numero} cancelado`,
+            details: { inventorySupplyRequestId: current.id, reason },
+            createdById: access.userId,
+          },
+        })
       }
 
       return row

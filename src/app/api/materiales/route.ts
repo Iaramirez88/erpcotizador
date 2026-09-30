@@ -8,7 +8,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { canAccessCapability, requireApiAccess } from "@/lib/api-rbac"
 import { checkPlanLimit } from "@/lib/plan-limits"
-import { AccessLevel, ModuleKey } from "@prisma/client"
+import { AccessLevel, ModuleKey, ProductKind, ProductSupplyMethod } from "@prisma/client"
 import { RestaurantProductRole, type Prisma } from "@prisma/client"
 import { requireSedeAccess } from "@/lib/rbac"
 import { userHasCapabilityAccess } from '@/lib/dashboard-access'
@@ -26,6 +26,14 @@ function normalizeUnidadMedida(value: unknown, restaurantEnabled = false): strin
 function normalizeRestaurantRole(value: unknown): RestaurantProductRole | null {
   const role = String(value ?? '').trim()
   return Object.values(RestaurantProductRole).includes(role as RestaurantProductRole) ? role as RestaurantProductRole : null
+}
+
+function normalizeProductKind(value: unknown): ProductKind {
+  return Object.values(ProductKind).includes(value as ProductKind) ? value as ProductKind : ProductKind.FINISHED_GOOD
+}
+
+function normalizeSupplyMethod(value: unknown): ProductSupplyMethod {
+  return Object.values(ProductSupplyMethod).includes(value as ProductSupplyMethod) ? value as ProductSupplyMethod : ProductSupplyMethod.PURCHASE
 }
 
 function toPositiveNumberOrNull(value: unknown): number | null {
@@ -648,6 +656,7 @@ export async function POST(request: Request) {
       proveedor,
       observaciones,
       requiresWorkOrder,
+      autoCreateWorkOrder,
       extraFields,
       activo,
       warehouseId: warehouseIdInput,
@@ -655,6 +664,9 @@ export async function POST(request: Request) {
       stockScope: stockScopeInput,
     } = body
     const restaurantRole = restaurantEnabled ? normalizeRestaurantRole(body.restaurantRole) : null
+    const productKind = normalizeProductKind(body.productKind)
+    const supplyMethod = normalizeSupplyMethod(body.supplyMethod)
+    const tracksInventory = body.tracksInventory !== false
 
     const externalIdNorm = typeof externalId === 'string' ? externalId.trim() : ''
     const externalIdValue = externalIdNorm ? externalIdNorm : null
@@ -688,7 +700,7 @@ export async function POST(request: Request) {
     const isActive = activo !== false
 
     const stockActualNRaw = typeof stockActual === 'number' ? stockActual : Number(stockActual)
-    const stockActualN = Number.isFinite(stockActualNRaw) ? Math.max(0, stockActualNRaw) : 0
+    const stockActualN = tracksInventory && Number.isFinite(stockActualNRaw) ? Math.max(0, stockActualNRaw) : 0
 
     const stockScopeRaw = typeof stockScopeInput === 'string' ? stockScopeInput.trim() : ''
     const stockScope: 'warehouse' | 'selectedSedes' | 'allSedes' = stockScopeRaw === 'allSedes' ? 'allSedes' : stockScopeRaw === 'selectedSedes' ? 'selectedSedes' : 'warehouse'
@@ -825,11 +837,15 @@ export async function POST(request: Request) {
           precioUnidad: precioUnidadN,
           precioCompra: restaurantRole === RestaurantProductRole.PREPARATION ? null : precioCompra ? parseFloat(precioCompra) : null,
           stockActual: 0,
-          stockMinimo: stockMinimo ? parseFloat(stockMinimo) : 0,
+          stockMinimo: tracksInventory && stockMinimo ? parseFloat(stockMinimo) : 0,
           unidadMedida: unidad,
           proveedor,
           observaciones,
           requiresWorkOrder: requiresWorkOrder === true,
+          autoCreateWorkOrder: requiresWorkOrder === true && autoCreateWorkOrder !== false,
+          productKind,
+          supplyMethod,
+          tracksInventory,
           activo: isActive,
           empresaId,
           ...(quantityDiscountData.length > 0

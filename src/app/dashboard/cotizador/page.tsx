@@ -35,6 +35,7 @@ import { useI18n } from "@/components/providers/i18n-provider"
 import { buildWhatsAppWebUrl } from "@/lib/whatsapp-link"
 import { MobilePdfFallback, useIsMobileViewport } from '@/components/pdf/mobile-pdf-fallback'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { useDashboardAccess } from '@/components/dashboard/dashboard-access-context'
 import { LitografiaAiAssistant } from "@/components/litografia/litografia-ai-assistant"
 import type { LitografiaAiHandoff } from "@/lib/litografia-ai-handoff"
 import { CrmFileLibraryPicker } from '@/components/crm/crm-file-library-picker'
@@ -391,6 +392,9 @@ function normalizePreviewCotizacion(raw: unknown): CotizacionPdfData & { id: str
 
 export default function CotizadorPage() {
   const { t, language } = useI18n()
+  const { allowedPermissionKeys } = useDashboardAccess()
+  const canUseAiQuote = allowedPermissionKeys?.includes('VENTAS.QUOTER_AI') ?? false
+  const canUseProductionQuoteTools = allowedPermissionKeys?.includes('VENTAS.QUOTER_PRODUCTION_TOOLS') ?? false
   const locale = language === 'en' ? 'en-US' : 'es-MX'
   const isMobileViewport = useIsMobileViewport()
   const referenceImageInputRef = useRef<HTMLInputElement | null>(null)
@@ -1840,27 +1844,31 @@ export default function CotizadorPage() {
 
   return (
     <div className="space-y-4 p-3 sm:p-4 lg:p-6">
-      <LitografiaQuoteDialog
-        open={litografiaOpen}
-        onOpenChange={handleLitografiaOpenChange}
-        onAddItem={agregarItemLitografia}
-        edit={litografiaEdit}
-        onUpdateItem={actualizarItemLitografia}
-        aiDraft={litografiaAiDraft}
-      />
+      {canUseProductionQuoteTools ? (
+        <>
+          <LitografiaQuoteDialog
+            open={litografiaOpen}
+            onOpenChange={handleLitografiaOpenChange}
+            onAddItem={agregarItemLitografia}
+            edit={litografiaEdit}
+            onUpdateItem={actualizarItemLitografia}
+            aiDraft={litografiaAiDraft}
+          />
 
-      <MetrajeQuoteDialog
-        open={metrajeOpen}
-        onOpenChange={(v) => {
-          setMetrajeOpen(v)
-          if (!v) setMetrajeEdit(null)
-        }}
-        materiales={materiales as unknown as MetrajeMaterial[]}
-        formatCurrency={formatCurrency}
-        onAddItem={agregarItemMetraje}
-        edit={metrajeEdit}
-        onUpdateItem={actualizarItemMetraje}
-      />
+          <MetrajeQuoteDialog
+            open={metrajeOpen}
+            onOpenChange={(v) => {
+              setMetrajeOpen(v)
+              if (!v) setMetrajeEdit(null)
+            }}
+            materiales={materiales as unknown as MetrajeMaterial[]}
+            formatCurrency={formatCurrency}
+            onAddItem={agregarItemMetraje}
+            edit={metrajeEdit}
+            onUpdateItem={actualizarItemMetraje}
+          />
+        </>
+      ) : null}
 
       <CustomProductRequestDialog
         open={customProductOpen}
@@ -2287,7 +2295,7 @@ export default function CotizadorPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={litografiaAiOpen} onOpenChange={setLitografiaAiOpen}>
+      <Dialog open={canUseAiQuote && litografiaAiOpen} onOpenChange={setLitografiaAiOpen}>
         <DialogContent className="flex max-h-[90vh] max-w-6xl flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{t('quoteBuilder.actions.aiQuoteBuilder')}</DialogTitle>
@@ -2735,19 +2743,21 @@ export default function CotizadorPage() {
                   >
                     Ítem extra
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() => {
-                      setShowItemForm(false)
-                      setLitografiaAiOpenToken((value) => value + 1)
-                      setLitografiaAiOpen(true)
-                    }}
-                  >
-                    {t('quoteBuilder.actions.aiQuoteBuilder')}
-                  </Button>
-                  {lithographyQuoteToolsEnabled ? (
+                  {canUseAiQuote ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={() => {
+                        setShowItemForm(false)
+                        setLitografiaAiOpenToken((value) => value + 1)
+                        setLitografiaAiOpen(true)
+                      }}
+                    >
+                      {t('quoteBuilder.actions.aiQuoteBuilder')}
+                    </Button>
+                  ) : null}
+                  {lithographyQuoteToolsEnabled && canUseProductionQuoteTools ? (
                     <>
                       <Button
                         variant="outline"

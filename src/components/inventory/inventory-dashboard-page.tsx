@@ -33,6 +33,7 @@ type Material = {
   proveedor?: string | null
   imagenUrl?: string | null
   activo: boolean
+  tracksInventory?: boolean
   stocks?: Array<{
     quantity: number
     warehouse: { id: string; nombre: string; codigo: string | null; isDefault: boolean; sedeId: string | null }
@@ -307,7 +308,10 @@ export function InventoryDashboardPage({ view }: { view: InventoryDashboardView 
     }
   }, [defaultBodegaId, form.warehouseId, sedeWarehouseOptions])
 
-  const activeMaterials = useMemo(() => materials.filter((m) => m.activo !== false), [materials])
+  const activeMaterials = useMemo(
+    () => materials.filter((material) => material.activo !== false && material.tracksInventory !== false),
+    [materials]
+  )
   const lowStockMaterials = useMemo(
     () => activeMaterials.filter((material) => n(material.stockActual) <= n(material.stockMinimo)),
     [activeMaterials]

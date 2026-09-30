@@ -138,6 +138,7 @@ export async function GET(request: Request) {
     const status = normalizeString(searchParams.get('status'))
     const requestingWarehouseId = normalizeString(searchParams.get('requestingWarehouseId'))
     const supplyWarehouseId = normalizeString(searchParams.get('supplyWarehouseId'))
+    const ordenTrabajoId = normalizeString(searchParams.get('ordenTrabajoId'))
     const limit = Math.min(200, Math.max(1, Number(searchParams.get('limit') || 100)))
 
     const where: Prisma.InventorySupplyRequestWhereInput = {
@@ -155,6 +156,9 @@ export async function GET(request: Request) {
     if (supplyWarehouseId) {
       where.supplyWarehouseId = supplyWarehouseId
     }
+    if (ordenTrabajoId) {
+      where.ordenTrabajoId = ordenTrabajoId
+    }
 
     const requests = await prisma.inventorySupplyRequest.findMany({
       where,
@@ -167,6 +171,7 @@ export async function GET(request: Request) {
         priority: true,
         note: true,
         taskId: true,
+        ordenTrabajoId: true,
         createdAt: true,
         fulfilledAt: true,
         requestingWarehouse: { select: { id: true, nombre: true, sedeId: true } },
@@ -202,6 +207,7 @@ export async function POST(request: Request) {
       supplyWarehouseId?: unknown
       priority?: unknown
       note?: unknown
+      ordenTrabajoId?: unknown
       items?: Array<{ materialId?: unknown; quantity?: unknown; note?: unknown }>
     } | null
 
@@ -209,6 +215,7 @@ export async function POST(request: Request) {
     const explicitSupplyWarehouseId = normalizeString(body?.supplyWarehouseId)
     const priority = normalizePriority(body?.priority)
     const note = normalizeString(body?.note) || null
+    const ordenTrabajoId = normalizeString(body?.ordenTrabajoId) || null
     const itemsInput = Array.isArray(body?.items) ? body.items : []
     const items = itemsInput
       .map((item) => ({
@@ -224,6 +231,16 @@ export async function POST(request: Request) {
 
     if (!items.length) {
       return NextResponse.json({ error: 'Agrega al menos un producto con cantidad válida.' }, { status: 400 })
+    }
+
+    if (ordenTrabajoId) {
+      const orden = await prisma.ordenTrabajo.findFirst({
+        where: { id: ordenTrabajoId, sedeId: access.sedeId, cliente: { empresaId: access.empresaId } },
+        select: { id: true },
+      })
+      if (!orden) {
+        return NextResponse.json({ error: 'La orden de trabajo no es válida para esta sede.' }, { status: 400 })
+      }
     }
 
     const requestingWarehouse = await validateWarehouseAccess({
@@ -329,6 +346,7 @@ export async function POST(request: Request) {
         data: {
           numero,
           empresaId: access.empresaId,
+          ordenTrabajoId,
           requestingWarehouseId: requestingWarehouse.id,
           requestingSedeId: requestingWarehouse.sedeId ?? null,
           supplyWarehouseId: supplyWarehouse.id,
@@ -368,6 +386,18 @@ export async function POST(request: Request) {
           },
         },
       })
+
+      if (ordenTrabajoId) {
+        await tx.workOrderEvent.create({
+          data: {
+            ordenId: ordenTrabajoId,
+            type: 'MATERIALS_REQUESTED',
+            title: `Material solicitado mediante ${numero}`,
+            details: { inventorySupplyRequestId: createdRequest.id, items: items.length },
+            createdById: access.userId,
+          },
+        })
+      }
 
 
       const notificationRecipients = await resolveSupplyNotificationRecipients(tx, {

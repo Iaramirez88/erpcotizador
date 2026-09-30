@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireApiAccess } from '@/lib/api-rbac';
-import { EstadoOrden, ModuleKey, Prisma } from '@prisma/client';
+import { EstadoOrden, ModuleKey, Prisma, WorkOrderQualityResult } from '@prisma/client';
 import { recomputeRopTrustScoreForEmpresa } from '@/lib/rop-trust';
 import { syncInternalTaskForWorkOrder } from '@/lib/work-order-task-sync';
 
@@ -12,6 +12,29 @@ const TERMINAL_ORDER_STATES = new Set<EstadoOrden>([
   EstadoOrden.CERRADO,
   EstadoOrden.CANCELADA,
 ])
+
+const QUALITY_CHECK_KEYS = [
+  'correctQuantity',
+  'approvedDesign',
+  'correctDimensions',
+  'correctMaterial',
+  'correctExecution',
+  'correctFinishes',
+  'correctPackaging',
+] as const
+
+const COST_KEYS = [
+  'estimatedMaterialCost',
+  'estimatedLaborCost',
+  'estimatedProductionCost',
+  'estimatedTransportCost',
+  'estimatedOtherCost',
+  'actualMaterialCost',
+  'actualLaborCost',
+  'actualProductionCost',
+  'actualTransportCost',
+  'actualOtherCost',
+] as const
 
 function normalizeOptionalString(value: unknown) {
   if (typeof value !== 'string') return null
@@ -27,6 +50,23 @@ function normalizeOrderStatus(value: unknown) {
   if (value === 'ENTREGADO') return EstadoOrden.ENTREGADA
   if (value === 'CANCELADO') return EstadoOrden.CANCELADA
   return Object.values(EstadoOrden).includes(value as EstadoOrden) ? (value as EstadoOrden) : null
+}
+
+function normalizeQualityChecklist(value: unknown) {
+  const input = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+  return Object.fromEntries(QUALITY_CHECK_KEYS.map((key) => [key, input[key] === true]))
+}
+
+function normalizeCosts(value: unknown) {
+  const input = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+  return Object.fromEntries(COST_KEYS.map((key) => {
+    const number = Number(input[key])
+    return [key, Number.isFinite(number) && number >= 0 ? number : 0]
+  })) as Record<(typeof COST_KEYS)[number], number>
 }
 
 // GET /api/ordenes/[id] - Obtener una orden específica
@@ -78,7 +118,35 @@ export async function GET(
             },
           },
         },
-        etapas: true,
+        etapas: { orderBy: { secuencia: 'asc' } },
+        qualityReviewedBy: { select: { id: true, name: true, email: true } },
+        events: {
+          orderBy: { createdAt: 'desc' },
+          take: 100,
+          include: { createdBy: { select: { id: true, name: true, email: true } } },
+        },
+        inventorySupplyRequests: {
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            numero: true,
+            status: true,
+            priority: true,
+            note: true,
+            createdAt: true,
+            fulfilledAt: true,
+            requestingWarehouse: { select: { id: true, nombre: true } },
+            supplyWarehouse: { select: { id: true, nombre: true } },
+            items: {
+              select: {
+                id: true,
+                quantity: true,
+                note: true,
+                material: { select: { id: true, nombre: true, unidadMedida: true } },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -116,6 +184,10 @@ export async function PUT(
     const hasNotas = Object.prototype.hasOwnProperty.call(body ?? {}, 'notas')
     const hasAssignedToUserId = Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId')
     const hasAreaResponsable = Object.prototype.hasOwnProperty.call(body ?? {}, 'areaResponsable')
+    const hasQualityChecklist = Object.prototype.hasOwnProperty.call(body ?? {}, 'qualityChecklist')
+    const hasQualityResult = Object.prototype.hasOwnProperty.call(body ?? {}, 'qualityResult')
+    const hasQualityNotes = Object.prototype.hasOwnProperty.call(body ?? {}, 'qualityNotes')
+    const hasCosts = Object.prototype.hasOwnProperty.call(body ?? {}, 'costs')
 
     const estado = normalizeOrderStatus(body?.estado)
     const fechaInicio = normalizeOptionalString(body?.fechaInicio)
@@ -123,6 +195,10 @@ export async function PUT(
     const notas = normalizeOptionalString(body?.notas)
     const assignedToUserId = normalizeOptionalString(body?.assignedToUserId)
     const areaResponsable = normalizeOptionalString(body?.areaResponsable)
+    const qualityResult = typeof body?.qualityResult === 'string' && Object.values(WorkOrderQualityResult).includes(body.qualityResult as WorkOrderQualityResult)
+      ? body.qualityResult as WorkOrderQualityResult
+      : null
+    const qualityNotes = normalizeOptionalString(body?.qualityNotes)
 
     if (hasEstado && !estado) {
       return NextResponse.json(
@@ -131,9 +207,24 @@ export async function PUT(
       )
     }
 
+    if (hasQualityResult && !qualityResult) {
+      return NextResponse.json({ success: false, error: 'Resultado de calidad inválido' }, { status: 400 })
+    }
+
     const before = await prisma.ordenTrabajo.findFirst({
       where: { id, sedeId: access.sedeId },
-      select: { id: true, numero: true, estado: true, fechaInicio: true, assignedToUserId: true, vendedorId: true },
+      select: {
+        id: true,
+        numero: true,
+        estado: true,
+        fechaInicio: true,
+        fechaEntrega: true,
+        assignedToUserId: true,
+        vendedorId: true,
+        areaResponsable: true,
+        observaciones: true,
+        qualityResult: true,
+      },
     })
 
     if (!before) {
@@ -178,6 +269,22 @@ export async function PUT(
       data.assignedToUserId = assignedToUserId
       data.assignedAt = assignedToUserId ? new Date() : null
     }
+    if (hasQualityChecklist) {
+      data.qualityChecklist = normalizeQualityChecklist(body?.qualityChecklist)
+    }
+    if (hasQualityResult && qualityResult) {
+      data.qualityResult = qualityResult
+    }
+    if (hasQualityNotes) {
+      data.qualityNotes = qualityNotes
+    }
+    if (hasQualityChecklist || hasQualityResult || hasQualityNotes) {
+      data.qualityReviewedAt = new Date()
+      data.qualityReviewedById = access.userId
+    }
+    if (hasCosts) {
+      Object.assign(data, normalizeCosts(body?.costs))
+    }
     if (!hasFechaInicio && estado === EstadoOrden.EN_PRODUCCION && !before.fechaInicio) {
       data.fechaInicio = new Date()
     }
@@ -192,6 +299,41 @@ export async function PUT(
         etapas: true,
       },
     });
+
+    const changedFields: string[] = []
+    if (hasEstado && estado !== before.estado) changedFields.push('estado')
+    if (hasFechaInicio) changedFields.push('fechaInicio')
+    if (hasFechaEntrega) changedFields.push('fechaEntrega')
+    if (hasNotas) changedFields.push('observaciones')
+    if (hasAssignedToUserId) changedFields.push('responsable')
+    if (hasAreaResponsable) changedFields.push('areaResponsable')
+    if (hasQualityChecklist) changedFields.push('qualityChecklist')
+    if (hasQualityResult) changedFields.push('qualityResult')
+    if (hasQualityNotes) changedFields.push('qualityNotes')
+    if (hasCosts) changedFields.push('operationalCosts')
+
+    if (changedFields.length) {
+      const qualityChanged = changedFields.some((field) => field.startsWith('quality'))
+      await prisma.workOrderEvent.create({
+        data: {
+          ordenId: before.id,
+          type: qualityChanged ? 'QUALITY_REVIEWED' : hasEstado && estado !== before.estado ? 'STATUS_CHANGED' : 'UPDATED',
+          title: qualityChanged
+            ? 'Control de calidad actualizado'
+            : hasEstado && estado !== before.estado
+              ? `Estado cambiado de ${before.estado} a ${estado}`
+              : 'Orden actualizada',
+          details: {
+            changedFields,
+            previousStatus: before.estado,
+            nextStatus: estado ?? before.estado,
+            previousQualityResult: before.qualityResult,
+            nextQualityResult: qualityResult ?? before.qualityResult,
+          },
+          createdById: access.userId,
+        },
+      })
+    }
 
     if (hasEstado && estado && estado !== before.estado) {
       const recipients = new Set<string>()

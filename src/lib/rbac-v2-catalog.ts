@@ -67,6 +67,8 @@ export const RBAC_V2_CAPABILITY_CATALOG: RbacV2CapabilityDefinition[] = [
   { domain: 'CAPTACION', subdomain: 'COMMERCIAL_TASKS', actions: ['READ', 'CREATE', 'UPDATE', 'ASSIGN', 'EXECUTE', 'CLOSE'], recommendedScopes: ['OWN', 'ASSIGNED', 'TEAM', 'SEDE'] },
 
   { domain: 'VENTAS', subdomain: 'QUOTER', actions: ['READ', 'CREATE', 'UPDATE', 'CONFIGURE'], recommendedScopes: ['OWN', 'SEDE', 'EMPRESA'] },
+  { domain: 'VENTAS', subdomain: 'QUOTER_AI', actions: ['READ', 'EXECUTE'], recommendedScopes: ['SEDE'] },
+  { domain: 'VENTAS', subdomain: 'QUOTER_PRODUCTION_TOOLS', actions: ['READ', 'EXECUTE'], recommendedScopes: ['SEDE'] },
   { domain: 'VENTAS', subdomain: 'QUOTES', actions: ['READ', 'CREATE', 'UPDATE', 'APPROVE', 'EXPORT'], recommendedScopes: ['OWN', 'SEDE', 'EMPRESA'] },
   { domain: 'VENTAS', subdomain: 'DELIVERY_NOTES', actions: ['READ', 'CREATE', 'UPDATE', 'EXPORT'], recommendedScopes: ['SEDE', 'EMPRESA'] },
   { domain: 'VENTAS', subdomain: 'POS', actions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'], recommendedScopes: ['SEDE', 'EMPRESA'] },

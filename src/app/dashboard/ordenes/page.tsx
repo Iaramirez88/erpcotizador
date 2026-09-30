@@ -16,8 +16,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome';
+import { ManualWorkOrderDialog } from '@/components/work-orders/manual-work-order-dialog';
 import { useI18n } from '@/components/providers/i18n-provider';
 import { useToast } from '@/hooks/use-toast';
+import { formatUnidadMedidaLabel } from '@/lib/utils';
 import {
   FileText,
   Download,
@@ -37,6 +39,7 @@ import {
   ListTodo,
   ExternalLink,
   SquarePlus,
+  ShoppingCart,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -46,6 +49,54 @@ type OrdenItemSnapshot = {
   descripcion?: string;
   cantidad?: number;
   terminados?: string[];
+};
+
+type OrdenEtapa = {
+  id: string;
+  nombre: string;
+  secuencia: number;
+  estado: 'PENDIENTE' | 'EN_PROCESO' | 'COMPLETADA' | 'DETENIDA';
+};
+
+type QualityChecklist = {
+  correctQuantity: boolean;
+  approvedDesign: boolean;
+  correctDimensions: boolean;
+  correctMaterial: boolean;
+  correctExecution: boolean;
+  correctFinishes: boolean;
+  correctPackaging: boolean;
+};
+
+type WorkOrderEvent = {
+  id: string;
+  type: string;
+  title: string;
+  createdAt: string;
+  createdBy?: { name: string | null; email: string | null } | null;
+};
+
+type WorkOrderSupplyRequest = {
+  id: string;
+  numero: string;
+  status: 'PENDIENTE' | 'COMPLETADO' | 'CANCELADO';
+  createdAt: string;
+  requestingWarehouse: { nombre: string };
+  supplyWarehouse: { nombre: string };
+  items: Array<{ id: string; quantity: number; material: { nombre: string; unidadMedida: string } }>;
+};
+
+type WorkOrderCosts = {
+  estimatedMaterialCost: number;
+  estimatedLaborCost: number;
+  estimatedProductionCost: number;
+  estimatedTransportCost: number;
+  estimatedOtherCost: number;
+  actualMaterialCost: number;
+  actualLaborCost: number;
+  actualProductionCost: number;
+  actualTransportCost: number;
+  actualOtherCost: number;
 };
 
 type ResponsableOption = {
@@ -110,9 +161,27 @@ interface OrdenTrabajo {
   observaciones?: string | null;
   sourceType?: string | null;
   itemsSnapshot?: Array<OrdenItemSnapshot> | null;
+  etapas?: OrdenEtapa[];
+  qualityChecklist?: Partial<QualityChecklist> | null;
+  qualityResult?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'APPROVED_WITH_OBSERVATIONS';
+  qualityNotes?: string | null;
+  qualityReviewedAt?: string | null;
+  qualityReviewedBy?: { name: string | null; email: string | null } | null;
+  events?: WorkOrderEvent[];
+  inventorySupplyRequests?: WorkOrderSupplyRequest[];
   subtotal: number;
   iva: number;
   total: number;
+  estimatedMaterialCost?: number;
+  estimatedLaborCost?: number;
+  estimatedProductionCost?: number;
+  estimatedTransportCost?: number;
+  estimatedOtherCost?: number;
+  actualMaterialCost?: number;
+  actualLaborCost?: number;
+  actualProductionCost?: number;
+  actualTransportCost?: number;
+  actualOtherCost?: number;
   tareaSeguimiento?: {
     id: string;
     title: string;
@@ -152,7 +221,48 @@ type OrdenEditForm = {
   areaResponsable: string;
   fechaEntrega: string;
   notas: string;
+  qualityChecklist: QualityChecklist;
+  qualityResult: 'PENDING' | 'APPROVED' | 'REJECTED' | 'APPROVED_WITH_OBSERVATIONS';
+  qualityNotes: string;
+  costs: WorkOrderCosts;
 };
+
+const COST_CATEGORIES = [
+  { key: 'Material', label: 'Materiales' },
+  { key: 'Labor', label: 'Mano de obra' },
+  { key: 'Production', label: 'Producción' },
+  { key: 'Transport', label: 'Transporte' },
+  { key: 'Other', label: 'Otros' },
+] as const;
+
+function emptyWorkOrderCosts(): WorkOrderCosts {
+  return {
+    estimatedMaterialCost: 0,
+    estimatedLaborCost: 0,
+    estimatedProductionCost: 0,
+    estimatedTransportCost: 0,
+    estimatedOtherCost: 0,
+    actualMaterialCost: 0,
+    actualLaborCost: 0,
+    actualProductionCost: 0,
+    actualTransportCost: 0,
+    actualOtherCost: 0,
+  };
+}
+
+const QUALITY_CHECKS: Array<{ key: keyof QualityChecklist; label: string }> = [
+  { key: 'correctQuantity', label: 'Cantidad correcta' },
+  { key: 'approvedDesign', label: 'Diseño aprobado' },
+  { key: 'correctDimensions', label: 'Medidas correctas' },
+  { key: 'correctMaterial', label: 'Material correcto' },
+  { key: 'correctExecution', label: 'Ejecución correcta' },
+  { key: 'correctFinishes', label: 'Acabados correctos' },
+  { key: 'correctPackaging', label: 'Empaque correcto' },
+];
+
+function emptyQualityChecklist(): QualityChecklist {
+  return Object.fromEntries(QUALITY_CHECKS.map((check) => [check.key, false])) as QualityChecklist;
+}
 
 const STATUS_OPTIONS: Array<{ value: OrdenEstadoVisible; color: string }> = [
   { value: 'PENDIENTE', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
@@ -161,6 +271,16 @@ const STATUS_OPTIONS: Array<{ value: OrdenEstadoVisible; color: string }> = [
   { value: 'ENTREGADO', color: 'bg-slate-100 text-slate-800 border-slate-200' },
   { value: 'CANCELADO', color: 'bg-rose-100 text-rose-800 border-rose-200' },
 ];
+
+const QUICK_STATUS_FILTERS = [
+  { value: '', label: 'Todas' },
+  { value: 'PENDIENTE', label: 'Pendientes' },
+  { value: 'EN_PROCESO', label: 'En ejecución' },
+  { value: 'PAUSADA', label: 'En pausa' },
+  { value: 'CALIDAD', label: 'Calidad' },
+  { value: 'TERMINADO', label: 'Terminadas' },
+  { value: 'ENTREGADO', label: 'Entregadas' },
+] as const;
 
 function normalizeVisibleStatus(estado: string): OrdenEstadoVisible {
   if (estado === 'PENDIENTE') return 'PENDIENTE';
@@ -316,18 +436,24 @@ export default function OrdenesPage() {
   const [responsables, setResponsables] = useState<ResponsableOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadingOrderDetail, setLoadingOrderDetail] = useState(false);
   const [creatingTask, setCreatingTask] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<string>('');
   const [canDeleteOrders, setCanDeleteOrders] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<OrdenTrabajo | null>(null);
+  const [manualOrderOpen, setManualOrderOpen] = useState(false);
   const [editForm, setEditForm] = useState<OrdenEditForm>({
     estado: 'PENDIENTE',
     assignedToUserId: '',
     areaResponsable: '',
     fechaEntrega: '',
     notas: '',
+    qualityChecklist: emptyQualityChecklist(),
+    qualityResult: 'PENDING',
+    qualityNotes: '',
+    costs: emptyWorkOrderCosts(),
   });
   const [ropDialogOpen, setRopDialogOpen] = useState(false);
   const [ropLoading, setRopLoading] = useState(false);
@@ -362,12 +488,14 @@ export default function OrdenesPage() {
     }
   };
 
-  const cargarOrdenes = async () => {
+  const cargarOrdenes = async (overrides?: { estado?: string; busqueda?: string }) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (busqueda) params.append('busqueda', busqueda);
-      if (filtroEstado) params.append('estado', filtroEstado);
+      const effectiveSearch = overrides?.busqueda ?? busqueda;
+      const effectiveStatus = overrides?.estado ?? filtroEstado;
+      if (effectiveSearch) params.append('busqueda', effectiveSearch);
+      if (effectiveStatus) params.append('estado', effectiveStatus);
 
       const res = await fetch(`/api/ordenes?${params}`);
       const response = await res.json();
@@ -392,6 +520,11 @@ export default function OrdenesPage() {
     if (filtroEstado) params.append('estado', filtroEstado);
     const url = params.toString() ? `/api/ordenes/export?${params}` : '/api/ordenes/export';
     window.location.href = url;
+  };
+
+  const handleManualOrderCreated = async (numero: string) => {
+    toast({ title: 'Orden de trabajo creada', description: numero });
+    await cargarOrdenes();
   };
 
   const formatCurrency = (value: number) =>
@@ -449,6 +582,25 @@ export default function OrdenesPage() {
   const getItemsCount = (orden: OrdenTrabajo) => {
     if (orden.cotizacion?._count?.items != null) return orden.cotizacion._count.items;
     return Array.isArray(orden.itemsSnapshot) ? orden.itemsSnapshot.length : 0;
+  };
+
+  const getOrderProgress = (orden: OrdenTrabajo) => {
+    const stages = orden.etapas ?? [];
+    if (!stages.length) return normalizeVisibleStatus(orden.estado) === 'ENTREGADO' ? 100 : 0;
+    const completed = stages.filter((stage) => stage.estado === 'COMPLETADA').length;
+    const active = stages.some((stage) => stage.estado === 'EN_PROCESO') ? 0.5 : 0;
+    return Math.min(100, Math.round(((completed + active) / stages.length) * 100));
+  };
+
+  const getCurrentStageLabel = (orden: OrdenTrabajo) => {
+    const stages = orden.etapas ?? [];
+    const stopped = stages.find((stage) => stage.estado === 'DETENIDA');
+    if (stopped) return `En pausa · ${stopped.nombre}`;
+    const active = stages.find((stage) => stage.estado === 'EN_PROCESO');
+    if (active) return active.nombre;
+    const pending = stages.find((stage) => stage.estado === 'PENDIENTE');
+    if (pending) return pending.nombre;
+    return stages.length ? 'Proceso completado' : getEstadoLabel(orden.estado);
   };
 
   const getSourceLabel = (orden: OrdenTrabajo) => {
@@ -524,7 +676,15 @@ export default function OrdenesPage() {
     return lines.slice(0, 3).join(' | ') || naText;
   };
 
-  const openEditDialog = (orden: OrdenTrabajo) => {
+  const applyOrderToEditForm = (orden: OrdenTrabajo) => {
+    const qualityChecklist = emptyQualityChecklist();
+    for (const check of QUALITY_CHECKS) {
+      qualityChecklist[check.key] = orden.qualityChecklist?.[check.key] === true;
+    }
+    const costs = emptyWorkOrderCosts();
+    for (const key of Object.keys(costs) as Array<keyof WorkOrderCosts>) {
+      costs[key] = Number(orden[key] || 0);
+    }
     setEditingOrder(orden);
     setEditForm({
       estado: normalizeVisibleStatus(orden.estado),
@@ -532,7 +692,30 @@ export default function OrdenesPage() {
       areaResponsable: orden.areaResponsable || '',
       fechaEntrega: toDateTimeLocal(orden.fechaEntrega),
       notas: orden.observaciones || getOrderDetails(orden),
+      qualityChecklist,
+      qualityResult: orden.qualityResult || 'PENDING',
+      qualityNotes: orden.qualityNotes || '',
+      costs,
     });
+  };
+
+  const openEditDialog = async (orden: OrdenTrabajo) => {
+    applyOrderToEditForm(orden);
+    setLoadingOrderDetail(true);
+    try {
+      const response = await fetch(`/api/ordenes/${orden.id}`, { cache: 'no-store' });
+      const json = await response.json().catch(() => null);
+      if (!response.ok || !json?.success) throw new Error(json?.error || 'No se pudo cargar el detalle de la orden.');
+      applyOrderToEditForm(json.data as OrdenTrabajo);
+    } catch (detailError) {
+      toast({
+        title: 'No se cargó el expediente completo',
+        description: detailError instanceof Error ? detailError.message : undefined,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingOrderDetail(false);
+    }
   };
 
   const closeEditDialog = () => {
@@ -554,6 +737,10 @@ export default function OrdenesPage() {
           areaResponsable: editForm.areaResponsable || null,
           fechaEntrega: editForm.fechaEntrega || null,
           notas: editForm.notas,
+          qualityChecklist: editForm.qualityChecklist,
+          qualityResult: editForm.qualityResult,
+          qualityNotes: editForm.qualityNotes || null,
+          costs: editForm.costs,
         }),
       });
       const json = await res.json().catch(() => null);
@@ -674,10 +861,20 @@ export default function OrdenesPage() {
               <Download className="mr-2 h-4 w-4" />
               {t('orders.actions.exportExcel')}
             </Button>
+            <Button variant="outline" onClick={() => setManualOrderOpen(true)}>
+              <SquarePlus className="mr-2 h-4 w-4" />
+              Nueva orden
+            </Button>
             <Link href="/dashboard/cotizaciones">
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
                 {t('orders.actions.fromQuote')}
+              </Button>
+            </Link>
+            <Link href="/dashboard/pos">
+              <Button variant="outline">
+                <ShoppingCart className="mr-2 h-4 w-4" />
+                Desde venta
               </Button>
             </Link>
           </>
@@ -692,6 +889,23 @@ export default function OrdenesPage() {
       {/* Filtros */}
       <Card className="mb-6">
         <CardContent className="pt-6">
+          <div className="mb-4 flex gap-2 overflow-x-auto pb-1" aria-label="Filtros rápidos por estado">
+            {QUICK_STATUS_FILTERS.map((filter) => (
+              <Button
+                key={filter.value || 'all'}
+                type="button"
+                size="sm"
+                variant={filtroEstado === filter.value ? 'default' : 'outline'}
+                className="shrink-0"
+                onClick={() => {
+                  setFiltroEstado(filter.value);
+                  void cargarOrdenes({ estado: filter.value });
+                }}
+              >
+                {filter.label}
+              </Button>
+            ))}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
@@ -710,11 +924,13 @@ export default function OrdenesPage() {
               <option value="">{t('orders.filters.allStatuses')}</option>
               <option value="PENDIENTE">{t('orders.status.PENDIENTE')}</option>
               <option value="EN_PROCESO">{t('orders.status.EN_PROCESO')}</option>
+              <option value="PAUSADA">En pausa</option>
+              <option value="CALIDAD">Control de calidad</option>
               <option value="TERMINADO">{t('orders.status.TERMINADO')}</option>
               <option value="ENTREGADO">{t('orders.status.ENTREGADO')}</option>
               <option value="CANCELADO">{t('orders.status.CANCELADO')}</option>
             </select>
-            <Button onClick={cargarOrdenes} variant="outline">
+            <Button onClick={() => void cargarOrdenes()} variant="outline">
               <Filter className="w-4 h-4 mr-2" />
               {t('orders.filters.apply')}
             </Button>
@@ -819,6 +1035,24 @@ export default function OrdenesPage() {
                       </div>
                     </div>
 
+                    <div className="grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                      <div>
+                        <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                          <span className="font-semibold text-slate-700">{getCurrentStageLabel(orden)}</span>
+                          <span className="tabular-nums text-slate-500">{getOrderProgress(orden)}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-200" aria-label={`Progreso ${getOrderProgress(orden)}%`}>
+                          <div
+                            className="h-full rounded-full bg-emerald-600 transition-[width]"
+                            style={{ width: `${getOrderProgress(orden)}%` }}
+                          />
+                        </div>
+                      </div>
+                      <span className="text-xs text-slate-500">
+                        {(orden.etapas ?? []).filter((stage) => stage.estado === 'COMPLETADA').length}/{orden.etapas?.length ?? 0} etapas
+                      </span>
+                    </div>
+
                     {getOrderCapacityPressureReason(orden) ? (
                       <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-4">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -844,7 +1078,7 @@ export default function OrdenesPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => openEditDialog(orden)}
+                      onClick={() => void openEditDialog(orden)}
                       className="w-full sm:min-w-[148px]"
                     >
                       <PencilLine className="mr-2 h-4 w-4" />
@@ -870,8 +1104,15 @@ export default function OrdenesPage() {
         </div>
       )}
 
+      <ManualWorkOrderDialog
+        open={manualOrderOpen}
+        onOpenChange={setManualOrderOpen}
+        responsables={responsables}
+        onCreated={handleManualOrderCreated}
+      />
+
       <Dialog open={Boolean(editingOrder)} onOpenChange={(open) => { if (!open) closeEditDialog(); }}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingOrder ? `${t('orders.dialog.title')} · ${editingOrder.numero}` : t('orders.dialog.title')}</DialogTitle>
             <DialogDescription>{t('orders.dialog.description')}</DialogDescription>
@@ -934,6 +1175,181 @@ export default function OrdenesPage() {
                 value={editForm.notas}
                 onChange={(event) => setEditForm((current) => ({ ...current, notas: event.target.value }))}
               />
+            </div>
+
+            <div className="space-y-4 border-t border-border pt-5 md:col-span-2">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Costos operativos</h3>
+                <p className="text-xs text-muted-foreground">No generan asientos, facturas ni pagos en Finanzas.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="py-2 pr-3">Categoría</th>
+                      <th className="py-2 pr-3">Estimado</th>
+                      <th className="py-2">Real</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {COST_CATEGORIES.map((category) => {
+                      const estimatedKey = `estimated${category.key}Cost` as keyof WorkOrderCosts;
+                      const actualKey = `actual${category.key}Cost` as keyof WorkOrderCosts;
+                      return (
+                        <tr key={category.key} className="border-b last:border-0">
+                          <td className="py-2 pr-3 font-medium">{category.label}</td>
+                          <td className="py-2 pr-3">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="100"
+                              value={editForm.costs[estimatedKey]}
+                              onChange={(event) => setEditForm((current) => ({
+                                ...current,
+                                costs: { ...current.costs, [estimatedKey]: Math.max(0, Number(event.target.value) || 0) },
+                              }))}
+                            />
+                          </td>
+                          <td className="py-2">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="100"
+                              value={editForm.costs[actualKey]}
+                              onChange={(event) => setEditForm((current) => ({
+                                ...current,
+                                costs: { ...current.costs, [actualKey]: Math.max(0, Number(event.target.value) || 0) },
+                              }))}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {editingOrder ? (() => {
+                const estimated = COST_CATEGORIES.reduce((sum, category) => sum + editForm.costs[`estimated${category.key}Cost` as keyof WorkOrderCosts], 0);
+                const actual = COST_CATEGORIES.reduce((sum, category) => sum + editForm.costs[`actual${category.key}Cost` as keyof WorkOrderCosts], 0);
+                return (
+                  <div className="grid gap-3 rounded-md bg-slate-50 p-4 text-sm sm:grid-cols-4">
+                    <div><p className="text-muted-foreground">Estimado</p><p className="font-semibold">{formatCurrency(estimated)}</p></div>
+                    <div><p className="text-muted-foreground">Real</p><p className="font-semibold">{formatCurrency(actual)}</p></div>
+                    <div><p className="text-muted-foreground">Venta</p><p className="font-semibold">{formatCurrency(editingOrder.total)}</p></div>
+                    <div><p className="text-muted-foreground">Margen bruto</p><p className="font-semibold">{formatCurrency(editingOrder.total - actual)}</p></div>
+                  </div>
+                );
+              })() : null}
+            </div>
+
+            <div className="space-y-4 border-t border-border pt-5 md:col-span-2">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Control de calidad</h3>
+                <p className="text-xs text-muted-foreground">Verifica el resultado operativo antes de entregar o cerrar la orden.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {QUALITY_CHECKS.map((check) => (
+                  <label key={check.key} className="flex items-center gap-3 rounded-md border border-border px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={editForm.qualityChecklist[check.key]}
+                      onChange={(event) => setEditForm((current) => ({
+                        ...current,
+                        qualityChecklist: { ...current.qualityChecklist, [check.key]: event.target.checked },
+                      }))}
+                      className="h-4 w-4 accent-emerald-700"
+                    />
+                    {check.label}
+                  </label>
+                ))}
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label>Resultado</Label>
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    value={editForm.qualityResult}
+                    onChange={(event) => setEditForm((current) => ({ ...current, qualityResult: event.target.value as OrdenEditForm['qualityResult'] }))}
+                  >
+                    <option value="PENDING">Pendiente</option>
+                    <option value="APPROVED">Aprobado</option>
+                    <option value="APPROVED_WITH_OBSERVATIONS">Aprobado con observaciones</option>
+                    <option value="REJECTED">Rechazado</option>
+                  </select>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Observaciones de calidad</Label>
+                  <Textarea
+                    rows={3}
+                    value={editForm.qualityNotes}
+                    onChange={(event) => setEditForm((current) => ({ ...current, qualityNotes: event.target.value }))}
+                    placeholder="Hallazgos, unidades a reprocesar o condiciones de aprobación."
+                  />
+                </div>
+              </div>
+              {editingOrder?.qualityReviewedAt ? (
+                <p className="text-xs text-muted-foreground">
+                  Última revisión: {formatDateTime(editingOrder.qualityReviewedAt)} · {editingOrder.qualityReviewedBy?.name || editingOrder.qualityReviewedBy?.email || naText}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="space-y-3 border-t border-border pt-5 md:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">Materiales y abastecimiento</h3>
+                  <p className="text-xs text-muted-foreground">Inventario conserva el control de existencias y movimientos.</p>
+                </div>
+                <Link href="/dashboard/inventario/abastecimiento">
+                  <Button type="button" variant="outline" size="sm">
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Gestionar en Inventario
+                  </Button>
+                </Link>
+              </div>
+              {editingOrder?.inventorySupplyRequests?.length ? (
+                <div className="space-y-2">
+                  {editingOrder.inventorySupplyRequests.map((request) => (
+                    <div key={request.id} className="rounded-md border border-border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-foreground">{request.numero}</span>
+                        <span className="text-xs font-medium text-muted-foreground">{request.status}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {request.supplyWarehouse.nombre} → {request.requestingWarehouse.nombre}
+                      </p>
+                      <p className="mt-2 text-sm text-foreground">
+                        {request.items.map((item) => `${item.material.nombre}: ${item.quantity} ${formatUnidadMedidaLabel(item.material.unidadMedida)}`).join(' · ')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No hay solicitudes de abastecimiento vinculadas.</p>
+              )}
+            </div>
+
+            <div className="space-y-3 border-t border-border pt-5 md:col-span-2">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Historial</h3>
+                <p className="text-xs text-muted-foreground">Cambios registrados en esta orden.</p>
+              </div>
+              {loadingOrderDetail ? (
+                <p className="text-sm text-muted-foreground">Cargando historial...</p>
+              ) : editingOrder?.events?.length ? (
+                <div className="max-h-52 space-y-0 overflow-y-auto border-l border-slate-200 pl-4">
+                  {editingOrder.events.map((event) => (
+                    <div key={event.id} className="relative pb-4 text-sm before:absolute before:-left-[21px] before:top-1.5 before:h-2.5 before:w-2.5 before:rounded-full before:bg-emerald-600">
+                      <p className="font-medium text-foreground">{event.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDateTime(event.createdAt)} · {event.createdBy?.name || event.createdBy?.email || 'Sistema'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Todavía no hay cambios auditados para esta orden.</p>
+              )}
             </div>
           </div>
 

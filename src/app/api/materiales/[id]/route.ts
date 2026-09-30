@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { canAccessCapability, requireApiAccess } from "@/lib/api-rbac"
-import { InventoryMovementSourceType, InventoryMovementType, ModuleKey, RestaurantProductRole, type Prisma } from "@prisma/client"
+import { InventoryMovementSourceType, InventoryMovementType, ModuleKey, ProductKind, ProductSupplyMethod, RestaurantProductRole, type Prisma } from "@prisma/client"
 import { requireSedeAccess } from "@/lib/rbac"
 import { userHasCapabilityAccess } from '@/lib/dashboard-access'
 
@@ -25,6 +25,14 @@ function normalizeUnidadMedida(value: unknown, restaurantEnabled = false): strin
 function normalizeRestaurantRole(value: unknown): RestaurantProductRole | null {
   const role = String(value ?? '').trim()
   return Object.values(RestaurantProductRole).includes(role as RestaurantProductRole) ? role as RestaurantProductRole : null
+}
+
+function normalizeProductKind(value: unknown): ProductKind {
+  return Object.values(ProductKind).includes(value as ProductKind) ? value as ProductKind : ProductKind.FINISHED_GOOD
+}
+
+function normalizeSupplyMethod(value: unknown): ProductSupplyMethod {
+  return Object.values(ProductSupplyMethod).includes(value as ProductSupplyMethod) ? value as ProductSupplyMethod : ProductSupplyMethod.PURCHASE
 }
 
 function toPositiveNumberOrNull(value: unknown): number | null {
@@ -188,6 +196,9 @@ export async function PUT(
     const unidad = normalizeUnidadMedida(body.unidadMedida, restaurantEnabled)
     const restaurantRole = restaurantEnabled ? normalizeRestaurantRole(body.restaurantRole) : undefined
     const isActive = body.activo !== false
+    const productKind = normalizeProductKind(body.productKind)
+    const supplyMethod = normalizeSupplyMethod(body.supplyMethod)
+    const tracksInventory = body.tracksInventory !== false
 
     const precioM2N = !restaurantEnabled && unidad === 'm2' ? toPositiveNumberOrNull(body.precioM2) : null
     const precioMetroN = !restaurantEnabled && unidad === 'ml' ? toPositiveNumberOrNull(body.precioMetro) : null
@@ -260,21 +271,21 @@ export async function PUT(
       : typeof body.stockActual === 'number'
         ? body.stockActual
         : Number(body.stockActual)
-    const nextStock = Number.isFinite(nextStockRaw) ? Math.max(0, nextStockRaw) : 0
+    const nextStock = tracksInventory && Number.isFinite(nextStockRaw) ? Math.max(0, nextStockRaw) : 0
 
     const stockScopeRaw = typeof body.stockScope === 'string' ? body.stockScope.trim() : ''
     const stockScope: 'warehouse' | 'selectedSedes' | 'allSedes' = stockScopeRaw === 'allSedes' ? 'allSedes' : stockScopeRaw === 'selectedSedes' ? 'selectedSedes' : 'warehouse'
     const requestedWarehouseId = typeof body.warehouseId === 'string' ? body.warehouseId.trim() : ''
     const requestedWarehouseIds = normalizeWarehouseIds(body.warehouseIds)
 
-    if (stockScope === 'warehouse' && !requestedWarehouseId) {
+    if (tracksInventory && stockScope === 'warehouse' && !requestedWarehouseId) {
       return NextResponse.json(
         { error: 'Para registrar stock en una sede específica debes seleccionar una bodega, o elegir “Todas las sedes”.' },
         { status: 400 }
       )
     }
 
-    if (stockScope === 'selectedSedes' && !requestedWarehouseIds.length) {
+    if (tracksInventory && stockScope === 'selectedSedes' && !requestedWarehouseIds.length) {
       return NextResponse.json(
         { error: 'Selecciona al menos una sede para aplicar el stock.' },
         { status: 400 }
@@ -341,7 +352,29 @@ export async function PUT(
       }
 
       // Aplicar regla de stock por bodega o por todas las sedes.
-      if (stockScope === 'warehouse') {
+      if (!tracksInventory) {
+        await tx.inventoryStock.deleteMany({ where: { materialId: id } })
+        globalAfter = 0
+
+        if (stockBeforeGlobal !== 0) {
+          await tx.inventoryMovement.create({
+            data: {
+              empresaId: access.empresaId,
+              sedeId: access.sedeId,
+              warehouseId: null,
+              materialId: id,
+              type: InventoryMovementType.ADJUST,
+              quantity: -stockBeforeGlobal,
+              stockBefore: stockBeforeGlobal,
+              stockAfter: 0,
+              note: 'Producto marcado como no inventariable',
+              sourceType: InventoryMovementSourceType.MANUAL,
+              sourceId: id,
+              createdById: access.userId,
+            },
+          })
+        }
+      } else if (stockScope === 'warehouse') {
         const warehouseId = whValidated[0]?.id ?? null
         const current = warehouseId
           ? await tx.inventoryStock.findUnique({
@@ -513,11 +546,15 @@ export async function PUT(
           precioUnidad: precioUnidadN,
           precioCompra: nextPrecioCompra,
           stockActual: globalAfter,
-          stockMinimo: body.stockMinimo ? parseFloat(body.stockMinimo) : 0,
+          stockMinimo: tracksInventory && body.stockMinimo ? parseFloat(body.stockMinimo) : 0,
           unidadMedida: unidad,
           proveedor: body.proveedor,
           observaciones: body.observaciones,
           requiresWorkOrder: body.requiresWorkOrder === true,
+          autoCreateWorkOrder: body.requiresWorkOrder === true && body.autoCreateWorkOrder !== false,
+          productKind,
+          supplyMethod,
+          tracksInventory,
           activo: isActive
         },
         include: {

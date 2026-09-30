@@ -4,7 +4,7 @@ import { requireApiAccess } from '@/lib/api-rbac';
 import { checkPlanLimit } from '@/lib/plan-limits';
 import { AccessLevel, EstadoOrden, ModuleKey, Prioridad } from '@prisma/client';
 import { ensureInvoiceFromQuote, QuoteInvoiceError } from '@/lib/quote-invoicing';
-import { ensureWorkOrderFromInvoice, ensureWorkOrderFromQuote, WorkOrderClientResolutionError } from '@/lib/work-orders';
+import { createManualWorkOrder, ensureWorkOrderFromInvoice, ensureWorkOrderFromQuote, WorkOrderClientResolutionError } from '@/lib/work-orders';
 import { requireSedeAccess } from '@/lib/rbac';
 
 const IN_PROGRESS_ORDER_STATES: EstadoOrden[] = [
@@ -61,7 +61,16 @@ export async function GET(request: NextRequest) {
     }
 
     if (estado) {
-      if (estado === 'EN_PROCESO') {
+      if (estado === 'PAUSADA') {
+        where.etapas = { some: { estado: 'DETENIDA' } };
+      } else if (estado === 'CALIDAD') {
+        where.etapas = {
+          some: {
+            nombre: { contains: 'calidad', mode: 'insensitive' },
+            estado: 'EN_PROCESO',
+          },
+        };
+      } else if (estado === 'EN_PROCESO') {
         where.estado = { in: IN_PROGRESS_ORDER_STATES };
       } else if (estado === 'FINALIZADO') {
         where.estado = { in: FINISHED_ORDER_STATES };
@@ -94,6 +103,15 @@ export async function GET(request: NextRequest) {
         itemsSnapshot: true,
         createdAt: true,
         assignedAt: true,
+        etapas: {
+          orderBy: { secuencia: 'asc' },
+          select: {
+            id: true,
+            nombre: true,
+            secuencia: true,
+            estado: true,
+          },
+        },
         tareaSeguimiento: {
           select: {
             id: true,
@@ -159,11 +177,54 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(limit, { status: 402 });
     }
 
-    const { cotizacionId, invoiceId, priority } = await request.json();
+    const body = (await request.json().catch(() => null)) as {
+      sourceType?: unknown;
+      cotizacionId?: unknown;
+      invoiceId?: unknown;
+      priority?: unknown;
+      clienteId?: unknown;
+      assignedToUserId?: unknown;
+      fechaEntrega?: unknown;
+      areaResponsable?: unknown;
+      observaciones?: unknown;
+      items?: unknown;
+    } | null;
+    const sourceType = body?.sourceType === 'manual' ? 'manual' : null;
+    const cotizacionId = typeof body?.cotizacionId === 'string' ? body.cotizacionId : '';
+    const invoiceId = typeof body?.invoiceId === 'string' ? body.invoiceId : '';
+    const priority = typeof body?.priority === 'string' ? body.priority : '';
+    const clienteId = typeof body?.clienteId === 'string' ? body.clienteId : '';
+    const assignedToUserId = typeof body?.assignedToUserId === 'string' ? body.assignedToUserId : '';
+    const areaResponsable = typeof body?.areaResponsable === 'string' ? body.areaResponsable.trim() : '';
+    const observaciones = typeof body?.observaciones === 'string' ? body.observaciones.trim() : '';
+    const manualItems = Array.isArray(body?.items)
+      ? body.items.map((item) => {
+          const value = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+          return {
+            descripcion: typeof value.descripcion === 'string' ? value.descripcion : '',
+            cantidad: typeof value.cantidad === 'number' || typeof value.cantidad === 'string' ? Number(value.cantidad) : 0,
+            especificaciones: typeof value.especificaciones === 'string' ? value.especificaciones : '',
+          };
+        })
+      : [];
+    const parsedDueDate = typeof body?.fechaEntrega === 'string' && body.fechaEntrega
+      ? new Date(body.fechaEntrega)
+      : null;
 
-    if (!cotizacionId && !invoiceId) {
+    if (parsedDueDate && Number.isNaN(parsedDueDate.getTime())) {
+      return NextResponse.json({ error: 'La fecha de entrega no es válida' }, { status: 400 });
+    }
+
+    if (!sourceType && !cotizacionId && !invoiceId) {
       return NextResponse.json(
         { error: 'Se requiere una cotización o una factura POS' },
+        { status: 400 }
+      );
+    }
+
+    if (sourceType === 'manual' && (!clienteId || !manualItems.some((item) => item.descripcion.trim() && item.cantidad > 0))) {
+      return NextResponse.json(
+        { error: 'Selecciona un cliente y agrega al menos un ítem válido' },
         { status: 400 }
       );
     }
@@ -173,6 +234,21 @@ export async function POST(request: NextRequest) {
       : Prioridad.NORMAL;
 
     const orden = await prisma.$transaction(async (tx) => {
+      if (sourceType === 'manual') {
+        return createManualWorkOrder(tx, {
+          empresaId: access.empresaId,
+          sedeId: access.sedeId,
+          createdById: access.userId,
+          clienteId,
+          assignedToUserId: assignedToUserId || null,
+          priority: normalizedPriority,
+          fechaEntrega: parsedDueDate,
+          areaResponsable,
+          observaciones,
+          items: manualItems,
+        });
+      }
+
       if (cotizacionId) {
         const approved = await tx.cotizacion.updateMany({
           where: {
@@ -200,6 +276,7 @@ export async function POST(request: NextRequest) {
           createdById: access.userId,
           posInvoiceId: invoice.id,
           priority: normalizedPriority,
+          force: true,
         });
       }
 
@@ -209,6 +286,7 @@ export async function POST(request: NextRequest) {
         sedeId: access.sedeId,
         createdById: access.userId,
         priority: normalizedPriority,
+        force: true,
       });
     });
 
@@ -217,6 +295,19 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Ningún ítem requiere orden de trabajo' },
         { status: 400 }
       );
+    }
+
+    if (sourceType === 'manual' && assignedToUserId && assignedToUserId !== access.userId) {
+      await prisma.notification.create({
+        data: {
+          userId: assignedToUserId,
+          type: 'INFO',
+          title: `Te asignaron la orden ${orden.numero}`,
+          body: 'Tienes una nueva orden de trabajo para gestionar.',
+          actionUrl: '/dashboard/ordenes',
+          actionLabel: 'Ver órdenes',
+        },
+      });
     }
 
     return NextResponse.json({ success: true, data: orden });
@@ -235,6 +326,15 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'La factura requiere una orden de trabajo, pero el cliente no pudo identificarse.' },
         { status: 400 }
       );
+    }
+
+    if (error instanceof Error && error.message.startsWith('MANUAL_WORK_ORDER_')) {
+      const message = error.message === 'MANUAL_WORK_ORDER_CLIENT_NOT_FOUND'
+        ? 'El cliente no existe o no pertenece a la empresa.'
+        : error.message === 'MANUAL_WORK_ORDER_ASSIGNEE_INVALID'
+          ? 'El responsable no pertenece a la sede actual.'
+          : 'Agrega al menos un ítem válido a la orden.';
+      return NextResponse.json({ success: false, error: message }, { status: 400 });
     }
 
     console.error('Error:', error);

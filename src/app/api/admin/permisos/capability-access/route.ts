@@ -21,6 +21,10 @@ function isProtectedCapability(domain: RbacV2Domain, subdomain: string) {
     || (domain === 'CORE' && subdomain === 'ROP')
 }
 
+function isAdminOnlyCapability(domain: RbacV2Domain, subdomain: string) {
+  return domain === 'VENTAS' && (subdomain === 'QUOTER_AI' || subdomain === 'QUOTER_PRODUCTION_TOOLS')
+}
+
 export async function PATCH(request: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
@@ -59,6 +63,10 @@ export async function PATCH(request: Request) {
     where: { sedeId_userId: { sedeId, userId: session.user.id } },
     select: { role: true },
   })
+  if (isAdminOnlyCapability(domain, subdomain) && session.user.role !== 'ADMIN' && requesterMembership?.role !== 'ADMIN') {
+    return NextResponse.json({ success: false, error: 'Solo un administrador puede habilitar estas herramientas de cotización.' }, { status: 403 })
+  }
+
   const requesterAllowed = session.user.role === 'ADMIN' || requesterMembership?.role === 'ADMIN' || requesterMembership?.role === 'MANAGER'
   if (!requesterAllowed) {
     return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 403 })
