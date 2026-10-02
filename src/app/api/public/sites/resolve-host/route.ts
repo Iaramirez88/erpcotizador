@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       projectId: page.websiteProject.id,
       projectName: page.websiteProject.nombre,
       subdomain: page.websiteProject.subdomain,
-      primaryDomain: page.websiteProject.primaryDomain,
+      primaryDomain: page.websiteProject.domains[0]?.hostname ?? null,
       pageId: page.id,
       pageName: page.nombre,
       slug: page.slug,

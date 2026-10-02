@@ -1,5 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { buildWebsitePublicPath, extractWebsiteSubdomainFromHost, normalizeWebsiteBuilderHost } from '@/lib/website-builder'
+import { buildWebsitePublicPath, normalizeWebsiteBuilderHost } from '@/lib/website-builder'
+
+const PUBLIC_WEBSITE_CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'self'",
+  "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob: https:",
+  "font-src 'self' data:",
+  "connect-src 'self' https://challenges.cloudflare.com",
+  "frame-src https://challenges.cloudflare.com https://www.youtube-nocookie.com https://player.vimeo.com https://www.google.com https://www.figma.com https://codepen.io",
+  "upgrade-insecure-requests",
+].join('; ')
+
+function applyPublicWebsiteSecurityHeaders(response: NextResponse) {
+  response.headers.set('Content-Security-Policy', PUBLIC_WEBSITE_CSP)
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+  response.headers.set('X-Content-Type-Options', 'nosniff')
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  return response
+}
 
 function getConfiguredAppHosts() {
   const values = [
@@ -39,7 +63,7 @@ function isInternalPath(pathname: string) {
     || isStaticAssetPath(pathname)
 }
 
-async function resolveCustomDomainRewrite(req: NextRequest, host: string) {
+async function resolveWebsiteHost(req: NextRequest, host: string) {
   const url = req.nextUrl.clone()
   const slugParts = url.pathname.split('/').filter(Boolean)
   const search = new URLSearchParams({ host })
@@ -59,13 +83,17 @@ async function resolveCustomDomainRewrite(req: NextRequest, host: string) {
     ok?: boolean
     item?: {
       subdomain?: string | null
+      primaryDomain?: string | null
       slug?: string | null
       isHome?: boolean
     }
   } | null
 
   if (!payload?.ok || !payload.item?.subdomain) return null
-  return buildWebsitePublicPath(payload.item.subdomain, payload.item.slug, payload.item.isHome)
+  return {
+    rewritePath: buildWebsitePublicPath(payload.item.subdomain, payload.item.slug, payload.item.isHome),
+    primaryDomain: normalizeWebsiteBuilderHost(payload.item.primaryDomain),
+  }
 }
 
 export async function proxy(req: NextRequest) {
@@ -78,6 +106,10 @@ export async function proxy(req: NextRequest) {
     const res = NextResponse.rewrite(url)
     res.headers.set('X-SG-Uploads', 'rewrite')
     return res
+  }
+
+  if (pathname.startsWith('/sites/')) {
+    return applyPublicWebsiteSecurityHeaders(NextResponse.next())
   }
 
   if (isInternalPath(pathname)) {
@@ -94,26 +126,25 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next()
   }
 
-  const appHost = [...appHosts].find((value) => !['localhost', '127.0.0.1', '0.0.0.0'].includes(value))
-  const directSubdomain = appHost && host.endsWith(`.${appHost}`)
-    ? extractWebsiteSubdomainFromHost(host)
-    : null
+  const resolution = await resolveWebsiteHost(req, host)
 
-  const rewritePath = directSubdomain
-    ? buildWebsitePublicPath(directSubdomain, pathname === '/' ? null : pathname.slice(1), pathname === '/')
-    : await resolveCustomDomainRewrite(req, host)
-
-  if (!rewritePath) {
+  if (!resolution) {
     return NextResponse.next()
   }
 
+  if (resolution.primaryDomain && resolution.primaryDomain !== host) {
+    const canonicalUrl = req.nextUrl.clone()
+    canonicalUrl.protocol = 'https:'
+    canonicalUrl.host = resolution.primaryDomain
+    canonicalUrl.port = ''
+    return NextResponse.redirect(canonicalUrl, 308)
+  }
+
   const url = req.nextUrl.clone()
-  url.pathname = rewritePath
+  url.pathname = resolution.rewritePath
   const res = NextResponse.rewrite(url)
   res.headers.set('X-SG-Website-Rewrite', host)
-  return res
-
-  return NextResponse.next()
+  return applyPublicWebsiteSecurityHeaders(res)
 }
 
 export const config = {

@@ -97,6 +97,31 @@ Para publicar sitios como `empresa.sgdigitalordex.com`:
 
 Caddy consulta `/api/public/sites/allow-domain` antes de emitir cada certificado. El endpoint solo autoriza subdominios registrados que tengan al menos una página publicada; no retires esta restricción porque evitaría abuso y límites de la autoridad certificadora.
 
+### E) Dominios personalizados del Website Builder
+
+Para que un cliente conecte un dominio que ya posee:
+
+1. En Cloudflare crea `A edge → IP_PUBLICA_DE_TU_KAMATERA` como **DNS only**.
+2. Configura en el `.env` del servidor:
+
+```dotenv
+WEBSITE_DOMAIN_CNAME_TARGET=edge.sgdigitalordex.com
+WEBSITE_DOMAIN_IPV4=66.55.74.8
+WEBSITE_DOMAIN_IPV6=
+```
+
+3. Sustituye `66.55.74.8` si cambia la IP pública. Se aceptan varias IP separadas por coma.
+4. Despliega la migración `20261002120000_website_project_custom_domains` con `docker compose -f docker-compose.prod.yml run --rm migrate`.
+5. Reinicia `app` y `caddy`.
+6. Desde **Servicios web → Dominios**, agrega el dominio, publica el TXT mostrado y configura uno de estos destinos:
+  - Subdominio o `www`: `CNAME → edge.sgdigitalordex.com`.
+  - Dominio raíz: `A → 66.55.74.8`, o ALIAS/ANAME/CNAME flattening hacia `edge.sgdigitalordex.com` si el proveedor lo admite.
+7. Pulsa **Comprobar DNS**. Ordex solo autoriza TLS cuando propiedad y destino estén verificados y el sitio esté publicado.
+
+Si el sitio usa formularios con Turnstile, agrega también el dominio personalizado a la lista de hostnames permitidos del widget en Cloudflare. La aplicación valida automáticamente que el hostname pertenezca a un dominio `ACTIVE`, pero Cloudflare debe autorizarlo para poder generar el token en el navegador.
+
+Los dominios desconectados quedan protegidos durante 30 días. No elimines manualmente esos registros de base de datos porque la cuarentena evita que otro proyecto reclame inmediatamente un hostname recién liberado.
+
 Nota de performance:
 - El compose de producción ya reutiliza una sola imagen Node para `app`, `worker` y `migrate`.
 - En cada despliegue solo deberían reconstruirse `app` y `ocr`; `worker` y `migrate` arrancan desde la misma imagen ya construida.
@@ -122,6 +147,28 @@ Opcional pero recomendado:
 - `SHARE_TOKEN_SECRET`
 - `RESEND_API_KEY` / `EMAIL_FROM` (si se usan envíos)
 - `BOLD_*` (si se usa cobro)
+
+### Protección de formularios públicos
+
+Los formularios del Website Builder y `/form/[channelId]` incluyen rate limiting con Redis, honeypot, límite de body y soporte para Cloudflare Turnstile.
+
+1. En Cloudflare abre **Turnstile → Add widget** y usa modo administrado.
+2. Autoriza el hostname raíz `sgdigitalordex.com`. Cloudflare autoriza automáticamente sus subdominios; no escribas `*.sgdigitalordex.com`.
+3. Agrega al `.env` de producción:
+
+```dotenv
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAAAAAFMRPYWik07stJ1Q
+TURNSTILE_SECRET_KEY=0x4AAAAAAFMRPXFjqw81ch39FI43Af0e8Jk
+TURNSTILE_ALLOWED_HOSTS=sgdigitalordex.com
+PUBLIC_FORM_RATE_LIMIT_PER_MINUTE=5
+PUBLIC_FORM_RATE_LIMIT_PER_HOUR=30
+PUBLIC_FORM_RATE_LIMIT_CHANNEL_DAILY=2000
+```
+
+4. Reconstruye la imagen `app`: `NEXT_PUBLIC_TURNSTILE_SITE_KEY` se integra durante el build y no basta con reiniciar el contenedor.
+5. Prueba un formulario real y confirma en logs que no aparezcan respuestas `403` por hostname o token inválido.
+
+No configures solo `TURNSTILE_SECRET_KEY`: sin la clave pública incluida en el build, todos los envíos serán rechazados de forma segura.
 
 OCR:
 - `OCR_SERVICE_API_KEY` (si quieres proteger llamadas internas)

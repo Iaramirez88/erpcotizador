@@ -189,6 +189,15 @@ En el editor el envío queda desactivado para evitar registros accidentales. En 
 - createdAt
 - updatedAt
 
+## Seguridad de embeds y código personalizado
+
+- El builder no admite HTML arbitrario, etiquetas `script` ni URLs con protocolo `javascript:` o `data:`.
+- `EmbedBlock` acepta únicamente URLs HTTPS normalizadas de YouTube, Vimeo, Google Maps, Figma y CodePen.
+- Cada iframe usa `sandbox`, política de referencia restrictiva y las capacidades mínimas requeridas por su proveedor.
+- Para incorporar otro proveedor se crea un adaptador explícito en `src/lib/website-embed.ts`, se revisan sus permisos y se agrega su origen a la CSP pública.
+- Una integración que requiera JavaScript propio debe desplegarse en un origen aislado, sin cookies de sesión de Ordex, y consumirse mediante un iframe sandbox. Nunca debe ejecutarse dentro del origen de la aplicación o de los sitios publicados.
+- Archivos JavaScript subidos por usuarios no se sirven ni ejecutan como assets del Website Builder.
+
 ## Rutas sugeridas
 
 ### Dashboard

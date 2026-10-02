@@ -82,12 +82,15 @@ export async function resolvePublishedWebsitePageByHost(args: {
   slug?: string | null
 }) {
   const normalizedHost = normalizeWebsiteBuilderHost(args.host)
+  const baseDomain = normalizeWebsiteBuilderHost(process.env.NEXT_PUBLIC_WEBSITE_BASE_DOMAIN)
   const slug = slugifyWebsiteBuilderValue(args.slug || 'inicio')
-  const subdomain = extractWebsiteSubdomainFromHost(normalizedHost)
+  const isFreeSubdomain = Boolean(baseDomain && normalizedHost.endsWith(`.${baseDomain}`))
+  const hostLabel = isFreeSubdomain ? normalizedHost.slice(0, -(baseDomain.length + 1)) : null
+  const subdomain = hostLabel && !hostLabel.includes('.') ? extractWebsiteSubdomainFromHost(normalizedHost) : null
   const projectFilters: Prisma.WebsiteProjectWhereInput[] = []
 
   if (normalizedHost) {
-    projectFilters.push({ primaryDomain: normalizedHost })
+    projectFilters.push({ domains: { some: { hostname: normalizedHost, status: 'ACTIVE' } } })
   }
   if (subdomain) {
     projectFilters.push({ subdomain })
@@ -116,6 +119,12 @@ export async function resolvePublishedWebsitePageByHost(args: {
           slug: true,
           subdomain: true,
           primaryDomain: true,
+          domains: {
+            where: { status: 'ACTIVE' },
+            orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+            take: 1,
+            select: { hostname: true },
+          },
         },
       },
       versions: {

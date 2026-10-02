@@ -8,20 +8,23 @@ export async function GET(request: NextRequest) {
   const domain = normalizeWebsiteBuilderHost(request.nextUrl.searchParams.get('domain'))
   const baseDomain = normalizeWebsiteBuilderHost(process.env.NEXT_PUBLIC_WEBSITE_BASE_DOMAIN)
 
-  if (!domain || !baseDomain || !domain.endsWith(`.${baseDomain}`)) {
+  if (!domain) {
     return new NextResponse(null, { status: 404 })
   }
 
-  const hostLabel = domain.slice(0, -(baseDomain.length + 1))
-  if (!hostLabel || hostLabel.includes('.')) return new NextResponse(null, { status: 404 })
-
-  const subdomain = extractWebsiteSubdomainFromHost(domain)
-  if (!subdomain || subdomain !== hostLabel) return new NextResponse(null, { status: 404 })
+  const isFreeSubdomain = Boolean(baseDomain && domain.endsWith(`.${baseDomain}`))
+  const hostLabel = isFreeSubdomain ? domain.slice(0, -(baseDomain!.length + 1)) : null
+  const subdomain = isFreeSubdomain ? extractWebsiteSubdomainFromHost(domain) : null
+  if (isFreeSubdomain && (!hostLabel || hostLabel.includes('.') || !subdomain || subdomain !== hostLabel)) {
+    return new NextResponse(null, { status: 404 })
+  }
 
   const project = await prisma.websiteProject.findFirst({
     where: {
-      subdomain,
       status: 'PUBLISHED',
+      ...(isFreeSubdomain
+        ? { subdomain }
+        : { domains: { some: { hostname: domain, status: 'ACTIVE' } } }),
       pages: { some: { versions: { some: { isPublished: true } } } },
     },
     select: { id: true },

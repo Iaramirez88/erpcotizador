@@ -2,6 +2,7 @@ import type { Config, CustomField } from '@puckeditor/core'
 import { WebsiteLeadForm } from '@/components/website-builder/website-lead-form'
 import { WebsiteCarousel, WebsiteTabs } from '@/components/website-builder/website-interactive-blocks'
 import { WebsiteMediaField } from '@/components/website-builder/website-media-field'
+import { resolveSafeWebsiteEmbed, sanitizeWebsiteLinkHref } from '@/lib/website-embed'
 
 type Tone = 'dark' | 'light' | 'brand'
 type Alignment = 'left' | 'center'
@@ -157,7 +158,7 @@ function renderImageFrame({
 export const websiteBuilderPuckConfig: Config = {
   categories: {
     structure: { title: 'Estructura', components: ['HeroBlock', 'ResponsiveBlock', 'SectionBlock', 'ColumnsBlock', 'SpacerBlock'] },
-    content: { title: 'Contenido', components: ['TextBlock', 'ImageBlock', 'GalleryBlock', 'VideoBlock', 'CarouselBlock', 'MapBlock', 'TabsBlock', 'FeaturesBlock', 'StatsBlock', 'TestimonialsBlock', 'FaqBlock'] },
+    content: { title: 'Contenido', components: ['TextBlock', 'ImageBlock', 'GalleryBlock', 'VideoBlock', 'CarouselBlock', 'MapBlock', 'EmbedBlock', 'TabsBlock', 'FeaturesBlock', 'StatsBlock', 'TestimonialsBlock', 'FaqBlock'] },
     conversion: { title: 'Conversión', components: ['CtaBlock', 'PricingBlock', 'ContactFormBlock'] },
     navigation: { title: 'Navegación', components: ['NavbarBlock', 'FooterBlock'] },
   },
@@ -356,7 +357,7 @@ export const websiteBuilderPuckConfig: Config = {
                 {subtitle ? <p className={`mt-4 whitespace-pre-wrap text-base leading-7 sm:text-lg ${toneClasses.subtitle}`}>{subtitle}</p> : null}
                 {ctaLabel ? (
                   <div className={alignment === 'center' && !splitLayout ? 'mt-6 flex justify-center' : 'mt-6'}>
-                    <a href={ctaHref || '#'} className={`inline-flex rounded-full px-5 py-2.5 text-sm font-semibold ${toneClasses.button}`}>
+                    <a href={sanitizeWebsiteLinkHref(ctaHref)} className={`inline-flex rounded-full px-5 py-2.5 text-sm font-semibold ${toneClasses.button}`}>
                       {ctaLabel}
                     </a>
                   </div>
@@ -590,7 +591,7 @@ export const websiteBuilderPuckConfig: Config = {
             <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{title || 'Llamado a la acción'}</h2>
             {description ? <p className="mt-3 whitespace-pre-wrap text-base leading-7 text-slate-700">{description}</p> : null}
             {buttonLabel ? (
-              <a href={buttonHref || '#'} className="mt-6 inline-flex rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white">
+              <a href={sanitizeWebsiteLinkHref(buttonHref)} className="mt-6 inline-flex rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white">
                 {buttonLabel}
               </a>
             ) : null}
@@ -636,9 +637,9 @@ export const websiteBuilderPuckConfig: Config = {
               {logoUrl ? <img src={logoUrl as string} alt={brand as string || 'Logo'} className="h-9 w-auto max-w-[160px] object-contain" /> : <span className="text-lg">{brand || 'Tu marca'}</span>}
             </a>
             <nav className="hidden items-center gap-6 md:flex">
-              {(Array.isArray(links) ? links : []).map((link, index) => <a key={`${link.href}-${index}`} href={link.href || '#'} className="text-sm font-medium opacity-75 hover:opacity-100">{link.label}</a>)}
+              {(Array.isArray(links) ? links : []).map((link, index) => <a key={`${link.href}-${index}`} href={sanitizeWebsiteLinkHref(link.href)} className="text-sm font-medium opacity-75 hover:opacity-100">{link.label}</a>)}
             </nav>
-            {buttonLabel ? <a href={buttonHref || '#'} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white">{buttonLabel}</a> : null}
+            {buttonLabel ? <a href={sanitizeWebsiteLinkHref(buttonHref)} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white">{buttonLabel}</a> : null}
           </div>
         </header>
       ),
@@ -734,7 +735,7 @@ export const websiteBuilderPuckConfig: Config = {
       },
       defaultProps: { eyebrow: 'Planes', title: 'Elige la opción adecuada', description: 'Precios simples y transparentes.', plans: [{ name: 'Esencial', price: '$49', period: '/mes', features: 'Función principal\nSoporte por correo\nActualizaciones', buttonLabel: 'Comenzar', buttonHref: '#contacto', featured: 'no' }, { name: 'Profesional', price: '$99', period: '/mes', features: 'Todo en Esencial\nSoporte prioritario\nFunciones avanzadas', buttonLabel: 'Elegir Profesional', buttonHref: '#contacto', featured: 'yes' }, { name: 'Empresa', price: 'Hablemos', period: '', features: 'Solución personalizada\nAcompañamiento dedicado\nIntegraciones', buttonLabel: 'Contactar', buttonHref: '#contacto', featured: 'no' }], backgroundColor: '#ffffff', textColor: '#0f172a', accentColor: '#2563eb', paddingY: 72 },
       render: ({ eyebrow, title, description, plans, backgroundColor, textColor, accentColor, paddingY }) => (
-        <section style={sectionStyle(backgroundColor as string, textColor as string, paddingY as number)}><div className="mx-auto max-w-7xl px-5 lg:px-8">{sectionHeading(eyebrow as string, title as string, description as string)}<div className="grid gap-5 lg:grid-cols-3">{(Array.isArray(plans) ? plans : []).map((plan, index) => <article key={`${plan.name}-${index}`} className={`rounded-lg border p-7 ${plan.featured === 'yes' ? 'border-transparent text-white shadow-xl' : 'border-current/10 bg-white text-slate-950 shadow-sm'}`} style={plan.featured === 'yes' ? { backgroundColor: accentColor || '#2563eb' } : undefined}><h3 className="text-xl font-semibold">{plan.name}</h3><div className="mt-5"><span className="text-4xl font-semibold">{plan.price}</span><span className="ml-1 opacity-65">{plan.period}</span></div><ul className="mt-6 space-y-3 text-sm">{String(plan.features || '').split('\n').filter(Boolean).map((feature, featureIndex) => <li key={featureIndex} className="flex gap-2"><span>✓</span><span>{feature}</span></li>)}</ul><a href={plan.buttonHref || '#'} className={`mt-8 inline-flex w-full justify-center rounded-lg px-4 py-3 text-sm font-semibold ${plan.featured === 'yes' ? 'bg-white text-slate-950' : 'bg-slate-950 text-white'}`}>{plan.buttonLabel || 'Elegir'}</a></article>)}</div></div></section>
+        <section style={sectionStyle(backgroundColor as string, textColor as string, paddingY as number)}><div className="mx-auto max-w-7xl px-5 lg:px-8">{sectionHeading(eyebrow as string, title as string, description as string)}<div className="grid gap-5 lg:grid-cols-3">{(Array.isArray(plans) ? plans : []).map((plan, index) => <article key={`${plan.name}-${index}`} className={`rounded-lg border p-7 ${plan.featured === 'yes' ? 'border-transparent text-white shadow-xl' : 'border-current/10 bg-white text-slate-950 shadow-sm'}`} style={plan.featured === 'yes' ? { backgroundColor: accentColor || '#2563eb' } : undefined}><h3 className="text-xl font-semibold">{plan.name}</h3><div className="mt-5"><span className="text-4xl font-semibold">{plan.price}</span><span className="ml-1 opacity-65">{plan.period}</span></div><ul className="mt-6 space-y-3 text-sm">{String(plan.features || '').split('\n').filter(Boolean).map((feature, featureIndex) => <li key={featureIndex} className="flex gap-2"><span>✓</span><span>{feature}</span></li>)}</ul><a href={sanitizeWebsiteLinkHref(plan.buttonHref)} className={`mt-8 inline-flex w-full justify-center rounded-lg px-4 py-3 text-sm font-semibold ${plan.featured === 'yes' ? 'bg-white text-slate-950' : 'bg-slate-950 text-white'}`}>{plan.buttonLabel || 'Elegir'}</a></article>)}</div></div></section>
       ),
     },
     FaqBlock: {
@@ -797,7 +798,44 @@ export const websiteBuilderPuckConfig: Config = {
       label: 'Mapa',
       fields: { title: { type: 'text', label: 'Título' }, address: { type: 'text', label: 'Dirección o lugar' }, height: { type: 'number', label: 'Altura', min: 240, max: 720, step: 20 }, backgroundColor: { type: 'text', label: 'Fondo' } },
       defaultProps: { title: 'Visítanos', address: 'Bogotá, Colombia', height: 420, backgroundColor: '#f8fafc' },
-      render: ({ title, address, height, backgroundColor }) => <section className="px-5 py-14 lg:px-8" style={{ backgroundColor: backgroundColor || '#f8fafc' }}><div className="mx-auto max-w-7xl">{title ? <h2 className="mb-7 text-3xl font-semibold text-slate-950">{title}</h2> : null}<iframe title={title as string || 'Ubicación'} src={`https://www.google.com/maps?q=${encodeURIComponent(String(address || ''))}&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="w-full rounded-lg border-0" style={{ height: `${Math.min(Math.max(Number(height) || 420, 240), 720)}px` }} /></div></section>,
+      render: ({ title, address, height, backgroundColor }) => <section className="px-5 py-14 lg:px-8" style={{ backgroundColor: backgroundColor || '#f8fafc' }}><div className="mx-auto max-w-7xl">{title ? <h2 className="mb-7 text-3xl font-semibold text-slate-950">{title}</h2> : null}<iframe title={title as string || 'Ubicación'} src={`https://www.google.com/maps?q=${encodeURIComponent(String(address || ''))}&output=embed`} loading="lazy" sandbox="allow-scripts allow-same-origin allow-presentation" referrerPolicy="no-referrer" className="w-full rounded-lg border-0" style={{ height: `${Math.min(Math.max(Number(height) || 420, 240), 720)}px` }} /></div></section>,
+    },
+    EmbedBlock: {
+      label: 'Embed seguro',
+      fields: {
+        title: { type: 'text', label: 'Título accesible' },
+        embedUrl: { type: 'text', label: 'URL de YouTube, Vimeo, Maps, Figma o CodePen' },
+        height: { type: 'number', label: 'Altura', min: 240, max: 900, step: 20 },
+        backgroundColor: { type: 'text', label: 'Fondo' },
+      },
+      defaultProps: { title: 'Contenido externo', embedUrl: '', height: 480, backgroundColor: '#ffffff' },
+      render: ({ title, embedUrl, height, backgroundColor }) => {
+        const embed = resolveSafeWebsiteEmbed(embedUrl)
+        const safeHeight = Math.min(Math.max(Number(height) || 480, 240), 900)
+        return (
+          <section className="px-5 py-14 lg:px-8" style={{ backgroundColor: backgroundColor || '#ffffff' }}>
+            <div className="mx-auto max-w-6xl">
+              {embed ? (
+                <iframe
+                  title={String(title || 'Contenido externo')}
+                  src={embed.src}
+                  sandbox={embed.sandbox}
+                  allow={embed.allow}
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  className="w-full rounded-lg border border-slate-200 bg-white"
+                  style={{ height: `${safeHeight}px` }}
+                />
+              ) : (
+                <div className="flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-6 text-center text-sm text-slate-600" style={{ height: `${safeHeight}px` }}>
+                  Agrega una URL HTTPS compatible de YouTube, Vimeo, Google Maps, Figma o CodePen.
+                </div>
+              )}
+            </div>
+          </section>
+        )
+      },
     },
     TabsBlock: {
       label: 'Pestañas',
@@ -822,7 +860,7 @@ export const websiteBuilderPuckConfig: Config = {
       },
       defaultProps: { brand: 'Tu marca', description: 'Una frase corta que resume lo que haces y para quién.', copyright: '© 2026 Tu marca. Todos los derechos reservados.', links: [{ label: 'Privacidad', href: '#' }, { label: 'Términos', href: '#' }, { label: 'Contacto', href: '#contacto' }], backgroundColor: '#0f172a', textColor: '#ffffff' },
       render: ({ brand, description, copyright, links, backgroundColor, textColor }) => (
-        <footer className="px-5 py-12 lg:px-8" style={{ backgroundColor: backgroundColor || '#0f172a', color: textColor || '#ffffff' }}><div className="mx-auto max-w-7xl"><div className="flex flex-col justify-between gap-8 md:flex-row"><div className="max-w-md"><div className="text-xl font-semibold">{brand}</div><p className="mt-3 leading-7 opacity-65">{description}</p></div><nav className="flex flex-wrap items-start gap-x-6 gap-y-3">{(Array.isArray(links) ? links : []).map((link, index) => <a key={`${link.href}-${index}`} href={link.href || '#'} className="text-sm opacity-70 hover:opacity-100">{link.label}</a>)}</nav></div><div className="mt-10 border-t border-current/15 pt-6 text-sm opacity-55">{copyright}</div></div></footer>
+        <footer className="px-5 py-12 lg:px-8" style={{ backgroundColor: backgroundColor || '#0f172a', color: textColor || '#ffffff' }}><div className="mx-auto max-w-7xl"><div className="flex flex-col justify-between gap-8 md:flex-row"><div className="max-w-md"><div className="text-xl font-semibold">{brand}</div><p className="mt-3 leading-7 opacity-65">{description}</p></div><nav className="flex flex-wrap items-start gap-x-6 gap-y-3">{(Array.isArray(links) ? links : []).map((link, index) => <a key={`${link.href}-${index}`} href={sanitizeWebsiteLinkHref(link.href)} className="text-sm opacity-70 hover:opacity-100">{link.label}</a>)}</nav></div><div className="mt-10 border-t border-current/15 pt-6 text-sm opacity-55">{copyright}</div></div></footer>
       ),
     },
   },

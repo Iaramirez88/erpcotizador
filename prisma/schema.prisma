@@ -2288,6 +2288,7 @@ model WebsiteProject {
   updatedByUser   User? @relation("WebsiteProjectUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
 
   pages WebsiteProjectPage[]
+  domains WebsiteProjectDomain[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2296,6 +2297,34 @@ model WebsiteProject {
   @@index([empresaId, status])
   @@index([websiteServiceId])
   @@map("website_projects")
+}
+
+model WebsiteProjectDomain {
+  id String @id @default(cuid())
+
+  websiteProjectId String
+  websiteProject   WebsiteProject @relation(fields: [websiteProjectId], references: [id], onDelete: Cascade)
+
+  hostname              String @unique
+  status                String @default("PENDING_VERIFICATION")
+  verificationToken     String @unique
+  verificationExpiresAt DateTime
+  verifiedAt             DateTime?
+  dnsStatus              String @default("PENDING")
+  sslStatus              String @default("PENDING")
+  isPrimary              Boolean @default(false)
+  lastCheckedAt          DateTime?
+  failureReason          String? @db.Text
+  disconnectedAt         DateTime?
+  quarantineUntil        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([websiteProjectId, status])
+  @@index([status, lastCheckedAt])
+  @@index([quarantineUntil])
+  @@map("website_project_domains")
 }
 
 model WebsiteProjectPage {

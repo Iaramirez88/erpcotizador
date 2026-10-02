@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
+import { WebsiteTurnstile } from '@/components/website-builder/website-turnstile'
 import type { WebFormCustomField, WebFormVariable } from '@/lib/crm-web-form-schema'
+import { sanitizeWebsiteLinkHref } from '@/lib/website-embed'
 
 type PublicWebFormEmbedProps = {
   channelId: string
@@ -77,6 +79,8 @@ const initialState: FormState = {
   mensaje: '',
 }
 
+const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() || ''
+
 export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
   const [formState, setFormState] = useState<FormState>(initialState)
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, CustomFieldValue>>(() => Object.fromEntries(props.customFields.map((field) => [field.key, field.type === 'check' ? field.defaultValue === 'true' : field.defaultValue || ''])))
@@ -84,6 +88,10 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const [website, setWebsite] = useState('')
+  const [formStartedAt, setFormStartedAt] = useState(() => Date.now())
+  const [turnstileToken, setTurnstileToken] = useState('')
+  const [challengeVersion, setChallengeVersion] = useState(0)
 
   const shellStyle = useMemo(() => ({
     background: `radial-gradient(circle at top, rgba(59,130,246,.12), transparent 34%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.backgroundColor} 100%)`,
@@ -166,6 +174,10 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
       setErrorMessage(customFieldError)
       return
     }
+    if (turnstileSiteKey && !turnstileToken) {
+      setErrorMessage('Completa la verificación de seguridad.')
+      return
+    }
 
     setSubmitting(true)
     setErrorMessage('')
@@ -188,6 +200,9 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
           })),
           variables: hiddenVariables,
           termsAccepted,
+          website,
+          formStartedAt,
+          turnstileToken,
           landingPageUrl: parentReferrer || window.location.href,
           referrerUrl: parentReferrer,
           payload: {
@@ -214,6 +229,10 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
       setFormState(initialState)
       resetCustomFields()
       setTermsAccepted(false)
+      setWebsite('')
+      setFormStartedAt(Date.now())
+      setTurnstileToken('')
+      setChallengeVersion((current) => current + 1)
       setSuccess(true)
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'No se pudo enviar el formulario')
@@ -238,7 +257,7 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
             {props.showNameField ? (
               <label style={{ display: 'grid', gap: 8, color: props.labelColor, fontWeight: 600 }}>
                 <span>{props.nameLabel}</span>
-                <input value={formState.nombre} onChange={(event) => setFormState((current) => ({ ...current, nombre: event.target.value }))} placeholder={props.namePlaceholder} style={inputStyle} />
+                <input maxLength={160} value={formState.nombre} onChange={(event) => setFormState((current) => ({ ...current, nombre: event.target.value }))} placeholder={props.namePlaceholder} style={inputStyle} />
               </label>
             ) : null}
 
@@ -246,13 +265,13 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
               {props.showEmailField ? (
                 <label style={{ display: 'grid', gap: 8, color: props.labelColor, fontWeight: 600 }}>
                   <span>{props.emailLabel}</span>
-                  <input type="email" value={formState.email} onChange={(event) => setFormState((current) => ({ ...current, email: event.target.value }))} placeholder={props.emailPlaceholder} style={inputStyle} />
+                  <input type="email" maxLength={320} value={formState.email} onChange={(event) => setFormState((current) => ({ ...current, email: event.target.value }))} placeholder={props.emailPlaceholder} style={inputStyle} />
                 </label>
               ) : null}
               {props.showPhoneField ? (
                 <label style={{ display: 'grid', gap: 8, color: props.labelColor, fontWeight: 600 }}>
                   <span>{props.phoneLabel}</span>
-                  <input value={formState.telefono} onChange={(event) => setFormState((current) => ({ ...current, telefono: event.target.value }))} placeholder={props.phonePlaceholder} style={inputStyle} />
+                  <input maxLength={40} value={formState.telefono} onChange={(event) => setFormState((current) => ({ ...current, telefono: event.target.value }))} placeholder={props.phonePlaceholder} style={inputStyle} />
                 </label>
               ) : null}
             </div>
@@ -284,7 +303,7 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
             {props.showMessageField ? (
               <label style={{ display: 'grid', gap: 8, color: props.labelColor, fontWeight: 600 }}>
                 <span>{props.messageLabel}</span>
-                <textarea value={formState.mensaje} onChange={(event) => setFormState((current) => ({ ...current, mensaje: event.target.value }))} placeholder={props.messagePlaceholder} rows={5} style={{ ...inputStyle, resize: 'vertical', minHeight: 132 }} />
+                <textarea maxLength={5000} value={formState.mensaje} onChange={(event) => setFormState((current) => ({ ...current, mensaje: event.target.value }))} placeholder={props.messagePlaceholder} rows={5} style={{ ...inputStyle, resize: 'vertical', minHeight: 132 }} />
               </label>
             ) : null}
 
@@ -338,7 +357,7 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
                   {props.termsLinkUrl ? (
                     <>
                       {' '}
-                      <a href={props.termsLinkUrl} target="_blank" rel="noreferrer" style={{ color: props.accentColor, fontWeight: 700 }}>
+                      <a href={sanitizeWebsiteLinkHref(props.termsLinkUrl)} target="_blank" rel="noreferrer" style={{ color: props.accentColor, fontWeight: 700 }}>
                         {props.termsLinkText}
                       </a>
                     </>
@@ -346,6 +365,11 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
                 </span>
               </label>
             ) : null}
+
+            <div style={{ position: 'absolute', left: -10000, width: 1, height: 1, overflow: 'hidden' }} aria-hidden="true">
+              <label>Sitio web<input name="website" tabIndex={-1} autoComplete="off" value={website} onChange={(event) => setWebsite(event.target.value)} /></label>
+            </div>
+            {turnstileSiteKey ? <WebsiteTurnstile key={challengeVersion} siteKey={turnstileSiteKey} onTokenChange={setTurnstileToken} /> : null}
 
             {errorMessage ? <div style={{ borderRadius: 18, border: '1px solid #fecaca', backgroundColor: '#fff1f2', color: '#991b1b', padding: '12px 14px', lineHeight: 1.5 }}>{errorMessage}</div> : null}
             {success ? <div style={{ borderRadius: 18, border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', color: '#166534', padding: '12px 14px', lineHeight: 1.5 }}>{props.successMessage}</div> : null}

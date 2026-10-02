@@ -42,33 +42,53 @@ Ofrecer publicación profesional para sitios creados en Ordex:
 
 ## Fase 2 - Conectar dominio existente
 
-- [ ] Crear modelo `WebsiteProjectDomain` y estados de verificación/SSL.
-- [ ] Garantizar unicidad global de `hostname`.
-- [ ] Generar token TXT de verificación por dominio.
-- [ ] Implementar consulta DNS TXT y CNAME/A desde backend.
-- [ ] Activar dominios únicamente después de verificar propiedad y destino.
-- [ ] Permitir seleccionar dominio principal.
-- [ ] Resolver dominios personalizados activos desde el proxy.
-- [ ] Autorizar TLS bajo demanda únicamente para dominios activos.
-- [ ] Mostrar instrucciones DNS específicas para raíz y `www`.
-- [ ] Añadir redirecciones canónicas y política de cambio/desconexión.
-- [ ] Implementar tarea periódica de reverificación.
+- [x] Crear modelo `WebsiteProjectDomain` y estados de verificación/SSL.
+- [x] Garantizar unicidad global de `hostname`.
+- [x] Normalizar dominios con Public Suffix List, IDNA/punycode y rechazo de IP, localhost, dominios internos y nombres inválidos.
+- [x] Generar un token TXT aleatorio por dominio con expiración y rotación.
+- [x] Implementar consulta DNS TXT y CNAME/A/AAAA desde backend.
+- [x] Activar dominios únicamente después de verificar propiedad y que A/AAAA/CNAME apunten a la infraestructura Ordex esperada.
+- [x] No realizar fetch HTTP hacia el dominio durante la verificación para evitar SSRF y DNS rebinding; verificar mediante resolución DNS.
+- [x] Usar un destino estable como `edge.sgdigitalordex.com`; indicar CNAME para `www`/subdominios y ALIAS/ANAME/CNAME flattening o A/AAAA para el dominio raíz.
+- [x] Permitir seleccionar dominio principal.
+- [x] Resolver dominios personalizados activos desde el proxy.
+- [x] Autorizar TLS bajo demanda únicamente para dominios activos.
+- [x] Mostrar instrucciones DNS para TXT, CNAME, A y AAAA.
+- [x] Añadir redirecciones canónicas 308 desde dominios alternativos y el subdominio gratuito hacia el dominio principal conservando ruta y query string.
+- [ ] Implementar estados `PENDING_VERIFICATION`, `PENDING_DNS`, `PENDING_TLS`, `ACTIVE`, `ERROR`, `SUSPENDED` y `DISCONNECTED`.
+- [x] Al desconectar, retirar inmediatamente el host del proxy/TLS y aplicar una cuarentena antes de permitir que otro proyecto lo reclame.
+- [ ] Implementar tarea periódica de reverificación de propiedad, destino DNS y vencimiento de verificación.
 - [ ] Registrar auditoría de altas, verificaciones y desconexiones.
+- [x] Aplicar rate limiting distribuido a la verificación DNS.
+- [ ] Exigir reautenticación para desconectar o cambiar el dominio principal.
 
 ## Fase 3 - Buscar y comprar dominio
 
-- [ ] Elegir un solo proveedor inicial: OpenSRS o ResellerClub.
+- [ ] Elegir un proveedor diseñado para reventa como proveedor inicial (recomendado: OpenSRS); usar Cloudflare para DNS/edge aunque el registrador sea otro.
+- [ ] Evaluar Cloudflare Registrar API solo después de confirmar contractualmente que permite el modelo comercial y de custodia de dominios de terceros; disponibilidad de API no equivale a autorización de reventa.
 - [ ] Crear interfaz interna `DomainProvider` desacoplada del proveedor.
 - [ ] Configurar credenciales exclusivamente en servidor y registrar IP autorizada cuando aplique.
 - [ ] Consultar disponibilidad y alternativas por TLD.
-- [ ] Consultar precios reales de registro y renovación.
+- [ ] Hacer una comprobación autoritativa y bloquear una cotización de corta duración con precio de registro, renovación, moneda, impuestos y margen separados.
 - [ ] Definir margen comercial, impuestos y moneda de venta.
-- [ ] Recoger y proteger datos del titular requeridos por el registro.
-- [ ] Integrar pago antes del registro con idempotencia.
-- [ ] Registrar dominio y configurar DNS hacia Ordex.
-- [ ] Persistir orden, identificador del proveedor, costo y respuesta auditada.
-- [ ] Manejar operaciones pendientes, rechazo, reintentos y reembolso.
+- [ ] Recoger, cifrar y limitar acceso a los datos del titular requeridos por ICANN/registro; el cliente debe figurar como titular, no Ordex.
+- [ ] Mostrar consentimiento explícito sobre dominio exacto, titular, precio de renovación y carácter no reembolsable después de un registro exitoso.
+- [ ] Integrar pago y registro como saga idempotente: orden `PENDING_PAYMENT` → pago confirmado → registro → captura/conciliación; si el registro falla, anular o reembolsar automáticamente.
+- [ ] No reintentar ciegamente una compra: el nombre del dominio debe actuar como clave de idempotencia y toda respuesta incierta debe consultarse al proveedor antes de repetir.
+- [ ] Registrar dominio, crear zona DNS y configurar raíz/`www` hacia Ordex automáticamente.
+- [ ] Persistir orden, cotización aceptada, identificador del proveedor, costo, precio de venta y respuesta auditada sin guardar credenciales ni datos sensibles completos.
+- [ ] Manejar workflows asíncronos `PENDING`, `IN_PROGRESS`, `ACTION_REQUIRED`, `BLOCKED`, `SUCCEEDED` y `FAILED` mediante polling/webhooks y cola de trabajos.
 - [ ] Añadir sincronización o webhooks de estado del proveedor.
+- [ ] Implementar renovación automática con aviso previo, período de gracia, fallo de cobro y procedimiento de transferencia/salida del cliente.
+
+### Contratos internos recomendados
+
+- `DomainProvider.search(query)` y `DomainProvider.check(domains)`.
+- `DomainProvider.quote(domain, years)` con expiración y desglose de registro/renovación.
+- `DomainProvider.register(order, registrant, idempotencyKey)`.
+- `DomainProvider.getWorkflow(providerRef)` y `DomainProvider.renew(domain, years, idempotencyKey)`.
+- `DnsProvider.createZone(domain)` y `DnsProvider.ensureWebsiteRecords(domain, target)`.
+- Separar `DomainProvider` de `DnsProvider`: un dominio puede estar registrado en OpenSRS y usar DNS de Cloudflare.
 
 ## Fase posterior
 
