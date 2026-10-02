@@ -69,7 +69,8 @@ async function resolveWebsiteHost(req: NextRequest, host: string) {
   const search = new URLSearchParams({ host })
   slugParts.forEach((part) => search.append('slug', part))
 
-  const resolveUrl = new URL(`/api/public/sites/resolve-host?${search.toString()}`, req.url)
+  const internalOrigin = process.env.WEBSITE_INTERNAL_ORIGIN || 'http://127.0.0.1:3000'
+  const resolveUrl = new URL(`/api/public/sites/resolve-host?${search.toString()}`, internalOrigin)
   const response = await fetch(resolveUrl, {
     headers: {
       'x-forwarded-host': host,
