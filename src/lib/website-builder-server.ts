@@ -43,7 +43,7 @@ export async function resolvePublishedWebsitePageByPath(args: {
   return prisma.websiteProjectPage.findFirst({
     where: {
       slug,
-      websiteProject: { subdomain },
+      websiteProject: { subdomain, status: 'PUBLISHED' },
       versions: { some: { isPublished: true } },
     },
     select: {
@@ -99,7 +99,7 @@ export async function resolvePublishedWebsitePageByHost(args: {
   return prisma.websiteProjectPage.findFirst({
     where: {
       slug,
-      websiteProject: { OR: projectFilters },
+      websiteProject: { status: 'PUBLISHED', OR: projectFilters },
       versions: { some: { isPublished: true } },
     },
     select: {

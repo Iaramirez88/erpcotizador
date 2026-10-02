@@ -2,9 +2,10 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { ExternalLink, Loader2, Plus, Wand2 } from 'lucide-react'
+import { ExternalLink, FilePenLine, Loader2, MoreVertical, Plus, Power, Trash2, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
@@ -68,6 +69,7 @@ export default function WebsiteProjectsClient() {
   const [loading, setLoading] = useState(true)
   const [creatingProject, setCreatingProject] = useState(false)
   const [creatingPageForProjectId, setCreatingPageForProjectId] = useState<string | null>(null)
+  const [updatingProjectId, setUpdatingProjectId] = useState<string | null>(null)
   const [newProjectName, setNewProjectName] = useState('')
   const [newPageNames, setNewPageNames] = useState<Record<string, string>>({})
 
@@ -176,6 +178,57 @@ export default function WebsiteProjectsClient() {
     }
   }
 
+  async function handleProjectStatus(project: WebsiteProjectItem, status: 'DRAFT' | 'DISABLED') {
+    const actionLabel = status === 'DRAFT' ? 'pasar a borrador' : 'deshabilitar'
+    if (!window.confirm(`¿Quieres ${actionLabel} el sitio "${project.nombre}"? Dejará de estar disponible públicamente.`)) return
+
+    setUpdatingProjectId(project.id)
+    try {
+      const response = await fetch(`/api/servicios-web/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo actualizar el sitio.')
+
+      setProjects((current) => current.map((item) => (
+        item.id === project.id ? { ...item, status: data.item.status, updatedAt: data.item.updatedAt } : item
+      )))
+      toast({ title: status === 'DRAFT' ? 'Sitio en borrador' : 'Sitio deshabilitado' })
+    } catch (error) {
+      toast({
+        title: 'No se pudo actualizar el sitio',
+        description: error instanceof Error ? error.message : 'Intenta nuevamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setUpdatingProjectId(null)
+    }
+  }
+
+  async function handleDeleteProject(project: WebsiteProjectItem) {
+    if (!window.confirm(`¿Eliminar definitivamente el sitio "${project.nombre}" y todas sus páginas? Esta acción no se puede deshacer.`)) return
+
+    setUpdatingProjectId(project.id)
+    try {
+      const response = await fetch(`/api/servicios-web/projects/${project.id}`, { method: 'DELETE' })
+      const data = await response.json()
+      if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo eliminar el sitio.')
+
+      setProjects((current) => current.filter((item) => item.id !== project.id))
+      toast({ title: 'Sitio eliminado', description: `${project.nombre} y sus páginas fueron eliminados.` })
+    } catch (error) {
+      toast({
+        title: 'No se pudo eliminar el sitio',
+        description: error instanceof Error ? error.message : 'Intenta nuevamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setUpdatingProjectId(null)
+    }
+  }
+
   return (
     <Card className="rounded-[26px] border-slate-200 shadow-sm">
       <CardHeader>
@@ -226,9 +279,33 @@ export default function WebsiteProjectsClient() {
                       /{project.slug} · {project.subdomain || 'sin subdominio'} · actualizado {formatDate(project.updatedAt)}
                     </div>
                   </div>
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">
-                    {project.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+                      {project.status}
+                    </span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button type="button" variant="ghost" size="icon" disabled={updatingProjectId === project.id} aria-label={`Acciones para ${project.nombre}`}>
+                          {updatingProjectId === project.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-[190px]">
+                        <DropdownMenuItem disabled={project.status === 'DRAFT'} onSelect={() => void handleProjectStatus(project, 'DRAFT')}>
+                          <FilePenLine className="mr-2 h-4 w-4" />
+                          Pasar a borrador
+                        </DropdownMenuItem>
+                        <DropdownMenuItem disabled={project.status === 'DISABLED'} onSelect={() => void handleProjectStatus(project, 'DISABLED')}>
+                          <Power className="mr-2 h-4 w-4" />
+                          Deshabilitar
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-rose-700 focus:text-rose-700" onSelect={() => void handleDeleteProject(project)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Eliminar
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">

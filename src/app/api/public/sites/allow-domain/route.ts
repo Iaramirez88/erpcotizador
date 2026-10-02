@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
   const project = await prisma.websiteProject.findFirst({
     where: {
       subdomain,
+      status: 'PUBLISHED',
       pages: { some: { versions: { some: { isPublished: true } } } },
     },
     select: { id: true },
