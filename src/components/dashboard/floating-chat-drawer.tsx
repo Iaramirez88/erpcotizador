@@ -19,6 +19,7 @@ import { uploadFileWithProgress } from '@/lib/upload-file-with-progress'
 
 const CHAT_DRAWER_TOGGLE_EVENT = 'dashboard:toggle-conversations-drawer'
 const CHAT_DRAWER_VISIBILITY_EVENT = 'dashboard:conversations-drawer-visibility'
+const MOBILE_FOOTER_TOGGLE_EVENT = 'dashboard:mobile-footer-toggle'
 
 type TeamUser = {
   id: string
@@ -359,8 +360,19 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
       toggleDrawer()
     }
 
+    function handleMobileFooterToggle(event: Event) {
+      const detail = (event as CustomEvent<{ source?: 'menu' | 'chat' | 'notifications' }>).detail
+      if (detail?.source !== 'chat') {
+        setOpen(false)
+      }
+    }
+
     window.addEventListener(CHAT_DRAWER_TOGGLE_EVENT, handleToggleDrawer)
-    return () => window.removeEventListener(CHAT_DRAWER_TOGGLE_EVENT, handleToggleDrawer)
+    window.addEventListener(MOBILE_FOOTER_TOGGLE_EVENT, handleMobileFooterToggle)
+    return () => {
+      window.removeEventListener(CHAT_DRAWER_TOGGLE_EVENT, handleToggleDrawer)
+      window.removeEventListener(MOBILE_FOOTER_TOGGLE_EVENT, handleMobileFooterToggle)
+    }
   }, [currentUserRole])
 
   useEffect(() => {
@@ -1488,7 +1500,9 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
       <div className="relative flex flex-col items-end">
         <div
           className={cn(
-            'pointer-events-auto absolute bottom-0 right-0 flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden rounded-t-[26px] border border-b-0 border-slate-200 bg-white shadow-[0_28px_70px_-36px_rgba(15,23,42,0.45)] transition-all duration-300',
+            'pointer-events-auto absolute right-0 flex flex-col overflow-hidden border border-slate-200 bg-white shadow-[0_28px_70px_-36px_rgba(15,23,42,0.45)] transition-all duration-300',
+            'bottom-[calc(env(safe-area-inset-bottom)+4.8rem)] h-[calc(100dvh-env(safe-area-inset-bottom)-5.05rem)] rounded-[26px]',
+            'md:bottom-0 md:h-[100dvh] md:max-h-[100dvh] md:rounded-t-[26px] md:rounded-b-none md:border-b-0',
             'w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:w-[min(680px,calc(100vw-3rem))] lg:w-[min(780px,calc(100vw-4rem))]',
             open ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-[calc(100%+1.5rem)] opacity-0',
           )}

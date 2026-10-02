@@ -82,6 +82,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasInternalChatThreadDelegate = typeof (prismaClient as any)?.internalChatThread?.findMany === 'function'
   const hasInternalChatParticipantDelegate = typeof (prismaClient as any)?.internalChatParticipant?.findMany === 'function'
   const hasInternalChatMessageDelegate = typeof (prismaClient as any)?.internalChatMessage?.findMany === 'function'
+  const hasHelpTicketDelegate = typeof (prismaClient as any)?.helpTicket?.findMany === 'function'
   const hasProductTypeOptionDelegate = typeof (prismaClient as any)?.productTypeOption?.findMany === 'function'
   const hasProductCategoryOptionDelegate = typeof (prismaClient as any)?.productCategoryOption?.findMany === 'function'
   const hasProductCustomFieldDefinitionDelegate = typeof (prismaClient as any)?.productCustomFieldDefinition?.findMany === 'function'
@@ -163,6 +164,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasInternalChatThreadDelegate ||
     !hasInternalChatParticipantDelegate ||
     !hasInternalChatMessageDelegate ||
+    !hasHelpTicketDelegate ||
     !hasProductTypeOptionDelegate ||
     !hasProductCategoryOptionDelegate ||
     !hasProductCustomFieldDefinitionDelegate ||

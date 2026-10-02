@@ -233,6 +233,14 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     capabilities: [{ domain: 'OPERACIONES', subdomain: 'TASK_WORKSPACES' }],
   },
   {
+    key: 'OPERACIONES.HELP_TICKETS',
+    moduleKey: ModuleKey.ORDENES,
+    section: 'Operaciones',
+    label: 'Mesa de Ayuda',
+    hrefs: ['/dashboard/mesa-ayuda'],
+    capabilities: [{ domain: 'OPERACIONES', subdomain: 'HELP_TICKETS' }],
+  },
+  {
     key: 'OPERACIONES.INTERNAL_CHAT',
     moduleKey: ModuleKey.ORDENES,
     section: 'Captación',

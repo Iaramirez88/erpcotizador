@@ -84,6 +84,10 @@ model User {
   internalChatParticipants InternalChatParticipant[]
   internalChatMessagesSent InternalChatMessage[] @relation("InternalChatMessageSentBy")
   internalChatsCreated InternalChatThread[] @relation("InternalChatThreadCreatedBy")
+  helpTicketsRequested HelpTicket[] @relation("HelpTicketRequester")
+  helpTicketsAssigned HelpTicket[] @relation("HelpTicketAssignedTo")
+  helpTicketMessages HelpTicketMessage[] @relation("HelpTicketMessageAuthor")
+  helpTicketActivities HelpTicketActivity[] @relation("HelpTicketActivityActor")
 
   // Auditoría de cotizaciones
   cotizacionAuditEventsPerformed CotizacionAuditEvent[] @relation("CotizacionAuditPerformedBy")
@@ -483,6 +487,62 @@ enum ModuleKey {
   CONFIG
 }
 
+enum HelpTicketStatus {
+  NEW
+  ASSIGNED
+  IN_PROGRESS
+  WAITING_CUSTOMER
+  ESCALATED
+  RESOLVED
+  CLOSED
+  CANCELED
+}
+
+enum HelpTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum HelpTicketType {
+  CUSTOMER
+  INTERNAL
+  TECHNICAL_SUPPORT
+  INCIDENT
+  REQUEST
+  QUESTION
+  IMPROVEMENT
+}
+
+enum HelpTicketChannel {
+  WEB_PANEL
+  ADMIN
+  EMAIL
+  WHATSAPP
+  INTERNAL
+}
+
+enum HelpTicketMessageVisibility {
+  PUBLIC
+  INTERNAL
+}
+
+enum HelpTicketActivityType {
+  CREATED
+  ASSIGNED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  CATEGORY_CHANGED
+  MESSAGE_ADDED
+  INTERNAL_NOTE_ADDED
+  ESCALATED
+  RESOLVED
+  CLOSED
+  REOPENED
+  UPDATED
+}
+
 enum AccessLevel {
   NONE
   READ
@@ -756,6 +816,9 @@ model Empresa {
   dianDocuments DianElectronicDocument[]
 
   usuarios       User[]
+  helpTickets HelpTicket[]
+  helpTicketMessages HelpTicketMessage[]
+  helpTicketActivities HelpTicketActivity[]
 
   // Plantilla PDF de cotización compartida por empresa
   cotizacionTemplate EmpresaCotizacionTemplate?
@@ -1797,6 +1860,8 @@ model Sede {
   inventoryMovements InventoryMovement[]
   warehouses         InventoryWarehouse[]
   inventorySupplyRequests InventorySupplyRequest[]
+  helpTickets HelpTicket[]
+  helpTicketSequences HelpTicketSequence[]
   posSequence        PosSequence?
   cotizacionSequence CotizacionSequence?
   remisionSequence   RemisionSequence?
@@ -3397,6 +3462,7 @@ model Cliente {
   crmActivities     CrmActivity[] @relation("CrmActivityCliente")
   crmTasks          CrmTask[] @relation("CrmTaskCliente")
   crmConversations  CrmConversation[] @relation("CrmConversationCliente")
+  helpTickets HelpTicket[]
   odontologyAppointments OdontologyAppointment[]
   odontologyPatientProfile OdontologyPatientProfile?
   odontologyClinicalRecords OdontologyClinicalRecord[]
@@ -3409,6 +3475,122 @@ model Cliente {
   @@index([sedeId])
 
   @@map("clientes")
+}
+
+model HelpTicketSequence {
+  id String @id @default(cuid())
+
+  sedeId String
+  sede   Sede   @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+
+  year          Int
+  currentNumber Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sedeId, year])
+  @@map("help_ticket_sequences")
+}
+
+model HelpTicket {
+  id     String @id @default(cuid())
+  number String
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  sedeId String
+  sede   Sede @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+
+  clienteId String?
+  cliente   Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+
+  requesterId String
+  requester   User @relation("HelpTicketRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+
+  assignedToId String?
+  assignedTo   User? @relation("HelpTicketAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  subject     String
+  description String @db.Text
+  category    String
+  module      String?
+  submodule   String?
+  type        HelpTicketType     @default(REQUEST)
+  priority    HelpTicketPriority @default(MEDIUM)
+  status      HelpTicketStatus   @default(NEW)
+  channel     HelpTicketChannel  @default(WEB_PANEL)
+
+  linkedEntityType String?
+  linkedEntityId   String?
+
+  assignedAt      DateTime?
+  firstResponseAt DateTime?
+  startedAt       DateTime?
+  waitingSince    DateTime?
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+
+  messages   HelpTicketMessage[]
+  activities HelpTicketActivity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, number])
+  @@index([empresaId, sedeId, status, updatedAt])
+  @@index([requesterId, updatedAt])
+  @@index([assignedToId, status, updatedAt])
+  @@index([clienteId, updatedAt])
+  @@map("help_tickets")
+}
+
+model HelpTicketMessage {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  ticketId String
+  ticket   HelpTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User @relation("HelpTicketMessageAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  visibility      HelpTicketMessageVisibility @default(PUBLIC)
+  bodyText        String @db.Text
+  attachmentsJson Json   @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ticketId, createdAt])
+  @@index([empresaId, createdAt])
+  @@map("help_ticket_messages")
+}
+
+model HelpTicketActivity {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  ticketId String
+  ticket   HelpTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  actorId String?
+  actor   User? @relation("HelpTicketActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  type     HelpTicketActivityType
+  summary  String
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+  @@index([empresaId, createdAt])
+  @@map("help_ticket_activities")
 }
 
 model OdontologyPatientProfile {

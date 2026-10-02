@@ -79,6 +79,7 @@ export const RBAC_V2_CAPABILITY_CATALOG: RbacV2CapabilityDefinition[] = [
   { domain: 'OPERACIONES', subdomain: 'FILES', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'CONFIGURE'], recommendedScopes: ['TEAM', 'SEDE', 'EMPRESA'] },
   { domain: 'OPERACIONES', subdomain: 'TASK_WORKSPACES', actions: ['READ', 'CREATE', 'UPDATE', 'CONFIGURE'], recommendedScopes: ['TEAM', 'SEDE', 'EMPRESA'] },
   { domain: 'OPERACIONES', subdomain: 'INTERNAL_CHAT', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE'], recommendedScopes: ['TEAM', 'SEDE', 'EMPRESA'] },
+  { domain: 'OPERACIONES', subdomain: 'HELP_TICKETS', actions: ['READ', 'CREATE', 'UPDATE', 'ASSIGN', 'CLOSE'], recommendedScopes: ['OWN', 'ASSIGNED', 'TEAM', 'SEDE', 'EMPRESA'] },
   { domain: 'OPERACIONES', subdomain: 'DOCUMENT_CAPTURE', actions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'], recommendedScopes: ['TEAM', 'SEDE', 'EMPRESA'] },
 
   { domain: 'RECURSOS', subdomain: 'INVENTORY', actions: ['READ', 'UPDATE', 'EXPORT'], recommendedScopes: ['SEDE', 'EMPRESA'] },
@@ -114,7 +115,7 @@ export const LEGACY_MODULE_TO_RBAC_V2: LegacyModuleMapping[] = [
   { moduleKey: 'REMISIONES', targets: [{ domain: 'VENTAS', subdomains: ['DELIVERY_NOTES'] }] },
   { moduleKey: 'POS', targets: [{ domain: 'VENTAS', subdomains: ['POS'] }, { domain: 'FINANZAS', subdomains: ['INVOICING'] }, { domain: 'VERTICALES', subdomains: ['RESTAURANTE'] }] },
   { moduleKey: 'CLIENTES', targets: [{ domain: 'VENTAS', subdomains: ['CUSTOMERS'] }, { domain: 'VERTICALES', subdomains: ['ODONTOLOGIA'] }] },
-  { moduleKey: 'ORDENES', targets: [{ domain: 'OPERACIONES', subdomains: ['WORK_ORDERS', 'INTERNAL_CHAT'] }] },
+  { moduleKey: 'ORDENES', targets: [{ domain: 'OPERACIONES', subdomains: ['WORK_ORDERS', 'INTERNAL_CHAT', 'HELP_TICKETS'] }] },
   { moduleKey: 'MATERIALES', targets: [{ domain: 'RECURSOS', subdomains: ['PRODUCTS', 'MATERIALS'] }] },
   { moduleKey: 'INVENTARIO', targets: [{ domain: 'RECURSOS', subdomains: ['INVENTORY', 'TRANSFERS'] }] },
   { moduleKey: 'COMPRAS', targets: [{ domain: 'RECURSOS', subdomains: ['PURCHASES'] }] },

@@ -13,6 +13,8 @@ type Props = {
   placement?: 'header' | 'sidebar-footer' | 'mobile-footer'
 }
 
+const MOBILE_FOOTER_TOGGLE_EVENT = 'dashboard:mobile-footer-toggle'
+
 export default function NotificationsBell({ onUnreadCountChange, placement = 'header' }: Props) {
   const [open, setOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -25,8 +27,8 @@ export default function NotificationsBell({ onUnreadCountChange, placement = 'he
   const showLabel = placement === 'header' || (placement === 'sidebar-footer' && !sidebarCollapsed)
   const buttonClassName = placement === 'mobile-footer'
     ? isDark
-      ? 'relative flex h-12 w-full max-w-[4.75rem] min-w-0 flex-col items-center justify-center gap-0.5 rounded-2xl px-1.5 text-[#e0e0e0] hover:bg-[#232323] [&_svg]:!size-5'
-      : 'relative flex h-12 w-full max-w-[4.75rem] min-w-0 flex-col items-center justify-center gap-0.5 rounded-2xl px-1.5 text-slate-700 hover:bg-slate-100/80 [&_svg]:!size-5'
+      ? `relative flex h-12 w-full max-w-[4.75rem] min-w-0 flex-col items-center justify-center gap-0.5 rounded-2xl px-1.5 [&_svg]:!size-5 ${open ? 'bg-[#ff9800] text-white hover:bg-[#ff9800]' : 'text-[#e0e0e0] hover:bg-[#232323]'}`
+      : `relative flex h-12 w-full max-w-[4.75rem] min-w-0 flex-col items-center justify-center gap-0.5 rounded-2xl px-1.5 [&_svg]:!size-5 ${open ? 'bg-[#ff9800] text-white hover:bg-[#ff9800]' : 'text-slate-700 hover:bg-slate-100/80'}`
     : placement === 'header'
       ? isDark
         ? 'relative h-9 rounded-full px-3 text-[#e0e0e0] hover:bg-[#232323]'
@@ -104,6 +106,18 @@ export default function NotificationsBell({ onUnreadCountChange, placement = 'he
     }
   }, [open])
 
+  useEffect(() => {
+    function handleMobileFooterToggle(event: Event) {
+      const detail = (event as CustomEvent<{ source?: 'menu' | 'chat' | 'notifications' }>).detail
+      if (detail?.source !== 'notifications') {
+        setOpen(false)
+      }
+    }
+
+    window.addEventListener(MOBILE_FOOTER_TOGGLE_EVENT, handleMobileFooterToggle)
+    return () => window.removeEventListener(MOBILE_FOOTER_TOGGLE_EVENT, handleMobileFooterToggle)
+  }, [])
+
   return (
     <div className="relative">
       <Button
@@ -113,7 +127,12 @@ export default function NotificationsBell({ onUnreadCountChange, placement = 'he
         size="icon"
         className={buttonClassName}
         aria-label="Notificaciones"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (placement === 'mobile-footer') {
+            window.dispatchEvent(new CustomEvent(MOBILE_FOOTER_TOGGLE_EVENT, { detail: { source: 'notifications' } }))
+          }
+          setOpen((v) => !v)
+        }}
       >
         <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path

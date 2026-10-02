@@ -7,7 +7,7 @@
 
 import Link from "next/link"
 import { Lock, Building2, Home, Briefcase, Store, Boxes, Landmark, BarChart3, Sparkles, Package, Shield, ChefHat, Bot, Funnel, Settings, ReceiptText, LayoutGrid } from "lucide-react"
-import { useEffect, useMemo, useState, type DragEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react"
 import { usePathname, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useUiStore } from "@/lib/ui-store"
@@ -557,6 +557,16 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
+    name: "Mesa de Ayuda",
+    href: "/dashboard/mesa-ayuda",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7a2 2 0 012-2h12a2 2 0 012 2v3a2 2 0 010 4v3a2 2 0 01-2 2H6a2 2 0 01-2-2v-3a2 2 0 010-4V7z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9h6M9 13h4" />
+      </svg>
+    ),
+  },
+  {
     name: "Conversaciones",
     href: "/dashboard/chat",
     icon: (
@@ -836,6 +846,12 @@ export default function Sidebar({ user }: SidebarProps) {
   const [dragOverSectionPlacement, setDragOverSectionPlacement] = useState<'before' | 'after'>('before')
   const [canAccessWebsiteServices, setCanAccessWebsiteServices] = useState(false)
   const [isMobileViewport, setIsMobileViewport] = useState(false)
+  const [clickedCollapsedSectionTitle, setClickedCollapsedSectionTitle] = useState<string | null>(null)
+  const [hoveredCollapsedSectionTitle, setHoveredCollapsedSectionTitle] = useState<string | null>(null)
+  const [collapsedFloatingPanelTop, setCollapsedFloatingPanelTop] = useState(16)
+  const sidebarRef = useRef<HTMLElement | null>(null)
+  const collapsedFloatingPanelRef = useRef<HTMLDivElement | null>(null)
+  const collapsedHoverCloseTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (user.role === 'ADMIN') setCanManageBilling(true)
@@ -844,6 +860,83 @@ export default function Sidebar({ user }: SidebarProps) {
   useEffect(() => {
     hydrateSidebarCollapsed()
   }, [hydrateSidebarCollapsed])
+
+  useEffect(() => {
+    if (!sidebarCollapsed) {
+      setClickedCollapsedSectionTitle(null)
+      setHoveredCollapsedSectionTitle(null)
+    }
+  }, [sidebarCollapsed])
+
+  useEffect(() => {
+    return () => {
+      if (collapsedHoverCloseTimerRef.current !== null) {
+        window.clearTimeout(collapsedHoverCloseTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    setClickedCollapsedSectionTitle(null)
+    setHoveredCollapsedSectionTitle(null)
+  }, [pathname])
+
+  useEffect(() => {
+    if (!sidebarCollapsed) return
+
+    function handlePointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as Element | null
+      if (target?.closest('[data-collapsed-section-root="true"]')) return
+      if (target?.closest('[data-collapsed-floating-panel="true"]')) return
+      setClickedCollapsedSectionTitle(null)
+      setHoveredCollapsedSectionTitle(null)
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      setClickedCollapsedSectionTitle(null)
+      setHoveredCollapsedSectionTitle(null)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('touchstart', handlePointerDown)
+    document.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('touchstart', handlePointerDown)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [sidebarCollapsed])
+
+  function updateCollapsedFloatingPanelPosition(anchorElement: HTMLElement) {
+    if (typeof window === 'undefined') return
+    const sidebarElement = sidebarRef.current
+    if (!sidebarElement) return
+
+    const sidebarRect = sidebarElement.getBoundingClientRect()
+    const rect = anchorElement.getBoundingClientRect()
+    const margin = 12
+    const relativeTop = rect.top - sidebarRect.top
+    const maxTop = Math.max(sidebarElement.clientHeight - margin, margin)
+    const nextTop = Math.min(maxTop, Math.max(margin, relativeTop))
+    setCollapsedFloatingPanelTop(nextTop)
+  }
+
+  function clearCollapsedHoverCloseTimer() {
+    if (collapsedHoverCloseTimerRef.current !== null) {
+      window.clearTimeout(collapsedHoverCloseTimerRef.current)
+      collapsedHoverCloseTimerRef.current = null
+    }
+  }
+
+  function scheduleCollapsedHoverClose() {
+    clearCollapsedHoverCloseTimer()
+    collapsedHoverCloseTimerRef.current = window.setTimeout(() => {
+      setHoveredCollapsedSectionTitle(null)
+      collapsedHoverCloseTimerRef.current = null
+    }, 260)
+  }
 
   function isNavActive(href: string) {
     const currentPath = normalizeNavHref(pathname)
@@ -1153,6 +1246,24 @@ export default function Sidebar({ user }: SidebarProps) {
     return sortSectionsByOrder(baseSections, effectiveNavOrder)
   }, [dashboardSectionOrder, visibleNavigation, effectiveNavOrder])
 
+  const visibleCollapsedSection = useMemo(() => {
+    if (!sidebarCollapsed) return null
+    const sectionTitle = hoveredCollapsedSectionTitle ?? clickedCollapsedSectionTitle
+    if (!sectionTitle) return null
+
+    const section = sections.find((item) => item.title === sectionTitle)
+    if (!section) return null
+
+    const items = section.items.filter((item) => visibleHrefs.has(item.href))
+    if (!items.length) return null
+
+    return {
+      title: section.title,
+      label: section.title === 'Captación' ? 'CRM' : section.title === 'Recursos' ? 'Inventario' : section.title,
+      items,
+    }
+  }, [clickedCollapsedSectionTitle, hoveredCollapsedSectionTitle, sections, sidebarCollapsed, visibleHrefs])
+
   const activeSectionTitle = useMemo(() => {
     if (pathname === '/dashboard') return 'Inicio'
 
@@ -1254,8 +1365,9 @@ export default function Sidebar({ user }: SidebarProps) {
       />
 
       <aside
+        ref={sidebarRef}
         className={cn(
-          "flex flex-col border-r",
+          "relative flex flex-col border-r",
           sidebarSurface,
           "fixed inset-y-0 left-0 z-50 md:static",
           sidebarCollapsed ? "w-[4.25rem]" : "w-[86vw] max-w-[300px] md:w-56 md:max-w-none",
@@ -1329,7 +1441,8 @@ export default function Sidebar({ user }: SidebarProps) {
 
         {/* Navigation */}
         <TooltipProvider delayDuration={150}>
-        <nav className={cn("flex-1 space-y-0.5 overflow-y-auto py-2", sidebarCollapsed ? "px-1.5" : "px-2")}>
+        <nav className={cn("flex-1 overflow-visible py-2", sidebarCollapsed ? "px-1.5" : "px-2")}>
+          <div className={cn("space-y-0.5", sidebarCollapsed ? "max-h-full overflow-y-auto overflow-x-hidden" : "") }>
           {sections.map((section) => {
             const visibleItems = section.items.filter((it) => visibleHrefs.has(it.href))
             if (!visibleItems.length) return null
@@ -1395,9 +1508,9 @@ export default function Sidebar({ user }: SidebarProps) {
                       )}
                       aria-disabled={isBlocked || undefined}
                     >
-                      <div className="flex items-center space-x-2.5">
+                      <div className={cn("flex items-center", sidebarCollapsed ? "justify-center w-full" : "space-x-2.5")}>
                         {item.icon}
-                        <span className="text-[12px] font-medium leading-4">{singleItemLabel}</span>
+                        {!sidebarCollapsed ? <span className="text-[12px] font-medium leading-4">{singleItemLabel}</span> : null}
                         {isBlocked ? <Lock className={cn("ml-1.5 h-3.5 w-3.5", sectionTitleText)} /> : null}
                       </div>
                     </Link>
@@ -1420,41 +1533,51 @@ export default function Sidebar({ user }: SidebarProps) {
               )
             }
 
-            // Sidebar colapsada: se mantiene lista directa (sin dropdown) para no romper UX.
+            // Sidebar colapsada: muestra secciones y abre submenús en panel flotante al pasar cursor.
             if (sidebarCollapsed) {
+              const isActiveSection = visibleItems.some((item) => isNavActive(item.href))
+              const isPinnedOpen = clickedCollapsedSectionTitle === section.title
+
               return (
-                <div key={section.title} className={cn("space-y-1", "")}> 
-                  {visibleItems.map((item) => {
-                    const isActive = isNavActive(item.href)
-                    const isBlocked = isPersonal && blockedModules.has(item.href)
-                    return (
-                      <SidebarNavTooltip key={item.name} item={item} isBlocked={isBlocked} upgradePlanLabel={upgradePlanLabel} enabled={areSidebarTooltipsEnabled}>
-                          <Link
-                            href={item.href}
-                            onClick={e => {
-                              if (isBlocked) e.preventDefault()
-                              else {
-                                beginRouteLoadingIfNeeded(item.href)
-                                setMobileNavOpen(false)
-                              }
-                            }}
-                            className={cn(
-                              "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
-                              navFocusRing,
-                              isActive ? navActive : isBlocked ? blockedState : cn(navText, navHover)
-                            )}
-                            aria-disabled={isBlocked || undefined}
-                          >
-                            <div className={cn("flex items-center", "justify-center w-full")}>
-                              {item.icon}
-                              {isBlocked && (
-                                <Lock className={cn("ml-1.5 h-3.5 w-3.5", sectionTitleText)} />
-                              )}
-                            </div>
-                          </Link>
-                      </SidebarNavTooltip>
-                    )
-                  })}
+                <div
+                  key={section.title}
+                  className="relative"
+                  data-collapsed-section-root="true"
+                  onMouseEnter={(event) => {
+                    clearCollapsedHoverCloseTimer()
+                    setHoveredCollapsedSectionTitle(section.title)
+                    updateCollapsedFloatingPanelPosition(event.currentTarget)
+                  }}
+                  onMouseLeave={(event) => {
+                    if (isPinnedOpen) return
+                    const nextTarget = event.relatedTarget as Node | null
+                    if (nextTarget && collapsedFloatingPanelRef.current?.contains(nextTarget)) return
+                    scheduleCollapsedHoverClose()
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      setClickedCollapsedSectionTitle((current) => (current === section.title ? null : section.title))
+                      updateCollapsedFloatingPanelPosition(event.currentTarget)
+                    }}
+                    className={cn(
+                      "group flex w-full items-center justify-center rounded-lg px-2 py-2 transition-colors",
+                      navFocusRing,
+                      isActiveSection ? sectionHeaderActive : cn(navText, navHover)
+                    )}
+                    aria-label={`Abrir ${section.title === 'Captación' ? 'CRM' : section.title === 'Recursos' ? 'Inventario' : section.title}`}
+                    aria-expanded={isPinnedOpen}
+                  >
+                    <span
+                      className={cn(
+                        "shrink-0",
+                        isActiveSection ? sectionHeaderTextActive : cn(sectionTitleText, "group-hover:text-white group-focus-visible:text-white")
+                      )}
+                    >
+                      {getSectionIcon(section.title)}
+                    </span>
+                  </button>
                 </div>
               )
             }
@@ -1600,8 +1723,72 @@ export default function Sidebar({ user }: SidebarProps) {
               </div>
             )
           })}
+          </div>
 
         </nav>
+
+        {visibleCollapsedSection ? (
+          <div
+            ref={collapsedFloatingPanelRef}
+            data-collapsed-floating-panel="true"
+            onMouseEnter={() => {
+              clearCollapsedHoverCloseTimer()
+              setHoveredCollapsedSectionTitle(visibleCollapsedSection.title)
+            }}
+            onMouseLeave={(event) => {
+              if (clickedCollapsedSectionTitle === visibleCollapsedSection.title) return
+              const nextTarget = event.relatedTarget as Element | null
+              if (nextTarget?.closest('[data-collapsed-section-root="true"]')) return
+              scheduleCollapsedHoverClose()
+            }}
+            className={cn(
+              "absolute left-[calc(100%+0.3rem)] z-[130] w-72 rounded-2xl border p-2.5 shadow-[0_24px_48px_-24px_rgba(15,23,42,0.45)]",
+              isDark ? "border-[#444444] bg-[#181818]" : "border-slate-200 bg-white"
+            )}
+            style={{ top: `${collapsedFloatingPanelTop}px` }}
+          >
+            <div className={cn("mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.12em]", sectionTitleText)}>
+              {visibleCollapsedSection.label}
+            </div>
+            <div className="space-y-0.5">
+              {visibleCollapsedSection.items.map((item) => {
+                const isActive = isNavActive(item.href)
+                const isBlocked = isPersonal && blockedModules.has(item.href)
+                return (
+                  <SidebarNavTooltip key={`collapsed-panel-${visibleCollapsedSection.title}-${item.href}`} item={item} isBlocked={isBlocked} upgradePlanLabel={upgradePlanLabel} enabled={areSidebarTooltipsEnabled}>
+                    <Link
+                      href={item.href}
+                      onClick={e => {
+                        if (isBlocked) e.preventDefault()
+                        else {
+                          setClickedCollapsedSectionTitle(null)
+                          setHoveredCollapsedSectionTitle(null)
+                          beginRouteLoadingIfNeeded(item.href)
+                          setMobileNavOpen(false)
+                        }
+                      }}
+                      className={cn(
+                        "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                        navFocusRing,
+                        isActive ? navActive : isBlocked ? blockedState : cn(navText, navHover)
+                      )}
+                      aria-disabled={isBlocked || undefined}
+                    >
+                      <div className="flex items-center space-x-2.5">
+                        {item.icon}
+                        <span className="text-[12px] font-medium leading-4">{item.name}</span>
+                        {isBlocked ? <Lock className={cn("ml-1.5 h-3.5 w-3.5", sectionTitleText)} /> : null}
+                      </div>
+                      {item.badge ? (
+                        <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", badgeSurface)}>{item.badge}</span>
+                      ) : null}
+                    </Link>
+                  </SidebarNavTooltip>
+                )
+              })}
+            </div>
+          </div>
+        ) : null}
         </TooltipProvider>
 
         <div className={cn("border-t p-2.5", sectionBorder, sidebarCollapsed ? "px-1.5" : "px-2.5")}>
