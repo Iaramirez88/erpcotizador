@@ -701,6 +701,7 @@ export async function logInboundCapture(args: {
   utmCampaign?: string | null
   utmContent?: string | null
   utmTerm?: string | null
+  gclid?: string | null
   landingPageUrl?: string | null
   referrerUrl?: string | null
   providerLeadId?: string | null
@@ -720,6 +721,7 @@ export async function logInboundCapture(args: {
       utmCampaign: normalizeString(args.utmCampaign) || null,
       utmContent: normalizeString(args.utmContent) || null,
       utmTerm: normalizeString(args.utmTerm) || null,
+      gclid: normalizeString(args.gclid) || null,
       landingPageUrl: normalizeString(args.landingPageUrl) || null,
       referrerUrl: normalizeString(args.referrerUrl) || null,
       providerLeadId: normalizeString(args.providerLeadId) || null,
@@ -759,6 +761,7 @@ export async function createInboundArtifacts(args: {
   utmCampaign?: string | null
   utmContent?: string | null
   utmTerm?: string | null
+  gclid?: string | null
   landingPageUrl?: string | null
   referrerUrl?: string | null
   rawPayloadJson: Prisma.InputJsonValue
@@ -867,6 +870,7 @@ export async function createInboundArtifacts(args: {
     utmCampaign: args.utmCampaign,
     utmContent: args.utmContent,
     utmTerm: args.utmTerm,
+    gclid: args.gclid,
     landingPageUrl: args.landingPageUrl,
     referrerUrl: args.referrerUrl,
     providerLeadId: args.providerLeadId,

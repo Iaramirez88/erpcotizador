@@ -185,6 +185,7 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
 
     try {
       const parentReferrer = document.referrer || ''
+      const trackingUrl = new URL(parentReferrer || window.location.href)
       const response = await fetch('/api/crm/captures/web-form', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -205,6 +206,12 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
           turnstileToken,
           landingPageUrl: parentReferrer || window.location.href,
           referrerUrl: parentReferrer,
+          utmSource: trackingUrl.searchParams.get('utm_source') || '',
+          utmMedium: trackingUrl.searchParams.get('utm_medium') || '',
+          utmCampaign: trackingUrl.searchParams.get('utm_campaign') || '',
+          utmContent: trackingUrl.searchParams.get('utm_content') || '',
+          utmTerm: trackingUrl.searchParams.get('utm_term') || '',
+          gclid: trackingUrl.searchParams.get('gclid') || '',
           payload: {
             source: 'iframe-web-form',
             userAgent: navigator.userAgent,

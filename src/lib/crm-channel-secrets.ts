@@ -56,6 +56,8 @@ type SignedStatePayload = {
   empresaId: string
   userId: string
   issuedAt: number
+  purpose?: string
+  returnTo?: string
 }
 
 export function createSignedCrmState(payload: SignedStatePayload) {

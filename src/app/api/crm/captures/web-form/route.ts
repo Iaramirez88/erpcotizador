@@ -89,6 +89,7 @@ export async function POST(request: Request) {
     const utmCampaign = boundedFormString(body.utmCampaign || payload.utmCampaign, 200)
     const utmContent = boundedFormString(body.utmContent || payload.utmContent, 200)
     const utmTerm = boundedFormString(body.utmTerm || payload.utmTerm, 200)
+    const gclid = boundedFormString(body.gclid || payload.gclid, 255)
     const messageText = [product ? `Producto: ${product}` : '', baseMessageText]
       .filter(Boolean)
       .join('\n\n')
@@ -153,6 +154,7 @@ export async function POST(request: Request) {
         utmCampaign,
         utmContent,
         utmTerm,
+        gclid,
         landingPageUrl,
         referrerUrl,
         rawPayloadJson: safeRawPayload as Prisma.InputJsonValue,
@@ -170,6 +172,7 @@ export async function POST(request: Request) {
           utmCampaign,
           utmContent,
           utmTerm,
+          gclid,
           landingPageUrl,
           referrerUrl,
         },

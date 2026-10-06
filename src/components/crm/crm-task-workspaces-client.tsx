@@ -6,17 +6,24 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Archive,
   ArrowDownUp,
+  CalendarDays,
+  ChartGantt,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Columns3,
   Eye,
   GripVertical,
   LayoutPanelLeft,
+  List,
   MoreVertical,
+  Palette,
   PencilLine,
   Pin,
   Plus,
   Rows3,
   Search as SearchIcon,
+  SlidersHorizontal,
   Users,
 } from "lucide-react";
 import { ErpPageHero } from "@/components/dashboard/erp-page-chrome";
@@ -61,6 +68,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { CrmFileLibraryPicker } from "@/components/crm/crm-file-library-picker";
+import { CrmGanttPlanner } from "@/components/crm/crm-gantt-planner";
 import { useToast } from "@/hooks/use-toast";
 import type { CrmFileItem } from "@/components/crm/crm-files-types";
 import { subscribeToNotificationReceivedEvent } from "@/lib/notification-browser-events";
@@ -211,9 +219,13 @@ type TaskItem = {
   colorHex?: string | null;
   status: TaskStatus;
   priority: TaskPriority;
+  startAt?: string | null;
   dueAt?: string | null;
   completedAt?: string | null;
   archivedAt?: string | null;
+  isMilestone?: boolean;
+  progress?: number;
+  parentTaskId?: string | null;
   createdAt: string;
   updatedAt: string;
   workspace?: Workspace | null;
@@ -241,7 +253,7 @@ type ExtraTaskColumn =
 type TaskSortDirection = "asc" | "desc";
 type TaskViewMode = "SPACE" | "MINE" | "ALL_SPACES";
 type TaskPeriodFilter = "ALL" | "WEEK" | "MONTH" | "QUARTER";
-type TaskLayoutMode = "TABLE" | "BOXES";
+type TaskLayoutMode = "TABLE" | "KANBAN" | "CALENDAR" | "GANTT";
 type DragPayload =
   | { type: "project"; projectId: string }
   | { type: "task"; taskId: string };
@@ -310,6 +322,13 @@ const STATUS_SELECT_CLASS: Record<TaskStatus, string> = {
   CANCELED: "border-rose-300 bg-rose-500 text-white",
 };
 
+const KANBAN_STATUS_COLOR: Record<TaskStatus, string> = {
+  OPEN: "#475569",
+  IN_PROGRESS: "#F59E0B",
+  DONE: "#10B981",
+  CANCELED: "#E11D48",
+};
+
 function createId(prefix: string) {
   const uuid =
     typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -328,6 +347,30 @@ function formatDate(value: string | null | undefined, fallback: string) {
   } catch {
     return String(value);
   }
+}
+
+function dateKey(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function startOfLocalDay(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function addLocalDays(value: Date, days: number) {
+  const result = new Date(value);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function calendarDayDifference(left: Date, right: Date) {
+  return Math.round(
+    (startOfLocalDay(left).getTime() - startOfLocalDay(right).getTime()) /
+      86_400_000,
+  );
 }
 
 function initials(name?: string | null, email?: string | null) {
@@ -698,6 +741,7 @@ async function requestJson<T>(
 
 const WORKSPACE_PANEL_STORAGE_KEY =
   "crm-task-workspaces:workspace-panel-collapsed";
+const PAGE_HEADER_STORAGE_KEY = "crm-task-workspaces:page-header-collapsed";
 const TASK_COLUMN_WIDTH_STORAGE_KEY = "crm-task-workspaces:task-column-width";
 const TASK_EXTRA_COLUMNS_STORAGE_KEY = "crm-task-workspaces:task-extra-columns";
 const TASK_PRIORITY_COLUMN_STORAGE_KEY =
@@ -707,6 +751,22 @@ const TASK_CREATED_AT_COLUMN_STORAGE_KEY =
 const TASK_PAGE_SIZE_STORAGE_KEY = "crm-task-workspaces:task-page-size";
 const TASK_PERIOD_FILTER_STORAGE_KEY = "crm-task-workspaces:task-period-filter";
 const TASK_LAYOUT_STORAGE_KEY = "crm-task-workspaces:task-layout-mode";
+const CALENDAR_DAY_COLORS_STORAGE_KEY =
+  "crm-task-workspaces:calendar-day-colors";
+
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  const parsed = new Date(year, month - 1, day);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function monthDateRange(value: Date) {
+  return {
+    start: dateKey(new Date(value.getFullYear(), value.getMonth(), 1)),
+    end: dateKey(new Date(value.getFullYear(), value.getMonth() + 1, 0)),
+  };
+}
 const LAST_WORKSPACE_STORAGE_KEY = "crm-task-workspaces:last-workspace-id";
 const TASK_AUTO_REFRESH_MS = 15_000;
 
@@ -856,6 +916,7 @@ export function CrmTaskWorkspacesClient() {
   const detailDialogOpenedFromNotificationRef = useRef(false);
   const lastPersistedDetailSnapshotRef = useRef("");
   const notificationCleanupTimerRef = useRef<number | null>(null);
+  const calendarColorsReadyRef = useRef(false);
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -868,6 +929,7 @@ export function CrmTaskWorkspacesClient() {
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [search, setSearch] = useState("");
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
+  const [taskOptionsDialogOpen, setTaskOptionsDialogOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [workspaceSettingsOpen, setWorkspaceSettingsOpen] = useState(false);
@@ -905,6 +967,7 @@ export function CrmTaskWorkspacesClient() {
   const [quickNoteDraft, setQuickNoteDraft] = useState("");
   const [savingQuickNote, setSavingQuickNote] = useState(false);
   const [workspacePanelCollapsed, setWorkspacePanelCollapsed] = useState(false);
+  const [pageHeaderCollapsed, setPageHeaderCollapsed] = useState(false);
   const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>("MINE");
   const [taskColumnWidth, setTaskColumnWidth] = useState(150);
   const [taskSortDirection, setTaskSortDirection] =
@@ -912,6 +975,15 @@ export function CrmTaskWorkspacesClient() {
   const [taskPeriodFilter, setTaskPeriodFilter] =
     useState<TaskPeriodFilter>("ALL");
   const [taskLayoutMode, setTaskLayoutMode] = useState<TaskLayoutMode>("TABLE");
+  const [calendarAnchorDate, setCalendarAnchorDate] = useState(
+    () => new Date(),
+  );
+  const [calendarDateRange, setCalendarDateRange] = useState(() =>
+    monthDateRange(new Date()),
+  );
+  const [calendarDayColors, setCalendarDayColors] = useState<
+    Record<string, string>
+  >({});
   const [taskPageSize, setTaskPageSize] = useState(10);
   const [taskPage, setTaskPage] = useState(1);
   const [showPriorityColumn, setShowPriorityColumn] = useState(true);
@@ -925,6 +997,9 @@ export function CrmTaskWorkspacesClient() {
   const [dragOverTaskPlacement, setDragOverTaskPlacement] = useState<
     "before" | "after"
   >("before");
+  const [draggingKanbanTaskId, setDraggingKanbanTaskId] = useState("");
+  const [kanbanDropStatus, setKanbanDropStatus] =
+    useState<TaskStatus | null>(null);
   const [currentUserId, setCurrentUserId] = useState("");
   const [pinnedTaskIds, setPinnedTaskIds] = useState<string[]>([]);
   const [orderedTaskIds, setOrderedTaskIds] = useState<string[]>([]);
@@ -1380,6 +1455,9 @@ export function CrmTaskWorkspacesClient() {
       } else {
         setWorkspacePanelCollapsed(window.innerWidth < 1280);
       }
+      setPageHeaderCollapsed(
+        window.localStorage.getItem(PAGE_HEADER_STORAGE_KEY) === "true",
+      );
       const savedColumnWidth = Number(
         window.localStorage.getItem(TASK_COLUMN_WIDTH_STORAGE_KEY) || "",
       );
@@ -1435,8 +1513,24 @@ export function CrmTaskWorkspacesClient() {
       const savedLayoutMode = window.localStorage.getItem(
         TASK_LAYOUT_STORAGE_KEY,
       );
-      if (savedLayoutMode === "TABLE" || savedLayoutMode === "BOXES") {
+      if (
+        savedLayoutMode === "TABLE" ||
+        savedLayoutMode === "CALENDAR" ||
+        savedLayoutMode === "GANTT"
+      ) {
         setTaskLayoutMode(savedLayoutMode);
+      } else if (savedLayoutMode === "BOXES" || savedLayoutMode === "KANBAN") {
+        setTaskLayoutMode("KANBAN");
+      }
+      const savedCalendarDayColors = JSON.parse(
+        window.localStorage.getItem(CALENDAR_DAY_COLORS_STORAGE_KEY) || "{}",
+      ) as unknown;
+      if (
+        savedCalendarDayColors &&
+        typeof savedCalendarDayColors === "object" &&
+        !Array.isArray(savedCalendarDayColors)
+      ) {
+        setCalendarDayColors(savedCalendarDayColors as Record<string, string>);
       }
     } catch {
       // ignore
@@ -1449,6 +1543,10 @@ export function CrmTaskWorkspacesClient() {
       window.localStorage.setItem(
         WORKSPACE_PANEL_STORAGE_KEY,
         String(workspacePanelCollapsed),
+      );
+      window.localStorage.setItem(
+        PAGE_HEADER_STORAGE_KEY,
+        String(pageHeaderCollapsed),
       );
       window.localStorage.setItem(
         TASK_COLUMN_WIDTH_STORAGE_KEY,
@@ -1486,8 +1584,25 @@ export function CrmTaskWorkspacesClient() {
     taskPageSize,
     taskPeriodFilter,
     visibleExtraTaskColumns,
+    pageHeaderCollapsed,
     workspacePanelCollapsed,
   ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!calendarColorsReadyRef.current) {
+      calendarColorsReadyRef.current = true;
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        CALENDAR_DAY_COLORS_STORAGE_KEY,
+        JSON.stringify(calendarDayColors),
+      );
+    } catch {
+      // ignore unavailable local storage
+    }
+  }, [calendarDayColors]);
 
   useEffect(() => {
     setTaskPage(1);
@@ -1531,7 +1646,7 @@ export function CrmTaskWorkspacesClient() {
       window.removeEventListener("resize", measure);
       window.visualViewport?.removeEventListener("resize", measure);
     };
-  }, [workspacePanelCollapsed]);
+  }, [pageHeaderCollapsed, workspacePanelCollapsed]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1753,6 +1868,39 @@ export function CrmTaskWorkspacesClient() {
     }),
     [filteredTasks],
   );
+
+  const calendarDays = useMemo(() => {
+    const requestedStart =
+      parseLocalDate(calendarDateRange.start) ||
+      new Date(calendarAnchorDate.getFullYear(), calendarAnchorDate.getMonth(), 1);
+    const requestedEnd =
+      parseLocalDate(calendarDateRange.end) ||
+      new Date(calendarAnchorDate.getFullYear(), calendarAnchorDate.getMonth() + 1, 0);
+    const safeEnd =
+      requestedEnd < requestedStart ? requestedStart : requestedEnd;
+    const mondayOffset = (requestedStart.getDay() + 6) % 7;
+    const gridStart = addLocalDays(requestedStart, -mondayOffset);
+    const sundayOffset = (7 - safeEnd.getDay()) % 7;
+    const uncappedGridEnd = addLocalDays(safeEnd, sundayOffset);
+    const gridEnd = addLocalDays(
+      gridStart,
+      Math.min(97, calendarDayDifference(uncappedGridEnd, gridStart)),
+    );
+    return Array.from(
+      { length: calendarDayDifference(gridEnd, gridStart) + 1 },
+      (_, index) => addLocalDays(gridStart, index),
+    );
+  }, [calendarAnchorDate, calendarDateRange]);
+
+  const tasksByCalendarDay = useMemo(() => {
+    const grouped = new Map<string, TaskItem[]>();
+    filteredTasks.forEach((task) => {
+      if (!task.dueAt) return;
+      const key = dateKey(new Date(task.dueAt));
+      grouped.set(key, [...(grouped.get(key) || []), task]);
+    });
+    return grouped;
+  }, [filteredTasks]);
 
   const totalTaskPages = useMemo(
     () => Math.max(1, Math.ceil(filteredTasks.length / taskPageSize)),
@@ -2098,7 +2246,10 @@ export function CrmTaskWorkspacesClient() {
     setProjectDialogOpen(true);
   }
 
-  function openTaskCreationDialog(projectId = selectedProjectId) {
+  function openTaskCreationDialog(
+    projectId = selectedProjectId,
+    status: TaskStatus = "OPEN",
+  ) {
     if (!canCreateTask)
       return alert(
         "No se pudo resolver tu usuario actual para crear la tarea.",
@@ -2110,7 +2261,7 @@ export function CrmTaskWorkspacesClient() {
       description: "",
       dueAt: "",
       priority: "NORMAL",
-      status: "OPEN",
+      status,
       colorHex: "#1D4ED8",
       assignedToUserIds: currentUserId ? [currentUserId] : [],
       workspaceId,
@@ -2581,6 +2732,41 @@ export function CrmTaskWorkspacesClient() {
     return true;
   }
 
+  async function handleKanbanStatusDrop(status: TaskStatus) {
+    const task = tasks.find((item) => item.id === draggingKanbanTaskId);
+    setDraggingKanbanTaskId("");
+    setKanbanDropStatus(null);
+    if (!task || task.status === status || !canEditTask(task)) return;
+
+    let cancellationReason = "";
+    if (status === "CANCELED" && taskSettings.requireTaskCancellationReason) {
+      const reason = window.prompt(
+        "Escribe el motivo para mover la tarea a Cancelada:",
+      );
+      if (!reason?.trim()) return;
+      cancellationReason = reason.trim();
+    }
+
+    const previousTasks = tasks;
+    setTasks((current) =>
+      current.map((item) =>
+        item.id === task.id ? { ...item, status } : item,
+      ),
+    );
+    const updated = await handleUpdateTask(
+      task.id,
+      {
+        status,
+        ...(cancellationReason ? { cancellationReason } : {}),
+      },
+      {
+        title: "Estado actualizado",
+        description: `La tarea pasó a ${STATUS_META[status].label.toLowerCase()}.`,
+      },
+    );
+    if (!updated) setTasks(previousTasks);
+  }
+
   async function moveTaskToProject(
     task: TaskItem,
     workspaceId: string,
@@ -2705,6 +2891,16 @@ export function CrmTaskWorkspacesClient() {
 
   function goToTaskPage(page: number) {
     setTaskPage(Math.min(totalTaskPages, Math.max(1, page)));
+  }
+
+  function showCalendarMonth(monthOffset: number) {
+    const next = new Date(
+      calendarAnchorDate.getFullYear(),
+      calendarAnchorDate.getMonth() + monthOffset,
+      1,
+    );
+    setCalendarAnchorDate(next);
+    setCalendarDateRange(monthDateRange(next));
   }
 
   function handleProjectDragStart(
@@ -3496,7 +3692,7 @@ export function CrmTaskWorkspacesClient() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <ErpPageHero
         breadcrumbs={[
           { label: "Inicio", href: "/dashboard" },
@@ -3504,10 +3700,12 @@ export function CrmTaskWorkspacesClient() {
         ]}
         title="Tareas y proyectos"
         description="Crea tareas de forma directa, relaciónalas opcionalmente con proyectos o listas existentes, y centraliza el seguimiento con responsables, evidencia y estados claros."
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
+        collapsed={pageHeaderCollapsed}
+        onCollapsedChange={setPageHeaderCollapsed}
+        toolbar={
+          <>
             <Button
-              className="rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700"
+              className="h-9 rounded-xl bg-emerald-600 px-3 text-white hover:bg-emerald-700"
               onClick={() => openTaskCreationDialog("")}
             >
               <Plus className="mr-2 h-4 w-4" />
@@ -3515,7 +3713,7 @@ export function CrmTaskWorkspacesClient() {
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="rounded-2xl">
+                <Button variant="outline" className="h-9 rounded-xl px-3">
                   <Plus className="mr-2 h-4 w-4" />
                   Más
                 </Button>
@@ -3535,9 +3733,42 @@ export function CrmTaskWorkspacesClient() {
                 >
                   Crear lista
                 </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setTaskLayoutMode("GANTT")}>
+                  Abrir planes Gantt
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
+            <div
+              className="flex overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1"
+              role="tablist"
+              aria-label="Vista de tareas"
+            >
+              {(
+                [
+                  ["TABLE", "Tareas", List],
+                  ["KANBAN", "Kanban", Columns3],
+                  ["CALENDAR", "Calendario", CalendarDays],
+                  ["GANTT", "Gantt", ChartGantt],
+                ] as const
+              ).map(([mode, label, Icon]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={taskLayoutMode === mode}
+                  onClick={() => setTaskLayoutMode(mode)}
+                  className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-semibold transition-colors ${
+                    taskLayoutMode === mode
+                      ? "bg-white text-slate-950 shadow-sm"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </>
         }
         stats={[
           {
@@ -3583,7 +3814,7 @@ export function CrmTaskWorkspacesClient() {
       >
         {shouldShowWorkspacePanel ? (
           <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)] xl:flex xl:h-full xl:min-h-0 xl:flex-col xl:overflow-hidden">
-            <CardHeader className="border-b border-slate-100 pb-5">
+            <CardHeader className="border-b border-slate-100 p-4">
               <CardTitle className="text-xl">Proyectos</CardTitle>
               <CardDescription>
                 Selecciona un proyecto, ajusta sus opciones desde el menú y
@@ -3935,32 +4166,46 @@ export function CrmTaskWorkspacesClient() {
 
         <Card className="min-w-0 rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)] xl:flex xl:h-full xl:min-h-0 xl:flex-col">
           <TooltipProvider delayDuration={150}>
-            <CardHeader className="border-b border-slate-100 pb-5">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <CardTitle className="text-xl">
+            <CardHeader className="border-b border-slate-100 px-4 py-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <CardTitle className="truncate text-sm font-semibold">
                     {taskViewMode === "MINE"
                       ? "Mis tareas"
                       : taskViewMode === "ALL_SPACES"
                         ? "Todas las tareas"
                         : "Tareas del proyecto"}
                   </CardTitle>
-                  {taskViewMode === "SPACE" ? (
-                    <CardDescription>
-                      {selectedWorkspace
-                        ? `${selectedWorkspace.name}${selectedProject ? ` · Lista ${selectedProject.name}` : " · Todas las listas"} · ${formatRole(selectedWorkspace.currentUserRole)}${selectedWorkspace.permissions?.canEditTasks ? " con edición de tareas" : " solo lectura"}`
-                        : "Tabla operativa con responsables, creado por, estado, color, evidencia y acceso a detalle completo."}
-                    </CardDescription>
-                  ) : null}
                 </div>
-                <div className="flex flex-col gap-2 lg:items-end">
-                  <div className="flex flex-wrap items-center gap-2">
+                <div className="shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg px-2.5 text-xs"
+                    onClick={() => setTaskOptionsDialogOpen(true)}
+                  >
+                    <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
+                    Opciones
+                  </Button>
+                  <Dialog
+                    open={taskOptionsDialogOpen}
+                    onOpenChange={setTaskOptionsDialogOpen}
+                  >
+                    <DialogContent className="max-h-[85vh] max-w-xl overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>Opciones de tareas</DialogTitle>
+                        <DialogDescription>
+                          Ajusta el alcance, la búsqueda y la presentación de la vista actual.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="flex flex-col gap-4 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
                     {workspaces.length > 0 ? (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
                             variant="outline"
-                            className="h-9 gap-2 rounded-xl px-3 sm:w-9 sm:px-0"
+                            className="h-9 gap-2 rounded-xl px-3"
                             onClick={() =>
                               setWorkspacePanelCollapsed((current) => !current)
                             }
@@ -3971,7 +4216,7 @@ export function CrmTaskWorkspacesClient() {
                             }
                           >
                             <LayoutPanelLeft className="h-4 w-4" />
-                            <span className="text-xs sm:hidden">Proyectos</span>
+                            <span className="text-xs">Proyectos</span>
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -3987,12 +4232,12 @@ export function CrmTaskWorkspacesClient() {
                           variant={
                             taskViewMode === "MINE" ? "default" : "outline"
                           }
-                          className="h-9 gap-2 rounded-xl px-3 sm:w-9 sm:px-0"
+                          className="h-9 gap-2 rounded-xl px-3"
                           onClick={handleShowMyTasks}
                           aria-label="Ver mis tareas"
                         >
                           <PencilLine className="h-4 w-4" />
-                          <span className="text-xs sm:hidden">Mías</span>
+                          <span className="text-xs">Mis tareas</span>
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
@@ -4007,12 +4252,12 @@ export function CrmTaskWorkspacesClient() {
                               ? "default"
                               : "outline"
                           }
-                          className="h-9 gap-2 rounded-xl px-3 sm:w-9 sm:px-0"
+                          className="h-9 gap-2 rounded-xl px-3"
                           onClick={handleShowAllAccessibleTasks}
                           aria-label="Ver todas las tareas de espacios asignados"
                         >
                           <Rows3 className="h-4 w-4" />
-                          <span className="text-xs sm:hidden">Todas</span>
+                          <span className="text-xs">Todas</span>
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
@@ -4024,12 +4269,15 @@ export function CrmTaskWorkspacesClient() {
                         <TooltipTrigger asChild>
                           <Button
                             variant="outline"
-                            size="icon"
-                            className="h-9 w-9 rounded-xl"
-                            onClick={() => openWorkspaceSettings()}
+                            className="h-9 gap-2 rounded-xl px-3 text-xs"
+                            onClick={() => {
+                              setTaskOptionsDialogOpen(false);
+                              openWorkspaceSettings();
+                            }}
                             aria-label="Miembros y roles"
                           >
                             <Users className="h-4 w-4" />
+                            Miembros
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>Miembros y roles</TooltipContent>
@@ -4039,14 +4287,14 @@ export function CrmTaskWorkspacesClient() {
                       <TooltipTrigger asChild>
                         <Button
                           variant={searchPanelOpen ? "default" : "outline"}
-                          size="icon"
-                          className="h-9 w-9 rounded-xl"
+                          className="h-9 gap-2 rounded-xl px-3 text-xs"
                           onClick={() =>
                             setSearchPanelOpen((current) => !current)
                           }
                           aria-label="Buscar tareas"
                         >
                           <SearchIcon className="h-4 w-4" />
+                          Buscar
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
@@ -4057,8 +4305,7 @@ export function CrmTaskWorkspacesClient() {
                       <TooltipTrigger asChild>
                         <Button
                           variant={showArchived ? "default" : "outline"}
-                          size="icon"
-                          className="h-9 w-9 rounded-xl"
+                          className="h-9 gap-2 rounded-xl px-3 text-xs"
                           onClick={() => setShowArchived((current) => !current)}
                           aria-label={
                             showArchived
@@ -4067,6 +4314,7 @@ export function CrmTaskWorkspacesClient() {
                           }
                         >
                           <Archive className="h-4 w-4" />
+                          Archivadas
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
@@ -4079,11 +4327,11 @@ export function CrmTaskWorkspacesClient() {
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="outline"
-                              size="icon"
-                              className="h-9 w-9 rounded-xl"
+                              className="h-9 gap-2 rounded-xl px-3 text-xs"
                               aria-label="Columnas visibles"
                             >
                               <Columns3 className="h-4 w-4" />
+                              Columnas
                             </Button>
                           </DropdownMenuTrigger>
                         </TooltipTrigger>
@@ -4200,21 +4448,8 @@ export function CrmTaskWorkspacesClient() {
                         <SelectItem value="QUARTER">Este trimestre</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Select
-                      value={taskLayoutMode}
-                      onValueChange={(value) =>
-                        setTaskLayoutMode(value as TaskLayoutMode)
-                      }
-                    >
-                      <SelectTrigger className="h-9 w-[120px] rounded-xl bg-white text-xs">
-                        <SelectValue placeholder="Vista" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="TABLE">Tabla</SelectItem>
-                        <SelectItem value="BOXES">Cajas</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <div className="hidden items-center gap-2 rounded-xl border border-slate-200 px-2.5 py-2 lg:flex">
+                    {taskLayoutMode === "TABLE" ? (
+                      <div className="hidden items-center gap-2 rounded-xl border border-slate-200 px-2.5 py-2 lg:flex">
                       <span className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                         Ancho
                       </span>
@@ -4232,9 +4467,10 @@ export function CrmTaskWorkspacesClient() {
                       <span className="min-w-[46px] text-[11px] font-semibold text-slate-600">
                         {clampedTaskColumnWidth}px
                       </span>
-                    </div>
+                      </div>
+                    ) : null}
                   </div>
-                  {searchPanelOpen ? (
+                    {searchPanelOpen ? (
                     <Input
                       value={search}
                       onChange={(event) => setSearch(event.target.value)}
@@ -4242,33 +4478,38 @@ export function CrmTaskWorkspacesClient() {
                       className="h-9 w-full rounded-xl text-sm sm:w-[220px]"
                     />
                   ) : null}
-                  <div className="flex w-full items-center gap-2 rounded-xl border border-slate-200 px-2.5 py-2 lg:hidden sm:w-fit">
-                    <Label className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                      Ancho
-                    </Label>
-                    <input
-                      type="range"
-                      min="120"
-                      max="220"
-                      step="10"
-                      value={clampedTaskColumnWidth}
-                      onChange={(event) =>
-                        setTaskColumnWidth(Number(event.target.value))
-                      }
-                      className="w-full accent-slate-900 sm:w-24"
-                    />
-                    <span className="min-w-[46px] text-[11px] font-semibold text-slate-600">
-                      {clampedTaskColumnWidth}px
-                    </span>
-                  </div>
+                    {taskLayoutMode === "TABLE" ? (
+                    <div className="flex w-full items-center gap-2 rounded-xl border border-slate-200 px-2.5 py-2 lg:hidden sm:w-fit">
+                      <Label className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                        Ancho
+                      </Label>
+                      <input
+                        type="range"
+                        min="120"
+                        max="220"
+                        step="10"
+                        value={clampedTaskColumnWidth}
+                        onChange={(event) =>
+                          setTaskColumnWidth(Number(event.target.value))
+                        }
+                        className="w-full accent-slate-900 sm:w-24"
+                      />
+                      <span className="min-w-[46px] text-[11px] font-semibold text-slate-600">
+                        {clampedTaskColumnWidth}px
+                      </span>
+                    </div>
+                        ) : null}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="min-w-0 p-0 xl:flex-1 xl:min-h-0 xl:overflow-hidden">
               <div className="flex h-full min-h-0 flex-col">
-                {taskLayoutMode === "BOXES" ? (
+                {taskLayoutMode === "KANBAN" ? (
                   <div className="min-h-0 flex-1 overflow-auto overscroll-contain px-4 py-4">
-                    <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+                    <div className="flex min-w-max gap-4 pb-2 xl:min-w-0">
                       {(
                         [
                           "OPEN",
@@ -4276,31 +4517,109 @@ export function CrmTaskWorkspacesClient() {
                           "DONE",
                           "CANCELED",
                         ] as TaskStatus[]
-                      ).map((status) => (
+                      ).map((status) => {
+                        const statusColor = KANBAN_STATUS_COLOR[status];
+                        const isDropTarget = kanbanDropStatus === status;
+                        return (
                         <Card
                           key={status}
-                          className="rounded-2xl border-slate-200"
+                          className={`w-[280px] shrink-0 overflow-hidden rounded-[24px] border-slate-200 bg-white shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)] transition-all xl:min-w-0 xl:flex-1 ${
+                            isDropTarget
+                              ? "ring-2 ring-sky-400 shadow-[0_24px_50px_-30px_rgba(14,165,233,0.35)]"
+                              : ""
+                          }`}
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            if (draggingKanbanTaskId) setKanbanDropStatus(status);
+                          }}
+                          onDragLeave={(event) => {
+                            if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                              setKanbanDropStatus((current) =>
+                                current === status ? null : current,
+                              );
+                            }
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            void handleKanbanStatusDrop(status);
+                          }}
                         >
-                          <CardHeader className="pb-3">
-                            <CardTitle className="text-base">
-                              {STATUS_META[status].label}
-                            </CardTitle>
-                            <CardDescription>
-                              {tasksByStatus[status].length} tarea(s)
-                            </CardDescription>
+                          <CardHeader
+                            className="border-b border-white/20 px-3 pb-3 pt-3 text-white"
+                            style={{ backgroundColor: statusColor }}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <CardTitle className="text-sm text-white">
+                                  {STATUS_META[status].label}
+                                </CardTitle>
+                                <CardDescription className="mt-1 text-[11px] text-white/80">
+                                  {tasksByStatus[status].length} tarea(s)
+                                </CardDescription>
+                              </div>
+                              <button
+                                type="button"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/30 bg-white/95 text-slate-900 shadow-sm transition hover:-translate-y-0.5"
+                                onClick={() =>
+                                  openTaskCreationDialog(selectedProjectId, status)
+                                }
+                                aria-label={`Crear tarea en ${STATUS_META[status].label}`}
+                              >
+                                <Plus className="h-4 w-4" />
+                              </button>
+                            </div>
+                            {isDropTarget ? (
+                              <div className="mt-2 rounded-xl border border-dashed border-white/60 bg-white/20 px-3 py-2 text-xs font-medium text-white">
+                                Suelta aquí para mover la tarea.
+                              </div>
+                            ) : null}
                           </CardHeader>
-                          <CardContent className="space-y-2">
+                          <CardContent className="space-y-2 p-2.5">
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-sky-300 hover:bg-sky-50"
+                              onClick={() =>
+                                openTaskCreationDialog(selectedProjectId, status)
+                              }
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              Agregar tarea
+                            </button>
                             {tasksByStatus[status].length ? (
-                              tasksByStatus[status].slice(0, 12).map((task) => (
-                                <button
+                              tasksByStatus[status].map((task) => (
+                                <div
                                   key={task.id}
-                                  type="button"
+                                  draggable={canEditTask(task)}
+                                  onDragStart={(event) => {
+                                    handleTaskDragStart(task, event);
+                                    setDraggingKanbanTaskId(task.id);
+                                    setKanbanDropStatus(task.status);
+                                  }}
+                                  onDragEnd={() => {
+                                    setDraggingKanbanTaskId("");
+                                    setKanbanDropStatus(null);
+                                  }}
                                   onClick={() => void loadTaskDetail(task.id)}
-                                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left hover:bg-slate-50"
+                                  className={`rounded-[18px] border bg-white p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                                    draggingKanbanTaskId === task.id
+                                      ? "border-dashed border-sky-300 bg-sky-50/70 opacity-70"
+                                      : "border-slate-200"
+                                  } ${canEditTask(task) ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
                                 >
-                                  <p className="truncate text-sm font-semibold text-slate-900">
-                                    {task.title}
-                                  </p>
+                                  <div className="flex items-start gap-2">
+                                    <span
+                                      className="mt-0.5 h-7 w-1 shrink-0 rounded-full"
+                                      style={{
+                                        backgroundColor: normalizeHex(task.colorHex),
+                                      }}
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <p className="truncate text-sm font-semibold text-slate-900">
+                                          {task.title}
+                                        </p>
+                                        <GripVertical className="h-4 w-4 shrink-0 text-slate-400" />
+                                      </div>
                                   <p className="mt-1 truncate text-xs text-slate-500">
                                     {task.workspace?.name || "Sin proyecto"} ·{" "}
                                     {task.project?.name || "Sin lista"}
@@ -4313,7 +4632,9 @@ export function CrmTaskWorkspacesClient() {
                                       {getTaskDelayDays(task)} día(s) demora
                                     </span>
                                   </div>
-                                </button>
+                                    </div>
+                                  </div>
+                                </div>
                               ))
                             ) : (
                               <p className="text-xs text-slate-500">
@@ -4323,9 +4644,203 @@ export function CrmTaskWorkspacesClient() {
                             )}
                           </CardContent>
                         </Card>
-                      ))}
+                      );})}
                     </div>
                   </div>
+                ) : null}
+                {taskLayoutMode === "CALENDAR" ? (
+                  <div className="min-h-0 flex-1 overflow-auto overscroll-contain p-4">
+                    <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                      <div className="flex flex-wrap items-end gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-semibold uppercase text-slate-500">
+                            Desde
+                          </Label>
+                          <Input
+                            type="date"
+                            value={calendarDateRange.start}
+                            max={calendarDateRange.end}
+                            onChange={(event) => {
+                              const start = event.target.value;
+                              setCalendarDateRange((current) => ({
+                                ...current,
+                                start,
+                              }));
+                              const parsed = parseLocalDate(start);
+                              if (parsed) setCalendarAnchorDate(parsed);
+                            }}
+                            className="h-9 w-[150px] rounded-lg text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-semibold uppercase text-slate-500">
+                            Hasta
+                          </Label>
+                          <Input
+                            type="date"
+                            value={calendarDateRange.end}
+                            min={calendarDateRange.start}
+                            max={
+                              calendarDateRange.start
+                                ? dateKey(
+                                    addLocalDays(
+                                      parseLocalDate(calendarDateRange.start) ||
+                                        new Date(),
+                                      90,
+                                    ),
+                                  )
+                                : undefined
+                            }
+                            onChange={(event) =>
+                              setCalendarDateRange((current) => ({
+                                ...current,
+                                end: event.target.value,
+                              }))
+                            }
+                            className="h-9 w-[150px] rounded-lg text-xs"
+                          />
+                        </div>
+                        <p className="pb-2 text-xs text-slate-500">
+                          Máximo 90 días por vista
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 rounded-lg"
+                          aria-label="Mes anterior"
+                          onClick={() => showCalendarMonth(-1)}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="h-8 rounded-lg px-3 text-xs"
+                          onClick={() => {
+                            const today = new Date();
+                            setCalendarAnchorDate(today);
+                            setCalendarDateRange(monthDateRange(today));
+                          }}
+                        >
+                          Hoy
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 rounded-lg"
+                          aria-label="Mes siguiente"
+                          onClick={() => showCalendarMonth(1)}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="grid min-w-[760px] grid-cols-7 border-l border-t border-slate-200">
+                      {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map(
+                        (day) => (
+                          <div
+                            key={day}
+                            className="border-b border-r border-slate-200 bg-slate-50 px-2 py-2 text-center text-[11px] font-semibold uppercase text-slate-500"
+                          >
+                            {day}
+                          </div>
+                        ),
+                      )}
+                      {calendarDays.map((day) => {
+                        const key = dateKey(day);
+                        const isInSelectedRange =
+                          key >= calendarDateRange.start &&
+                          key <= calendarDateRange.end;
+                        const dayTasks = isInSelectedRange
+                          ? tasksByCalendarDay.get(key) || []
+                          : [];
+                        const isToday = key === dateKey(new Date());
+                        const dayColor = calendarDayColors[key];
+                        return (
+                          <div
+                            key={key}
+                            className={`min-h-28 border-b border-r border-slate-200 p-1.5 ${
+                              isInSelectedRange ? "bg-white" : "bg-slate-50/70"
+                            }`}
+                            style={
+                              dayColor && isInSelectedRange
+                                ? { backgroundColor: `${dayColor}24` }
+                                : undefined
+                            }
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span
+                                className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${
+                                  isToday
+                                    ? "bg-slate-950 font-semibold text-white"
+                                    : isInSelectedRange
+                                      ? "text-slate-700"
+                                      : "text-slate-400"
+                                }`}
+                              >
+                                {day.getDate()}
+                              </span>
+                              {isInSelectedRange ? (
+                                <label
+                                  className="relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-slate-400 hover:bg-white/80 hover:text-slate-700"
+                                  title="Color del día"
+                                >
+                                  <Palette className="h-3.5 w-3.5" />
+                                  <input
+                                    type="color"
+                                    value={dayColor || "#E0F2FE"}
+                                    onChange={(event) =>
+                                      setCalendarDayColors((current) => ({
+                                        ...current,
+                                        [key]: event.target.value.toUpperCase(),
+                                      }))
+                                    }
+                                    className="absolute inset-0 cursor-pointer opacity-0"
+                                    aria-label={`Seleccionar color para ${key}`}
+                                  />
+                                </label>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 space-y-1">
+                              {dayTasks.slice(0, 3).map((task) => (
+                                <button
+                                  key={task.id}
+                                  type="button"
+                                  onClick={() => void loadTaskDetail(task.id)}
+                                  className="block w-full truncate rounded-md border-l-2 px-1.5 py-1 text-left text-[11px] font-medium text-slate-700 hover:brightness-95"
+                                  style={{
+                                    borderLeftColor: normalizeHex(task.colorHex),
+                                    backgroundColor: `${normalizeHex(task.colorHex)}18`,
+                                  }}
+                                  title={task.title}
+                                >
+                                  {task.title}
+                                </button>
+                              ))}
+                              {dayTasks.length > 3 ? (
+                                <span className="block px-1 text-[10px] text-slate-500">
+                                  +{dayTasks.length - 3} más
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+                {taskLayoutMode === "GANTT" ? (
+                  <CrmGanttPlanner
+                    workspaces={workspaces.map((workspace) => ({
+                      id: workspace.id,
+                      name: workspace.name,
+                      projects: workspace.projects.map((project) => ({
+                        id: project.id,
+                        name: project.name,
+                      })),
+                    }))}
+                  />
                 ) : null}
                 {taskLayoutMode === "TABLE" ? (
                   <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
@@ -4719,7 +5234,13 @@ export function CrmTaskWorkspacesClient() {
                     <span>
                       {filteredTasks.length} tarea(s) en el periodo seleccionado
                     </span>
-                    <span>Vista en cajas tipo Monday</span>
+                    <span>
+                      {taskLayoutMode === "KANBAN"
+                        ? "Flujo por estado"
+                        : taskLayoutMode === "CALENDAR"
+                          ? "Planificación por fecha de entrega"
+                          : "Planificación jerárquica"}
+                    </span>
                   </div>
                 )}
               </div>

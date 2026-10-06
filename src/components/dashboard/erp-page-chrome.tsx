@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import type { ReactNode } from "react"
 import { NominaMenuToggle } from '@/components/dashboard/nomina-navigation-context'
 import { InfoHint } from '@/components/ui/info-hint'
@@ -23,6 +24,9 @@ type ErpPageHeroProps = {
   title: ReactNode
   description?: ReactNode
   actions?: ReactNode
+  toolbar?: ReactNode
+  collapsed?: boolean
+  onCollapsedChange?: (collapsed: boolean) => void
   stats?: HeroStat[]
   className?: string
 }
@@ -39,21 +43,40 @@ export function ErpPageHero({
   title,
   description,
   actions,
+  toolbar,
+  collapsed = false,
+  onCollapsedChange,
   stats = [],
   className,
 }: ErpPageHeroProps) {
   return (
     <TooltipProvider delayDuration={150}>
       <section className={cn('sticky top-0 z-30 border-b border-[#2b2e401a] bg-white/96 backdrop-blur supports-[backdrop-filter]:bg-white/88 dark:border-[#444444] dark:bg-[#121212]/94', className)}>
-        <div className="grid gap-2 px-3 py-2 lg:px-3.5 lg:py-2.5">
-          <div className="space-y-1.5">
-            {breadcrumbs.length ? <ErpBreadcrumbs items={breadcrumbs} /> : null}
-            <div className="flex items-start gap-2">
-              <NominaMenuToggle />
-              <h1 className="max-w-3xl text-lg font-semibold tracking-tight text-slate-950 dark:text-[#e0e0e0] lg:text-[1.65rem]">{title}</h1>
-              {description ? <InfoHint content={description} label="Ver descripción de la página" className="mt-0.5" /> : null}
+        <div className={cn("px-3 lg:px-3.5", collapsed ? "py-1" : "py-2 lg:py-2.5")}>
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <div className={cn("min-w-0", collapsed ? "flex items-center gap-2" : "space-y-1.5")}>
+              {!collapsed && breadcrumbs.length ? <ErpBreadcrumbs items={breadcrumbs} /> : null}
+              <div className="flex items-start gap-2">
+                {!collapsed ? <NominaMenuToggle /> : null}
+                <h1 className={cn("truncate font-semibold tracking-tight text-slate-950 dark:text-[#e0e0e0]", collapsed ? "text-sm" : "max-w-3xl text-lg lg:text-[1.65rem]")}>{title}</h1>
+                {!collapsed && description ? <InfoHint content={description} label="Ver descripción de la página" className="mt-0.5" /> : null}
+              </div>
+              {!collapsed && actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
             </div>
-            {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+            <div className="flex min-w-0 items-center justify-end gap-2">
+              {!collapsed && toolbar ? <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">{toolbar}</div> : null}
+              {onCollapsedChange ? (
+                <button
+                  type="button"
+                  onClick={() => onCollapsedChange(!collapsed)}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-[#444444] dark:bg-[#1c1c1c]"
+                  aria-label={collapsed ? "Mostrar encabezado" : "Ocultar encabezado"}
+                  title={collapsed ? "Mostrar encabezado" : "Ocultar encabezado"}
+                >
+                  {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
       </section>

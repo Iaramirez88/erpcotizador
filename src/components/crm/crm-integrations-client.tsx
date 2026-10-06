@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { Activity, Bot, Copy, Download, Eye, Facebook, Globe, Goal, Info, Instagram, MoreHorizontal, Target, TrendingUp, Upload } from 'lucide-react'
 import { CrmAddonsMarketplaceCard } from '@/components/crm/crm-addons-marketplace-card'
@@ -11,6 +11,8 @@ import type { ChatbotCanvasConnection, ChatbotCanvasNode } from '@/components/cr
 import { useI18n } from '@/components/providers/i18n-provider'
 import { CrmIntegrationsChatbotBuilderModal } from '@/components/crm/crm-integrations-chatbot-builder-modal'
 import { CrmIntegrationsMetricsTab } from '@/components/crm/crm-integrations-metrics-tab'
+import { CrmMarketingSeoTab } from '@/components/crm/crm-marketing-seo-tab'
+import { CrmGoogleChannelConnectors } from '@/components/crm/crm-google-channel-connectors'
 import { CrmIntegrationsChatbotWizardSections } from '@/components/crm/crm-integrations-chatbot-wizard-sections'
 import { CrmIntegrationsWebFormBuilderModal } from '@/components/crm/crm-integrations-web-form-builder-modal'
 import { CrmIntegrationsWebFormSections } from '@/components/crm/crm-integrations-web-form-sections'
@@ -332,7 +334,7 @@ type ImplementationAssetCard = {
 type WizardStep = 'template' | 'config' | 'review' | 'implementation'
 type ChatbotPreviewMode = 'floating' | 'compact' | 'expanded'
 type ChatbotPreviewViewport = 'desktop' | 'mobile'
-type CrmWorkspaceView = 'operations' | 'chatbots' | 'addons' | 'metrics'
+type CrmWorkspaceView = 'operations' | 'chatbots' | 'google' | 'marketing' | 'addons' | 'metrics'
 type ChatbotsPanelView = 'channels' | 'studio'
 type CrmOperationsPanelView = 'preview' | 'readiness' | 'assets'
 type LauncherPosition = 'left' | 'center' | 'right'
@@ -2776,6 +2778,7 @@ function buildChatbotCanvasModel(stages: ChatbotFlowStage[]) {
 
 export function CrmIntegrationsClient() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { language } = useI18n()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -2788,7 +2791,10 @@ export function CrmIntegrationsClient() {
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [wizardStep, setWizardStep] = useState<WizardStep>('template')
-  const [workspaceView, setWorkspaceView] = useState<CrmWorkspaceView>('operations')
+  const [workspaceView, setWorkspaceView] = useState<CrmWorkspaceView>(() => {
+    const requestedView = searchParams?.get('view')
+    return requestedView === 'marketing' || requestedView === 'google' ? requestedView : 'operations'
+  })
   const [chatbotsPanelView, setChatbotsPanelView] = useState<ChatbotsPanelView>('channels')
   const [operationsPanelView, setOperationsPanelView] = useState<CrmOperationsPanelView>('preview')
   const [metricsExpanded, setMetricsExpanded] = useState(false)
@@ -4885,9 +4891,11 @@ export function CrmIntegrationsClient() {
 
       <Tabs value={workspaceView} onValueChange={(value) => setWorkspaceView(value as CrmWorkspaceView)} className="space-y-4">
         <div className="flex flex-col gap-2.5 rounded-[24px] border border-slate-200 bg-white/90 p-2.5 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.28)] md:flex-row md:items-center md:justify-between">
-          <TabsList className="grid h-auto grid-cols-4 rounded-[18px] border border-slate-200 bg-slate-50 p-1">
+          <TabsList className="grid h-auto grid-cols-2 rounded-[18px] border border-slate-200 bg-slate-50 p-1 sm:grid-cols-3 lg:grid-cols-6">
             <TabsTrigger value="operations" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">{language === 'en' ? 'Operations' : 'Operación'}</TabsTrigger>
             <TabsTrigger value="chatbots" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">Chatbots</TabsTrigger>
+            <TabsTrigger value="google" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">Google</TabsTrigger>
+            <TabsTrigger value="marketing" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">Marketing y SEO</TabsTrigger>
             <TabsTrigger value="addons" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">{language === 'en' ? 'Addons' : 'Addons'}</TabsTrigger>
             <TabsTrigger value="metrics" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">KPIs</TabsTrigger>
           </TabsList>
@@ -4905,6 +4913,12 @@ export function CrmIntegrationsClient() {
             <p className="px-2 text-[13px] text-slate-500">
               {language === 'en' ? 'Review which channels can run chatbot automation today and where the advanced studio is configured.' : 'Revisa qué canales pueden ejecutar automatización con chatbot hoy y dónde se configura el studio avanzado.'}
             </p>
+          ) : null}
+          {workspaceView === 'marketing' ? (
+            <p className="px-2 text-[13px] text-slate-500">Conecta inversión, tráfico, posicionamiento y contenido con resultados comerciales reales.</p>
+          ) : null}
+          {workspaceView === 'google' ? (
+            <p className="px-2 text-[13px] text-slate-500">Autoriza y administra Google Ads, Analytics y Search Console de forma independiente.</p>
           ) : null}
         </div>
 
@@ -5030,6 +5044,14 @@ export function CrmIntegrationsClient() {
               </Card>
             </TabsContent>
           </Tabs>
+        </TabsContent>
+
+        <TabsContent value="marketing" className="space-y-4">
+          <CrmMarketingSeoTab />
+        </TabsContent>
+
+        <TabsContent value="google" className="space-y-4">
+          <CrmGoogleChannelConnectors />
         </TabsContent>
 
         <TabsContent value="addons" className="space-y-4">

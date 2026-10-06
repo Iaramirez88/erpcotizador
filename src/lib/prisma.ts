@@ -78,6 +78,14 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasCrmConversationDelegate = typeof (prismaClient as any)?.crmConversation?.findMany === 'function'
   const hasCrmMessageDelegate = typeof (prismaClient as any)?.crmMessage?.findMany === 'function'
   const hasCrmLeadCaptureDelegate = typeof (prismaClient as any)?.crmLeadCapture?.findMany === 'function'
+  const hasCrmMarketingConnectionDelegate = typeof (prismaClient as any)?.crmMarketingConnection?.findMany === 'function'
+  const hasCrmAdCampaignDailyMetricDelegate = typeof (prismaClient as any)?.crmAdCampaignDailyMetric?.findMany === 'function'
+  const hasCrmSeoKeywordDelegate = typeof (prismaClient as any)?.crmSeoKeyword?.findMany === 'function'
+  const hasCrmSeoKeywordSourceFields = runtimeModelHasField(prismaClient, 'CrmSeoKeyword', 'lastSerpCheckedAt')
+  const hasCrmSeoKeywordPositionDelegate = typeof (prismaClient as any)?.crmSeoKeywordPosition?.findMany === 'function'
+  const hasCrmSeoSerpTaskDelegate = typeof (prismaClient as any)?.crmSeoSerpTask?.findMany === 'function'
+  const hasWebsiteSeoAuditDelegate = typeof (prismaClient as any)?.websiteSeoAudit?.findMany === 'function'
+  const hasCrmContentBriefDelegate = typeof (prismaClient as any)?.crmContentBrief?.findMany === 'function'
   const hasLitografiaPaperRequestDelegate = typeof (prismaClient as any)?.litografiaPaperRequest?.findMany === 'function'
   const hasInternalChatThreadDelegate = typeof (prismaClient as any)?.internalChatThread?.findMany === 'function'
   const hasInternalChatParticipantDelegate = typeof (prismaClient as any)?.internalChatParticipant?.findMany === 'function'
@@ -160,6 +168,14 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasCrmConversationDelegate ||
     !hasCrmMessageDelegate ||
     !hasCrmLeadCaptureDelegate ||
+    !hasCrmMarketingConnectionDelegate ||
+    !hasCrmAdCampaignDailyMetricDelegate ||
+    !hasCrmSeoKeywordDelegate ||
+    !hasCrmSeoKeywordSourceFields ||
+    !hasCrmSeoKeywordPositionDelegate ||
+    !hasCrmSeoSerpTaskDelegate ||
+    !hasWebsiteSeoAuditDelegate ||
+    !hasCrmContentBriefDelegate ||
     !hasLitografiaPaperRequestDelegate ||
     !hasInternalChatThreadDelegate ||
     !hasInternalChatParticipantDelegate ||

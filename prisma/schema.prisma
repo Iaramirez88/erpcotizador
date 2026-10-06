@@ -78,7 +78,10 @@ model User {
   crmTaskWorkspaceMemberships CrmTaskWorkspaceMember[] @relation("CrmTaskWorkspaceMemberUser")
   crmTaskAssignments CrmTaskAssignment[] @relation("CrmTaskAssignmentUser")
   crmTaskHistoriesActed CrmTaskHistory[] @relation("CrmTaskHistoryActor")
+  crmGanttPlansCreated CrmGanttPlan[] @relation("CrmGanttPlanCreatedBy")
   crmChannelConnectionsCreated CrmChannelConnection[] @relation("CrmChannelConnectionCreatedBy")
+  crmMarketingConnectionsCreated CrmMarketingConnection[] @relation("CrmMarketingConnectionCreatedBy")
+  crmContentBriefsCreated CrmContentBrief[] @relation("CrmContentBriefCreatedBy")
   crmConversationsAssigned CrmConversation[] @relation("CrmConversationAssignedTo")
   crmMessagesSent CrmMessage[] @relation("CrmMessageSentBy")
   internalChatParticipants InternalChatParticipant[]
@@ -835,10 +838,18 @@ model Empresa {
   crmTaskWorkspaceProjects CrmTaskWorkspaceProject[]
   crmTaskAssignments CrmTaskAssignment[]
   crmTaskHistories CrmTaskHistory[]
+  crmGanttPlans CrmGanttPlan[]
   crmChannelConnections CrmChannelConnection[]
   crmConversations     CrmConversation[]
   crmMessages          CrmMessage[]
   crmLeadCaptures      CrmLeadCapture[]
+  crmMarketingConnections CrmMarketingConnection[]
+  crmAdCampaignDailyMetrics CrmAdCampaignDailyMetric[]
+  crmSeoKeywords CrmSeoKeyword[]
+  crmSeoKeywordPositions CrmSeoKeywordPosition[]
+  crmSeoSerpTasks CrmSeoSerpTask[]
+  websiteSeoAudits WebsiteSeoAudit[]
+  crmContentBriefs CrmContentBrief[]
   internalChatThreads  InternalChatThread[]
   internalChatMessages InternalChatMessage[]
   productTypeOptions ProductTypeOption[]
@@ -2289,6 +2300,9 @@ model WebsiteProject {
 
   pages WebsiteProjectPage[]
   domains WebsiteProjectDomain[]
+  seoKeywords CrmSeoKeyword[]
+  seoAudits WebsiteSeoAudit[]
+  contentBriefs CrmContentBrief[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3044,9 +3058,19 @@ model CrmTask {
   priority    CrmTaskPriority @default(NORMAL)
   attachmentsJson Json @default("[]")
   customFieldsJson Json @default("[]")
+  startAt     DateTime?
   dueAt       DateTime?
   completedAt DateTime?
   archivedAt  DateTime?
+  isMilestone Boolean @default(false)
+  progress    Int @default(0)
+
+  parentTaskId String?
+  parentTask   CrmTask?  @relation("CrmTaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  subtasks     CrmTask[] @relation("CrmTaskHierarchy")
+  predecessorLinks CrmTaskDependency[] @relation("CrmTaskDependencyPredecessor")
+  successorLinks   CrmTaskDependency[] @relation("CrmTaskDependencySuccessor")
+  ganttItems       CrmGanttItem[]
 
   leadId String?
   lead   CrmLead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
@@ -3075,11 +3099,121 @@ model CrmTask {
   @@index([assignedToUserId, status, dueAt])
   @@index([workspaceId, status, dueAt])
   @@index([projectId, status, dueAt])
+  @@index([parentTaskId, status, dueAt])
+  @@index([empresaId, startAt, dueAt])
   @@index([leadId])
   @@index([opportunityId])
   @@index([clienteId])
   @@index([ordenTrabajoId])
   @@map("crm_tasks")
+}
+
+model CrmTaskDependency {
+  id String @id @default(cuid())
+
+  predecessorTaskId String
+  predecessorTask   CrmTask @relation("CrmTaskDependencyPredecessor", fields: [predecessorTaskId], references: [id], onDelete: Cascade)
+
+  successorTaskId String
+  successorTask   CrmTask @relation("CrmTaskDependencySuccessor", fields: [successorTaskId], references: [id], onDelete: Cascade)
+
+  type    String @default("FINISH_TO_START")
+  lagDays Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([predecessorTaskId, successorTaskId])
+  @@index([successorTaskId])
+  @@map("crm_task_dependencies")
+}
+
+model CrmGanttPlan {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  workspaceId String?
+  workspace   CrmTaskWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  projectId String?
+  project   CrmTaskWorkspaceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  name        String
+  description String? @db.Text
+  colorHex    String?
+  archivedAt  DateTime?
+
+  createdById String
+  createdBy   User @relation("CrmGanttPlanCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  items CrmGanttItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, archivedAt, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([projectId, createdAt])
+  @@map("crm_gantt_plans")
+}
+
+model CrmGanttItem {
+  id String @id @default(cuid())
+
+  planId String
+  plan   CrmGanttPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  linkedTaskId String?
+  linkedTask   CrmTask? @relation(fields: [linkedTaskId], references: [id], onDelete: SetNull)
+
+  parentItemId String?
+  parentItem   CrmGanttItem?  @relation("CrmGanttItemHierarchy", fields: [parentItemId], references: [id], onDelete: SetNull)
+  children     CrmGanttItem[] @relation("CrmGanttItemHierarchy")
+
+  title       String
+  description String? @db.Text
+  colorHex    String?
+  status      CrmTaskStatus @default(OPEN)
+  priority    CrmTaskPriority @default(NORMAL)
+  startAt     DateTime
+  dueAt       DateTime
+  progress    Int @default(0)
+  isMilestone Boolean @default(false)
+  sortOrder   Int @default(0)
+
+  predecessorLinks CrmGanttDependency[] @relation("CrmGanttDependencyPredecessor")
+  successorLinks   CrmGanttDependency[] @relation("CrmGanttDependencySuccessor")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([planId, sortOrder])
+  @@index([parentItemId, sortOrder])
+  @@index([linkedTaskId])
+  @@index([startAt, dueAt])
+  @@map("crm_gantt_items")
+}
+
+model CrmGanttDependency {
+  id String @id @default(cuid())
+
+  predecessorItemId String
+  predecessorItem   CrmGanttItem @relation("CrmGanttDependencyPredecessor", fields: [predecessorItemId], references: [id], onDelete: Cascade)
+
+  successorItemId String
+  successorItem   CrmGanttItem @relation("CrmGanttDependencySuccessor", fields: [successorItemId], references: [id], onDelete: Cascade)
+
+  type    String @default("FINISH_TO_START")
+  lagDays Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([predecessorItemId, successorItemId])
+  @@index([successorItemId])
+  @@map("crm_gantt_dependencies")
 }
 
 model CrmTaskWorkspace {
@@ -3105,6 +3239,7 @@ model CrmTaskWorkspace {
   members CrmTaskWorkspaceMember[]
   projects CrmTaskWorkspaceProject[]
   tasks   CrmTask[]
+  ganttPlans CrmGanttPlan[]
   workspaceSedes CrmTaskWorkspaceSede[] @relation("CrmTaskWorkspaceSedeLink")
 
   createdAt DateTime @default(now())
@@ -3149,6 +3284,7 @@ model CrmTaskWorkspaceProject {
   createdBy   User @relation("CrmTaskWorkspaceProjectCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
   tasks CrmTask[]
+  ganttPlans CrmGanttPlan[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3259,6 +3395,232 @@ model CrmChannelConnection {
   @@index([empresaId, sedeId, provider])
   @@index([createdById])
   @@map("crm_channel_connections")
+}
+
+model CrmMarketingConnection {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  name   String @default("Google Marketing")
+  status String @default("DRAFT")
+
+  googleEmail               String?
+  googleAccountId           String?
+  googleAdsCustomerId       String?
+  googleAnalyticsPropertyId String?
+  searchConsoleSiteUrl      String?
+  scopes                    String[] @default([])
+  accessTokenEncrypted      String? @db.Text
+  refreshTokenEncrypted     String? @db.Text
+  tokenExpiresAt            DateTime?
+  settingsJson              Json @default("{}")
+
+  createdById String
+  createdBy   User @relation("CrmMarketingConnectionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  lastSyncAt       DateTime?
+  lastErrorAt      DateTime?
+  lastErrorMessage String? @db.Text
+
+  campaignMetrics CrmAdCampaignDailyMetric[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([createdById])
+  @@map("crm_marketing_connections")
+}
+
+model CrmAdCampaignDailyMetric {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  connectionId String
+  connection   CrmMarketingConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  metricDate  DateTime @db.Date
+  campaignId  String
+  campaignName String
+  campaignStatus String?
+  currencyCode String?
+
+  impressions Int @default(0)
+  clicks      Int @default(0)
+  cost        Float @default(0)
+  conversions Float @default(0)
+  conversionValue Float @default(0)
+
+  crmLeads          Int @default(0)
+  qualifiedLeads    Int @default(0)
+  opportunities     Int @default(0)
+  quotes             Int @default(0)
+  sales              Int @default(0)
+  crmRevenue         Float @default(0)
+  crmGrossProfit     Float @default(0)
+
+  rawJson Json @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([connectionId, metricDate, campaignId])
+  @@index([empresaId, metricDate])
+  @@index([empresaId, campaignId, metricDate])
+  @@map("crm_ad_campaign_daily_metrics")
+}
+
+model CrmSeoKeyword {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  websiteProjectId String?
+  websiteProject   WebsiteProject? @relation(fields: [websiteProjectId], references: [id], onDelete: SetNull)
+
+  domain   String
+  keyword  String
+  country  String @default("COL")
+  locationCode Int?
+  locationName String?
+  language String @default("es")
+  device   String @default("DESKTOP")
+  searchIntent String @default("COMMERCIAL")
+  serviceType String?
+  active   Boolean @default(true)
+
+  latestPosition Float?
+  previousPosition Float?
+  latestUrl String?
+  lastCheckedAt DateTime?
+
+  latestSerpPosition Float?
+  previousSerpPosition Float?
+  latestSerpUrl String?
+  lastSerpCheckedAt DateTime?
+
+  latestSearchConsolePosition Float?
+  previousSearchConsolePosition Float?
+  latestSearchConsoleUrl String?
+  lastSearchConsoleCheckedAt DateTime?
+
+  positions CrmSeoKeywordPosition[]
+  serpTasks CrmSeoSerpTask[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, domain, keyword, country, device])
+  @@index([empresaId, active, updatedAt])
+  @@index([websiteProjectId])
+  @@map("crm_seo_keywords")
+}
+
+model CrmSeoSerpTask {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  keywordId String
+  keyword CrmSeoKeyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  provider String
+  providerTaskId String @unique
+  status String @default("QUEUED")
+  requestedAt DateTime @default(now())
+  completedAt DateTime?
+  costUsd Float?
+  errorMessage String?
+  requestJson Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status, requestedAt])
+  @@index([keywordId, requestedAt])
+  @@map("crm_seo_serp_tasks")
+}
+
+model CrmSeoKeywordPosition {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  keywordId String
+  keyword   CrmSeoKeyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  checkedAt DateTime @default(now())
+  position  Float?
+  resultUrl String?
+  clicks Int?
+  impressions Int?
+  ctr Float?
+  source String @default("SEARCH_CONSOLE")
+  rawJson Json @default("{}")
+
+  @@index([empresaId, checkedAt])
+  @@index([keywordId, checkedAt])
+  @@map("crm_seo_keyword_positions")
+}
+
+model WebsiteSeoAudit {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  websiteProjectId String
+  websiteProject WebsiteProject @relation(fields: [websiteProjectId], references: [id], onDelete: Cascade)
+
+  targetUrl String @db.Text
+  finalUrl String @db.Text
+  statusCode Int?
+  healthScore Int
+  indexable Boolean @default(false)
+  checksJson Json @default("{}")
+  recommendationsJson Json @default("[]")
+  metricsJson Json @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([empresaId, createdAt])
+  @@index([websiteProjectId, createdAt])
+  @@map("website_seo_audits")
+}
+
+model CrmContentBrief {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  websiteProjectId String?
+  websiteProject   WebsiteProject? @relation(fields: [websiteProjectId], references: [id], onDelete: SetNull)
+
+  title          String
+  seedIdea       String @db.Text
+  targetKeyword  String?
+  competitorUrls String[] @default([])
+  status         String @default("IDEA")
+  contentType    String @default("BLOG_POST")
+  generatedContentJson Json @default("{}")
+  generatedText String? @db.Text
+
+  createdById String
+  createdBy   User @relation("CrmContentBriefCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status, updatedAt])
+  @@index([websiteProjectId])
+  @@index([createdById])
+  @@map("crm_content_briefs")
 }
 
 model CrmConversation {
@@ -3380,6 +3742,7 @@ model CrmLeadCapture {
   utmCampaign String?
   utmContent  String?
   utmTerm     String?
+  gclid       String?
 
   landingPageUrl String?
   referrerUrl    String?
@@ -3391,6 +3754,7 @@ model CrmLeadCapture {
   @@index([channelConnectionId, createdAt])
   @@index([leadId, createdAt])
   @@index([conversationId, createdAt])
+  @@index([empresaId, gclid])
   @@map("crm_lead_captures")
 }
 

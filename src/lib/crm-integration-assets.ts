@@ -159,7 +159,8 @@ export function buildWebFormSnippet(args: WebFormSnippetArgs) {
       utmMedium: new URLSearchParams(window.location.search).get('utm_medium') || '',
       utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign') || '',
       utmContent: new URLSearchParams(window.location.search).get('utm_content') || '',
-      utmTerm: new URLSearchParams(window.location.search).get('utm_term') || ''
+      utmTerm: new URLSearchParams(window.location.search).get('utm_term') || '',
+      gclid: new URLSearchParams(window.location.search).get('gclid') || ''
     };
   }
 
@@ -255,7 +256,8 @@ export function buildBookingSnippet(args: BookingSnippetArgs) {
       utmMedium: new URLSearchParams(window.location.search).get('utm_medium') || '',
       utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign') || '',
       utmContent: new URLSearchParams(window.location.search).get('utm_content') || '',
-      utmTerm: new URLSearchParams(window.location.search).get('utm_term') || ''
+      utmTerm: new URLSearchParams(window.location.search).get('utm_term') || '',
+      gclid: new URLSearchParams(window.location.search).get('gclid') || ''
     };
   }
 
