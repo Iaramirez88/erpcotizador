@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import SeoDiagnosticsReport, { type SeoDiagnosticAudit } from './seo-diagnostics-report'
 
 type Position = {
   checkedAt: string
@@ -38,17 +39,7 @@ type SeoKeyword = {
   positions: Position[]
 }
 
-type AuditCheck = { label: string; status: 'PASS' | 'WARN' | 'FAIL' | 'INFO'; value: string; score: number; maxScore: number }
-type SeoAudit = {
-  id: string
-  healthScore: number
-  indexable: boolean
-  statusCode?: number | null
-  createdAt: string
-  checksJson: Record<string, AuditCheck>
-  recommendationsJson: string[]
-  metricsJson: { responseTimeMs?: number; coreWebVitals?: unknown }
-}
+type SeoAudit = SeoDiagnosticAudit
 
 type SerpLocation = { code: number; name: string; countryCode: string; type: string }
 type SeoIntelligence = {
@@ -226,7 +217,7 @@ export default function WebsiteProjectSeoClient({ projectId, defaultSiteUrl }: P
   async function runAudit() {
     try {
       const audit = await requestAction<SeoAudit>('audit', `/api/servicios-web/projects/${projectId}/seo/audit`)
-      toast({ title: `SEO Health Score: ${audit?.healthScore ?? 0}/100`, description: 'Auditoría técnica guardada en el historial.' })
+      toast({ title: `SEO Health Score: ${audit?.healthScore ?? 0}/100`, description: 'Diagnóstico guardado en el historial.' })
     } catch (error) {
       toast({ title: 'No se pudo auditar el sitio', description: error instanceof Error ? error.message : 'Error inesperado', variant: 'destructive' })
     }
@@ -235,7 +226,6 @@ export default function WebsiteProjectSeoClient({ projectId, defaultSiteUrl }: P
   if (loading && !data) return <div className="flex min-h-56 items-center justify-center text-sm text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Cargando SEO...</div>
   if (!data) return null
   const connected = data.connection?.scopes.includes(SEARCH_CONSOLE_SCOPE) || false
-  const latestAudit = data.project.seoAudits[0]
 
   return <div className="space-y-4">
     <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -256,8 +246,8 @@ export default function WebsiteProjectSeoClient({ projectId, defaultSiteUrl }: P
     </Card> : null}
 
     <Card className="rounded-[24px] border-slate-200 shadow-sm">
-      <CardHeader className="border-b border-slate-100"><div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between"><div><CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5" />Auditoría técnica</CardTitle><CardDescription>Analiza indexabilidad, metadatos, estructura, enlaces, imágenes, schema, robots y sitemap.</CardDescription></div><Button onClick={() => void runAudit()} disabled={working === 'audit'}>{working === 'audit' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Activity className="mr-2 h-4 w-4" />}Auditar ahora</Button></div></CardHeader>
-      <CardContent className="p-4">{latestAudit ? <div className="space-y-4"><div className="grid gap-3 sm:grid-cols-4"><div className="rounded-xl border border-slate-200 p-3"><p className="text-xs text-slate-500">SEO Health Score</p><p className="mt-1 text-3xl font-semibold text-slate-950">{latestAudit.healthScore}<span className="text-sm text-slate-400">/100</span></p></div><div className="rounded-xl border border-slate-200 p-3"><p className="text-xs text-slate-500">Indexabilidad</p><p className={`mt-2 font-semibold ${latestAudit.indexable ? 'text-emerald-700' : 'text-rose-700'}`}>{latestAudit.indexable ? 'Indexable' : 'Bloqueada'}</p></div><div className="rounded-xl border border-slate-200 p-3"><p className="text-xs text-slate-500">Estado HTTP</p><p className="mt-2 font-semibold">{latestAudit.statusCode || '—'}</p></div><div className="rounded-xl border border-slate-200 p-3"><p className="text-xs text-slate-500">Respuesta</p><p className="mt-2 font-semibold">{latestAudit.metricsJson.responseTimeMs ?? '—'} ms</p></div></div><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{Object.values(latestAudit.checksJson).map((check) => <div key={check.label} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2"><div className="min-w-0"><p className="text-sm font-medium text-slate-900">{check.label}</p><p className="truncate text-xs text-slate-500">{check.value}</p></div><span className={`text-xs font-semibold ${check.status === 'PASS' ? 'text-emerald-700' : check.status === 'WARN' ? 'text-amber-700' : 'text-rose-700'}`}>{check.score}/{check.maxScore}</span></div>)}</div>{latestAudit.recommendationsJson.length ? <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3"><p className="text-sm font-semibold text-amber-950">Acciones recomendadas</p><ol className="mt-2 space-y-1 text-sm text-amber-900">{latestAudit.recommendationsJson.map((item, index) => <li key={`${item}-${index}`}>{index + 1}. {item}</li>)}</ol></div> : null}{data.project.seoAudits.length > 1 ? <div><p className="mb-2 text-xs font-semibold uppercase text-slate-500">Historial de salud</p><div className="flex h-24 items-end gap-2">{data.project.seoAudits.slice().reverse().map((audit) => <div key={audit.id} className="flex min-w-0 flex-1 flex-col items-center gap-1"><span className="text-[10px] font-semibold text-slate-600">{audit.healthScore}</span><div className="w-full rounded-t bg-emerald-500" style={{ height: `${Math.max(4, audit.healthScore)}%` }} title={`${new Date(audit.createdAt).toLocaleDateString('es-CO')}: ${audit.healthScore}/100`} /></div>)}</div></div> : null}<p className="text-xs text-slate-500">Última auditoría: {new Date(latestAudit.createdAt).toLocaleString('es-CO')} · Core Web Vitals se habilitará al conectar PageSpeed/CrUX.</p></div> : <p className="text-sm text-slate-500">Ejecuta la primera auditoría para generar el SEO Health Score.</p>}</CardContent>
+      <CardHeader className="border-b border-slate-100"><div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between"><div><CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5" />Diagnóstico SEO y rendimiento</CardTitle><CardDescription>Evalúa salud SEO, experiencia móvil, Core Web Vitals, indexabilidad y calidad técnica.</CardDescription></div><Button onClick={() => void runAudit()} disabled={working === 'audit'}>{working === 'audit' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Activity className="mr-2 h-4 w-4" />}Analizar ahora</Button></div></CardHeader>
+      <CardContent className="p-4"><SeoDiagnosticsReport audits={data.project.seoAudits} /></CardContent>
     </Card>
 
     <Card className="rounded-[24px] border-slate-200 shadow-sm">

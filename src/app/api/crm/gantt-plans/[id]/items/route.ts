@@ -84,31 +84,33 @@ export async function POST(request: Request, context: RouteContext) {
       if (!task) return NextResponse.json({ error: 'linkedTaskId inválido' }, { status: 400 })
     }
 
-    const aggregate = await prisma.crmGanttItem.aggregate({
-      where: { planId: plan.id },
-      _max: { sortOrder: true },
-    })
-    const row = await prisma.crmGanttItem.create({
-      data: {
-        planId: plan.id,
-        title,
-        description: description || null,
-        parentItemId: parentItemId || null,
-        linkedTaskId: linkedTaskId || null,
-        startAt,
-        dueAt,
-        isMilestone,
-        progress,
-        status,
-        priority,
-        colorHex: normalizeTaskColorHex(body?.colorHex),
-        sortOrder: (aggregate._max.sortOrder ?? -1) + 1,
-      },
-      include: {
-        linkedTask: { select: { id: true, title: true } },
-        predecessorLinks: true,
-        successorLinks: true,
-      },
+    const row = await prisma.$transaction(async (tx) => {
+      const ordered = await tx.crmGanttItem.findMany({ where: { planId: plan.id }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }], select: { startAt: true } })
+      const insertionIndex = ordered.findIndex((item) => item.startAt > startAt)
+      const sortOrder = insertionIndex === -1 ? ordered.length : insertionIndex
+      await tx.crmGanttItem.updateMany({ where: { planId: plan.id, sortOrder: { gte: sortOrder } }, data: { sortOrder: { increment: 1 } } })
+      return tx.crmGanttItem.create({
+        data: {
+          planId: plan.id,
+          title,
+          description: description || null,
+          parentItemId: parentItemId || null,
+          linkedTaskId: linkedTaskId || null,
+          startAt,
+          dueAt,
+          isMilestone,
+          progress,
+          status,
+          priority,
+          colorHex: normalizeTaskColorHex(body?.colorHex),
+          sortOrder,
+        },
+        include: {
+          linkedTask: { select: { id: true, title: true } },
+          predecessorLinks: true,
+          successorLinks: true,
+        },
+      })
     })
     return NextResponse.json({ success: true, data: row }, { status: 201 })
   } catch (error) {

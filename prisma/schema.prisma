@@ -79,6 +79,10 @@ model User {
   crmTaskAssignments CrmTaskAssignment[] @relation("CrmTaskAssignmentUser")
   crmTaskHistoriesActed CrmTaskHistory[] @relation("CrmTaskHistoryActor")
   crmGanttPlansCreated CrmGanttPlan[] @relation("CrmGanttPlanCreatedBy")
+  crmGanttPlanMemberships CrmGanttPlanMember[]
+  crmGanttItemAssignments CrmGanttItemAssignment[]
+  crmGanttComments CrmGanttItemComment[]
+  crmGanttItemReads CrmGanttItemRead[]
   crmChannelConnectionsCreated CrmChannelConnection[] @relation("CrmChannelConnectionCreatedBy")
   crmMarketingConnectionsCreated CrmMarketingConnection[] @relation("CrmMarketingConnectionCreatedBy")
   crmContentBriefsCreated CrmContentBrief[] @relation("CrmContentBriefCreatedBy")
@@ -839,6 +843,7 @@ model Empresa {
   crmTaskAssignments CrmTaskAssignment[]
   crmTaskHistories CrmTaskHistory[]
   crmGanttPlans CrmGanttPlan[]
+  crmGanttPlanMembers CrmGanttPlanMember[]
   crmChannelConnections CrmChannelConnection[]
   crmConversations     CrmConversation[]
   crmMessages          CrmMessage[]
@@ -2288,6 +2293,7 @@ model WebsiteProject {
   subdomain String? @unique
   primaryDomain String?
   status String @default("DRAFT")
+  trackingOnly Boolean @default(false)
   templateKey String?
   themeJson Json @default("{}")
   seoJson Json @default("{}")
@@ -3149,6 +3155,7 @@ model CrmGanttPlan {
   createdBy   User @relation("CrmGanttPlanCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
   items CrmGanttItem[]
+  members CrmGanttPlanMember[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3182,6 +3189,11 @@ model CrmGanttItem {
   progress    Int @default(0)
   isMilestone Boolean @default(false)
   sortOrder   Int @default(0)
+  attachmentsJson Json @default("[]")
+
+  assignments CrmGanttItemAssignment[]
+  comments CrmGanttItemComment[]
+  reads CrmGanttItemRead[]
 
   predecessorLinks CrmGanttDependency[] @relation("CrmGanttDependencyPredecessor")
   successorLinks   CrmGanttDependency[] @relation("CrmGanttDependencySuccessor")
@@ -3194,6 +3206,79 @@ model CrmGanttItem {
   @@index([linkedTaskId])
   @@index([startAt, dueAt])
   @@map("crm_gantt_items")
+}
+
+model CrmGanttPlanMember {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  planId String
+  plan CrmGanttPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role String @default("COMMENTER")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([planId, userId])
+  @@index([empresaId, userId])
+  @@map("crm_gantt_plan_members")
+}
+
+model CrmGanttItemAssignment {
+  id String @id @default(cuid())
+
+  itemId String
+  item CrmGanttItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([itemId, userId])
+  @@index([userId, createdAt])
+  @@map("crm_gantt_item_assignments")
+}
+
+model CrmGanttItemComment {
+  id String @id @default(cuid())
+
+  itemId String
+  item CrmGanttItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  authorUserId String
+  author User @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
+
+  message String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([itemId, createdAt])
+  @@index([authorUserId, createdAt])
+  @@map("crm_gantt_item_comments")
+}
+
+model CrmGanttItemRead {
+  id String @id @default(cuid())
+
+  itemId String
+  item CrmGanttItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  lastReadAt DateTime @default(now())
+
+  @@unique([itemId, userId])
+  @@index([userId, lastReadAt])
+  @@map("crm_gantt_item_reads")
 }
 
 model CrmGanttDependency {

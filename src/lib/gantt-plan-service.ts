@@ -3,10 +3,23 @@ import { prisma } from '@/lib/prisma'
 export const ganttPlanInclude = {
   workspace: { select: { id: true, name: true } },
   project: { select: { id: true, workspaceId: true, name: true } },
+  members: {
+    orderBy: { createdAt: 'asc' as const },
+    include: { user: { select: { id: true, name: true, email: true, image: true } } },
+  },
   items: {
     orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
     include: {
       linkedTask: { select: { id: true, title: true } },
+      assignments: {
+        orderBy: { createdAt: 'asc' as const },
+        include: { user: { select: { id: true, name: true, email: true, image: true } } },
+      },
+      comments: {
+        orderBy: { createdAt: 'asc' as const },
+        include: { author: { select: { id: true, name: true, email: true, image: true } } },
+      },
+      reads: { select: { userId: true, lastReadAt: true } },
       predecessorLinks: true,
       successorLinks: true,
     },

@@ -74,6 +74,8 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasCrmTaskWorkspaceMemberDelegate = typeof (prismaClient as any)?.crmTaskWorkspaceMember?.findMany === 'function'
   const hasCrmTaskAssignmentDelegate = typeof (prismaClient as any)?.crmTaskAssignment?.findMany === 'function'
   const hasCrmTaskHistoryDelegate = typeof (prismaClient as any)?.crmTaskHistory?.findMany === 'function'
+  const hasCrmGanttPlanMemberDelegate = typeof (prismaClient as any)?.crmGanttPlanMember?.findMany === 'function'
+  const hasCrmGanttItemCommentDelegate = typeof (prismaClient as any)?.crmGanttItemComment?.findMany === 'function'
   const hasCrmChannelConnectionDelegate = typeof (prismaClient as any)?.crmChannelConnection?.findMany === 'function'
   const hasCrmConversationDelegate = typeof (prismaClient as any)?.crmConversation?.findMany === 'function'
   const hasCrmMessageDelegate = typeof (prismaClient as any)?.crmMessage?.findMany === 'function'
@@ -100,6 +102,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasWebsiteServiceReminderLogDelegate = typeof (prismaClient as any)?.websiteServiceReminderLog?.findMany === 'function'
   const hasWebsiteServiceMessageTemplateDelegate = typeof (prismaClient as any)?.websiteServiceMessageTemplate?.findMany === 'function'
   const hasWebsiteProjectDelegate = typeof (prismaClient as any)?.websiteProject?.findMany === 'function'
+  const hasWebsiteProjectTrackingOnly = runtimeModelHasField(prismaClient, 'WebsiteProject', 'trackingOnly')
   const hasWebsiteProjectPageDelegate = typeof (prismaClient as any)?.websiteProjectPage?.findMany === 'function'
   const hasWebsiteProjectPageVersionDelegate = typeof (prismaClient as any)?.websiteProjectPageVersion?.findMany === 'function'
   const hasPlanCatalogSettingDelegate = typeof (prismaClient as any)?.planCatalogSetting?.findMany === 'function'
@@ -164,6 +167,8 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasCrmTaskWorkspaceMemberDelegate ||
     !hasCrmTaskAssignmentDelegate ||
     !hasCrmTaskHistoryDelegate ||
+    !hasCrmGanttPlanMemberDelegate ||
+    !hasCrmGanttItemCommentDelegate ||
     !hasCrmChannelConnectionDelegate ||
     !hasCrmConversationDelegate ||
     !hasCrmMessageDelegate ||
@@ -190,6 +195,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasWebsiteServiceReminderLogDelegate ||
     !hasWebsiteServiceMessageTemplateDelegate ||
     !hasWebsiteProjectDelegate ||
+    !hasWebsiteProjectTrackingOnly ||
     !hasWebsiteProjectPageDelegate ||
     !hasWebsiteProjectPageVersionDelegate ||
     !hasPlanCatalogSettingDelegate ||

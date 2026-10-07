@@ -10,6 +10,7 @@ import {
 import { requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
 import { getGanttPlanTemplate } from '@/lib/gantt-plan-templates'
 import { createGanttPlanFromDraft, ganttPlanInclude } from '@/lib/gantt-plan-service'
+import { getGanttPlanAccess } from '@/lib/gantt-plan-access'
 
 export const runtime = 'nodejs'
 
@@ -29,12 +30,29 @@ export async function GET() {
         OR: [
           { workspaceId: { in: accessibleWorkspaceIds.length ? accessibleWorkspaceIds : ['__none__'] } },
           { workspaceId: null, createdById: access.userId },
+          { members: { some: { userId: access.userId } } },
         ],
       },
       orderBy: [{ updatedAt: 'desc' }],
       include: ganttPlanInclude,
     })
-    return NextResponse.json({ success: true, data: rows })
+    const plans = await Promise.all(rows.map(async (plan) => {
+      const planAccess = await getGanttPlanAccess(plan.id, access.empresaId, access.userId)
+      return {
+        ...plan,
+        canEdit: Boolean(planAccess?.canEdit),
+        items: plan.items.map((item) => {
+          const lastReadAt = item.reads.find((read) => read.userId === access.userId)?.lastReadAt
+          return {
+            ...item,
+            reads: undefined,
+            comments: item.comments.map((comment) => ({ ...comment, isCurrentUser: comment.authorUserId === access.userId })),
+            hasUnreadComments: item.comments.some((comment) => comment.authorUserId !== access.userId && (!lastReadAt || comment.createdAt > lastReadAt)),
+          }
+        }),
+      }
+    }))
+    return NextResponse.json({ success: true, data: plans })
   } catch (error) {
     console.error('Error listando planes Gantt:', error)
     return NextResponse.json({ error: 'Error listando planes Gantt' }, { status: 500 })

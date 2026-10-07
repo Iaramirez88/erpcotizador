@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ChartGantt, Diamond, LayoutTemplate, Plus, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChartGantt, Diamond, Download, FileImage, FileText, LayoutTemplate, Plus, Sparkles, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,6 +22,9 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { GANTT_PLAN_TEMPLATES } from "@/lib/gantt-plan-templates";
+import { CrmGanttTimeline, type GanttScale } from "@/components/crm/crm-gantt-timeline";
+import { GanttItemCollaborationDialog, GanttMembersDialog } from "@/components/crm/crm-gantt-collaboration";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const PLAN_COLORS = ["#0F766E", "#2563EB", "#D97706", "#BE123C", "#7C3AED", "#334155"];
 
@@ -31,7 +34,7 @@ type WorkspaceOption = {
   projects: Array<{ id: string; name: string }>;
 };
 
-type GanttItem = {
+export type GanttItem = {
   id: string;
   title: string;
   description?: string | null;
@@ -44,9 +47,11 @@ type GanttItem = {
   sortOrder: number;
   parentItemId?: string | null;
   linkedTask?: { id: string; title: string } | null;
+  assignments?: Array<{ id: string; userId: string; user: { id: string; name: string | null; email: string | null; image: string | null } }>;
+  hasUnreadComments?: boolean;
 };
 
-type GanttPlan = {
+export type GanttPlan = {
   id: string;
   name: string;
   description?: string | null;
@@ -54,6 +59,8 @@ type GanttPlan = {
   workspace?: { id: string; name: string } | null;
   project?: { id: string; workspaceId: string; name: string } | null;
   items: GanttItem[];
+  members?: Array<{ id: string; userId: string; user: { id: string; name: string | null; email: string | null; image: string | null } }>;
+  canEdit?: boolean;
 };
 
 type ApiResponse<T> = { success?: boolean; data?: T; error?: string };
@@ -65,12 +72,9 @@ function localDateKey(value: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function startOfDay(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
-}
-
-function dayDifference(left: Date, right: Date) {
-  return Math.round((startOfDay(left).getTime() - startOfDay(right).getTime()) / 86_400_000);
+function localDateTimeKey(value: Date) {
+  const offset = value.getTimezoneOffset() * 60_000;
+  return new Date(value.getTime() - offset).toISOString().slice(0, 16);
 }
 
 async function requestJson<T>(url: string, init?: RequestInit) {
@@ -85,12 +89,19 @@ export function CrmGanttPlanner({ workspaces }: { workspaces: WorkspaceOption[] 
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const ganttExportRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState<GanttScale>("DAY");
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
+  const [planEditDialogOpen, setPlanEditDialogOpen] = useState(false);
+  const [editingItemId, setEditingItemId] = useState("");
   const [planCreationMode, setPlanCreationMode] = useState<"BLANK" | "TEMPLATE">("BLANK");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [templateStartDate, setTemplateStartDate] = useState(localDateKey(new Date()));
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [membersDialogOpen, setMembersDialogOpen] = useState(false);
+  const [collaborationItem, setCollaborationItem] = useState<GanttItem | null>(null);
+  const [avatarMode, setAvatarMode] = useState<"HOVER" | "PINNED">(() => typeof window !== "undefined" && window.localStorage.getItem("crm-gantt-avatar-mode") === "PINNED" ? "PINNED" : "HOVER");
   const [planForm, setPlanForm] = useState({
     name: "",
     description: "",
@@ -102,8 +113,8 @@ export function CrmGanttPlanner({ workspaces }: { workspaces: WorkspaceOption[] 
     title: "",
     description: "",
     colorHex: PLAN_COLORS[1],
-    startAt: localDateKey(new Date()),
-    dueAt: localDateKey(new Date()),
+    startAt: localDateTimeKey(new Date()),
+    dueAt: localDateTimeKey(new Date(Date.now() + 60 * 60 * 1000)),
     progress: 0,
     parentItemId: "",
     isMilestone: false,
@@ -114,8 +125,9 @@ export function CrmGanttPlanner({ workspaces }: { workspaces: WorkspaceOption[] 
     workspaceId: "",
     projectId: "",
   });
+  const [planEditForm, setPlanEditForm] = useState({ name: "", description: "", colorHex: PLAN_COLORS[0] });
 
-  async function loadPlans(preferredPlanId?: string) {
+  const loadPlans = useCallback(async (preferredPlanId?: string) => {
     setLoading(true);
     try {
       const json = await requestJson<GanttPlan[]>("/api/crm/gantt-plans");
@@ -132,25 +144,18 @@ export function CrmGanttPlanner({ workspaces }: { workspaces: WorkspaceOption[] 
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     void loadPlans();
-  }, []);
+  }, [loadPlans]);
 
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) || null;
   const linkedWorkspace = workspaces.find((workspace) => workspace.id === planForm.workspaceId) || null;
   const aiLinkedWorkspace = workspaces.find((workspace) => workspace.id === aiForm.workspaceId) || null;
-
-  const timeline = useMemo(() => {
-    const items = selectedPlan?.items || [];
-    const starts = items.map((item) => startOfDay(new Date(item.startAt)));
-    const ends = items.map((item) => startOfDay(new Date(item.dueAt)));
-    const today = startOfDay(new Date());
-    const start = starts.length ? new Date(Math.min(...starts.map((date) => date.getTime()))) : today;
-    const end = ends.length ? new Date(Math.max(...ends.map((date) => date.getTime()))) : new Date(today.getTime() + 86_400_000);
-    return { start, end, totalDays: Math.max(1, dayDifference(end, start) + 1) };
-  }, [selectedPlan]);
+  const refreshSelectedPlan = useCallback(() => {
+    if (selectedPlanId) void loadPlans(selectedPlanId);
+  }, [loadPlans, selectedPlanId]);
 
   async function createPlan() {
     if (planCreationMode === "BLANK" && !planForm.name.trim()) return alert("Escribe el nombre del plan Gantt.");
@@ -197,24 +202,26 @@ export function CrmGanttPlanner({ workspaces }: { workspaces: WorkspaceOption[] 
     }
   }
 
-  async function createItem() {
+  async function saveItem() {
     if (!selectedPlan) return;
     if (!itemForm.title.trim()) return alert("Escribe el nombre de la actividad.");
     setSaving(true);
     try {
-      const json = await requestJson<GanttItem>(`/api/crm/gantt-plans/${selectedPlan.id}/items`, {
-        method: "POST",
+      const itemUrl = editingItemId ? `/api/crm/gantt-plans/${selectedPlan.id}/items/${editingItemId}` : `/api/crm/gantt-plans/${selectedPlan.id}/items`;
+      const json = await requestJson<GanttItem>(itemUrl, {
+        method: editingItemId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(itemForm),
       });
-      if (!json.success || !json.data) return alert(json.error || "No se pudo crear la actividad Gantt.");
+      if (!json.success || !json.data) return alert(json.error || "No se pudo guardar la actividad Gantt.");
       setItemDialogOpen(false);
+      setEditingItemId("");
       setItemForm({
         title: "",
         description: "",
         colorHex: selectedPlan.colorHex || PLAN_COLORS[1],
-        startAt: localDateKey(new Date()),
-        dueAt: localDateKey(new Date()),
+        startAt: localDateTimeKey(new Date()),
+        dueAt: localDateTimeKey(new Date(Date.now() + 60 * 60 * 1000)),
         progress: 0,
         parentItemId: "",
         isMilestone: false,
@@ -223,6 +230,115 @@ export function CrmGanttPlanner({ workspaces }: { workspaces: WorkspaceOption[] 
     } finally {
       setSaving(false);
     }
+  }
+
+  function openNewItem() {
+    const now = new Date();
+    setEditingItemId("");
+    setItemForm({ title: "", description: "", colorHex: selectedPlan?.colorHex || PLAN_COLORS[1], startAt: localDateTimeKey(now), dueAt: localDateTimeKey(new Date(now.getTime() + 60 * 60 * 1000)), progress: 0, parentItemId: "", isMilestone: false });
+    setItemDialogOpen(true);
+  }
+
+  function openEditItem(item: GanttItem) {
+    setEditingItemId(item.id);
+    setItemForm({ title: item.title, description: item.description || "", colorHex: item.colorHex || selectedPlan?.colorHex || PLAN_COLORS[1], startAt: localDateTimeKey(new Date(item.startAt)), dueAt: localDateTimeKey(new Date(item.dueAt)), progress: item.progress, parentItemId: item.parentItemId || "", isMilestone: item.isMilestone });
+    setItemDialogOpen(true);
+  }
+
+  async function duplicateItem(item: GanttItem) {
+    if (!selectedPlan) return;
+    const json = await requestJson<GanttItem>(`/api/crm/gantt-plans/${selectedPlan.id}/items/${item.id}`, { method: "POST" });
+    if (!json.success) return alert(json.error || "No se pudo duplicar la actividad.");
+    await loadPlans(selectedPlan.id);
+  }
+
+  async function deleteItem(item: GanttItem) {
+    if (!selectedPlan || !window.confirm(`¿Eliminar ${item.isMilestone ? "el hito" : "la actividad"} “${item.title}”?`)) return;
+    const json = await requestJson<never>(`/api/crm/gantt-plans/${selectedPlan.id}/items/${item.id}`, { method: "DELETE" });
+    if (!json.success) return alert(json.error || "No se pudo eliminar la actividad.");
+    await loadPlans(selectedPlan.id);
+  }
+
+  async function moveItemDates(item: GanttItem, startAt: Date, dueAt: Date) {
+    if (!selectedPlan?.canEdit) return;
+    const json = await requestJson<GanttItem>(`/api/crm/gantt-plans/${selectedPlan.id}/items/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...item, startAt: startAt.toISOString(), dueAt: dueAt.toISOString() }),
+    });
+    if (!json.success) return alert(json.error || "No se pudieron mover las fechas.");
+    await loadPlans(selectedPlan.id);
+  }
+
+  async function reorderItem(item: GanttItem, targetIndex: number) {
+    if (!selectedPlan?.canEdit) return;
+    const json = await requestJson<never>(`/api/crm/gantt-plans/${selectedPlan.id}/items/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reorderToIndex: targetIndex }),
+    });
+    if (!json.success) return alert(json.error || "No se pudo reordenar la actividad.");
+    await loadPlans(selectedPlan.id);
+  }
+
+  function changeAvatarMode(value: "HOVER" | "PINNED") {
+    setAvatarMode(value);
+    window.localStorage.setItem("crm-gantt-avatar-mode", value);
+  }
+
+  function openEditPlan() {
+    if (!selectedPlan) return;
+    setPlanEditForm({ name: selectedPlan.name, description: selectedPlan.description || "", colorHex: selectedPlan.colorHex || PLAN_COLORS[0] });
+    setPlanEditDialogOpen(true);
+  }
+
+  async function updatePlan() {
+    if (!selectedPlan || !planEditForm.name.trim()) return;
+    setSaving(true);
+    try {
+      const json = await requestJson<GanttPlan>(`/api/crm/gantt-plans/${selectedPlan.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(planEditForm) });
+      if (!json.success) return alert(json.error || "No se pudo actualizar el plan.");
+      setPlanEditDialogOpen(false);
+      await loadPlans(selectedPlan.id);
+    } finally { setSaving(false); }
+  }
+
+  async function duplicatePlan() {
+    if (!selectedPlan) return;
+    const json = await requestJson<GanttPlan>(`/api/crm/gantt-plans/${selectedPlan.id}`, { method: "POST" });
+    if (!json.success || !json.data) return alert(json.error || "No se pudo duplicar el plan.");
+    await loadPlans(json.data.id);
+  }
+
+  async function deletePlan() {
+    if (!selectedPlan || !window.confirm(`¿Eliminar definitivamente el plan “${selectedPlan.name}” y todas sus actividades?`)) return;
+    const json = await requestJson<never>(`/api/crm/gantt-plans/${selectedPlan.id}`, { method: "DELETE" });
+    if (!json.success) return alert(json.error || "No se pudo eliminar el plan.");
+    await loadPlans();
+  }
+
+  async function exportPlan(format: "PNG" | "PDF") {
+    if (!selectedPlan || !ganttExportRef.current) return;
+    const printWindow = format === "PDF" ? window.open("", "_blank") : null;
+    setSaving(true);
+    try {
+      const { toPng } = await import("html-to-image");
+      const node = ganttExportRef.current;
+      const pixelRatio = Math.min(2, Math.max(0.25, 16_000 / node.scrollWidth));
+      const dataUrl = await toPng(node, { backgroundColor: "#ffffff", width: node.scrollWidth, height: node.scrollHeight, pixelRatio });
+      if (format === "PNG") {
+        const link = document.createElement("a");
+        link.download = `${selectedPlan.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "plan-gantt"}.png`;
+        link.href = dataUrl;
+        link.click();
+      } else if (printWindow) {
+        printWindow.document.write(`<!doctype html><html><head><title>${selectedPlan.name}</title><style>@page{size:A3 landscape;margin:10mm}body{margin:0;font-family:Arial,sans-serif}h1{font-size:18px;margin:0 0 12px}img{display:block;width:100%;height:auto}</style></head><body><h1>${selectedPlan.name.replace(/[<>&"]/g, "")}</h1><img src="${dataUrl}" onload="window.print();window.onafterprint=()=>window.close()" /></body></html>`);
+        printWindow.document.close();
+      }
+    } catch (error) {
+      printWindow?.close();
+      alert(error instanceof Error ? error.message : "No se pudo exportar el plan.");
+    } finally { setSaving(false); }
   }
 
   return (
@@ -267,53 +383,27 @@ export function CrmGanttPlanner({ workspaces }: { workspaces: WorkspaceOption[] 
           <Button className="h-9 rounded-lg bg-sky-600 text-white hover:bg-sky-700" onClick={() => setAiDialogOpen(true)}>
             <Sparkles className="mr-2 h-4 w-4" />Crear con IA
           </Button>
-          <Button className="h-9 rounded-lg bg-slate-950 text-white hover:bg-slate-800" disabled={!selectedPlan} onClick={() => setItemDialogOpen(true)}>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="outline" className="h-9 rounded-lg" disabled={!selectedPlan || saving}><Download className="mr-2 h-4 w-4" />Exportar</Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end"><DropdownMenuItem onClick={() => void exportPlan("PNG")}><FileImage className="mr-2 h-4 w-4" />Imagen PNG</DropdownMenuItem><DropdownMenuItem onClick={() => void exportPlan("PDF")}><FileText className="mr-2 h-4 w-4" />PDF / imprimir</DropdownMenuItem></DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant="outline" className="h-9 rounded-lg" disabled={!selectedPlan} onClick={() => setMembersDialogOpen(true)}>
+            <Users className="mr-2 h-4 w-4" />Compartir
+          </Button>
+          <Button className="h-9 rounded-lg bg-slate-950 text-white hover:bg-slate-800" disabled={!selectedPlan} onClick={openNewItem}>
             <Plus className="mr-2 h-4 w-4" />Actividad / hito
           </Button>
         </div>
       </div>
 
       {selectedPlan ? (
-        <div className="min-w-[900px] overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="grid grid-cols-[300px_1fr] border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
-            <div className="border-r border-slate-200 px-3 py-2.5">{selectedPlan.name}</div>
-            <div className="flex items-center justify-between px-3 py-2.5">
-              <span>{timeline.start.toLocaleDateString("es-CO")}</span>
-              <span>{timeline.end.toLocaleDateString("es-CO")}</span>
-            </div>
-          </div>
-          {selectedPlan.items.map((item) => {
-            const itemStart = startOfDay(new Date(item.startAt));
-            const itemEnd = startOfDay(new Date(item.dueAt));
-            const left = (dayDifference(itemStart, timeline.start) / timeline.totalDays) * 100;
-            const width = (Math.max(1, dayDifference(itemEnd, itemStart) + 1) / timeline.totalDays) * 100;
-            return (
-              <div key={item.id} className="grid grid-cols-[300px_1fr] border-b border-slate-100 last:border-b-0">
-                <div className={`truncate border-r border-slate-200 py-2.5 text-xs text-slate-700 ${item.parentItemId ? "pl-9 pr-3" : "px-4"}`}>
-                  {item.parentItemId ? "↳ " : ""}{item.title}
-                  {item.linkedTask ? <span className="ml-2 text-[10px] text-sky-700">Tarea vinculada</span> : null}
-                </div>
-                <div className="relative min-h-10 bg-[linear-gradient(to_right,#f1f5f9_1px,transparent_1px)] bg-[size:10%_100%]">
-                  <span
-                    className={`absolute top-2.5 h-5 overflow-hidden shadow-sm ${item.isMilestone ? "w-5 rotate-45 rounded-sm" : "min-w-2 rounded-sm"}`}
-                    style={{
-                      left: `${Math.max(0, left)}%`,
-                      ...(item.isMilestone ? {} : { width: `${Math.max(0.8, Math.min(100 - Math.max(0, left), width))}%` }),
-                      backgroundColor: item.colorHex || selectedPlan.colorHex || "#0F766E",
-                    }}
-                    title={`${item.title}: ${item.progress}%`}
-                  >
-                    {!item.isMilestone ? <span className="block h-full bg-white/40" style={{ width: `${item.progress}%` }} /> : null}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+        <div className="min-w-0">
+          <CrmGanttTimeline ref={ganttExportRef} plan={selectedPlan} scale={scale} onScaleChange={setScale} avatarMode={avatarMode} onAvatarModeChange={changeAvatarMode} onEditPlan={openEditPlan} onDuplicatePlan={() => void duplicatePlan()} onDeletePlan={() => void deletePlan()} onEditItem={openEditItem} onOpenCollaboration={setCollaborationItem} onMoveItemDates={(item, startAt, dueAt) => void moveItemDates(item, startAt, dueAt)} onReorderItem={(item, targetIndex) => void reorderItem(item, targetIndex)} onDuplicateItem={(item) => void duplicateItem(item)} onDeleteItem={(item) => void deleteItem(item)} />
           {!selectedPlan.items.length ? (
-            <div className="flex flex-col items-center px-4 py-12 text-center">
+            <div className="mt-3 flex flex-col items-center border border-dashed border-slate-300 px-4 py-10 text-center">
               <ChartGantt className="h-8 w-8 text-slate-300" />
               <p className="mt-3 text-sm font-medium text-slate-700">Este plan todavía no tiene actividades.</p>
-              <Button variant="outline" className="mt-3 h-8 rounded-lg text-xs" onClick={() => setItemDialogOpen(true)}>
+              <Button variant="outline" className="mt-3 h-8 rounded-lg text-xs" onClick={openNewItem}>
                 Crear primera actividad
               </Button>
             </div>
@@ -326,6 +416,9 @@ export function CrmGanttPlanner({ workspaces }: { workspaces: WorkspaceOption[] 
           <p className="mt-1 text-xs text-slate-500">Las tareas normales seguirán separadas hasta que decidas vincularlas.</p>
         </div>
       )}
+
+      <GanttMembersDialog plan={selectedPlan} open={membersDialogOpen} onOpenChange={setMembersDialogOpen} />
+      <GanttItemCollaborationDialog plan={selectedPlan} item={collaborationItem} open={Boolean(collaborationItem)} onOpenChange={(open) => { if (!open) setCollaborationItem(null); }} onUpdated={refreshSelectedPlan} />
 
       <Dialog open={planDialogOpen} onOpenChange={setPlanDialogOpen}>
         <DialogContent className={planCreationMode === "TEMPLATE" ? "max-h-[90vh] overflow-y-auto sm:max-w-3xl" : "sm:max-w-xl"}>
@@ -477,16 +570,32 @@ export function CrmGanttPlanner({ workspaces }: { workspaces: WorkspaceOption[] 
         </DialogContent>
       </Dialog>
 
+      <Dialog open={planEditDialogOpen} onOpenChange={setPlanEditDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader><DialogTitle>Editar plan Gantt</DialogTitle><DialogDescription>Actualiza el nombre, contexto general y color principal del plan.</DialogDescription></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2"><Label>Nombre</Label><Input value={planEditForm.name} onChange={(event) => setPlanEditForm((current) => ({ ...current, name: event.target.value }))} /></div>
+            <div className="space-y-2"><Label>Descripción y referencias</Label><Textarea rows={5} value={planEditForm.description} onChange={(event) => setPlanEditForm((current) => ({ ...current, description: event.target.value }))} /></div>
+            <div className="space-y-2"><Label>Color principal</Label><div className="flex flex-wrap gap-2">{PLAN_COLORS.map((color) => <button key={color} type="button" className={`h-8 w-8 rounded-md border-2 ${planEditForm.colorHex === color ? "border-slate-950" : "border-white"}`} style={{ backgroundColor: color }} onClick={() => setPlanEditForm((current) => ({ ...current, colorHex: color }))} aria-label={`Color ${color}`} />)}</div></div>
+          </div>
+          <DialogFooter><Button onClick={() => void updatePlan()} disabled={saving || !planEditForm.name.trim()}>{saving ? "Guardando..." : "Guardar cambios"}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={itemDialogOpen} onOpenChange={setItemDialogOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>Nueva actividad Gantt</DialogTitle>
-            <DialogDescription>Esta actividad solo vive dentro del plan Gantt seleccionado.</DialogDescription>
+            <DialogTitle>{editingItemId ? "Editar actividad Gantt" : "Nueva actividad Gantt"}</DialogTitle>
+            <DialogDescription>Administra tiempos, jerarquía, avance, notas y referencias de esta actividad.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
               <Label>Nombre</Label>
               <Input value={itemForm.title} onChange={(event) => setItemForm((current) => ({ ...current, title: event.target.value }))} />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Notas y referencias</Label>
+              <Textarea rows={4} value={itemForm.description} onChange={(event) => setItemForm((current) => ({ ...current, description: event.target.value }))} placeholder="Contexto, entregables, enlaces, decisiones o referencias..." />
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>Actividad padre (opcional)</Label>
@@ -504,11 +613,11 @@ export function CrmGanttPlanner({ workspaces }: { workspaces: WorkspaceOption[] 
             </div>
             <div className="space-y-2">
               <Label>Inicio</Label>
-              <Input type="date" value={itemForm.startAt} onChange={(event) => setItemForm((current) => ({ ...current, startAt: event.target.value, ...(current.isMilestone ? { dueAt: event.target.value } : {}) }))} />
+              <Input type="datetime-local" value={itemForm.startAt} onChange={(event) => setItemForm((current) => ({ ...current, startAt: event.target.value, ...(current.isMilestone ? { dueAt: event.target.value } : {}) }))} />
             </div>
             <div className="space-y-2">
               <Label>Fin</Label>
-              <Input type="date" value={itemForm.isMilestone ? itemForm.startAt : itemForm.dueAt} min={itemForm.startAt} disabled={itemForm.isMilestone} onChange={(event) => setItemForm((current) => ({ ...current, dueAt: event.target.value }))} />
+              <Input type="datetime-local" value={itemForm.isMilestone ? itemForm.startAt : itemForm.dueAt} min={itemForm.startAt} disabled={itemForm.isMilestone} onChange={(event) => setItemForm((current) => ({ ...current, dueAt: event.target.value }))} />
             </div>
             <div className="space-y-2">
               <Label>Avance: {itemForm.progress}%</Label>
@@ -519,7 +628,7 @@ export function CrmGanttPlanner({ workspaces }: { workspaces: WorkspaceOption[] 
               <Input type="color" value={itemForm.colorHex} onChange={(event) => setItemForm((current) => ({ ...current, colorHex: event.target.value }))} className="h-9 p-1" />
             </div>
           </div>
-          <DialogFooter><Button onClick={() => void createItem()} disabled={saving}>{saving ? "Creando..." : itemForm.isMilestone ? "Crear hito" : "Crear actividad"}</Button></DialogFooter>
+          <DialogFooter><Button onClick={() => void saveItem()} disabled={saving}>{saving ? "Guardando..." : editingItemId ? "Guardar cambios" : itemForm.isMilestone ? "Crear hito" : "Crear actividad"}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

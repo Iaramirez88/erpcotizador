@@ -64,31 +64,25 @@ export async function POST() {
     let analyticsSnapshot: Record<string, unknown> | null = null
 
     if (connection.googleAdsCustomerId && connection.scopes.includes(getGoogleMarketingProductScope('ADS'))) {
-      const developerToken = String(process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '').trim()
-      const apiVersion = String(process.env.GOOGLE_ADS_API_VERSION || 'v20').trim()
-      if (!developerToken) {
-        warnings.push('Falta GOOGLE_ADS_DEVELOPER_TOKEN; Google Ads no fue sincronizado.')
-      } else {
-        const response = await fetch(`https://googleads.googleapis.com/${apiVersion}/customers/${connection.googleAdsCustomerId}/googleAds:searchStream`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'developer-token': developerToken,
-            ...(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ? { 'login-customer-id': String(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID).replace(/\D/g, '') } : {}),
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: 'SELECT segments.date, customer.currency_code, campaign.id, campaign.name, campaign.status, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date DURING LAST_30_DAYS',
-          }),
-          cache: 'no-store',
-        })
-        const payload = (await response.json().catch(() => null)) as Array<{ results?: AdsResult[] }> | { error?: { message?: string } } | null
-        if (!response.ok) {
-          const message = payload && !Array.isArray(payload) ? payload.error?.message : null
-          throw new Error(message || 'Google Ads rechazó la sincronización.')
-        }
-        adsRows = Array.isArray(payload) ? payload.flatMap((batch) => batch.results || []) : []
+      const apiVersion = String(process.env.GOOGLE_ADS_API_VERSION || 'v25').trim()
+      const response = await fetch(`https://googleads.googleapis.com/${apiVersion}/customers/${connection.googleAdsCustomerId}/googleAds:searchStream`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          ...(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ? { 'login-customer-id': String(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID).replace(/\D/g, '') } : {}),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: 'SELECT segments.date, customer.currency_code, campaign.id, campaign.name, campaign.status, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date DURING LAST_30_DAYS',
+        }),
+        cache: 'no-store',
+      })
+      const payload = (await response.json().catch(() => null)) as Array<{ results?: AdsResult[] }> | { error?: { message?: string } } | null
+      if (!response.ok) {
+        const message = payload && !Array.isArray(payload) ? payload.error?.message : null
+        throw new Error(message || 'Google Ads rechazó la sincronización.')
       }
+      adsRows = Array.isArray(payload) ? payload.flatMap((batch) => batch.results || []) : []
     }
 
     if (connection.googleAnalyticsPropertyId && connection.scopes.includes(getGoogleMarketingProductScope('ANALYTICS'))) {

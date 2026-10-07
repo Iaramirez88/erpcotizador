@@ -13,7 +13,7 @@ La pestaña `CRM > Integraciones > Marketing y SEO` conecta una empresa con:
 ## Google Cloud
 
 1. Crea o selecciona un proyecto en Google Cloud.
-2. Habilita Google Ads API, Google Analytics Data API y Google Search Console API.
+2. Habilita Google Ads API, Google Analytics Admin API, Google Analytics Data API y Google Search Console API.
 3. Configura la pantalla de consentimiento OAuth.
 4. Crea un cliente OAuth de tipo Aplicación web.
 5. Registra como redirect URI exacta:
@@ -44,7 +44,14 @@ https://www.googleapis.com/auth/webmasters.readonly
 - ORDEX usa Authorization Code desde backend, `state` firmado con expiración, PKCE S256, verificador cifrado de un solo uso y callback vinculado al usuario que inició la conexión.
 - ORDEX no usa flujo implícito ni WebViews embebidas.
 - En producción, la redirect URI debe usar HTTPS y coincidir exactamente con `GOOGLE_MARKETING_REDIRECT_URI`.
+- En producción configura `APP_URL`, `NEXTAUTH_URL` y `GOOGLE_MARKETING_REDIRECT_URI` con `https://sgdigitalordex.com`; el callback usa el origen de esta última para no redirigir a `localhost` detrás del proxy.
 - Tras desplegar y completar una autorización real, Google puede tardar en recalcular el estado del chequeo del proyecto.
+
+### Acceso a Google Ads API
+
+Google retiró los developer tokens el 9 de septiembre de 2026. ORDEX no envía el header `developer-token` ni utiliza `GOOGLE_ADS_DEVELOPER_TOKEN`.
+
+El acceso ahora pertenece al proyecto de Google Cloud que contiene el cliente OAuth. En **Google Cloud Console > Google Ads API > Overview**, verifica o solicita el nivel Explorer, Basic o Standard requerido. Un proyecto nuevo empieza con acceso de prueba y no puede consultar cuentas productivas hasta recibir el nivel correspondiente.
 
 ### PageSpeed Insights
 
@@ -60,10 +67,9 @@ PageSpeed utiliza una API key independiente del cliente OAuth:
 ```bash
 GOOGLE_MARKETING_CLIENT_ID="..."
 GOOGLE_MARKETING_CLIENT_SECRET="..."
-GOOGLE_MARKETING_REDIRECT_URI="https://TU_DOMINIO/api/oauth/google-marketing/callback"
-GOOGLE_ADS_DEVELOPER_TOKEN="..."
+GOOGLE_MARKETING_REDIRECT_URI="https://sgdigitalordex.com/api/oauth/google-marketing/callback"
 GOOGLE_ADS_LOGIN_CUSTOMER_ID="" # Opcional: MCC, solo números
-GOOGLE_ADS_API_VERSION="v20"
+GOOGLE_ADS_API_VERSION="v25"
 PAGESPEED_API_KEY="..."
 ```
 
@@ -84,8 +90,8 @@ En producción, ejecútala mediante el flujo normal de despliegue antes de abrir
 
 1. Abre `CRM > Integraciones > Marketing y SEO`.
 2. Selecciona **Conectar Google** y autoriza la cuenta propietaria de los recursos.
-3. Registra el Customer ID de Ads, Property ID de GA4 y la propiedad exacta de Search Console.
-4. Usa **Sincronizar datos** para Ads y GA4.
+3. ORDEX consulta automáticamente las cuentas Ads, propiedades GA4 y propiedades Search Console disponibles. Si existe una sola opción, queda seleccionada; si existen varias, elige cada una en su selector y pulsa **Guardar selección**.
+4. Usa **Buscar cuentas** para refrescar la lista y **Sincronizar datos** para traer Ads y GA4.
 5. Agrega palabras clave y usa **Actualizar** para consultar Search Console.
 
 La propiedad de Search Console puede ser una URL (`https://cliente.com/`) o una propiedad de dominio (`sc-domain:cliente.com`).

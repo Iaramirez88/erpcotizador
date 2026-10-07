@@ -60,6 +60,13 @@ type Overview = {
 }
 
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
+type GoogleResources = {
+  ads: Array<{ id: string; name: string; manager: boolean; currencyCode?: string | null }>
+  analytics: Array<{ id: string; name: string; accountName: string }>
+  searchConsole: Array<{ siteUrl: string; permissionLevel?: string | null }>
+  selected: { googleAdsCustomerId?: string | null; googleAnalyticsPropertyId?: string | null; searchConsoleSiteUrl?: string | null }
+  warnings: string[]
+}
 
 function formatNumber(value: number | null | undefined) {
   return new Intl.NumberFormat('es-CO', { maximumFractionDigits: 1 }).format(value || 0)
@@ -76,6 +83,8 @@ export function CrmMarketingSeoTab() {
   const [loadError, setLoadError] = useState('')
   const [working, setWorking] = useState('')
   const [settings, setSettings] = useState({ googleAdsCustomerId: '', googleAnalyticsPropertyId: '', searchConsoleSiteUrl: '' })
+  const [googleResources, setGoogleResources] = useState<GoogleResources | null>(null)
+  const [discoveredConnectionId, setDiscoveredConnectionId] = useState('')
   const [keywordForm, setKeywordForm] = useState({ websiteProjectId: '', domain: '', keyword: '', device: 'DESKTOP' })
   const [contentForm, setContentForm] = useState({ websiteProjectId: '', seedIdea: '', targetKeyword: '', contentType: 'BLOG_POST', competitorUrls: '' })
 
@@ -100,6 +109,36 @@ export function CrmMarketingSeoTab() {
   }, [])
 
   useEffect(() => { void loadOverview() }, [loadOverview])
+
+  const discoverGoogleResources = useCallback(async (showToast: boolean) => {
+    setWorking('resources')
+    try {
+      const response = await fetch('/api/crm/marketing/google/resources', { method: 'POST' })
+      const json = await response.json() as JsonResponse<GoogleResources>
+      if (!response.ok || !json.data) throw new Error(json.error || 'No se pudieron consultar las cuentas disponibles.')
+      setGoogleResources(json.data)
+      setSettings((current) => ({
+        googleAdsCustomerId: json.data?.selected.googleAdsCustomerId || current.googleAdsCustomerId,
+        googleAnalyticsPropertyId: json.data?.selected.googleAnalyticsPropertyId || current.googleAnalyticsPropertyId,
+        searchConsoleSiteUrl: json.data?.selected.searchConsoleSiteUrl || current.searchConsoleSiteUrl,
+      }))
+      if (showToast) toast({
+        title: 'Cuentas de Google actualizadas',
+        description: json.data.warnings[0] || `${json.data.ads.length} Ads · ${json.data.analytics.length} Analytics · ${json.data.searchConsole.length} Search Console`,
+      })
+    } catch (error) {
+      if (showToast) toast({ title: 'No se pudieron buscar las cuentas', description: error instanceof Error ? error.message : 'Error inesperado', variant: 'destructive' })
+    } finally {
+      setWorking('')
+    }
+  }, [toast])
+
+  useEffect(() => {
+    const connectionId = overview?.connection?.status === 'ACTIVE' ? overview.connection.id : ''
+    if (!connectionId || connectionId === discoveredConnectionId) return
+    setDiscoveredConnectionId(connectionId)
+    void discoverGoogleResources(false)
+  }, [discoverGoogleResources, discoveredConnectionId, overview?.connection?.id, overview?.connection?.status])
 
   async function saveSettings() {
     setWorking('settings')
@@ -242,11 +281,12 @@ export function CrmMarketingSeoTab() {
           ))}
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <div><Label>Customer ID de Google Ads</Label><Input value={settings.googleAdsCustomerId} onChange={(event) => setSettings((current) => ({ ...current, googleAdsCustomerId: event.target.value }))} placeholder="123-456-7890" className="mt-1.5" /></div>
-          <div><Label>Property ID de GA4</Label><Input value={settings.googleAnalyticsPropertyId} onChange={(event) => setSettings((current) => ({ ...current, googleAnalyticsPropertyId: event.target.value }))} placeholder="123456789" className="mt-1.5" /></div>
-          <div><Label>Propiedad de Search Console</Label><Input value={settings.searchConsoleSiteUrl} onChange={(event) => setSettings((current) => ({ ...current, searchConsoleSiteUrl: event.target.value }))} placeholder="sc-domain:cliente.com" className="mt-1.5" /></div>
+          <div><Label>Cuenta de Google Ads</Label>{googleResources?.ads.length ? <Select value={settings.googleAdsCustomerId} onValueChange={(value) => setSettings((current) => ({ ...current, googleAdsCustomerId: value }))}><SelectTrigger className="mt-1.5"><SelectValue placeholder="Selecciona una cuenta" /></SelectTrigger><SelectContent>{googleResources.ads.map((account) => <SelectItem key={account.id} value={account.id}>{account.name} · {account.id}{account.manager ? ' · MCC' : ''}</SelectItem>)}</SelectContent></Select> : <Input value={settings.googleAdsCustomerId} onChange={(event) => setSettings((current) => ({ ...current, googleAdsCustomerId: event.target.value }))} placeholder={working === 'resources' ? 'Buscando cuentas...' : 'Sin cuentas disponibles'} className="mt-1.5" />}</div>
+          <div><Label>Propiedad de Google Analytics</Label>{googleResources?.analytics.length ? <Select value={settings.googleAnalyticsPropertyId} onValueChange={(value) => setSettings((current) => ({ ...current, googleAnalyticsPropertyId: value }))}><SelectTrigger className="mt-1.5"><SelectValue placeholder="Selecciona una propiedad" /></SelectTrigger><SelectContent>{googleResources.analytics.map((property) => <SelectItem key={property.id} value={property.id}>{property.name} · {property.accountName}</SelectItem>)}</SelectContent></Select> : <Input value={settings.googleAnalyticsPropertyId} onChange={(event) => setSettings((current) => ({ ...current, googleAnalyticsPropertyId: event.target.value }))} placeholder={working === 'resources' ? 'Buscando propiedades...' : 'Sin propiedades disponibles'} className="mt-1.5" />}</div>
+          <div><Label>Propiedad de Search Console</Label>{googleResources?.searchConsole.length ? <Select value={settings.searchConsoleSiteUrl} onValueChange={(value) => setSettings((current) => ({ ...current, searchConsoleSiteUrl: value }))}><SelectTrigger className="mt-1.5"><SelectValue placeholder="Selecciona una propiedad" /></SelectTrigger><SelectContent>{googleResources.searchConsole.map((site) => <SelectItem key={site.siteUrl} value={site.siteUrl}>{site.siteUrl}</SelectItem>)}</SelectContent></Select> : <Input value={settings.searchConsoleSiteUrl} onChange={(event) => setSettings((current) => ({ ...current, searchConsoleSiteUrl: event.target.value }))} placeholder={working === 'resources' ? 'Buscando propiedades...' : 'Sin propiedades disponibles'} className="mt-1.5" />}</div>
         </div>
-        <div className="mt-3 flex justify-end"><Button variant="outline" onClick={() => void saveSettings()} disabled={!connected || working === 'settings'}>{working === 'settings' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Guardar propiedades</Button></div>
+        {googleResources?.warnings.length ? <div className="mt-3 border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">{googleResources.warnings.join(' ')}</div> : null}
+        <div className="mt-3 flex flex-wrap justify-end gap-2"><Button variant="ghost" onClick={() => void discoverGoogleResources(true)} disabled={!connected || working === 'resources'}><RefreshCw className={`mr-2 h-4 w-4 ${working === 'resources' ? 'animate-spin' : ''}`} />Buscar cuentas</Button><Button variant="outline" onClick={() => void saveSettings()} disabled={!connected || working === 'settings'}>{working === 'settings' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Guardar selección</Button></div>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">

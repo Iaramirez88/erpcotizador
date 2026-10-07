@@ -49,7 +49,7 @@ export async function GET() {
   }
 
   const projects = await prisma.websiteProject.findMany({
-    where: { empresaId: guard.access.empresaId },
+    where: { empresaId: guard.access.empresaId, trackingOnly: false },
     orderBy: [{ updatedAt: 'desc' }],
     select: {
       id: true,

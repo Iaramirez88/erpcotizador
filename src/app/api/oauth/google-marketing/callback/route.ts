@@ -12,12 +12,23 @@ import {
 import { parseJsonObject } from '@/lib/crm-omnichannel'
 import { prisma } from '@/lib/prisma'
 import { resolveUserIdFromSession } from '@/lib/session-user'
+import { getRequestBaseUrl } from '@/lib/app-url'
 
 export const runtime = 'nodejs'
 
+function publicCallbackOrigin(request: Request) {
+  const configuredRedirect = String(process.env.GOOGLE_MARKETING_REDIRECT_URI || '').trim()
+  try {
+    if (configuredRedirect) return new URL(configuredRedirect).origin
+  } catch {
+    // La validación principal de esta variable ocurre al iniciar OAuth.
+  }
+  return getRequestBaseUrl(request) || new URL(request.url).origin
+}
+
 function dashboardRedirect(request: Request, status: 'connected' | 'error', message?: string, returnTo?: string) {
   const safeReturnTo = returnTo?.startsWith('/dashboard/') && !returnTo.startsWith('//') ? returnTo : '/dashboard/crm/integraciones'
-  const url = new URL(safeReturnTo, new URL(request.url).origin)
+  const url = new URL(safeReturnTo, publicCallbackOrigin(request))
   if (!returnTo) url.searchParams.set('view', 'marketing')
   url.searchParams.set('googleMarketing', status)
   if (message) url.searchParams.set('message', message)
