@@ -138,6 +138,23 @@ export async function collectSerpResults(options?: { empresaId?: string; limit?:
   return { inspected: tasks.length, completed, pending, failed, costUsd }
 }
 
+export async function runImmediateSerpCheck(keyword: TrackableKeyword) {
+  const provider = getSerpProvider()
+  if (!provider.isConfigured()) throw new Error('DataForSEO no está configurado en este entorno.')
+  const budget = await getSerpBudgetUsage()
+  if (budget.remainingUsd < budget.estimatedCostPerSerpUsd) throw new Error(`Se alcanzó el presupuesto mensual de DataForSEO (US$${budget.budgetUsd.toFixed(2)}).`)
+  const request: SerpCheckRequest = { trackingId: keyword.id, keyword: keyword.keyword, targetDomain: keyword.domain, country: keyword.country, locationCode: keyword.locationCode, locationName: keyword.locationName, languageCode: keyword.language, device: keyword.device === 'MOBILE' ? 'MOBILE' : 'DESKTOP', depth: 100 }
+  const [result, volumeResult] = await Promise.all([provider.checkLive(request), provider.getSearchVolume(request).catch(() => null)])
+  const searchVolume = typeof volumeResult === 'number' ? volumeResult : null
+  const raw = { ...result.raw, searchVolume, searchVolumeSource: 'DATAFORSEO_GOOGLE_ADS' }
+  await prisma.$transaction([
+    prisma.crmSeoKeywordPosition.create({ data: { empresaId: keyword.empresaId, keywordId: keyword.id, checkedAt: result.checkedAt, position: result.position, resultUrl: result.resultUrl, source: provider.name, rawJson: raw as Prisma.InputJsonValue } }),
+    prisma.crmSeoKeyword.update({ where: { id: keyword.id }, data: { previousPosition: null, latestPosition: result.position, latestUrl: result.resultUrl, lastCheckedAt: result.checkedAt, previousSerpPosition: null, latestSerpPosition: result.position, latestSerpUrl: result.resultUrl, lastSerpCheckedAt: result.checkedAt } }),
+    prisma.crmSeoSerpTask.create({ data: { empresaId: keyword.empresaId, keywordId: keyword.id, provider: `${provider.name}_LIVE`, providerTaskId: `live:${keyword.id}:${Date.now()}`, status: 'COMPLETED', requestedAt: result.checkedAt, completedAt: new Date(), costUsd: result.costUsd, requestJson: request as unknown as Prisma.InputJsonValue } }),
+  ])
+  return { position: result.position, resultUrl: result.resultUrl, searchVolume, checkedAt: result.checkedAt }
+}
+
 export async function findDueSeoKeywords(options?: { empresaId?: string; days?: number; limit?: number }) {
   const cutoff = new Date(Date.now() - (options?.days || 7) * 24 * 60 * 60 * 1000)
   return prisma.crmSeoKeyword.findMany({

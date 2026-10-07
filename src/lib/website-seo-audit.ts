@@ -1,6 +1,6 @@
 import { load } from 'cheerio'
 import { fetchPublicHtml } from '@/lib/public-http'
-import { getPageSpeedInsights } from '@/lib/website-performance'
+import { getPageSpeedInsights, type PageSpeedStrategy } from '@/lib/website-performance'
 
 type CheckStatus = 'PASS' | 'WARN' | 'FAIL' | 'INFO'
 type AuditCheck = { label: string; status: CheckStatus; value: string; score: number; maxScore: number }
@@ -45,7 +45,9 @@ async function inspectRobotsAndSitemap(pageUrl: string) {
   return { robotsFound, sitemapFound, sitemapUrl, blocksAll }
 }
 
-export async function auditWebsitePage(targetUrl: string) {
+export async function auditWebsitePage(targetUrl: string, options: { mode?: 'SEO' | 'PERFORMANCE'; strategy?: PageSpeedStrategy } = {}) {
+  const mode = options.mode || 'SEO'
+  const strategy = options.strategy || 'mobile'
   const page = await fetchPublicHtml(targetUrl, { userAgent: 'SGDigital-SEOAudit/1.0', maxBytes: 1_500_000, timeoutMs: 20_000 })
   const $ = load(page.html)
   const title = cleanText($('title').first().text())
@@ -80,7 +82,7 @@ export async function auditWebsitePage(targetUrl: string) {
   let pageSpeedError: string | null = null
   const [{ robotsFound, sitemapFound, sitemapUrl, blocksAll }, pageSpeed] = await Promise.all([
     inspectRobotsAndSitemap(page.url),
-    getPageSpeedInsights(page.url).catch((error) => {
+    (mode === 'PERFORMANCE' ? getPageSpeedInsights(page.url, strategy) : Promise.resolve(null)).catch((error) => {
       pageSpeedError = error instanceof Error ? error.message.slice(0, 500) : 'PageSpeed no disponible.'
       return null
     }),
@@ -104,16 +106,16 @@ export async function auditWebsitePage(targetUrl: string) {
     internalLinks: makeCheck('Enlaces internos', internalLinks > 0, String(internalLinks), 5),
     schema: makeCheck('Datos estructurados', schemaTypes.size > 0 && invalidSchemaBlocks === 0, schemaTypes.size ? Array.from(schemaTypes).join(', ') : 'Ausentes', 5, schemaTypes.size > 0),
     wordCount: makeCheck('Contenido', words >= 300, `${words} palabras`, 5, words >= 150),
-    pageSpeed: pageSpeed
-      ? { label: 'PageSpeed móvil', status: (pageSpeed.scores.performance || 0) >= 90 ? 'PASS' : (pageSpeed.scores.performance || 0) >= 50 ? 'WARN' : 'FAIL', value: `${pageSpeed.scores.performance ?? '—'}/100`, score: 0, maxScore: 0 }
-      : { label: 'PageSpeed móvil', status: 'INFO', value: pageSpeedError || 'API pendiente de configuración', score: 0, maxScore: 0 },
+    ...(mode === 'PERFORMANCE' ? { pageSpeed: pageSpeed
+      ? { label: `PageSpeed ${strategy === 'mobile' ? 'móvil' : 'escritorio'}`, status: (pageSpeed.scores.performance || 0) >= 90 ? 'PASS' : (pageSpeed.scores.performance || 0) >= 50 ? 'WARN' : 'FAIL', value: `${pageSpeed.scores.performance ?? '—'}/100`, score: 0, maxScore: 0 }
+      : { label: `PageSpeed ${strategy === 'mobile' ? 'móvil' : 'escritorio'}`, status: 'INFO' as const, value: pageSpeedError || 'API pendiente de configuración', score: 0, maxScore: 0 } } : {}),
   }
   const healthScore = Object.values(checks).reduce((sum, check) => sum + check.score, 0)
   const recommendations = Object.values(checks)
     .filter((check) => (check.status === 'FAIL' || check.status === 'WARN') && check.maxScore > 0)
     .map((check) => `${check.label}: ${check.value}.`)
   if (pageSpeed?.scores.performance != null && pageSpeed.scores.performance < 90) {
-    recommendations.push(`Rendimiento móvil: PageSpeed obtuvo ${pageSpeed.scores.performance}/100; revisa las oportunidades de Lighthouse.`)
+    recommendations.push(`Rendimiento ${strategy === 'mobile' ? 'móvil' : 'de escritorio'}: PageSpeed obtuvo ${pageSpeed.scores.performance}/100; aplica primero las oportunidades con menor puntuación.`)
   }
 
   return {
@@ -125,6 +127,7 @@ export async function auditWebsitePage(targetUrl: string) {
     checks,
     recommendations,
     metrics: {
+      auditType: mode,
       title,
       metaDescription,
       h1,

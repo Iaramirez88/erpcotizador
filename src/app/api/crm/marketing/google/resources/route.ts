@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma'
 export const runtime = 'nodejs'
 
 type GoogleErrorPayload = { error?: { message?: string } }
-type AdsCustomer = { id: string; name: string; manager: boolean; currencyCode?: string | null }
+type AdsCustomer = { id: string; name: string; manager: boolean; currencyCode?: string | null; warning?: string }
 type AnalyticsProperty = { id: string; name: string; accountName: string }
 type SearchConsoleSite = { siteUrl: string; permissionLevel?: string | null }
 
@@ -39,8 +39,8 @@ async function discoverAds(accessToken: string): Promise<AdsCustomer[]> {
       const detail = await responsePayload<{ results?: Array<{ customer?: { descriptiveName?: string; currencyCode?: string; manager?: boolean } }> }>(detailResponse, 'No se pudo leer el detalle de la cuenta.')
       const customer = detail.results?.[0]?.customer
       return { id, name: customer?.descriptiveName || `Cuenta ${id}`, manager: Boolean(customer?.manager), currencyCode: customer?.currencyCode || null }
-    } catch {
-      return { id, name: `Cuenta ${id}`, manager: false, currencyCode: null }
+    } catch (error) {
+      return { id, name: `Cuenta ${id}`, manager: false, currencyCode: null, warning: error instanceof Error ? error.message : 'No se pudo consultar el detalle.' }
     }
   }))
 }
@@ -84,7 +84,11 @@ export async function POST() {
     let analytics: AnalyticsProperty[] = []
     let searchConsole: SearchConsoleSite[] = []
     const tasks: Promise<void>[] = []
-    if (connection.scopes.includes(getGoogleMarketingProductScope('ADS'))) tasks.push(discoverAds(accessToken).then((items) => { ads = items }).catch((error) => { warnings.push(`Google Ads: ${error instanceof Error ? error.message : 'No disponible.'}`) }))
+    if (connection.scopes.includes(getGoogleMarketingProductScope('ADS'))) tasks.push(discoverAds(accessToken).then((items) => {
+      ads = items
+      const detailWarning = items.find((item) => item.warning)?.warning
+      if (detailWarning) warnings.push(`Google Ads: ${detailWarning}`)
+    }).catch((error) => { warnings.push(`Google Ads: ${error instanceof Error ? error.message : 'No disponible.'}`) }))
     if (connection.scopes.includes(getGoogleMarketingProductScope('ANALYTICS'))) tasks.push(discoverAnalytics(accessToken).then((items) => { analytics = items }).catch((error) => { warnings.push(`Google Analytics: ${error instanceof Error ? error.message : 'No disponible.'}`) }))
     if (connection.scopes.includes(getGoogleMarketingProductScope('SEARCH_CONSOLE'))) tasks.push(discoverSearchConsole(accessToken).then((items) => { searchConsole = items }).catch((error) => { warnings.push(`Search Console: ${error instanceof Error ? error.message : 'No disponible.'}`) }))
     await Promise.all(tasks)

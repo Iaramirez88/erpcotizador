@@ -7,7 +7,7 @@ import { requireWebsiteBuilderAccess } from '@/lib/website-builder-server'
 
 export const runtime = 'nodejs'
 
-export async function POST(_request: Request, context: { params: Promise<{ projectId: string }> }) {
+export async function POST(request: Request, context: { params: Promise<{ projectId: string }> }) {
   try {
     const guard = await requireWebsiteBuilderAccess()
     if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
@@ -20,7 +20,10 @@ export async function POST(_request: Request, context: { params: Promise<{ proje
     const targetUrl = String(parseJsonObject(project.seoJson).siteUrl || '').trim()
     if (!targetUrl) return NextResponse.json({ error: 'Guarda primero la URL pública del sitio.' }, { status: 409 })
 
-    const audit = await auditWebsitePage(targetUrl)
+    const body = await request.json().catch(() => null) as Record<string, unknown> | null
+    const mode = body?.mode === 'PERFORMANCE' ? 'PERFORMANCE' : 'SEO'
+    const strategy = body?.strategy === 'desktop' ? 'desktop' : 'mobile'
+    const audit = await auditWebsitePage(targetUrl, { mode, strategy })
     const saved = await prisma.websiteSeoAudit.create({
       data: {
         empresaId: guard.access.empresaId!,

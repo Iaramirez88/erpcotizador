@@ -27,7 +27,13 @@ export async function syncWebsiteProjectSearchConsole(args: { empresaId: string;
     signal: AbortSignal.timeout(45_000),
   })
   const payload = await response.json().catch(() => ({})) as { rows?: Array<{ keys?: string[]; clicks?: number; impressions?: number; ctr?: number; position?: number }>; error?: { message?: string } }
-  if (!response.ok) throw new Error(payload.error?.message || 'Search Console rechazó la consulta.')
+  if (!response.ok) {
+    const googleMessage = payload.error?.message || ''
+    if (/insufficient permission|permission/i.test(googleMessage)) {
+      throw new Error(`La cuenta ${connection.googleEmail || 'Google conectada'} no tiene acceso a ${propertyUrl}. Agrégala en Search Console > Configuración > Usuarios y permisos con acceso completo, o selecciona una propiedad que esa cuenta administre.`)
+    }
+    throw new Error(googleMessage || 'Search Console rechazó la consulta.')
+  }
   const byQuery = new Map<string, NonNullable<typeof payload.rows>[number]>()
   for (const row of payload.rows || []) {
     const query = String(row.keys?.[0] || '').trim().toLowerCase()

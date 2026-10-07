@@ -2,9 +2,11 @@ import { AlertTriangle, CheckCircle2, Gauge, Info, XCircle } from 'lucide-react'
 
 type DiagnosticCheck = { label: string; status: 'PASS' | 'WARN' | 'FAIL' | 'INFO'; value: string; score: number; maxScore: number }
 type PageSpeedData = {
+  strategy?: 'mobile' | 'desktop'
   scores?: { performance?: number | null; seo?: number | null; accessibility?: number | null; bestPractices?: number | null }
   lab?: { largestContentfulPaintMs?: number | null; cumulativeLayoutShift?: number | null }
   field?: { largestContentfulPaintMs?: number | null; interactionToNextPaintMs?: number | null; cumulativeLayoutShift?: number | null; overallCategory?: string | null }
+  opportunities?: Array<{ id: string; title: string; description?: string | null; displayValue?: string | null; score?: number | null; steps: string[] }>
 }
 export type SeoDiagnosticAudit = {
   id: string
@@ -14,7 +16,7 @@ export type SeoDiagnosticAudit = {
   createdAt: string
   checksJson: Record<string, DiagnosticCheck>
   recommendationsJson: string[]
-  metricsJson: { responseTimeMs?: number; pageSpeed?: PageSpeedData | null }
+  metricsJson: { auditType?: 'SEO' | 'PERFORMANCE'; responseTimeMs?: number; pageSpeed?: PageSpeedData | null }
 }
 
 function scoreColor(value: number | null) {
@@ -59,9 +61,9 @@ const statusMeta = {
   INFO: { label: 'Informativos', icon: Info, className: 'text-sky-700 bg-sky-50 border-sky-200' },
 } as const
 
-export default function SeoDiagnosticsReport({ audits }: { audits: SeoDiagnosticAudit[] }) {
+export default function SeoDiagnosticsReport({ audits, mode }: { audits: SeoDiagnosticAudit[]; mode: 'SEO' | 'PERFORMANCE' }) {
   const latest = audits[0]
-  if (!latest) return <div className="grid min-h-48 place-items-center border border-dashed border-slate-300 p-6 text-center"><div><Gauge className="mx-auto h-7 w-7 text-slate-400" /><p className="mt-3 text-sm font-medium text-slate-700">Ejecuta el primer diagnóstico para medir SEO y rendimiento.</p></div></div>
+  if (!latest) return <div className="grid min-h-48 place-items-center border border-dashed border-slate-300 p-6 text-center"><div><Gauge className="mx-auto h-7 w-7 text-slate-400" /><p className="mt-3 text-sm font-medium text-slate-700">Ejecuta la primera consulta de {mode === 'SEO' ? 'SEO técnico' : 'rendimiento'}.</p></div></div>
   const pageSpeed = latest.metricsJson.pageSpeed
   const scores = pageSpeed?.scores
   const lcp = pageSpeed?.field?.largestContentfulPaintMs ?? pageSpeed?.lab?.largestContentfulPaintMs ?? null
@@ -69,15 +71,18 @@ export default function SeoDiagnosticsReport({ audits }: { audits: SeoDiagnostic
   const cls = pageSpeed?.field?.cumulativeLayoutShift ?? pageSpeed?.lab?.cumulativeLayoutShift ?? null
   const checks = Object.values(latest.checksJson)
 
-  return <div className="space-y-6">
-    <div className="grid gap-6 border-b border-slate-100 pb-6 sm:grid-cols-2 lg:grid-cols-4">
-      <ScoreRing label="Salud SEO" value={latest.healthScore} />
-      <ScoreRing label="Rendimiento" value={scores?.performance ?? null} />
-      <ScoreRing label="Accesibilidad" value={scores?.accessibility ?? null} />
-      <ScoreRing label="Buenas prácticas" value={scores?.bestPractices ?? null} />
+  if (mode === 'PERFORMANCE') {
+    const opportunities = pageSpeed?.opportunities || []
+    return <div className="space-y-6">
+      <div className="grid gap-6 border-b border-slate-100 pb-6 sm:grid-cols-3"><ScoreRing label="Rendimiento" value={scores?.performance ?? null} /><ScoreRing label="Accesibilidad" value={scores?.accessibility ?? null} /><ScoreRing label="Buenas prácticas" value={scores?.bestPractices ?? null} /></div>
+      <div><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-semibold text-slate-950">Core Web Vitals</h3><p className="text-xs text-slate-500">Datos de campo cuando existen; en caso contrario se muestran métricas de laboratorio.</p></div><span className="text-xs font-medium text-slate-500">{pageSpeed?.field?.overallCategory || 'Sin datos de campo suficientes'}</span></div><div className="grid gap-5 md:grid-cols-3"><Vital label="LCP · carga" value={lcp} unit="ms" good={2500} poor={4000} /><Vital label="INP · interacción" value={inp} unit="ms" good={200} poor={500} /><Vital label="CLS · estabilidad" value={cls} unit="" good={0.1} poor={0.25} /></div></div>
+      <div><div className="mb-3"><h3 className="font-semibold text-slate-950">Plan de mejora priorizado</h3><p className="text-xs text-slate-500">Aplica las acciones en orden y vuelve a consultar para medir el impacto.</p></div>{opportunities.length ? <div className="space-y-3">{opportunities.map((opportunity, index) => <article key={opportunity.id} className="border border-slate-200 bg-white p-4"><div className="flex items-start gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center bg-slate-900 text-xs font-semibold text-white">{index + 1}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><h4 className="font-semibold text-slate-900">{opportunity.title}</h4>{opportunity.displayValue ? <span className="text-xs font-medium text-amber-700">{opportunity.displayValue}</span> : null}</div>{opportunity.description ? <p className="mt-1 text-xs leading-5 text-slate-500">{opportunity.description}</p> : null}<ol className="mt-3 space-y-2">{opportunity.steps.map((step, stepIndex) => <li key={`${opportunity.id}-${stepIndex}`} className="flex gap-2 text-sm text-slate-700"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" /><span>{step}</span></li>)}</ol></div></div></article>)}</div> : <div className="border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">Lighthouse no reportó oportunidades prioritarias para esta consulta.</div>}</div>
+      <p className="text-xs text-slate-500">Última consulta {pageSpeed?.strategy === 'desktop' ? 'de escritorio' : 'móvil'}: {new Date(latest.createdAt).toLocaleString('es-CO')}</p>
     </div>
+  }
 
-    <div><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-semibold text-slate-950">Core Web Vitals</h3><p className="text-xs text-slate-500">Experiencia móvil basada en datos reales cuando están disponibles.</p></div><span className="text-xs font-medium text-slate-500">{pageSpeed?.field?.overallCategory || 'PageSpeed sin datos de campo'}</span></div><div className="grid gap-5 md:grid-cols-3"><Vital label="LCP · carga" value={lcp} unit="ms" good={2500} poor={4000} /><Vital label="INP · interacción" value={inp} unit="ms" good={200} poor={500} /><Vital label="CLS · estabilidad" value={cls} unit="" good={0.1} poor={0.25} /></div></div>
+  return <div className="space-y-6">
+    <div className="border-b border-slate-100 pb-6"><ScoreRing label="Salud SEO" value={latest.healthScore} /></div>
 
     <div className="grid gap-4 lg:grid-cols-[0.75fr_1.25fr]">
       <div><h3 className="mb-3 font-semibold text-slate-950">Resumen del rastreo</h3><div className="grid grid-cols-2 gap-2">{(['FAIL', 'WARN', 'PASS', 'INFO'] as const).map((status) => { const meta = statusMeta[status]; const Icon = meta.icon; return <div key={status} className={`border p-3 ${meta.className}`}><Icon className="h-4 w-4" /><p className="mt-2 text-2xl font-semibold">{checks.filter((check) => check.status === status).length}</p><p className="text-xs font-medium">{meta.label}</p></div> })}</div><div className="mt-3 grid grid-cols-3 gap-2 text-center"><div className="border border-slate-200 p-2"><p className="text-[11px] text-slate-500">HTTP</p><p className="font-semibold">{latest.statusCode || '—'}</p></div><div className="border border-slate-200 p-2"><p className="text-[11px] text-slate-500">Indexación</p><p className={`font-semibold ${latest.indexable ? 'text-emerald-700' : 'text-rose-700'}`}>{latest.indexable ? 'Sí' : 'No'}</p></div><div className="border border-slate-200 p-2"><p className="text-[11px] text-slate-500">Respuesta</p><p className="font-semibold">{latest.metricsJson.responseTimeMs ?? '—'} ms</p></div></div></div>

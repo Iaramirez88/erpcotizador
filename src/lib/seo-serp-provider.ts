@@ -41,6 +41,8 @@ export interface SerpProvider {
   isConfigured(): boolean
   submit(requests: SerpCheckRequest[]): Promise<SubmittedSerpTask[]>
   getResult(providerTaskId: string, targetDomain: string): Promise<SerpOrganicResult | null>
+  checkLive(request: SerpCheckRequest): Promise<SerpOrganicResult>
+  getSearchVolume(request: SerpCheckRequest): Promise<number | null>
   getLocations(country: string): Promise<SerpLocation[]>
 }
 
@@ -74,6 +76,12 @@ type DataForSeoResponse = {
   status_code?: number
   status_message?: string
   tasks?: DataForSeoTask[]
+}
+
+type DataForSeoVolumeResponse = {
+  status_code?: number
+  status_message?: string
+  tasks?: Array<{ status_code?: number; status_message?: string; cost?: number; result?: Array<{ search_volume?: number | null }> | null }>
 }
 
 const COUNTRY_LOCATION_CODES: Record<string, number> = {
@@ -110,7 +118,7 @@ export class DataForSeoSerpProvider implements SerpProvider {
     return Boolean(this.login && this.password)
   }
 
-  private async request(path: string, init?: RequestInit) {
+  private async request<T extends { status_code?: number; status_message?: string } = DataForSeoResponse>(path: string, init?: RequestInit) {
     if (!this.isConfigured()) throw new Error('Configura DATAFORSEO_LOGIN y DATAFORSEO_PASSWORD.')
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...init,
@@ -122,11 +130,44 @@ export class DataForSeoSerpProvider implements SerpProvider {
       cache: 'no-store',
       signal: AbortSignal.timeout(30_000),
     })
-    const payload = await response.json().catch(() => ({})) as DataForSeoResponse
+    const payload = await response.json().catch(() => ({})) as T
     if (!response.ok || (payload.status_code && payload.status_code >= 40000)) {
       throw new Error(payload.status_message || `DataForSEO respondió HTTP ${response.status}.`)
     }
     return payload
+  }
+
+  private location(request: SerpCheckRequest) {
+    return request.locationName && !request.locationCode
+      ? { location_name: request.locationName }
+      : { location_code: request.locationCode || COUNTRY_LOCATION_CODES[request.country] || COUNTRY_LOCATION_CODES.COL }
+  }
+
+  private organicResult(task: DataForSeoTask, targetDomain: string, providerTaskId: string) {
+    if (!task.result?.length) return null
+    const result = task.result[0]
+    const items = result.items || []
+    const organicItems = items.filter((item) => item.type === 'organic')
+    const match = organicItems.find((item) => domainsMatch(item.domain || item.url || '', targetDomain))
+    const checkedAt = result.datetime && !Number.isNaN(Date.parse(result.datetime)) ? new Date(result.datetime) : new Date()
+    const serpFeatures = Array.from(new Set([...(result.item_types || []), ...items.map((item) => item.type || '').filter(Boolean)]))
+    return {
+      position: match?.rank_absolute ?? null,
+      resultUrl: match?.url || null,
+      matchedDomain: match?.domain || null,
+      serpFeatures,
+      checkedAt,
+      costUsd: task.cost ?? null,
+      raw: {
+        providerTaskId,
+        checkUrl: result.check_url || null,
+        searchEngineDomain: result.se_domain || null,
+        serpFeatures,
+        targetDomain,
+        matchedResult: match || null,
+        organicResults: organicItems.map((item) => ({ position: item.rank_absolute ?? null, groupPosition: item.rank_group ?? null, domain: item.domain || null, url: item.url || null, title: item.title || null })),
+      },
+    }
   }
 
   async submit(requests: SerpCheckRequest[]) {
@@ -136,12 +177,9 @@ export class DataForSeoSerpProvider implements SerpProvider {
     const payload = await this.request('/v3/serp/google/organic/task_post', {
       method: 'POST',
       body: JSON.stringify(requests.map((request) => {
-        const location = request.locationName && !request.locationCode
-          ? { location_name: request.locationName }
-          : { location_code: request.locationCode || COUNTRY_LOCATION_CODES[request.country] || COUNTRY_LOCATION_CODES.COL }
         return {
           keyword: request.keyword,
-          ...location,
+          ...this.location(request),
           language_code: request.languageCode || 'es',
           device: request.device === 'MOBILE' ? 'mobile' : 'desktop',
           depth: Math.min(100, Math.max(10, request.depth || 100)),
@@ -168,36 +206,24 @@ export class DataForSeoSerpProvider implements SerpProvider {
     if (!task) throw new Error('DataForSEO no devolvió la tarea solicitada.')
     if (!task.result?.length) return null
 
-    const result = task.result[0]
-    const items = result.items || []
-    const organicItems = items.filter((item) => item.type === 'organic')
-    const match = organicItems.find((item) => domainsMatch(item.domain || item.url || '', targetDomain))
-    const checkedAt = result.datetime && !Number.isNaN(Date.parse(result.datetime)) ? new Date(result.datetime) : new Date()
-    const serpFeatures = Array.from(new Set([...(result.item_types || []), ...items.map((item) => item.type || '').filter(Boolean)]))
+    return this.organicResult(task, targetDomain, providerTaskId)
+  }
 
-    return {
-      position: match?.rank_absolute ?? null,
-      resultUrl: match?.url || null,
-      matchedDomain: match?.domain || null,
-      serpFeatures,
-      checkedAt,
-      costUsd: task.cost ?? null,
-      raw: {
-        providerTaskId,
-        checkUrl: result.check_url || null,
-        searchEngineDomain: result.se_domain || null,
-        serpFeatures,
-        targetDomain,
-        matchedResult: match || null,
-        organicResults: organicItems.map((item) => ({
-          position: item.rank_absolute ?? null,
-          groupPosition: item.rank_group ?? null,
-          domain: item.domain || null,
-          url: item.url || null,
-          title: item.title || null,
-        })),
-      },
-    }
+  async checkLive(request: SerpCheckRequest) {
+    const payload = await this.request('/v3/serp/google/organic/live/advanced', { method: 'POST', body: JSON.stringify([{ keyword: request.keyword, ...this.location(request), language_code: request.languageCode || 'es', device: request.device === 'MOBILE' ? 'mobile' : 'desktop', depth: Math.min(100, Math.max(10, request.depth || 100)), tag: request.trackingId }]) })
+    const task = payload.tasks?.[0]
+    if (!task || (task.status_code && task.status_code >= 40000)) throw new Error(task?.status_message || 'DataForSEO no completó la consulta inmediata.')
+    const result = this.organicResult(task, request.targetDomain, `live:${request.trackingId}`)
+    if (!result) throw new Error('DataForSEO no devolvió resultados orgánicos.')
+    return result
+  }
+
+  async getSearchVolume(request: SerpCheckRequest) {
+    const payload = await this.request<DataForSeoVolumeResponse>('/v3/keywords_data/google_ads/search_volume/live', { method: 'POST', body: JSON.stringify([{ keywords: [request.keyword], ...this.location(request), language_code: request.languageCode || 'es' }]) })
+    const task = payload.tasks?.[0]
+    if (!task || (task.status_code && task.status_code >= 40000)) throw new Error(task?.status_message || 'DataForSEO no devolvió el volumen de búsqueda.')
+    const value = task.result?.[0]?.search_volume
+    return typeof value === 'number' && Number.isFinite(value) ? value : null
   }
 
   async getLocations(country: string) {
