@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client'
 import { NextResponse } from 'next/server'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { createSignedCrmState } from '@/lib/crm-channel-secrets'
-import { buildGoogleMarketingOAuthUrl, createGoogleMarketingPkce, encryptGoogleMarketingToken, parseGoogleMarketingProduct } from '@/lib/crm-google-marketing'
+import { buildGoogleMarketingOAuthUrl, createGoogleMarketingPkce, encryptGoogleMarketingToken, getGoogleAdsConnectionConfig, normalizeGoogleAdsCustomerId, parseGoogleAdsConnectionMode, parseGoogleMarketingProduct } from '@/lib/crm-google-marketing'
 import { parseJsonObject } from '@/lib/crm-omnichannel'
 import { prisma } from '@/lib/prisma'
 
@@ -35,6 +35,16 @@ export async function GET(request: Request) {
       },
       select: { id: true, settingsJson: true },
     })
+    const currentSettings = parseJsonObject(connection.settingsJson)
+    const requestedAdsMode = parseGoogleAdsConnectionMode(new URL(request.url).searchParams.get('adsMode'))
+    const currentAdsConfig = getGoogleAdsConnectionConfig(currentSettings)
+    const adsMode = product === 'ADS' ? requestedAdsMode || currentAdsConfig.mode : null
+    const requestedLoginCustomerId = normalizeGoogleAdsCustomerId(new URL(request.url).searchParams.get('loginCustomerId'))
+    const requestedAdsConfig = getGoogleAdsConnectionConfig({ ...currentSettings, googleAdsConnectionMode: adsMode })
+    const adsLoginCustomerId = adsMode === 'MCC' ? requestedLoginCustomerId || requestedAdsConfig.loginCustomerId : ''
+    if (product === 'ADS' && adsMode === 'MCC' && !adsLoginCustomerId) {
+      return NextResponse.json({ error: 'Configura el Customer ID del MCC antes de conectar mediante una cuenta administradora.' }, { status: 400 })
+    }
     const state = createSignedCrmState({
       channelId: connection.id,
       empresaId: access.empresaId,
@@ -48,7 +58,11 @@ export async function GET(request: Request) {
       where: { id: connection.id },
       data: {
         settingsJson: {
-          ...parseJsonObject(connection.settingsJson),
+          ...currentSettings,
+          ...(product === 'ADS' ? {
+            googleAdsConnectionMode: adsMode,
+            googleAdsLoginCustomerId: adsLoginCustomerId || null,
+          } : {}),
           googleOAuthPkce: {
             verifierEncrypted: encryptGoogleMarketingToken(pkce.verifier),
             purpose: `GOOGLE_MARKETING_${product}`,

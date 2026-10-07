@@ -17,6 +17,8 @@ type Overview = {
     status: string
     googleEmail?: string | null
     googleAdsCustomerId?: string | null
+    googleAdsConnectionMode?: 'DIRECT' | 'MCC' | null
+    googleAdsLoginCustomerId?: string | null
     googleAnalyticsPropertyId?: string | null
     searchConsoleSiteUrl?: string | null
     scopes: string[]
@@ -276,7 +278,15 @@ export function CrmMarketingSeoTab() {
             <div key={name} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
               <div className="flex items-start justify-between gap-3"><Icon className="h-5 w-5 text-slate-700" /><span className={`text-[11px] font-semibold ${overview.connection?.scopes.includes(scope) ? 'text-emerald-700' : 'text-amber-700'}`}>{overview.connection?.scopes.includes(scope) ? 'Conectado' : 'Pendiente'}</span></div>
               <p className="mt-3 font-semibold text-slate-950">{name}</p><p className="mt-1 text-xs text-slate-600">{description}</p>
-              <div className="mt-3">{overview.googleConfiguration.configured ? <Button asChild size="sm" variant="outline"><a href={`/api/crm/marketing/google/connect?product=${key}`}>{overview.connection?.scopes.includes(scope) ? 'Reconectar' : 'Conectar'}</a></Button> : <Button size="sm" variant="outline" disabled>Conectar</Button>}</div>
+              {key === 'ADS' && overview.connection?.googleAdsConnectionMode ? <p className="mt-2 text-[11px] font-medium text-slate-500">Modalidad: {overview.connection.googleAdsConnectionMode === 'MCC' ? `MCC ${overview.connection.googleAdsLoginCustomerId || ''}`.trim() : 'cuenta propia'}</p> : null}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {overview.googleConfiguration.configured && key === 'ADS' ? <>
+                  <Button asChild size="sm" variant="outline"><a href="/api/crm/marketing/google/connect?product=ADS&adsMode=DIRECT">Cuenta propia</a></Button>
+                  <Button asChild size="sm" variant="outline"><a href="/api/crm/marketing/google/connect?product=ADS&adsMode=MCC">Mediante MCC</a></Button>
+                </> : null}
+                {overview.googleConfiguration.configured && key !== 'ADS' ? <Button asChild size="sm" variant="outline"><a href={`/api/crm/marketing/google/connect?product=${key}`}>{overview.connection?.scopes.includes(scope) ? 'Reconectar' : 'Conectar'}</a></Button> : null}
+                {!overview.googleConfiguration.configured ? <Button size="sm" variant="outline" disabled>Conectar</Button> : null}
+              </div>
             </div>
           ))}
         </div>

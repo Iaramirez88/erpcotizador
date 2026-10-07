@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { NextResponse } from 'next/server'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
-import { encryptGoogleMarketingToken, getGoogleMarketingProductScope, refreshGoogleMarketingAccessToken } from '@/lib/crm-google-marketing'
+import { assertGoogleAdsCustomerSeparation, encryptGoogleMarketingToken, getGoogleAdsApiVersion, getGoogleAdsConnectionConfig, getGoogleAdsRequestHeaders, getGoogleMarketingProductScope, refreshGoogleMarketingAccessToken } from '@/lib/crm-google-marketing'
 import { parseJsonObject } from '@/lib/crm-omnichannel'
 import { prisma } from '@/lib/prisma'
 
@@ -33,7 +33,12 @@ function googleApiErrorMessage(payload: unknown, response: Response) {
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== 'object') continue
     const error = (candidate as GoogleApiError).error
-    if (error?.message) return `${error.message}${error.status ? ` (${error.status})` : ''}`
+    if (error?.message) {
+      if (/does not have permission|permission_denied|insufficient permission/i.test(error.message)) {
+        return 'Sin permiso para consultar Google Ads. Confirma el acceso del correo conectado a la cuenta seleccionada y, si usas un MCC, configura GOOGLE_ADS_LOGIN_CUSTOMER_ID con el ID de ese MCC.'
+      }
+      return `${error.message}${error.status ? ` (${error.status})` : ''}`
+    }
   }
   return `Google Ads respondió ${response.status} ${response.statusText || 'sin detalle'}.`
 }
@@ -77,14 +82,13 @@ export async function POST() {
 
     if (connection.googleAdsCustomerId && connection.scopes.includes(getGoogleMarketingProductScope('ADS'))) {
       try {
-        const apiVersion = String(process.env.GOOGLE_ADS_API_VERSION || 'v25').trim()
-        const response = await fetch(`https://googleads.googleapis.com/${apiVersion}/customers/${connection.googleAdsCustomerId}/googleAds:searchStream`, {
+        const apiVersion = getGoogleAdsApiVersion()
+        const adsConfig = getGoogleAdsConnectionConfig(parseJsonObject(connection.settingsJson))
+        if (adsConfig.mode === 'MCC' && !adsConfig.loginCustomerId) throw new Error('La conexión MCC no tiene un Customer ID de administrador configurado.')
+        const operatingCustomerId = assertGoogleAdsCustomerSeparation(connection.googleAdsCustomerId, adsConfig.loginCustomerId)
+        const response = await fetch(`https://googleads.googleapis.com/${apiVersion}/customers/${operatingCustomerId}/googleAds:searchStream`, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            ...(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ? { 'login-customer-id': String(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID).replace(/\D/g, '') } : {}),
-            'Content-Type': 'application/json',
-          },
+          headers: getGoogleAdsRequestHeaders(accessToken, adsConfig.loginCustomerId, true),
           body: JSON.stringify({
             query: 'SELECT segments.date, customer.currency_code, campaign.id, campaign.name, campaign.status, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date DURING LAST_30_DAYS',
           }),

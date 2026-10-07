@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 type ConnectorOverview = {
   googleConfiguration: { configured: boolean; message?: string }
-  connection: { googleEmail?: string | null; scopes: string[] } | null
+  connection: { googleEmail?: string | null; googleAdsConnectionMode?: 'DIRECT' | 'MCC' | null; googleAdsLoginCustomerId?: string | null; scopes: string[] } | null
 }
 
 type Product = {
@@ -85,8 +85,14 @@ export function CrmGoogleChannelConnectors() {
             <div className="flex items-start justify-between gap-3"><span className="rounded-xl bg-white p-2 text-slate-700 shadow-sm">{product.icon}</span>{connected ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Conectado</span> : <span className="text-[11px] font-semibold text-amber-700">Pendiente</span>}</div>
             <h3 className="mt-3 font-semibold text-slate-950">{product.name}</h3>
             <p className="mt-1 min-h-10 text-xs leading-5 text-slate-600">{product.description}</p>
+            {product.key === 'ADS' && overview?.connection?.googleAdsConnectionMode ? <p className="mt-2 text-[11px] font-medium text-slate-500">Modalidad: {overview.connection.googleAdsConnectionMode === 'MCC' ? `MCC ${overview.connection.googleAdsLoginCustomerId || ''}`.trim() : 'cuenta propia'}</p> : null}
             <div className="mt-4 flex flex-wrap gap-2">
-              {configured ? <Button asChild size="sm"><a href={`/api/crm/marketing/google/connect?product=${product.key}&returnTo=${encodeURIComponent(GOOGLE_TAB_RETURN_TO)}`}>{connected ? 'Reconectar' : 'Conectar'}</a></Button> : <Button size="sm" disabled>Conectar</Button>}
+              {configured && product.key === 'ADS' ? <>
+                <Button asChild size="sm"><a href={`/api/crm/marketing/google/connect?product=ADS&adsMode=DIRECT&returnTo=${encodeURIComponent(GOOGLE_TAB_RETURN_TO)}`}>Cuenta propia</a></Button>
+                <Button asChild size="sm" variant="outline"><a href={`/api/crm/marketing/google/connect?product=ADS&adsMode=MCC&returnTo=${encodeURIComponent(GOOGLE_TAB_RETURN_TO)}`}>Mediante MCC</a></Button>
+              </> : null}
+              {configured && product.key !== 'ADS' ? <Button asChild size="sm"><a href={`/api/crm/marketing/google/connect?product=${product.key}&returnTo=${encodeURIComponent(GOOGLE_TAB_RETURN_TO)}`}>{connected ? 'Reconectar' : 'Conectar'}</a></Button> : null}
+              {!configured ? <Button size="sm" disabled>Conectar</Button> : null}
               <Button size="sm" variant="ghost" onClick={() => setGuideProduct(product)}>Paso a paso</Button>
             </div>
           </div>
@@ -100,7 +106,13 @@ export function CrmGoogleChannelConnectors() {
           <ol className="space-y-3 py-2">
             {guideProduct?.steps.map((step, index) => <li key={step} className="flex gap-3"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-semibold text-white">{index + 1}</span><p className="pt-1 text-sm text-slate-700">{step}</p></li>)}
           </ol>
-          <div className="flex justify-end">{guideProduct && overview?.googleConfiguration.configured ? <Button asChild><a href={`/api/crm/marketing/google/connect?product=${guideProduct.key}&returnTo=${encodeURIComponent(GOOGLE_TAB_RETURN_TO)}`}>Continuar con Google</a></Button> : null}</div>
+          <div className="flex flex-wrap justify-end gap-2">
+            {guideProduct?.key === 'ADS' && overview?.googleConfiguration.configured ? <>
+              <Button asChild><a href={`/api/crm/marketing/google/connect?product=ADS&adsMode=DIRECT&returnTo=${encodeURIComponent(GOOGLE_TAB_RETURN_TO)}`}>Conectar cuenta propia</a></Button>
+              <Button asChild variant="outline"><a href={`/api/crm/marketing/google/connect?product=ADS&adsMode=MCC&returnTo=${encodeURIComponent(GOOGLE_TAB_RETURN_TO)}`}>Conectar mediante MCC</a></Button>
+            </> : null}
+            {guideProduct && guideProduct.key !== 'ADS' && overview?.googleConfiguration.configured ? <Button asChild><a href={`/api/crm/marketing/google/connect?product=${guideProduct.key}&returnTo=${encodeURIComponent(GOOGLE_TAB_RETURN_TO)}`}>Continuar con Google</a></Button> : null}
+          </div>
         </DialogContent>
       </Dialog>
     </section>

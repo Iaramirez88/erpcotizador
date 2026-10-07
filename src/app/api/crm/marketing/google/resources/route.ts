@@ -1,14 +1,23 @@
 import { NextResponse } from 'next/server'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
-import { encryptGoogleMarketingToken, getGoogleMarketingProductScope, refreshGoogleMarketingAccessToken } from '@/lib/crm-google-marketing'
+import { getGoogleAdsApiVersion, getGoogleAdsConnectionConfig, getGoogleAdsRequestHeaders, normalizeGoogleAdsCustomerId, encryptGoogleMarketingToken, getGoogleMarketingProductScope, refreshGoogleMarketingAccessToken } from '@/lib/crm-google-marketing'
+import { parseJsonObject } from '@/lib/crm-omnichannel'
 import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
 
 type GoogleErrorPayload = { error?: { message?: string } }
 type AdsCustomer = { id: string; name: string; manager: boolean; currencyCode?: string | null; warning?: string }
+type AdsCustomerClientResult = { customerClient?: { clientCustomer?: string; descriptiveName?: string; currencyCode?: string; manager?: boolean; level?: string | number } }
 type AnalyticsProperty = { id: string; name: string; accountName: string }
 type SearchConsoleSite = { siteUrl: string; permissionLevel?: string | null }
+
+function adsErrorMessage(message: string) {
+  if (/does not have permission|permission_denied|insufficient permission/i.test(message)) {
+    return 'Sin permiso para consultar Google Ads. Verifica que la cuenta Google conectada tenga acceso directo a la cuenta seleccionada. Si usas un MCC, configura GOOGLE_ADS_LOGIN_CUSTOMER_ID con el ID del MCC que administra esa cuenta y confirma que el correo conectado también tenga acceso al MCC. Revisa además el nivel de acceso de Google Ads API del proyecto en Google Cloud.'
+  }
+  return message
+}
 
 async function responsePayload<T>(response: Response, fallback: string) {
   const payload = await response.json().catch(() => ({})) as T & GoogleErrorPayload
@@ -16,23 +25,41 @@ async function responsePayload<T>(response: Response, fallback: string) {
   return payload
 }
 
-async function discoverAds(accessToken: string): Promise<AdsCustomer[]> {
-  const apiVersion = String(process.env.GOOGLE_ADS_API_VERSION || 'v25').trim()
-  const headers = {
-    Authorization: `Bearer ${accessToken}`,
-    ...(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ? { 'login-customer-id': String(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID).replace(/\D/g, '') } : {}),
-  }
+async function discoverAds(accessToken: string, settingsJson: unknown): Promise<AdsCustomer[]> {
+  const apiVersion = getGoogleAdsApiVersion()
+  const adsConfig = getGoogleAdsConnectionConfig(parseJsonObject(settingsJson))
+  if (adsConfig.mode === 'MCC' && !adsConfig.loginCustomerId) throw new Error('La conexión MCC no tiene un Customer ID de administrador configurado.')
+  const headers = getGoogleAdsRequestHeaders(accessToken, adsConfig.loginCustomerId)
   const listResponse = await fetch(`https://googleads.googleapis.com/${apiVersion}/customers:listAccessibleCustomers`, {
     headers,
     cache: 'no-store',
   })
   const list = await responsePayload<{ resourceNames?: string[] }>(listResponse, 'Google Ads no permitió consultar las cuentas accesibles.')
+  const accessibleCustomerIds = (list.resourceNames || []).map(normalizeGoogleAdsCustomerId).filter(Boolean)
+  if (adsConfig.loginCustomerId && !accessibleCustomerIds.includes(adsConfig.loginCustomerId)) {
+    throw new Error(`La cuenta Google conectada no tiene acceso directo al MCC ${adsConfig.loginCustomerId}. Agrégala como usuario del MCC y vuelve a conectar Google Ads.`)
+  }
+  if (adsConfig.mode === 'MCC') {
+    const clientsResponse = await fetch(`https://googleads.googleapis.com/${apiVersion}/customers/${adsConfig.loginCustomerId}/googleAds:search`, {
+      method: 'POST',
+      headers: getGoogleAdsRequestHeaders(accessToken, adsConfig.loginCustomerId, true),
+      body: JSON.stringify({ query: 'SELECT customer_client.client_customer, customer_client.descriptive_name, customer_client.currency_code, customer_client.manager, customer_client.level, customer_client.status FROM customer_client WHERE customer_client.status = ENABLED' }),
+      cache: 'no-store',
+    })
+    const clients = await responsePayload<{ results?: AdsCustomerClientResult[] }>(clientsResponse, 'Google Ads no permitió consultar las cuentas administradas por el MCC.')
+    return (clients.results || []).map(({ customerClient }) => ({
+      id: normalizeGoogleAdsCustomerId(customerClient?.clientCustomer),
+      name: customerClient?.descriptiveName || `Cuenta ${normalizeGoogleAdsCustomerId(customerClient?.clientCustomer)}`,
+      manager: Boolean(customerClient?.manager),
+      currencyCode: customerClient?.currencyCode || null,
+    })).filter((customer) => customer.id && customer.id !== adsConfig.loginCustomerId)
+  }
   return Promise.all((list.resourceNames || []).slice(0, 100).map(async (resourceName) => {
-    const id = resourceName.replace(/^customers\//, '')
+    const id = normalizeGoogleAdsCustomerId(resourceName)
     try {
       const detailResponse = await fetch(`https://googleads.googleapis.com/${apiVersion}/customers/${id}/googleAds:search`, {
         method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
+        headers: getGoogleAdsRequestHeaders(accessToken, adsConfig.loginCustomerId, true),
         body: JSON.stringify({ query: 'SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.manager, customer.status FROM customer LIMIT 1' }),
         cache: 'no-store',
       })
@@ -40,7 +67,8 @@ async function discoverAds(accessToken: string): Promise<AdsCustomer[]> {
       const customer = detail.results?.[0]?.customer
       return { id, name: customer?.descriptiveName || `Cuenta ${id}`, manager: Boolean(customer?.manager), currencyCode: customer?.currencyCode || null }
     } catch (error) {
-      return { id, name: `Cuenta ${id}`, manager: false, currencyCode: null, warning: error instanceof Error ? error.message : 'No se pudo consultar el detalle.' }
+      const message = error instanceof Error ? error.message : 'No se pudo consultar el detalle.'
+      return { id, name: `Cuenta ${id}`, manager: false, currencyCode: null, warning: adsErrorMessage(message) }
     }
   }))
 }
@@ -84,7 +112,7 @@ export async function POST() {
     let analytics: AnalyticsProperty[] = []
     let searchConsole: SearchConsoleSite[] = []
     const tasks: Promise<void>[] = []
-    if (connection.scopes.includes(getGoogleMarketingProductScope('ADS'))) tasks.push(discoverAds(accessToken).then((items) => {
+    if (connection.scopes.includes(getGoogleMarketingProductScope('ADS'))) tasks.push(discoverAds(accessToken, connection.settingsJson).then((items) => {
       ads = items
       const detailWarning = items.find((item) => item.warning)?.warning
       if (detailWarning) warnings.push(`Google Ads: ${detailWarning}`)

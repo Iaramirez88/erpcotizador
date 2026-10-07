@@ -53,6 +53,13 @@ Google retiró los developer tokens el 9 de septiembre de 2026. ORDEX no envía 
 
 El acceso ahora pertenece al proyecto de Google Cloud que contiene el cliente OAuth. En **Google Cloud Console > Google Ads API > Overview**, verifica o solicita el nivel Explorer, Basic o Standard requerido. Un proyecto nuevo empieza con acceso de prueba y no puede consultar cuentas productivas hasta recibir el nivel correspondiente.
 
+Cada empresa puede conectar Google Ads de dos formas:
+
+- **Cuenta propia:** el cliente autoriza directamente su cuenta. ORDEX no envía `login-customer-id` y solo muestra las cuentas accesibles para ese usuario.
+- **Mediante MCC:** la agencia autoriza una cuenta con acceso al MCC. ORDEX usa el Customer ID del MCC como `login-customer-id` y consulta sus cuentas operativas mediante `customer_client`.
+
+La modalidad se guarda por conexión en `settingsJson`. `GOOGLE_ADS_LOGIN_CUSTOMER_ID` funciona como MCC predeterminado para conexiones antiguas o cuando no se proporciona uno explícito. Nunca debe contener el Customer ID operativo.
+
 ### PageSpeed Insights
 
 PageSpeed utiliza una API key independiente del cliente OAuth:
@@ -68,7 +75,7 @@ PageSpeed utiliza una API key independiente del cliente OAuth:
 GOOGLE_MARKETING_CLIENT_ID="..."
 GOOGLE_MARKETING_CLIENT_SECRET="..."
 GOOGLE_MARKETING_REDIRECT_URI="https://sgdigitalordex.com/api/oauth/google-marketing/callback"
-GOOGLE_ADS_LOGIN_CUSTOMER_ID="" # Opcional: MCC, solo números
+GOOGLE_ADS_LOGIN_CUSTOMER_ID="7889973249" # MCC, solo números; no usar el customer ID operativo
 GOOGLE_ADS_API_VERSION="v25"
 PAGESPEED_API_KEY="..."
 ```

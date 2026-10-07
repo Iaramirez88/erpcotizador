@@ -6,6 +6,7 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo'
 
 export type GoogleMarketingProduct = 'ADS' | 'ANALYTICS' | 'SEARCH_CONSOLE'
+export type GoogleAdsConnectionMode = 'DIRECT' | 'MCC'
 
 const GOOGLE_IDENTITY_SCOPES = ['openid', 'email']
 const GOOGLE_PRODUCT_SCOPES: Record<GoogleMarketingProduct, string> = {
@@ -20,6 +21,47 @@ export function parseGoogleMarketingProduct(value: string | null | undefined): G
 
 export function getGoogleMarketingProductScope(product: GoogleMarketingProduct) {
   return GOOGLE_PRODUCT_SCOPES[product]
+}
+
+export function normalizeGoogleAdsCustomerId(value: string | null | undefined) {
+  return String(value || '').replace(/\D/g, '')
+}
+
+export function getGoogleAdsApiVersion() {
+  return String(process.env.GOOGLE_ADS_API_VERSION || 'v25').trim()
+}
+
+export function parseGoogleAdsConnectionMode(value: string | null | undefined): GoogleAdsConnectionMode | null {
+  return value === 'DIRECT' || value === 'MCC' ? value : null
+}
+
+export function getGoogleAdsConnectionConfig(settings: Record<string, unknown>) {
+  const configuredMode = parseGoogleAdsConnectionMode(typeof settings.googleAdsConnectionMode === 'string' ? settings.googleAdsConnectionMode : null)
+  const legacyLoginCustomerId = normalizeGoogleAdsCustomerId(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID)
+  const mode = configuredMode || (legacyLoginCustomerId ? 'MCC' : 'DIRECT')
+  const storedLoginCustomerId = normalizeGoogleAdsCustomerId(typeof settings.googleAdsLoginCustomerId === 'string' ? settings.googleAdsLoginCustomerId : null)
+  return {
+    mode,
+    loginCustomerId: mode === 'MCC' ? storedLoginCustomerId || legacyLoginCustomerId : '',
+  }
+}
+
+export function getGoogleAdsRequestHeaders(accessToken: string, loginCustomerId: string, includeJson = false) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    ...(loginCustomerId ? { 'login-customer-id': loginCustomerId } : {}),
+    ...(includeJson ? { 'Content-Type': 'application/json' } : {}),
+  }
+}
+
+export function assertGoogleAdsCustomerSeparation(operatingCustomerId: string, loginCustomerId: string) {
+  const normalizedOperatingCustomerId = normalizeGoogleAdsCustomerId(operatingCustomerId)
+  const normalizedLoginCustomerId = normalizeGoogleAdsCustomerId(loginCustomerId)
+  if (!normalizedOperatingCustomerId) throw new Error('La cuenta operativa de Google Ads no es válida.')
+  if (normalizedLoginCustomerId && normalizedLoginCustomerId === normalizedOperatingCustomerId) {
+    throw new Error('GOOGLE_ADS_LOGIN_CUSTOMER_ID debe ser el ID del MCC, no el ID de la cuenta operativa.')
+  }
+  return normalizedOperatingCustomerId
 }
 
 type GoogleTokenResponse = {

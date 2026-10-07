@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
-import { getGoogleMarketingConfigurationStatus } from '@/lib/crm-google-marketing'
+import { getGoogleAdsConnectionConfig, getGoogleMarketingConfigurationStatus } from '@/lib/crm-google-marketing'
+import { parseJsonObject } from '@/lib/crm-omnichannel'
 import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
@@ -30,6 +31,7 @@ export async function GET() {
           googleAdsCustomerId: true,
           googleAnalyticsPropertyId: true,
           searchConsoleSiteUrl: true,
+          settingsJson: true,
           scopes: true,
           lastSyncAt: true,
           lastErrorAt: true,
@@ -91,11 +93,19 @@ export async function GET() {
       }),
     ])
 
+    const googleAdsConnection = connection ? getGoogleAdsConnectionConfig(parseJsonObject(connection.settingsJson)) : null
+    const publicConnection = connection ? {
+      ...connection,
+      settingsJson: undefined,
+      googleAdsConnectionMode: googleAdsConnection?.mode,
+      googleAdsLoginCustomerId: googleAdsConnection?.loginCustomerId || null,
+    } : null
+
     return NextResponse.json({
       success: true,
       data: {
         googleConfiguration: getGoogleMarketingConfigurationStatus(),
-        connection,
+        connection: publicConnection,
         keywords,
         briefs,
         websites,
