@@ -6,26 +6,40 @@ import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
 
-type GoogleErrorPayload = { error?: { message?: string } }
+type GoogleAdsFailureDetail = { errors?: Array<{ errorCode?: Record<string, string>; message?: string }>; requestId?: string }
+type GoogleErrorPayload = { error?: { message?: string; details?: GoogleAdsFailureDetail[] } }
 type AdsCustomer = { id: string; name: string; manager: boolean; currencyCode?: string | null; warning?: string }
 type AdsCustomerClientResult = { customerClient?: { clientCustomer?: string; descriptiveName?: string; currencyCode?: string; manager?: boolean; level?: string | number } }
 type AnalyticsProperty = { id: string; name: string; accountName: string }
 type SearchConsoleSite = { siteUrl: string; permissionLevel?: string | null }
 
-function adsErrorMessage(message: string) {
+function adsErrorMessage(message: string, context?: { googleEmail?: string | null; loginCustomerId?: string }) {
   if (/does not have permission|permission_denied|insufficient permission/i.test(message)) {
-    return 'Sin permiso para consultar Google Ads. Verifica que la cuenta Google conectada tenga acceso directo a la cuenta seleccionada. Si usas un MCC, configura GOOGLE_ADS_LOGIN_CUSTOMER_ID con el ID del MCC que administra esa cuenta y confirma que el correo conectado también tenga acceso al MCC. Revisa además el nivel de acceso de Google Ads API del proyecto en Google Cloud.'
+    const requestId = message.match(/\[request-id: ([^\]]+)\]/i)?.[1]
+    const identity = context?.googleEmail || 'La cuenta Google conectada'
+    const target = context?.loginCustomerId ? ` al MCC ${context.loginCustomerId}` : ' a la cuenta seleccionada'
+    return `${identity} no tiene permiso API${target}. Entra directamente al MCC, abre Administrador > Acceso y seguridad > Usuarios y confirma que el correo figure como usuario activo, no solo que la cuenta cliente esté vinculada en Cuentas de administrador. Revisa también el nivel de acceso de Google Ads API del proyecto Cloud.${requestId ? ` Request ID: ${requestId}.` : ''}`
   }
   return message
 }
 
+function googleAdsFailureSuffix(payload: GoogleErrorPayload) {
+  const failures = payload.error?.details?.flatMap((detail) => detail.errors || []) || []
+  const codes = failures.flatMap((failure) => Object.entries(failure.errorCode || {}).map(([group, code]) => `${group}.${code}`))
+  const detailRequestId = payload.error?.details?.find((detail) => detail.requestId)?.requestId
+  return `${codes.length ? ` [Google Ads: ${[...new Set(codes)].join(', ')}]` : ''}${detailRequestId ? ` [request-id: ${detailRequestId}]` : ''}`
+}
+
 async function responsePayload<T>(response: Response, fallback: string) {
   const payload = await response.json().catch(() => ({})) as T & GoogleErrorPayload
-  if (!response.ok) throw new Error(payload.error?.message || fallback)
+  if (!response.ok) {
+    const requestId = response.headers.get('request-id')
+    throw new Error(`${payload.error?.message || fallback}${googleAdsFailureSuffix(payload)}${requestId ? ` [request-id: ${requestId}]` : ''}`)
+  }
   return payload
 }
 
-async function discoverAds(accessToken: string, settingsJson: unknown): Promise<AdsCustomer[]> {
+async function discoverAds(accessToken: string, settingsJson: unknown, googleEmail?: string | null): Promise<AdsCustomer[]> {
   const apiVersion = getGoogleAdsApiVersion()
   const adsConfig = getGoogleAdsConnectionConfig(parseJsonObject(settingsJson))
   if (adsConfig.mode === 'MCC' && !adsConfig.loginCustomerId) throw new Error('La conexión MCC no tiene un Customer ID de administrador configurado.')
@@ -68,7 +82,7 @@ async function discoverAds(accessToken: string, settingsJson: unknown): Promise<
       return { id, name: customer?.descriptiveName || `Cuenta ${id}`, manager: Boolean(customer?.manager), currencyCode: customer?.currencyCode || null }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo consultar el detalle.'
-      return { id, name: `Cuenta ${id}`, manager: false, currencyCode: null, warning: adsErrorMessage(message) }
+      return { id, name: `Cuenta ${id}`, manager: false, currencyCode: null, warning: adsErrorMessage(message, { googleEmail, loginCustomerId: adsConfig.loginCustomerId }) }
     }
   }))
 }
@@ -112,11 +126,15 @@ export async function POST() {
     let analytics: AnalyticsProperty[] = []
     let searchConsole: SearchConsoleSite[] = []
     const tasks: Promise<void>[] = []
-    if (connection.scopes.includes(getGoogleMarketingProductScope('ADS'))) tasks.push(discoverAds(accessToken, connection.settingsJson).then((items) => {
+    if (connection.scopes.includes(getGoogleMarketingProductScope('ADS'))) tasks.push(discoverAds(accessToken, connection.settingsJson, connection.googleEmail).then((items) => {
       ads = items
       const detailWarning = items.find((item) => item.warning)?.warning
       if (detailWarning) warnings.push(`Google Ads: ${detailWarning}`)
-    }).catch((error) => { warnings.push(`Google Ads: ${error instanceof Error ? error.message : 'No disponible.'}`) }))
+    }).catch((error) => {
+      const message = error instanceof Error ? error.message : 'No disponible.'
+      const adsConfig = getGoogleAdsConnectionConfig(parseJsonObject(connection.settingsJson))
+      warnings.push(`Google Ads: ${adsErrorMessage(message, { googleEmail: connection.googleEmail, loginCustomerId: adsConfig.loginCustomerId })}`)
+    }))
     if (connection.scopes.includes(getGoogleMarketingProductScope('ANALYTICS'))) tasks.push(discoverAnalytics(accessToken).then((items) => { analytics = items }).catch((error) => { warnings.push(`Google Analytics: ${error instanceof Error ? error.message : 'No disponible.'}`) }))
     if (connection.scopes.includes(getGoogleMarketingProductScope('SEARCH_CONSOLE'))) tasks.push(discoverSearchConsole(accessToken).then((items) => { searchConsole = items }).catch((error) => { warnings.push(`Search Console: ${error instanceof Error ? error.message : 'No disponible.'}`) }))
     await Promise.all(tasks)

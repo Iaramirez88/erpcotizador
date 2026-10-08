@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
+import { CrmGoogleInsights } from '@/components/crm/crm-google-insights'
 
 type Overview = {
   googleConfiguration: { configured: boolean; redirectUri?: string | null; message?: string }
@@ -304,6 +305,8 @@ export function CrmMarketingSeoTab() {
           <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-xl font-semibold text-slate-950">{value}</p></div>
         ))}
       </section>
+
+      <CrmGoogleInsights refreshKey={overview.connection?.lastSyncAt} />
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="rounded-[24px] border-slate-200 shadow-sm">

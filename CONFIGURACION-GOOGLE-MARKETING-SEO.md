@@ -53,6 +53,8 @@ Google retiró los developer tokens el 9 de septiembre de 2026. ORDEX no envía 
 
 El acceso ahora pertenece al proyecto de Google Cloud que contiene el cliente OAuth. En **Google Cloud Console > Google Ads API > Overview**, verifica o solicita el nivel Explorer, Basic o Standard requerido. Un proyecto nuevo empieza con acceso de prueba y no puede consultar cuentas productivas hasta recibir el nivel correspondiente.
 
+Habilitar Google Ads API en **APIs y servicios** solo activa el endpoint. Desde el MCC, abre **Centro de API** y confirma que el proyecto Cloud del cliente OAuth esté asociado, que su estado esté aprobado y que su nivel permita consultar cuentas productivas. El proyecto se identifica por el número que aparece al inicio del Client ID OAuth.
+
 Cada empresa puede conectar Google Ads de dos formas:
 
 - **Cuenta propia:** el cliente autoriza directamente su cuenta. ORDEX no envía `login-customer-id` y solo muestra las cuentas accesibles para ese usuario.

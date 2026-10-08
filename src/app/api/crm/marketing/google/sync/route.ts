@@ -20,24 +20,47 @@ type AdsResult = {
   }
 }
 
+type AdsQueryDiagnostic = {
+  customerId: string
+  loginCustomerId: string | null
+  query: string
+  httpStatus: number
+  requestId: string | null
+  batches: number
+  rows: number
+}
+
 type AnalyticsPayload = {
   rows?: Array<{ metricValues?: Array<{ value?: string }> }>
   totals?: Array<{ metricValues?: Array<{ value?: string }> }>
   error?: { message?: string }
 }
 
-type GoogleApiError = { error?: { code?: number; message?: string; status?: string } }
+type AnalyticsReportPayload = {
+  rows?: Array<{ dimensionValues?: Array<{ value?: string }>; metricValues?: Array<{ value?: string }> }>
+  error?: { message?: string }
+}
 
-function googleApiErrorMessage(payload: unknown, response: Response) {
+type SearchConsoleRow = { keys?: string[]; clicks?: number; impressions?: number; ctr?: number; position?: number }
+
+type GoogleApiError = { error?: { code?: number; message?: string; status?: string; details?: Array<{ errors?: Array<{ errorCode?: Record<string, string> }>; requestId?: string }> } }
+
+function googleApiErrorMessage(payload: unknown, response: Response, context?: { googleEmail?: string | null; loginCustomerId?: string }) {
   const candidates = Array.isArray(payload) ? payload : [payload]
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== 'object') continue
     const error = (candidate as GoogleApiError).error
     if (error?.message) {
+      const failures = error.details?.flatMap((detail) => detail.errors || []) || []
+      const codes = failures.flatMap((failure) => Object.entries(failure.errorCode || {}).map(([group, code]) => `${group}.${code}`))
+      const diagnostic = codes.length ? ` Código: ${[...new Set(codes)].join(', ')}.` : ''
       if (/does not have permission|permission_denied|insufficient permission/i.test(error.message)) {
-        return 'Sin permiso para consultar Google Ads. Confirma el acceso del correo conectado a la cuenta seleccionada y, si usas un MCC, configura GOOGLE_ADS_LOGIN_CUSTOMER_ID con el ID de ese MCC.'
+        const identity = context?.googleEmail || 'La cuenta Google conectada'
+        const target = context?.loginCustomerId ? ` al MCC ${context.loginCustomerId}` : ' a la cuenta operativa'
+        const requestId = response.headers.get('request-id')
+        return `${identity} no tiene permiso API${target}. Verifica el correo en Administrador > Acceso y seguridad > Usuarios dentro de esa cuenta.${diagnostic}${requestId ? ` Request ID: ${requestId}.` : ''}`
       }
-      return `${error.message}${error.status ? ` (${error.status})` : ''}`
+      return `${error.message}${error.status ? ` (${error.status})` : ''}${diagnostic}`
     }
   }
   return `Google Ads respondió ${response.status} ${response.statusText || 'sin detalle'}.`
@@ -54,6 +77,39 @@ function campaignKey(value: string | null | undefined) {
 function numberValue(value: string | number | null | undefined) {
   const parsed = Number(value || 0)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+async function fetchAnalyticsReport(accessToken: string, propertyId: string, dimensions: string[], metrics: string[], limit = 100) {
+  const response = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }], dimensions: dimensions.map((name) => ({ name })), metrics: metrics.map((name) => ({ name })), limit }),
+    cache: 'no-store',
+  })
+  const payload = await response.json().catch(() => ({})) as AnalyticsReportPayload
+  if (!response.ok) throw new Error(payload.error?.message || 'Google Analytics rechazó el informe detallado.')
+  return (payload.rows || []).map((row) => ({
+    dimensions: Object.fromEntries(dimensions.map((name, index) => [name, row.dimensionValues?.[index]?.value || ''])),
+    metrics: Object.fromEntries(metrics.map((name, index) => [name, numberValue(row.metricValues?.[index]?.value)])),
+  }))
+}
+
+async function fetchSearchConsoleReport(accessToken: string, propertyUrl: string, startDate: string, endDate: string, dimension: string) {
+  const response = await fetch(`https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(propertyUrl)}/searchAnalytics/query`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ startDate, endDate, dimensions: [dimension], rowLimit: 250 }),
+    cache: 'no-store',
+  })
+  const payload = await response.json().catch(() => ({})) as { rows?: SearchConsoleRow[]; error?: { message?: string } }
+  if (!response.ok) throw new Error(payload.error?.message || `Search Console rechazó el informe por ${dimension}.`)
+  return (payload.rows || []).map((row) => ({
+    value: row.keys?.[0] || '',
+    clicks: numberValue(row.clicks),
+    impressions: numberValue(row.impressions),
+    ctr: numberValue(row.ctr),
+    position: numberValue(row.position),
+  }))
 }
 
 export async function POST() {
@@ -78,7 +134,11 @@ export async function POST() {
     const accessToken = String(refreshed.access_token)
     const warnings: string[] = []
     let adsRows: AdsResult[] = []
+    let adsInventoryRows: AdsResult[] = []
+    const adsDiagnostics: AdsQueryDiagnostic[] = []
+    const adsPersistence = { received: 0, inserted: 0, updated: 0 }
     let analyticsSnapshot: Record<string, unknown> | null = null
+    let searchConsoleSnapshot: Record<string, unknown> | null = null
 
     if (connection.googleAdsCustomerId && connection.scopes.includes(getGoogleMarketingProductScope('ADS'))) {
       try {
@@ -86,25 +146,59 @@ export async function POST() {
         const adsConfig = getGoogleAdsConnectionConfig(parseJsonObject(connection.settingsJson))
         if (adsConfig.mode === 'MCC' && !adsConfig.loginCustomerId) throw new Error('La conexión MCC no tiene un Customer ID de administrador configurado.')
         const operatingCustomerId = assertGoogleAdsCustomerSeparation(connection.googleAdsCustomerId, adsConfig.loginCustomerId)
+        const inventoryQuery = "SELECT campaign.id, campaign.name, campaign.status FROM campaign WHERE campaign.status != 'REMOVED'"
+        const inventoryResponse = await fetch(`https://googleads.googleapis.com/${apiVersion}/customers/${operatingCustomerId}/googleAds:searchStream`, {
+          method: 'POST',
+          headers: getGoogleAdsRequestHeaders(accessToken, adsConfig.loginCustomerId, true),
+          body: JSON.stringify({ query: inventoryQuery }),
+          cache: 'no-store',
+        })
+        const inventoryPayload = (await inventoryResponse.json().catch(() => null)) as Array<{ results?: AdsResult[]; error?: { message?: string } }> | GoogleApiError | null
+        const adsErrorContext = { googleEmail: connection.googleEmail, loginCustomerId: adsConfig.loginCustomerId }
+        if (!inventoryResponse.ok) throw new Error(googleApiErrorMessage(inventoryPayload, inventoryResponse, adsErrorContext))
+        adsInventoryRows = Array.isArray(inventoryPayload) ? inventoryPayload.flatMap((batch) => batch.results || []) : []
+        const inventoryDiagnostic = {
+          customerId: operatingCustomerId,
+          loginCustomerId: adsConfig.loginCustomerId || null,
+          query: inventoryQuery,
+          httpStatus: inventoryResponse.status,
+          requestId: inventoryResponse.headers.get('request-id'),
+          batches: Array.isArray(inventoryPayload) ? inventoryPayload.length : 0,
+          rows: adsInventoryRows.length,
+        }
+        adsDiagnostics.push(inventoryDiagnostic)
+        console.info('Google Ads inventory diagnostic', { ...inventoryDiagnostic, results: adsInventoryRows })
+
+        const metricsQuery = 'SELECT segments.date, customer.currency_code, campaign.id, campaign.name, campaign.status, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date DURING LAST_30_DAYS'
         const response = await fetch(`https://googleads.googleapis.com/${apiVersion}/customers/${operatingCustomerId}/googleAds:searchStream`, {
           method: 'POST',
           headers: getGoogleAdsRequestHeaders(accessToken, adsConfig.loginCustomerId, true),
-          body: JSON.stringify({
-            query: 'SELECT segments.date, customer.currency_code, campaign.id, campaign.name, campaign.status, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date DURING LAST_30_DAYS',
-          }),
+          body: JSON.stringify({ query: metricsQuery }),
           cache: 'no-store',
         })
         const payload = (await response.json().catch(() => null)) as Array<{ results?: AdsResult[]; error?: { message?: string } }> | GoogleApiError | null
-        if (!response.ok) throw new Error(googleApiErrorMessage(payload, response))
-        const embeddedError = googleApiErrorMessage(payload, response)
+        if (!response.ok) throw new Error(googleApiErrorMessage(payload, response, adsErrorContext))
+        const embeddedError = googleApiErrorMessage(payload, response, adsErrorContext)
         if (Array.isArray(payload) && payload.some((batch) => batch.error)) throw new Error(embeddedError)
         adsRows = Array.isArray(payload) ? payload.flatMap((batch) => batch.results || []) : []
+        const metricsDiagnostic = {
+          customerId: operatingCustomerId,
+          loginCustomerId: adsConfig.loginCustomerId || null,
+          query: metricsQuery,
+          httpStatus: response.status,
+          requestId: response.headers.get('request-id'),
+          batches: Array.isArray(payload) ? payload.length : 0,
+          rows: adsRows.length,
+        }
+        adsDiagnostics.push(metricsDiagnostic)
+        console.info('Google Ads metrics diagnostic', { ...metricsDiagnostic, results: adsRows })
       } catch (error) {
         warnings.push(`Google Ads: ${error instanceof Error ? error.message : 'No se pudo consultar la cuenta seleccionada.'}`)
       }
     }
 
     if (connection.googleAnalyticsPropertyId && connection.scopes.includes(getGoogleMarketingProductScope('ANALYTICS'))) {
+      try {
       const response = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${connection.googleAnalyticsPropertyId}:runReport`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -117,17 +211,64 @@ export async function POST() {
       const payload = (await response.json().catch(() => ({}))) as AnalyticsPayload
       if (!response.ok) throw new Error(payload.error?.message || 'Google Analytics rechazó la sincronización.')
       const values = payload.totals?.[0]?.metricValues || payload.rows?.[0]?.metricValues || []
+      const [channels, pages, events, devices, countries] = await Promise.all([
+        fetchAnalyticsReport(accessToken, connection.googleAnalyticsPropertyId, ['sessionDefaultChannelGroup'], ['sessions', 'totalUsers', 'keyEvents', 'purchaseRevenue']),
+        fetchAnalyticsReport(accessToken, connection.googleAnalyticsPropertyId, ['pagePath'], ['screenPageViews', 'totalUsers', 'averageSessionDuration', 'keyEvents']),
+        fetchAnalyticsReport(accessToken, connection.googleAnalyticsPropertyId, ['eventName'], ['eventCount', 'totalUsers', 'keyEvents']),
+        fetchAnalyticsReport(accessToken, connection.googleAnalyticsPropertyId, ['deviceCategory'], ['sessions', 'totalUsers', 'keyEvents']),
+        fetchAnalyticsReport(accessToken, connection.googleAnalyticsPropertyId, ['country'], ['sessions', 'totalUsers', 'keyEvents']),
+      ])
       analyticsSnapshot = {
         period: 'LAST_30_DAYS',
         sessions: numberValue(values[0]?.value),
         totalUsers: numberValue(values[1]?.value),
         keyEvents: numberValue(values[2]?.value),
         purchaseRevenue: numberValue(values[3]?.value),
+        channels,
+        pages,
+        events,
+        devices,
+        countries,
         syncedAt: new Date().toISOString(),
+      }
+      } catch (error) {
+        warnings.push(`Google Analytics: ${error instanceof Error ? error.message : 'No se pudieron consultar los informes detallados.'}`)
+      }
+    }
+
+    if (connection.searchConsoleSiteUrl && connection.scopes.includes(getGoogleMarketingProductScope('SEARCH_CONSOLE'))) {
+      try {
+      const end = new Date()
+      end.setDate(end.getDate() - 2)
+      const start = new Date(end)
+      start.setDate(start.getDate() - 27)
+      const startDate = dayKey(start)
+      const endDate = dayKey(end)
+      const [queries, pages, devices, countries] = await Promise.all([
+        fetchSearchConsoleReport(accessToken, connection.searchConsoleSiteUrl, startDate, endDate, 'query'),
+        fetchSearchConsoleReport(accessToken, connection.searchConsoleSiteUrl, startDate, endDate, 'page'),
+        fetchSearchConsoleReport(accessToken, connection.searchConsoleSiteUrl, startDate, endDate, 'device'),
+        fetchSearchConsoleReport(accessToken, connection.searchConsoleSiteUrl, startDate, endDate, 'country'),
+      ])
+      searchConsoleSnapshot = { period: { startDate, endDate }, queries, pages, devices, countries, syncedAt: new Date().toISOString() }
+      } catch (error) {
+        warnings.push(`Search Console: ${error instanceof Error ? error.message : 'No se pudieron consultar los informes detallados.'}`)
       }
     }
 
     if (adsRows.length) {
+      adsPersistence.received = adsRows.length
+      const campaignIds = [...new Set(adsRows.map((row) => String(row.campaign?.id || '')).filter(Boolean))]
+      const existingMetrics = await prisma.crmAdCampaignDailyMetric.findMany({
+        where: { connectionId: connection.id, campaignId: { in: campaignIds }, metricDate: { gte: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000) } },
+        select: { campaignId: true, metricDate: true },
+      })
+      const existingKeys = new Set(existingMetrics.map((row) => `${dayKey(row.metricDate)}|${row.campaignId}`))
+      for (const row of adsRows) {
+        const key = `${String(row.segments?.date || '')}|${String(row.campaign?.id || '')}`
+        if (existingKeys.has(key)) adsPersistence.updated += 1
+        else adsPersistence.inserted += 1
+      }
       const captures = await prisma.crmLeadCapture.findMany({
         where: {
           empresaId: access.empresaId,
@@ -213,7 +354,9 @@ export async function POST() {
         tokenExpiresAt: typeof refreshed.expires_in === 'number' ? new Date(Date.now() + refreshed.expires_in * 1000) : null,
         settingsJson: {
           ...parseJsonObject(connection.settingsJson),
+          adsInventorySnapshot: { campaigns: adsInventoryRows, syncedAt: new Date().toISOString() },
           ...(analyticsSnapshot ? { analyticsSnapshot } : {}),
+          ...(searchConsoleSnapshot ? { searchConsoleSnapshot } : {}),
         } as Prisma.InputJsonValue,
         lastSyncAt: new Date(),
         lastErrorAt: null,
@@ -221,7 +364,8 @@ export async function POST() {
       },
     })
 
-    return NextResponse.json({ success: true, data: { adsRows: adsRows.length, analytics: analyticsSnapshot, warnings } })
+    console.info('Google Ads persistence diagnostic', adsPersistence)
+    return NextResponse.json({ success: true, data: { adsCampaigns: adsInventoryRows.length, adsRows: adsRows.length, adsDiagnostics, adsPersistence, analytics: analyticsSnapshot, searchConsole: searchConsoleSnapshot, warnings } })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'No se pudo sincronizar Google Marketing.'
     console.error('Error sincronizando Google Marketing:', error)
