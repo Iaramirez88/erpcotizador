@@ -4,8 +4,8 @@
 
 La pestaña `CRM > Integraciones > Marketing y SEO` conecta una empresa con:
 
-- Google Ads: campañas y métricas diarias de los últimos 30 días.
-- Google Analytics 4: sesiones, usuarios, eventos clave e ingresos de los últimos 30 días.
+- Google Ads: campañas, presupuestos, grupos, anuncios y palabras clave para rangos de hasta 366 días.
+- Google Analytics 4: sesiones, usuarios, eventos clave e ingresos para el rango seleccionado.
 - Google Search Console: consultas, URL, clics, impresiones y posición promedio.
 - CRM: atribución por UTM y GCLID desde lead hasta oportunidad, cotización y venta.
 - Agente de contenido: investigación de hasta tres páginas competidoras, comparación con el sitio actual y generación de un borrador original.
@@ -91,6 +91,7 @@ La migración está versionada en:
 
 ```text
 prisma/migrations/20261006130000_crm_google_marketing_seo/migration.sql
+prisma/migrations/20261009120000_crm_google_ads_attribution/migration.sql
 ```
 
 En producción, ejecútala mediante el flujo normal de despliegue antes de abrir la nueva pestaña. No fue aplicada automáticamente.
@@ -100,7 +101,7 @@ En producción, ejecútala mediante el flujo normal de despliegue antes de abrir
 1. Abre `CRM > Integraciones > Marketing y SEO`.
 2. Selecciona **Conectar Google** y autoriza la cuenta propietaria de los recursos.
 3. ORDEX consulta automáticamente las cuentas Ads, propiedades GA4 y propiedades Search Console disponibles. Si existe una sola opción, queda seleccionada; si existen varias, elige cada una en su selector y pulsa **Guardar selección**.
-4. Usa **Buscar cuentas** para refrescar la lista y **Sincronizar datos** para traer Ads y GA4.
+4. Selecciona un rango en **Rendimiento de Google** y usa **Sincronizar rango** para traer Ads, GA4 y Search Console.
 5. Agrega palabras clave y usa **Actualizar** para consultar Search Console.
 
 La propiedad de Search Console puede ser una URL (`https://cliente.com/`) o una propiedad de dominio (`sc-domain:cliente.com`).
@@ -112,8 +113,12 @@ Para cruzar campañas con el CRM, las URLs publicitarias deben conservar:
 ```text
 utm_source=google
 utm_medium=cpc
-utm_campaign=Nombre exacto de campaña
+utm_campaign={campaignid}
+utm_content={adgroupid}:{creative}
+utm_term={keyword}
 gclid={gclid}
 ```
 
-Los formularios del constructor, los formularios iframe y los snippets CRM conservan esos valores en `CrmLeadCapture`.
+Configura estos parámetros como sufijo de URL final o plantilla de seguimiento en Google Ads. ORDEX cruza `campaignid` con campaña, `adgroupid` con grupo, `creative` con anuncio y `keyword` con palabra clave. Los formularios del constructor, los formularios iframe y los snippets CRM conservan esos valores en `CrmLeadCapture`.
+
+El embudo visible es: campaña/palabra clave → clic identificado por GCLID → WhatsApp o formulario → lead → cliente → venta y valor. El valor atribuido prioriza factura POS pagada, luego el total de la cotización marcada como venta realizada. `expectedValue` solo se usa como respaldo para oportunidades `WON` que no tienen cotización vinculada.

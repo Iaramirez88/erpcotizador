@@ -850,6 +850,7 @@ model Empresa {
   crmLeadCaptures      CrmLeadCapture[]
   crmMarketingConnections CrmMarketingConnection[]
   crmAdCampaignDailyMetrics CrmAdCampaignDailyMetric[]
+  crmAdEntityDailyMetrics CrmAdEntityDailyMetric[]
   crmSeoKeywords CrmSeoKeyword[]
   crmSeoKeywordPositions CrmSeoKeywordPosition[]
   crmSeoSerpTasks CrmSeoSerpTask[]
@@ -3510,6 +3511,7 @@ model CrmMarketingConnection {
   lastErrorMessage String? @db.Text
 
   campaignMetrics CrmAdCampaignDailyMetric[]
+  entityMetrics   CrmAdEntityDailyMetric[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3533,6 +3535,7 @@ model CrmAdCampaignDailyMetric {
   campaignName String
   campaignStatus String?
   currencyCode String?
+  dailyBudget Float @default(0)
 
   impressions Int @default(0)
   clicks      Int @default(0)
@@ -3556,6 +3559,50 @@ model CrmAdCampaignDailyMetric {
   @@index([empresaId, metricDate])
   @@index([empresaId, campaignId, metricDate])
   @@map("crm_ad_campaign_daily_metrics")
+}
+
+model CrmAdEntityDailyMetric {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  connectionId String
+  connection   CrmMarketingConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  metricDate DateTime @db.Date
+  entityType String
+  entityId   String
+  entityName String
+  entityStatus String?
+  campaignId String
+  campaignName String
+  adGroupId String?
+  adGroupName String?
+  keywordText String?
+  matchType String?
+  currencyCode String?
+
+  impressions Int @default(0)
+  clicks Int @default(0)
+  cost Float @default(0)
+  conversions Float @default(0)
+  conversionValue Float @default(0)
+
+  crmLeads Int @default(0)
+  qualifiedLeads Int @default(0)
+  opportunities Int @default(0)
+  sales Int @default(0)
+  crmRevenue Float @default(0)
+
+  rawJson Json @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([connectionId, metricDate, entityType, entityId])
+  @@index([empresaId, metricDate, entityType])
+  @@index([empresaId, campaignId, metricDate])
+  @@map("crm_ad_entity_daily_metrics")
 }
 
 model CrmSeoKeyword {

@@ -1,13 +1,16 @@
 "use client"
 
 import { useEffect, useState } from 'react'
-import { BarChart3, Loader2, Search, Target } from 'lucide-react'
+import { BarChart3, CalendarRange, Loader2, RefreshCw, Search, Target } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 type Campaign = {
   id: string
   name: string
   status?: string | null
+  dailyBudget: number
   impressions: number
   clicks: number
   ctr: number
@@ -22,11 +25,15 @@ type Campaign = {
   crmRoas: number
 }
 
+type AdsEntity = Omit<Campaign, 'dailyBudget' | 'roas'> & { campaignName: string; adGroupName?: string | null; keywordText?: string | null; matchType?: string | null; opportunities: number }
+type FunnelRow = { id: string; capturedAt: string; channel: string; campaign?: string | null; ad?: string | null; keyword?: string | null; gclid?: string | null; lead?: { name: string; status: string } | null; client?: { name: string } | null; sales: number; revenue: number }
+
 type AnalyticsRow = { dimensions: Record<string, string>; metrics: Record<string, number> }
 type SearchConsoleRow = { value: string; clicks: number; impressions: number; ctr: number; position: number }
 type Insights = {
   lastSyncAt?: string | null
-  ads: { connected: boolean; customerId?: string | null; campaigns: Campaign[]; dailyRows: number }
+  range: { from: string; to: string }
+  ads: { connected: boolean; customerId?: string | null; campaigns: Campaign[]; adGroups: AdsEntity[]; ads: AdsEntity[]; keywords: AdsEntity[]; funnel: FunnelRow[]; dailyRows: number }
   analytics: { connected: boolean; propertyId?: string | null; snapshot: Record<string, unknown> }
   searchConsole: { connected: boolean; propertyUrl?: string | null; snapshot: Record<string, unknown> }
 }
@@ -58,19 +65,42 @@ function searchRows(snapshot: Record<string, unknown>, key: string) {
 }
 
 export function CrmGoogleInsights({ refreshKey }: { refreshKey?: string | null }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const initialFrom = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const [data, setData] = useState<Insights | null>(null)
   const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState('')
+  const [draftFrom, setDraftFrom] = useState(initialFrom)
+  const [draftTo, setDraftTo] = useState(today)
+  const [range, setRange] = useState({ from: initialFrom, to: today })
 
   useEffect(() => {
     let active = true
-    void fetch('/api/crm/marketing/google/insights', { cache: 'no-store' }).then(async (response) => {
+    setLoading(true)
+    setError('')
+    void fetch(`/api/crm/marketing/google/insights?from=${range.from}&to=${range.to}`, { cache: 'no-store' }).then(async (response) => {
       const json = await response.json() as { data?: Insights; error?: string }
       if (!response.ok || !json.data) throw new Error(json.error || 'No se pudo cargar el detalle de Google.')
       if (active) setData(json.data)
     }).catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : 'No se pudo cargar el detalle.') }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [refreshKey])
+  }, [range, refreshKey])
+
+  async function syncRange() {
+    setSyncing(true)
+    setError('')
+    try {
+      const response = await fetch(`/api/crm/marketing/google/sync?from=${range.from}&to=${range.to}`, { method: 'POST' })
+      const json = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(json.error || 'No se pudo sincronizar el rango.')
+      setRange((current) => ({ ...current }))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'No se pudo sincronizar el rango.')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   if (loading) return <div className="flex min-h-40 items-center justify-center border border-slate-200 bg-white text-sm text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Cargando vistas de Google...</div>
   if (!data) return <div className="border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
@@ -81,7 +111,16 @@ export function CrmGoogleInsights({ refreshKey }: { refreshKey?: string | null }
   const adsTotals = campaigns.reduce((total, item) => ({ impressions: total.impressions + item.impressions, clicks: total.clicks + item.clicks, cost: total.cost + item.cost, conversions: total.conversions + item.conversions, revenue: total.revenue + item.crmRevenue }), { impressions: 0, clicks: 0, cost: 0, conversions: 0, revenue: 0 })
 
   return <section className="border border-slate-200 bg-white p-4 md:p-5">
-    <div className="mb-5"><p className="text-xs font-semibold uppercase text-slate-500">Detalle por integración</p><h3 className="mt-1 text-lg font-semibold text-slate-950">Rendimiento de Google</h3><p className="mt-1 text-sm text-slate-600">Explora cada fuente de datos de forma independiente.</p></div>
+    <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div><p className="text-xs font-semibold uppercase text-slate-500">Detalle por integración</p><h3 className="mt-1 text-lg font-semibold text-slate-950">Rendimiento de Google</h3><p className="mt-1 text-sm text-slate-600">Explora inversión, captación y ventas en el periodo seleccionado.</p></div>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="grid gap-1 text-xs font-medium text-slate-600">Desde<Input type="date" value={draftFrom} max={draftTo} onChange={(event) => setDraftFrom(event.target.value)} className="h-9 w-40" /></label>
+        <label className="grid gap-1 text-xs font-medium text-slate-600">Hasta<Input type="date" value={draftTo} min={draftFrom} max={today} onChange={(event) => setDraftTo(event.target.value)} className="h-9 w-40" /></label>
+        <Button variant="outline" size="sm" onClick={() => setRange({ from: draftFrom, to: draftTo })}><CalendarRange className="mr-2 h-4 w-4" />Consultar</Button>
+        <Button size="sm" disabled={syncing} onClick={() => void syncRange()}>{syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}Sincronizar rango</Button>
+      </div>
+    </div>
+    {error ? <div className="mb-4 border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
     <Tabs defaultValue="ads">
       <TabsList className="grid h-auto w-full grid-cols-3">
         <TabsTrigger value="ads"><Target className="mr-2 h-4 w-4" />Google Ads</TabsTrigger>
@@ -91,7 +130,13 @@ export function CrmGoogleInsights({ refreshKey }: { refreshKey?: string | null }
 
       <TabsContent value="ads" className="mt-6 space-y-6">
         <div className="flex flex-wrap gap-6"><Metric label="Impresiones" value={number.format(adsTotals.impressions)} /><Metric label="Clics" value={number.format(adsTotals.clicks)} /><Metric label="Inversión" value={money.format(adsTotals.cost)} /><Metric label="Conversiones" value={number.format(adsTotals.conversions)} /><Metric label="Ingresos CRM" value={money.format(adsTotals.revenue)} /></div>
-        <TableShell title="Campañas" description={`Cuenta ${data.ads.customerId || 'sin seleccionar'} · últimos 30 días`} headers={['Campaña', 'Estado', 'Impresiones', 'Clics', 'CTR', 'Costo', 'Conversiones', 'CPA', 'ROAS Ads', 'Leads CRM', 'Ventas', 'ROAS CRM']} rows={campaigns.map((item) => [item.name, item.status || '—', number.format(item.impressions), number.format(item.clicks), `${number.format(item.ctr * 100)}%`, money.format(item.cost), number.format(item.conversions), money.format(item.cpa), `${number.format(item.roas)}x`, number.format(item.crmLeads), number.format(item.sales), `${number.format(item.crmRoas)}x`])} />
+        <TableShell title="Campañas" description={`Cuenta ${data.ads.customerId || 'sin seleccionar'} · ${data.range.from} a ${data.range.to}`} headers={['Campaña', 'Estado', 'Presupuesto diario', 'Impresiones', 'Clics', 'CTR', 'Costo', 'Conversiones', 'CPA', 'ROAS Ads', 'Leads CRM', 'Ventas', 'ROAS CRM']} rows={campaigns.map((item) => [item.name, item.status || '—', money.format(item.dailyBudget), number.format(item.impressions), number.format(item.clicks), `${number.format(item.ctr * 100)}%`, money.format(item.cost), number.format(item.conversions), money.format(item.cpa), `${number.format(item.roas)}x`, number.format(item.crmLeads), number.format(item.sales), `${number.format(item.crmRoas)}x`])} />
+        <div className="grid gap-8 xl:grid-cols-2">
+          <TableShell title="Grupos de anuncios" description="Rendimiento y valor comercial por grupo" headers={['Grupo', 'Campaña', 'Clics', 'Costo', 'Leads', 'Ventas', 'Valor venta']} rows={data.ads.adGroups.map((item) => [item.name, item.campaignName, number.format(item.clicks), money.format(item.cost), number.format(item.crmLeads), number.format(item.sales), money.format(item.crmRevenue)])} />
+          <TableShell title="Anuncios" description="Creativos identificados por utm_content" headers={['Anuncio', 'Grupo', 'Campaña', 'Clics', 'Costo', 'Leads', 'Ventas']} rows={data.ads.ads.map((item) => [item.name, item.adGroupName || '—', item.campaignName, number.format(item.clicks), money.format(item.cost), number.format(item.crmLeads), number.format(item.sales)])} />
+        </div>
+        <TableShell title="Palabras clave" description="Keyword → clic → lead → cliente → valor de venta" headers={['Palabra clave', 'Coincidencia', 'Grupo', 'Campaña', 'Clics', 'Costo', 'Leads', 'Clientes/ventas', 'Valor venta', 'ROAS CRM']} rows={data.ads.keywords.map((item) => [item.keywordText || item.name, item.matchType || '—', item.adGroupName || '—', item.campaignName, number.format(item.clicks), money.format(item.cost), number.format(item.crmLeads), number.format(item.sales), money.format(item.crmRevenue), `${number.format(item.crmRoas)}x`])} />
+        <TableShell title="Embudo de leads atribuidos" description="Trazabilidad individual conservada por UTM y GCLID" headers={['Fecha', 'Campaña', 'Anuncio', 'Keyword', 'Canal', 'Lead', 'Cliente', 'Ventas', 'Valor', 'GCLID']} rows={data.ads.funnel.map((item) => [new Date(item.capturedAt).toLocaleDateString('es-CO'), item.campaign || '—', item.ad || '—', item.keyword || '—', item.channel.replaceAll('_', ' '), item.lead?.name || '—', item.client?.name || '—', number.format(item.sales), money.format(item.revenue), item.gclid || '—'])} />
       </TabsContent>
 
       <TabsContent value="analytics" className="mt-6 space-y-8">
