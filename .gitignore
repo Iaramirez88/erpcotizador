@@ -35,8 +35,11 @@ yarn-error.log*
 *.err.log
 dev*.log
 
-# env files (can opt-in for committing if needed)
+# env files (never commit real ones)
 .env*
+!.env.example
+!.env.docker.example
+!.env.litografia-ia.example
 
 # vercel
 .vercel

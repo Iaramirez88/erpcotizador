@@ -177,6 +177,7 @@ model User {
   accountingPeriodsCreated       AccountingPeriod[]       @relation("AccountingPeriodCreatedBy")
   accountingVouchersCreated      AccountingVoucher[]      @relation("AccountingVoucherCreatedBy")
   accountingVouchersApproved     AccountingVoucher[]      @relation("AccountingVoucherApprovedBy")
+  treasuryReconciliationsClosed  TreasuryBankReconciliation[] @relation("TreasuryReconciliationClosedBy")
 
   // Nómina
   payrollEmployeeProfile   PayrollEmployee?   @relation("PayrollEmployeeUser")
@@ -914,6 +915,7 @@ model Empresa {
   decisionEngineSnapshots  DecisionEngineSnapshot[]
   treasuryBankAccounts     TreasuryBankAccount[]
   treasuryBankMovements    TreasuryBankMovement[]
+  treasuryBankReconciliations TreasuryBankReconciliation[]
 
   // Nómina
   payrollEmployees   PayrollEmployee[]
@@ -6782,7 +6784,8 @@ model TreasuryBankAccount {
   accountingAccountId String?
   accountingAccount   AccountingAccount? @relation(fields: [accountingAccountId], references: [id], onDelete: SetNull)
 
-  movements TreasuryBankMovement[]
+  movements       TreasuryBankMovement[]
+  reconciliations TreasuryBankReconciliation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -6810,13 +6813,55 @@ model TreasuryBankMovement {
   journalEntryId String?
   journalEntry   AccountingJournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: SetNull)
 
+  // Conciliación bancaria que incluyó este movimiento (null = pendiente)
+  reconciliationId String?
+  reconciliation   TreasuryBankReconciliation? @relation(fields: [reconciliationId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([empresaId, date])
   @@index([bankAccountId, date])
   @@index([journalEntryId])
+  @@index([reconciliationId])
   @@map("treasury_bank_movements")
+}
+
+// Cierre de conciliación bancaria: snapshot de saldos + corte al que se concilió.
+model TreasuryBankReconciliation {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  bankAccountId String
+  bankAccount   TreasuryBankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  // Corte (fin del día) contra el que se concilió
+  asOf   DateTime
+  status String   @db.VarChar(24) // CONCILIADA | CON_DIFERENCIAS
+
+  bankBalance   Float
+  ledgerBalance Float
+  difference    Float
+
+  movementsCount   Int @default(0)
+  pendingMovements Int @default(0)
+  pendingEntries   Int @default(0)
+
+  notes    String? @db.Text
+  metadata Json    @default("{}")
+
+  closedById String?
+  closedBy   User? @relation("TreasuryReconciliationClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+
+  movements TreasuryBankMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, asOf])
+  @@index([bankAccountId, asOf])
+  @@map("treasury_bank_reconciliations")
 }
 
 // ============================================

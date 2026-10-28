@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { sanitizeContabilidadNavPinnedHrefs } from '@/lib/contabilidad-nav'
 
 export const runtime = 'nodejs'
 
@@ -64,10 +65,16 @@ type SidebarTooltipPrefs = {
   mobile?: boolean
 }
 
+/** Anclas de la sub-barra de contabilidad (persistidas por usuario). */
+type ContabilidadNavPrefs = {
+  pinnedHrefs?: string[]
+}
+
 type StoredReportPrefs = ReportPrefs & {
   dataView?: DataViewPrefs
   theme?: UiTheme
   sidebarTooltips?: SidebarTooltipPrefs
+  contabilidadNav?: ContabilidadNavPrefs
 }
 
 function normalizeIntelligencePrefs(value: unknown): Required<NonNullable<ReportPrefs['intelligence']>> {
@@ -142,6 +149,11 @@ function normalizeSidebarTooltipPrefs(value: unknown): Required<SidebarTooltipPr
   }
 }
 
+function normalizeContabilidadNavPrefs(value: unknown): Required<ContabilidadNavPrefs> {
+  if (!isPlainObject(value)) return { pinnedHrefs: [] }
+  return { pinnedHrefs: sanitizeContabilidadNavPinnedHrefs(value.pinnedHrefs) }
+}
+
 function normalizeNavPrefs(value: unknown): { visibility: NavPrefs; order: NavOrderPrefs } {
   if (!isPlainObject(value)) {
     return { visibility: {}, order: [] }
@@ -175,7 +187,8 @@ function defaultPrefs() {
   const language: UiLanguage = 'es'
   const theme: UiTheme = 'system'
   const sidebarTooltips = { desktop: true, mobile: true }
-  return { nav, navOrder, report, tutorial, dataView, language, theme, sidebarTooltips }
+  const contabilidadNav: Required<ContabilidadNavPrefs> = { pinnedHrefs: [] }
+  return { nav, navOrder, report, tutorial, dataView, language, theme, sidebarTooltips, contabilidadNav }
 }
 
 async function resolveUserIdFromSession(session: { user?: { id?: string; email?: string | null } }) {
@@ -208,6 +221,7 @@ export async function GET() {
         language: defaults.language,
         theme: defaults.theme,
         sidebarTooltips: defaults.sidebarTooltips,
+        contabilidadNav: defaults.contabilidadNav,
       },
     })
   }
@@ -225,6 +239,7 @@ export async function GET() {
         language: defaults.language,
         theme: defaults.theme,
         sidebarTooltips: defaults.sidebarTooltips,
+        contabilidadNav: defaults.contabilidadNav,
       },
     })
   }
@@ -252,6 +267,7 @@ export async function GET() {
       language: (pref?.language as UiLanguage | null) ?? defaults.language,
       theme: storedReport?.theme ?? defaults.theme,
       sidebarTooltips: normalizeSidebarTooltipPrefs(storedReport?.sidebarTooltips),
+      contabilidadNav: normalizeContabilidadNavPrefs(storedReport?.contabilidadNav),
     },
   })
 }
@@ -278,6 +294,9 @@ export async function PUT(req: NextRequest) {
   const tutorial = isPlainObject(body.tutorial) ? (body.tutorial as TutorialPrefs) : undefined
   const dataView = isPlainObject(body.dataView) ? (body.dataView as DataViewPrefs) : undefined
   const sidebarTooltips = isPlainObject(body.sidebarTooltips) ? normalizeSidebarTooltipPrefs(body.sidebarTooltips) : undefined
+  const contabilidadNav = isPlainObject(body.contabilidadNav)
+    ? (body.contabilidadNav as ContabilidadNavPrefs)
+    : undefined
 
   const languageRaw = typeof body.language === 'string' ? body.language.trim().toLowerCase() : ''
   const language: UiLanguage | undefined = languageRaw === 'es' || languageRaw === 'en' ? (languageRaw as UiLanguage) : undefined
@@ -302,6 +321,7 @@ export async function PUT(req: NextRequest) {
     chat: normalizeChatPrefs(report?.chat ?? currentReport.chat),
     tasks: normalizeTaskPrefs(report?.tasks ?? currentReport.tasks),
     intelligence: normalizeIntelligencePrefs(report?.intelligence ?? currentReport.intelligence),
+    contabilidadNav: normalizeContabilidadNavPrefs(contabilidadNav ?? currentReport.contabilidadNav),
   }
   const nextNav = {
     visibility: nav ?? currentNav.visibility ?? defaults.nav,
@@ -347,6 +367,7 @@ export async function PUT(req: NextRequest) {
       language: updated.language as UiLanguage,
       theme: updatedReport?.theme ?? defaults.theme,
       sidebarTooltips: normalizeSidebarTooltipPrefs(updatedReport?.sidebarTooltips),
+      contabilidadNav: normalizeContabilidadNavPrefs(updatedReport?.contabilidadNav),
     },
   })
 }

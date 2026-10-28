@@ -10,11 +10,21 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { AccountingPeriodRow } from '@/lib/accounting-core'
+import { formatDateShort } from '@/lib/utils'
+import type { AccountingPeriodStatus } from '@prisma/client'
+
+const PERIOD_STATUS_LABEL: Record<AccountingPeriodStatus, string> = {
+  OPEN: 'Abierto',
+  CLOSED: 'Cerrado',
+  LOCKED: 'Bloqueado',
+}
 
 export default function ContabilidadCierresPage() {
   const [periods, setPeriods] = useState<AccountingPeriodRow[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [updatingPeriodId, setUpdatingPeriodId] = useState<string | null>(null)
+  const [statusError, setStatusError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({
     label: '',
@@ -63,6 +73,30 @@ export default function ContabilidadCierresPage() {
     setSaving(false)
   }
 
+  async function handleStatusChange(periodId: string, status: AccountingPeriodStatus) {
+    if (status === 'OPEN' && !window.confirm('¿Reabrir este período? Volverá a admitir comprobantes contables.')) {
+      return
+    }
+
+    setUpdatingPeriodId(periodId)
+    setStatusError(null)
+
+    try {
+      const res = await fetch(`/api/contabilidad/periodos/${periodId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; data?: AccountingPeriodRow[] } | null
+      if (!res.ok || !json?.ok) throw new Error(json?.error ?? 'No fue posible actualizar el período contable')
+      setPeriods(json.data ?? [])
+    } catch (e) {
+      setStatusError(e instanceof Error ? e.message : 'No fue posible actualizar el período contable')
+    } finally {
+      setUpdatingPeriodId(null)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <ErpPageHero
@@ -90,6 +124,9 @@ export default function ContabilidadCierresPage() {
             <CardDescription>Conectado al API base de períodos contables para apertura, cierre y bloqueo.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-slate-600">
+            {statusError ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{statusError}</div>
+            ) : null}
             {periods.length ? periods.map((period) => (
               <div key={period.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -97,13 +134,37 @@ export default function ContabilidadCierresPage() {
                     <div className="font-semibold text-slate-950">{period.label}</div>
                     <div className="text-sm text-slate-500">{period.code} · {period.range}</div>
                   </div>
-                  <div className="text-sm font-medium text-slate-700">{period.status}</div>
+                  <div className="text-sm font-medium text-slate-700">{PERIOD_STATUS_LABEL[period.status]}</div>
                 </div>
                 <div className="mt-3 grid gap-2 md:grid-cols-3">
                   <div>Comprobantes: {period.vouchersCount}</div>
-                  <div>Cierre: {period.closedAt || 'Sin cierre'}</div>
-                  <div>Bloqueo: {period.lockedAt || 'Sin bloqueo'}</div>
+                  <div>Cierre: {period.closedAt ? formatDateShort(period.closedAt) : 'Sin cierre'}</div>
+                  <div>Bloqueo: {period.lockedAt ? formatDateShort(period.lockedAt) : 'Sin bloqueo'}</div>
                 </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {period.status === 'OPEN' ? (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => void handleStatusChange(period.id, 'CLOSED')} disabled={updatingPeriodId === period.id}>
+                        Cerrar período
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => void handleStatusChange(period.id, 'LOCKED')} disabled={updatingPeriodId === period.id}>
+                        Cerrar y bloquear
+                      </Button>
+                    </>
+                  ) : period.status === 'CLOSED' ? (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => void handleStatusChange(period.id, 'LOCKED')} disabled={updatingPeriodId === period.id}>
+                        Bloquear
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => void handleStatusChange(period.id, 'OPEN')} disabled={updatingPeriodId === period.id}>
+                        Reabrir
+                      </Button>
+                    </>
+                  ) : (
+                    <span className="text-xs text-slate-500">Período bloqueado: no admite reapertura ni nuevos comprobantes.</span>
+                  )}
+                </div>
+
               </div>
             )) : (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">

@@ -8,6 +8,7 @@ import {
   BookOpen,
   Building2,
   CheckCircle2,
+  ChevronDown,
   CircleAlert,
   CircleDollarSign,
   FileSpreadsheet,
@@ -17,6 +18,7 @@ import {
   Settings2,
   Sparkles,
   TrendingUp,
+  Wallet,
   Workflow,
   type LucideIcon,
 } from 'lucide-react'
@@ -34,6 +36,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { InfoHint } from '@/components/ui/info-hint'
 import {
   Select,
   SelectContent,
@@ -42,6 +45,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ContabilidadSubnav } from '@/components/dashboard/contabilidad-subnav'
+import { AccountingBasePanel } from '@/components/contabilidad/accounting-base-panel'
+import { AccountingSampleDataCard } from '@/components/contabilidad/accounting-sample-data-card'
 import { ErpPageHero, ErpSectionHeading } from '@/components/dashboard/erp-page-chrome'
 import { PIE_COLORS } from '@/lib/chart-colors'
 import { cn } from '@/lib/utils'
@@ -124,9 +129,10 @@ type ModuleAccessCard = {
   title: string
   href: string
   icon: LucideIcon
-  metric: string
-  hint: string
-  tone: string
+  /** Valor corto visible (conteo). Si no se define, la tarjeta solo muestra el título. */
+  value?: string
+  /** Texto descriptivo que se muestra en el tooltip del ícono "i". */
+  detail: string
 }
 
 const ACCOUNT_TYPE_LABEL: Record<AccountingAccountType, string> = {
@@ -274,7 +280,6 @@ function resolveHealthTone(status: string) {
     return {
       badge: 'border-emerald-200 bg-emerald-50 text-emerald-700',
       progress: 'bg-emerald-500',
-      glow: 'from-emerald-100 via-white to-cyan-50',
     }
   }
 
@@ -282,14 +287,12 @@ function resolveHealthTone(status: string) {
     return {
       badge: 'border-amber-200 bg-amber-50 text-amber-700',
       progress: 'bg-amber-500',
-      glow: 'from-amber-100 via-white to-orange-50',
     }
   }
 
   return {
     badge: 'border-rose-200 bg-rose-50 text-rose-700',
     progress: 'bg-rose-500',
-    glow: 'from-rose-100 via-white to-orange-50',
   }
 }
 
@@ -309,6 +312,7 @@ export default function ContabilidadHomePage() {
   const [financeSummary, setFinanceSummary] = useState<FinanceSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [healthExpanded, setHealthExpanded] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -476,8 +480,8 @@ export default function ContabilidadHomePage() {
     },
     {
       title: 'Reportar',
-      hint: 'Libros, impuestos y cierres',
-      href: '/dashboard/contabilidad/libros',
+      hint: 'Estados financieros y libros',
+      href: '/dashboard/contabilidad/estados-financieros',
       icon: FileSpreadsheet,
       status: 'Revisar',
     },
@@ -488,49 +492,52 @@ export default function ContabilidadHomePage() {
       title: 'Comprobantes',
       href: '/dashboard/contabilidad/comprobantes',
       icon: ReceiptText,
-      metric: 'Asientos diarios',
-      hint: 'Registrar y aprobar',
-      tone: 'from-sky-100 to-cyan-50 border-sky-200',
+      detail: 'Asientos diarios · Registrar y aprobar',
     },
     {
       title: 'Plan de cuentas',
       href: '/dashboard/contabilidad/plan-de-cuentas',
       icon: Landmark,
-      metric: `${accounts.length}`,
-      hint: 'Estructura contable',
-      tone: 'from-amber-100 to-orange-50 border-amber-200',
+      value: `${accounts.length}`,
+      detail: 'Estructura contable · Cuentas registradas',
     },
     {
       title: 'Centros',
       href: '/dashboard/contabilidad/centros-de-costo',
       icon: Building2,
-      metric: `${costCenters.length}`,
-      hint: 'Segmentación operativa',
-      tone: 'from-emerald-100 to-teal-50 border-emerald-200',
+      value: `${costCenters.length}`,
+      detail: 'Segmentación operativa · Centros registrados',
     },
     {
       title: 'Reglas',
       href: '/dashboard/contabilidad/reglas',
       icon: Settings2,
-      metric: `${activeRules}/${rules.length || 0}`,
-      hint: 'Automatización',
-      tone: 'from-violet-100 to-fuchsia-50 border-violet-200',
+      value: `${activeRules}/${rules.length || 0}`,
+      detail: 'Automatización · Reglas activas sobre el total',
+    },
+    {
+      title: 'Tesorería',
+      href: '/dashboard/contabilidad/tesoreria',
+      icon: Wallet,
+      detail: 'Bancos y saldos · Cuentas y movimientos',
     },
     {
       title: 'Conciliaciones',
       href: '/dashboard/contabilidad/conciliaciones',
       icon: Scale,
-      metric: 'Banco vs ERP',
-      hint: 'Cruzar movimientos',
-      tone: 'from-cyan-100 to-sky-50 border-cyan-200',
+      detail: 'Banco vs ERP · Cruzar movimientos',
+    },
+    {
+      title: 'Estados financieros',
+      href: '/dashboard/contabilidad/estados-financieros',
+      icon: TrendingUp,
+      detail: 'ESF y resultados · Saldos y balance de prueba',
     },
     {
       title: 'Impuestos',
       href: '/dashboard/contabilidad/impuestos',
       icon: BookOpen,
-      metric: 'IVA y retenciones',
-      hint: 'Preparar reportes',
-      tone: 'from-rose-100 to-orange-50 border-rose-200',
+      detail: 'IVA y retenciones · Preparar reportes',
     },
   ], [accounts.length, activeRules, costCenters.length, rules.length])
 
@@ -641,6 +648,7 @@ export default function ContabilidadHomePage() {
               <BarChart3 className="h-4 w-4" />
               Ver reportes
             </Link>
+            <AccountingSampleDataCard />
           </>
         }
         stats={[
@@ -652,31 +660,53 @@ export default function ContabilidadHomePage() {
 
       <ContabilidadSubnav />
 
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <section className={cn('overflow-hidden rounded-[30px] border border-slate-200 bg-gradient-to-br p-6 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.35)]', healthTone.glow)}>
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-2xl space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-700">
-                <CircleDollarSign className="h-3.5 w-3.5" />
-                Pulso financiero
+      <AccountingBasePanel />
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.32)]">
+        <button
+          type="button"
+          onClick={() => setHealthExpanded((prev) => !prev)}
+          aria-expanded={healthExpanded}
+          aria-controls="contabilidad-estado-empresa"
+          className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition hover:bg-slate-50/80"
+        >
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+              <CircleDollarSign className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-slate-900">Estado actual de la empresa</div>
+              <div className="truncate text-xs text-slate-500">
+                Pulso financiero · índice {executiveHealthScore}/100 · {formatPercent(postingCoverage)} cuentas operativas
               </div>
-              <div>
-                <div className="text-3xl font-semibold tracking-tight text-slate-950 lg:text-4xl">Estado actual de la empresa</div>
-                <p className="mt-2 max-w-xl text-sm text-slate-600">
-                  {financeSummary?.executiveSummary || 'La vista prioriza la salud contable, la automatización y la ruta más corta para llegar a reportes confiables.'}
-                </p>
-              </div>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className={cn('hidden rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] sm:inline-flex', healthTone.badge)}>
+              {executiveHealthStatus}
+            </span>
+            <span className="hidden text-xs font-medium text-slate-500 md:inline">{healthExpanded ? 'Ocultar detalle' : 'Ver detalle'}</span>
+            <ChevronDown className={cn('h-4 w-4 text-slate-400 transition-transform', healthExpanded ? 'rotate-180' : '')} />
+          </div>
+        </button>
+
+        {healthExpanded ? (
+          <div id="contabilidad-estado-empresa" className="grid gap-4 border-t border-slate-200 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="space-y-3">
+              <p className="max-w-3xl text-sm text-slate-600">
+                {financeSummary?.executiveSummary || 'La vista prioriza la salud contable, la automatización y la ruta más corta para llegar a reportes confiables.'}
+              </p>
 
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {spotlightMetrics.map((metric) => {
                   const Icon = metric.icon
                   return (
-                    <div key={metric.id} className="rounded-[22px] border border-white/80 bg-white/88 p-4 shadow-[0_18px_35px_-28px_rgba(15,23,42,0.35)]">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{metric.label}</span>
-                        <Icon className={cn('h-4 w-4', resolveKpiTone(metric.status))} />
+                    <div key={metric.id} className="rounded-2xl border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{metric.label}</span>
+                        <Icon className={cn('h-3.5 w-3.5 shrink-0', resolveKpiTone(metric.status))} />
                       </div>
-                      <div className={cn('mt-3 text-2xl font-semibold', resolveKpiTone(metric.status), metric.status === 'NEUTRAL' ? 'text-slate-950' : '')}>{metric.value}</div>
+                      <div className={cn('mt-2 text-xl font-semibold', resolveKpiTone(metric.status), metric.status === 'NEUTRAL' ? 'text-slate-950' : '')}>{metric.value}</div>
                       <div className="mt-1 text-xs text-slate-500">{metric.note}</div>
                     </div>
                   )
@@ -684,28 +714,28 @@ export default function ContabilidadHomePage() {
               </div>
             </div>
 
-            <div className="w-full max-w-xs rounded-[28px] border border-white/80 bg-white/90 p-5 shadow-[0_18px_35px_-28px_rgba(15,23,42,0.35)]">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Índice contable</div>
-                  <div className="mt-1 text-4xl font-semibold tracking-tight text-slate-950">{executiveHealthScore}</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Índice contable</div>
+                  <div className="mt-0.5 text-3xl font-semibold tracking-tight text-slate-950">{executiveHealthScore}</div>
                 </div>
-                <div className={cn('rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]', healthTone.badge)}>
+                <div className={cn('rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]', healthTone.badge)}>
                   {executiveHealthStatus}
                 </div>
               </div>
 
-              <div className="mt-5 h-3 rounded-full bg-slate-100">
-                <div className={cn('h-3 rounded-full transition-all', healthTone.progress)} style={{ width: `${Math.max(8, Math.min(100, executiveHealthScore))}%` }} />
+              <div className="mt-4 h-2.5 rounded-full bg-slate-200/80">
+                <div className={cn('h-2.5 rounded-full transition-all', healthTone.progress)} style={{ width: `${Math.max(8, Math.min(100, executiveHealthScore))}%` }} />
               </div>
 
-              <div className="mt-5 space-y-3">
+              <div className="mt-4 space-y-2">
                 {[
                   { label: 'Cuentas operativas', value: formatPercent(postingCoverage) },
                   { label: 'Centros enlazados', value: formatPercent(centerCoverage) },
                   { label: 'Reglas activas', value: formatPercent(automationCoverage) },
                 ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/90 px-3 py-2 text-sm">
+                  <div key={item.label} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs">
                     <span className="text-slate-600">{item.label}</span>
                     <span className="font-semibold text-slate-950">{item.value}</span>
                   </div>
@@ -713,80 +743,93 @@ export default function ContabilidadHomePage() {
               </div>
             </div>
           </div>
-        </section>
+        ) : null}
+      </section>
 
-        <div className="grid gap-4">
-          <section className="rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.32)]" data-tour="contabilidad-create-map">
-            <ErpSectionHeading title="Flujo recomendado" description="Orden sugerido para que el usuario configure, opere y cierre sin perderse." />
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {flowCards.map((card) => {
-                const Icon = card.icon
-                return (
-                  <Link key={card.title} href={card.href} className="group rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 transition hover:border-slate-300 hover:bg-white">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-slate-700 shadow-sm">
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-                        {card.status}
-                      </span>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <section className="rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.32)]" data-tour="contabilidad-create-map">
+          <ErpSectionHeading title="Flujo recomendado" description="Orden sugerido para que el usuario configure, opere y cierre sin perderse." />
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {flowCards.map((card) => {
+              const Icon = card.icon
+              return (
+                <Link key={card.title} href={card.href} className="group rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 transition hover:border-slate-300 hover:bg-white">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-slate-700 shadow-sm">
+                      <Icon className="h-5 w-5" />
                     </div>
-                    <div className="mt-4">
-                      <div className="font-medium text-slate-950">{card.title}</div>
-                      <div className="mt-1 text-sm text-slate-500">{card.hint}</div>
-                    </div>
-                    <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-slate-700">
-                      Abrir
-                      <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          </section>
-
-          <section className="rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.32)]">
-            <ErpSectionHeading title="Bandeja de atención" description="Riesgos, alertas o próximos pasos visibles desde la entrada del módulo." />
-            <div className="mt-4 space-y-3">
-              {attentionQueue.map((item) => (
-                <Link key={item.id} href={item.href} className="flex items-start gap-3 rounded-[22px] border border-slate-200 bg-slate-50/80 p-4 transition hover:bg-white">
-                  <div className={cn(
-                    'mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl',
-                    item.severity === 'HIGH' ? 'bg-rose-100 text-rose-600' : item.severity === 'LOW' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600',
-                  )}>
-                    {item.severity === 'LOW' ? <CheckCircle2 className="h-5 w-5" /> : <CircleAlert className="h-5 w-5" />}
+                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                      {card.status}
+                    </span>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium text-slate-950">{item.title}</div>
-                      <ArrowRight className="h-4 w-4 text-slate-400" />
-                    </div>
-                    <div className="mt-1 text-sm text-slate-500">{item.summary}</div>
+                  <div className="mt-4">
+                    <div className="font-medium text-slate-950">{card.title}</div>
+                    <div className="mt-1 text-sm text-slate-500">{card.hint}</div>
+                  </div>
+                  <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                    Abrir
+                    <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                   </div>
                 </Link>
-              ))}
-            </div>
-          </section>
-        </div>
+              )
+            })}
+          </div>
+        </section>
+
+        <section className="rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.32)]">
+          <ErpSectionHeading title="Bandeja de atención" description="Riesgos, alertas o próximos pasos visibles desde la entrada del módulo." />
+          <div className="mt-4 space-y-3">
+            {attentionQueue.map((item) => (
+              <Link key={item.id} href={item.href} className="flex items-start gap-3 rounded-[22px] border border-slate-200 bg-slate-50/80 p-4 transition hover:bg-white">
+                <div className={cn(
+                  'mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl',
+                  item.severity === 'HIGH' ? 'bg-rose-100 text-rose-600' : item.severity === 'LOW' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600',
+                )}>
+                  {item.severity === 'LOW' ? <CheckCircle2 className="h-5 w-5" /> : <CircleAlert className="h-5 w-5" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium text-slate-950">{item.title}</div>
+                    <ArrowRight className="h-4 w-4 text-slate-400" />
+                  </div>
+                  <div className="mt-1 text-sm text-slate-500">{item.summary}</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3" data-tour="contabilidad-areas">
+      <section className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" data-tour="contabilidad-areas">
         {moduleCards.map((card) => {
           const Icon = card.icon
           return (
-            <Link key={card.title} href={card.href} className={cn('group rounded-[28px] border bg-gradient-to-br p-5 shadow-[0_20px_40px_-30px_rgba(15,23,42,0.32)] transition hover:-translate-y-0.5 hover:shadow-[0_26px_55px_-34px_rgba(15,23,42,0.36)]', card.tone)}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/85 text-slate-700 shadow-sm">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <ArrowRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-0.5" />
-              </div>
-              <div className="mt-5">
-                <div className="text-lg font-semibold text-slate-950">{card.title}</div>
-                <div className="mt-2 text-sm font-medium text-slate-700">{card.metric}</div>
-                <div className="mt-1 text-sm text-slate-500">{card.hint}</div>
-              </div>
-            </Link>
+            <div
+              key={card.title}
+              className="group relative flex min-w-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 transition hover:border-slate-300 hover:bg-slate-50/80"
+            >
+              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition group-hover:bg-white group-hover:text-slate-700">
+                <Icon className="h-4 w-4" />
+              </span>
+              <Link
+                href={card.href}
+                className="min-w-0 flex-1 truncate rounded text-sm font-medium text-slate-800 after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2"
+              >
+                {card.title}
+              </Link>
+              {card.value ? (
+                <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600 group-hover:bg-white">
+                  {card.value}
+                </span>
+              ) : null}
+              <InfoHint
+                content={card.detail}
+                label={`Información de ${card.title}`}
+                className="relative z-10 h-5 w-5 shrink-0"
+                iconClassName="h-3 w-3"
+              />
+              <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-500" />
+            </div>
           )
         })}
       </section>
@@ -918,7 +961,9 @@ export default function ContabilidadHomePage() {
                 { label: 'Crear centro', href: '/dashboard/contabilidad/centros-de-costo', icon: Building2 },
                 { label: 'Crear regla', href: '/dashboard/contabilidad/reglas', icon: Settings2 },
                 { label: 'Generar reporte', href: '/dashboard/contabilidad/libros', icon: BarChart3 },
+                { label: 'Ver tesorería', href: '/dashboard/contabilidad/tesoreria', icon: Wallet },
                 { label: 'Conciliar', href: '/dashboard/contabilidad/conciliaciones', icon: Scale },
+                { label: 'Ver estados financieros', href: '/dashboard/contabilidad/estados-financieros', icon: TrendingUp },
                 { label: 'Cerrar período', href: '/dashboard/contabilidad/cierres', icon: FileSpreadsheet },
               ].map((item) => {
                 const Icon = item.icon

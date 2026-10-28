@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireCapabilityAccess } from "@/lib/api-rbac"
+import { postReferenceToAccounting, voidReferenceAccounting } from "@/lib/accounting/auto-post"
 
 export const runtime = "nodejs"
 
@@ -36,6 +37,22 @@ export async function POST(request: Request, context: RouteContext) {
         autorizadoById: autorizado ? String(access.userId) : null,
       },
     })
+
+    if (autorizado) {
+      await postReferenceToAccounting({
+        empresaId: compra.empresaId,
+        userId: access.userId,
+        referenceType: 'COMPRA',
+        referenceId: compra.id,
+      })
+    } else {
+      await voidReferenceAccounting({
+        empresaId: compra.empresaId,
+        referenceType: 'COMPRA',
+        referenceId: compra.id,
+        reason: 'Autorización retirada',
+      })
+    }
 
     return NextResponse.json({ success: true, data: compra })
   } catch (error) {

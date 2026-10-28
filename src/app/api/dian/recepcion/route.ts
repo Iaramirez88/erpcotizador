@@ -8,6 +8,7 @@ import {
   DianEventType,
   ModuleKey,
 } from '@prisma/client'
+import { postReferenceToAccounting } from '@/lib/accounting/auto-post'
 
 export const runtime = 'nodejs'
 
@@ -72,6 +73,13 @@ export async function POST(request: Request) {
       })
 
       return doc
+    })
+
+    await postReferenceToAccounting({
+      empresaId,
+      userId: access.userId,
+      referenceType: 'DIAN_DOCUMENT',
+      referenceId: created.id,
     })
 
     return NextResponse.json({ ok: true, data: created })

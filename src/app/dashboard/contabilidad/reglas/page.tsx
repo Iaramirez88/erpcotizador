@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { ContabilidadSubnav } from '@/components/dashboard/contabilidad-subnav'
 import {
   Select,
   SelectContent,
@@ -107,18 +108,18 @@ export default function ReglasContablesPage() {
   const [submitting, setSubmitting] = useState(false)
 
   const accountCodeSet = useMemo(() => new Set(accounts.map((a) => a.code)), [accounts])
+  const accountById = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts])
   const costCenterById = useMemo(() => new Map(costCenters.map((center) => [center.id, center])), [costCenters])
 
   async function loadAll() {
     setLoading(true)
     setError(null)
     try {
-      const [aRes, rRes] = await Promise.all([
+      const [aRes, cRes, rRes] = await Promise.all([
         fetch('/api/contabilidad/cuentas', { cache: 'no-store' }),
         fetch('/api/contabilidad/centros-de-costo', { cache: 'no-store' }),
         fetch('/api/contabilidad/reglas', { cache: 'no-store' }),
       ])
-      const cRes = rRes
       const aJson = (await aRes.json()) as { ok: boolean; data?: AccountRow[]; error?: string }
       const cJson = (await cRes.json()) as { ok: boolean; data?: CostCenterRow[]; error?: string }
       const rJson = (await rRes.json()) as { ok: boolean; data?: RuleRow[]; error?: string }
@@ -204,12 +205,14 @@ export default function ReglasContablesPage() {
         title={<span data-tour="contabilidad-reglas-title">Reglas contables</span>}
         description="Define reglas por evento para generar asientos automáticamente con el mismo lenguaje visual del ERP." 
         stats={[
-          { label: 'Reglas', value: rules.length, hint: 'Automatizaciones activas', tone: 'neutral' },
+          { label: 'Reglas', value: rules.filter((rule) => rule.isActive).length, hint: 'Automatizaciones activas', tone: 'neutral' },
           { label: 'Cuentas', value: accounts.length, hint: 'Base disponible', tone: 'sky' },
           { label: 'Centros', value: costCenters.length, hint: 'Centros de costo disponibles', tone: 'teal' },
           { label: 'Líneas', value: lines.length, hint: 'Borrador actual', tone: 'amber' },
         ]}
       />
+
+      <ContabilidadSubnav />
 
       <div className="rounded-lg border p-4 space-y-3" data-tour="contabilidad-reglas-create">
         <div className="grid gap-3 md:grid-cols-2">
@@ -391,15 +394,19 @@ export default function ReglasContablesPage() {
                   <div className="text-sm font-medium">{r.name}</div>
                   <div className="text-sm text-muted-foreground">{r.eventType} · prioridad {r.priority}</div>
                   <div className="mt-2 space-y-1">
-                    {r.lines.map((l) => (
-                      <div key={l.id} className="text-sm">
-                        {l.order}. {l.side} {l.amountKey} x{l.multiplier}
-                        {l.costCenterId ? (() => {
-                          const center = costCenterById.get(l.costCenterId)
-                          return ` · Centro: ${center ? `${center.code} - ${center.name}` : l.costCenterId}`
-                        })() : ''}
-                      </div>
-                    ))}
+                    {r.lines.map((l) => {
+                      const lineAccount = accountById.get(l.accountId)
+                      return (
+                        <div key={l.id} className="text-sm">
+                          {l.order}. {l.side} {l.amountKey} x{l.multiplier}
+                          {` · Cuenta ${lineAccount ? `${lineAccount.code} - ${lineAccount.name}` : l.accountId}`}
+                          {l.costCenterId ? (() => {
+                            const center = costCenterById.get(l.costCenterId)
+                            return ` · Centro: ${center ? `${center.code} - ${center.name}` : l.costCenterId}`
+                          })() : ''}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               ))}

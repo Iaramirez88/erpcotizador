@@ -26,6 +26,7 @@ import { createPosInvoiceAuditEvent } from '@/lib/pos-invoice-audit'
 import { applyStockAdjustments, extractRestaurantStockAdjustmentsFromPayments } from '@/lib/pos-finalization'
 import { ensureWorkOrderFromInvoice, resolveClienteIdForPosInvoice, WorkOrderClientResolutionError } from '@/lib/work-orders'
 import { reserveNextPosInvoiceNumber } from '@/lib/pos-numbering'
+import { postReferenceToAccounting } from '@/lib/accounting/auto-post'
 
 export const runtime = 'nodejs'
 
@@ -330,7 +331,7 @@ export async function POST(request: Request) {
       const paymentsNormalized: PosFinalizePaymentInput[] = paymentsInput
         .map((p) => {
           const amount = n(p.amount) ?? 0
-          const method = normalizePaymentMethod((p as any).method)
+          const method = normalizePaymentMethod((p as Record<string, unknown>).method)
           const note = typeof p.note === 'string' ? p.note.trim() : null
           return {
             method,
@@ -551,6 +552,15 @@ export async function POST(request: Request) {
       }
 
     })
+
+    if (result.status !== PosInvoiceStatus.DRAFT) {
+      await postReferenceToAccounting({
+        empresaId,
+        userId: access.userId,
+        referenceType: 'POS_INVOICE',
+        referenceId: result.id,
+      })
+    }
 
     if (!wantsExternalCheckout) {
       return NextResponse.json({ success: true, data: result })

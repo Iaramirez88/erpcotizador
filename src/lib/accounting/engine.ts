@@ -220,6 +220,7 @@ export async function generateJournalEntryFromRule(args: GenerateEntryArgs) {
         eventType: args.eventType,
         referenceType: args.referenceType,
         referenceId: args.referenceId,
+        referenceExtra: (args.referenceExtra ?? {}) as Prisma.InputJsonObject,
         date: args.date,
         description: args.description,
         currency,

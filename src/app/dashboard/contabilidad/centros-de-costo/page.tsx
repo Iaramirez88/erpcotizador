@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ContabilidadSubnav } from '@/components/dashboard/contabilidad-subnav'
 
 type CostCenterRow = {
   id: string
@@ -68,6 +69,8 @@ export default function CentrosDeCostoPage() {
         <h1 className="text-2xl font-semibold" data-tour="contabilidad-centros-title">Centros de costo</h1>
         <p className="text-sm text-muted-foreground">Crea centros de costo para clasificar asientos (opcional).</p>
       </div>
+
+      <ContabilidadSubnav />
 
       <div className="rounded-lg border p-4 space-y-3" data-tour="contabilidad-centros-create">
         <div className="grid gap-3 md:grid-cols-2">

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ModuleKey, PosPaymentMethod } from '@prisma/client'
 import { savePagoSoporteObject } from '@/lib/pago-soporte-storage'
+import { postReferenceToAccounting } from '@/lib/accounting/auto-post'
 
 export const runtime = 'nodejs'
 
@@ -161,6 +162,13 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       select: { id: true },
     })
   }
+
+  await postReferenceToAccounting({
+    empresaId: compra.empresaId,
+    userId: access.userId,
+    referenceType: 'COMPRA_PAGO',
+    referenceId: created.id,
+  })
 
   return GET(req, context)
 }

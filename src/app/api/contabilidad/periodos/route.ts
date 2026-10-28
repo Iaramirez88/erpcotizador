@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { AccessLevel, AccountingPeriodStatus, ModuleKey } from '@prisma/client'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { prisma } from '@/lib/prisma'
-import { buildAccountingRange, nextAccountingPeriodCode, type AccountingPeriodRow } from '@/lib/accounting-core'
+import { nextAccountingPeriodCode } from '@/lib/accounting-core'
+import { serializeAccountingPeriods } from '@/lib/accounting-periods'
 
 export const runtime = 'nodejs'
 
@@ -21,32 +22,11 @@ function isStatus(value: string): value is AccountingPeriodStatus {
   return ['OPEN', 'CLOSED', 'LOCKED'].includes(value)
 }
 
-async function serializePeriods(empresaId: string): Promise<AccountingPeriodRow[]> {
-  const rows = await prisma.accountingPeriod.findMany({
-    where: { empresaId },
-    orderBy: [{ startsAt: 'desc' }],
-    include: {
-      _count: { select: { vouchers: true } },
-    },
-  })
-
-  return rows.map((item) => ({
-    id: item.id,
-    code: item.code,
-    label: item.label,
-    status: item.status,
-    range: buildAccountingRange(item.startsAt, item.endsAt),
-    closedAt: item.closedAt?.toISOString() ?? null,
-    lockedAt: item.lockedAt?.toISOString() ?? null,
-    vouchersCount: item._count.vouchers,
-  }))
-}
-
 export async function GET() {
   const access = await requireApiAccess(ModuleKey.CONTABILIDAD, AccessLevel.READ)
   if (!access.ok) return access.response
 
-  const data = await serializePeriods(access.empresaId)
+  const data = await serializeAccountingPeriods(access.empresaId)
   return NextResponse.json({ ok: true, data })
 }
 
@@ -81,6 +61,6 @@ export async function POST(request: NextRequest) {
     },
   })
 
-  const data = await serializePeriods(access.empresaId)
+  const data = await serializeAccountingPeriods(access.empresaId)
   return NextResponse.json({ ok: true, data })
 }

@@ -1,0 +1,42 @@
+# Configuración de gitleaks — PLAN-MAESTRO-REFACTORIZACION.md §4.9 (tarea 1.7).
+#
+# Extiende las reglas por defecto de gitleaks SIN relajarlas. Las allowlists son
+# deliberadamente estrechas: apuntan a un commit concreto + un archivo concreto, así
+# que un secreto NUEVO en cualquiera de esos archivos (o en cualquier otro) sigue
+# rompiendo el pipeline.
+#
+# Revisión del árbol de trabajo (27/10/2026): 0 hallazgos. Todo lo listado es historia.
+
+[extend]
+useDefault = true
+
+# 7740c5b9 (17/01/2026) — falso positivo: objetos de tamaños de papel en JSX
+# (`key: "A0"`, `key: "CUARTO_PLIEGO_35X50"`) detectados como generic-api-key.
+[[allowlists]]
+description = "Falso positivo: tamaños de papel (key: \"A0\" …) en paper-size-preview.tsx"
+commits = ["7740c5b9332b34c4fcbc09490d0f1684ea999161"]
+paths = ['''^src/components/cotizador/paper-size-preview\.tsx$''']
+
+# 7740c5b9 (17/01/2026) — INSTALACION.md documentaba un NEXTAUTH_SECRET REAL.
+# El valor ya no está en el árbol, pero permanece en el historial de Git.
+# ⚠️ TODO(tarea 0.17): rotar NEXTAUTH_SECRET en producción y luego borrar esta allowlist.
+[[allowlists]]
+description = "Deuda histórica: NEXTAUTH_SECRET real en INSTALACION.md (pendiente de rotación)"
+commits = ["7740c5b9332b34c4fcbc09490d0f1684ea999161"]
+paths = ['''^INSTALACION\.md$''']
+
+# d92e74be (18/08/2026) — los ejemplos `curl -H "X-API-Key: ..."` de la guía de despliegue
+# llevaban un token LITERAL de 16 caracteres (no una variable `$VAR`), compatible con
+# `ADMIN_API_KEY`. Está en el historial público → hay que rotarlo.
+# ⚠️ TODO(tarea 0.15): rotar ADMIN_API_KEY, actualizar el crontab del host y borrar esta allowlist.
+[[allowlists]]
+description = "Deuda histórica: X-API-Key literal en DEPLOY-KAMATERA.md (pendiente de rotación)"
+commits = ["d92e74bee023a97f6ff611dbe3d58846ce379d2f"]
+paths = ['''^DEPLOY-KAMATERA\.md$''']
+
+# ce70da1c (10/08/2026) — falso positivo: comentario de un route.ts con la plantilla
+# `Authorization: Bearer YOUR_SECRET_KEY`.
+[[allowlists]]
+description = "Falso positivo: plantilla \"Bearer YOUR_SECRET_KEY\" en un comentario"
+commits = ["ce70da1c88730b47479c30a84fd67f9137993c6b"]
+paths = ['''^src/app/api/admin/jobs/sync-messenger-metadata/route\.ts$''']

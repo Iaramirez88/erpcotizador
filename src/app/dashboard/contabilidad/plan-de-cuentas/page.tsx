@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { ContabilidadSubnav } from '@/components/dashboard/contabilidad-subnav'
 import {
   Select,
   SelectContent,
@@ -118,6 +119,8 @@ export default function PlanDeCuentasPage() {
           { label: 'Movimiento', value: isPosting ? 'Sí' : 'No', hint: 'Tipo de cuenta actual', tone: 'teal' },
         ]}
       />
+
+      <ContabilidadSubnav />
 
       <div className="rounded-lg border p-4 space-y-3" data-tour="contabilidad-plan-create">
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">

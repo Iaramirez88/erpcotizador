@@ -9,6 +9,7 @@ import {
 } from '@prisma/client'
 import { applyStockAdjustments, extractRestaurantStockAdjustmentsFromPayments } from '@/lib/pos-finalization'
 import { reserveNextPosReturnNumber } from '@/lib/pos-numbering'
+import { postReferenceToAccounting } from '@/lib/accounting/auto-post'
 
 export const runtime = 'nodejs'
 
@@ -279,6 +280,13 @@ export async function POST(request: Request) {
       }
 
       return createdReturn
+    })
+
+    await postReferenceToAccounting({
+      empresaId,
+      userId: access.userId,
+      referenceType: 'POS_RETURN',
+      referenceId: result.id,
     })
 
     return NextResponse.json({ success: true, data: result })

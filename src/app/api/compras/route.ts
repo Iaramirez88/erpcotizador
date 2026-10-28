@@ -10,6 +10,7 @@ import type { EstadoCompra } from "@prisma/client"
 import { requireCapabilityAccess } from "@/lib/api-rbac"
 import { userHasCapabilityAccess } from '@/lib/dashboard-access'
 import { syncLatestRestaurantIngredientCosts } from '@/lib/restaurant-costs'
+import { postReferenceToAccounting } from '@/lib/accounting/auto-post'
 
 export const runtime = "nodejs"
 
@@ -274,6 +275,15 @@ export async function POST(request: NextRequest) {
       if (materialIds.length) await syncLatestRestaurantIngredientCosts(tx, empresaId, materialIds)
       return created
     })
+
+    if (compra.autorizado) {
+      await postReferenceToAccounting({
+        empresaId,
+        userId: access.userId,
+        referenceType: 'COMPRA',
+        referenceId: compra.id,
+      })
+    }
 
     return NextResponse.json({ success: true, data: compra }, { status: 201 })
   } catch (error) {

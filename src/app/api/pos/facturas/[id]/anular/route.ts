@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ModuleKey, PosInvoiceStatus } from '@prisma/client'
 import { reversePosInvoiceStock } from '@/lib/pos-finalization'
+import { voidReferenceAccounting } from '@/lib/accounting/auto-post'
 
 export const runtime = 'nodejs'
 
@@ -32,6 +33,13 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
         await tx.posInvoice.update({ where: { id }, data: { status: PosInvoiceStatus.VOID }, select: { id: true } })
       }
       return { ...reversed, status: PosInvoiceStatus.VOID }
+    })
+
+    await voidReferenceAccounting({
+      empresaId,
+      referenceType: 'POS_INVOICE',
+      referenceId: id,
+      reason: 'Factura POS anulada',
     })
 
     return NextResponse.json({ success: true, data: result })

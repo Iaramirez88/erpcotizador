@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { finalizeInvoice, StockInsufficientError } from '@/lib/pos-finalization'
 import { type PosFinalizePaymentInput } from '@/lib/pos-payments'
+import { postReferenceToAccounting } from '@/lib/accounting/auto-post'
 import {
   ModuleKey,
 } from '@prisma/client'
@@ -36,6 +37,13 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
         },
       })
     )
+
+    await postReferenceToAccounting({
+      empresaId,
+      userId: access.userId,
+      referenceType: 'POS_INVOICE',
+      referenceId: result.id,
+    })
 
     return NextResponse.json({ success: true, data: result })
   } catch (error) {

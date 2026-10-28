@@ -31,7 +31,8 @@ RUN npx prisma generate
 # Imagen web: solo esta etapa compila Next.js
 FROM source AS web
 
-ENV NEXT_DISABLE_BUILD_CHECKS=1
+# NOTA: no se define NEXT_DISABLE_BUILD_CHECKS. El build DEBE fallar si hay
+# errores de tipos o de lint (ver PLAN-MAESTRO-REFACTORIZACION.md §4.9, tarea 1.3).
 ENV CI=1
 ENV NEXT_TELEMETRY_DISABLED=1
 ARG BUILD_MAX_OLD_SPACE_SIZE=1536

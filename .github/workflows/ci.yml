@@ -1,0 +1,116 @@
+name: CI
+
+# Pipeline obligatorio de calidad — PLAN-MAESTRO-REFACTORIZACION.md §4.9 (tareas 1.1, 1.2, 1.6).
+#
+# Dos jobs EN PARALELO para caber en el objetivo de < 12 min (§4.13 mide la base):
+#   estatico: npm ci -> prisma generate -> lint (informe) -> typecheck
+#   build:    npm ci -> prisma generate -> build
+#
+# LINT: el repositorio arrastra 163 errores heredados (124 son @typescript-eslint/no-explicit-any),
+# así que `npm run lint` corre en modo INFORME (`continue-on-error`). Al saldar esa deuda hay que
+# borrar esa línea para volverlo bloqueante (§4.11 "estrategia incremental"). `typecheck` y `build`
+# YA son bloqueantes: el build dejó de ignorar los errores de tipos (tareas 1.3 y 1.4).
+#
+# Para activar estos jobs como BLOQUEANTES en PR hacia `develop` (tarea 1.6):
+#   Settings > Branches > Add branch protection rule > patrón `develop`
+#   - [x] Require a pull request before merging
+#   - [x] Require status checks to pass before merging
+#         -> seleccionar `CI / Estático (lint · typecheck)` y `CI / Build`
+#   - [x] Do not allow bypassing the above settings
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+# Cancela ejecuciones obsoletas del mismo ref: ahorra minutos y acelera el feedback.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Valor de relleno: Prisma solo necesita que la variable exista para resolver `env()`
+  # en `prisma generate` y en el build. No se conecta a ninguna base real.
+  DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+  NEXT_TELEMETRY_DISABLED: "1"
+  NEXT_PUBLIC_WEBSITE_BASE_DOMAIN: localhost
+  # Sitekey de pruebas pública de Cloudflare Turnstile (no es un secreto).
+  NEXT_PUBLIC_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+  NODE_OPTIONS: --max-old-space-size=4096
+
+jobs:
+  estatico:
+    name: Estático (lint · typecheck)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Node según .nvmrc (hoy 22.22.0) para no divergir del entorno de desarrollo.
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Los binarios de Prisma se reutilizan entre ejecuciones (~40 MB).
+      - name: Caché de motores Prisma
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/prisma
+          key: ${{ runner.os }}-node${{ hashFiles('.nvmrc') }}-prisma-${{ hashFiles('package-lock.json', 'prisma/schema.prisma') }}
+          restore-keys: |
+            ${{ runner.os }}-node${{ hashFiles('.nvmrc') }}-prisma-
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar cliente Prisma
+        run: npx prisma generate
+
+      - name: Lint (informativo hasta saldar la deuda heredada)
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Typecheck
+        run: npm run typecheck
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Motores de Prisma + caché incremental de Next (acelera los builds sucesivos).
+      - name: Caché de Prisma y de .next/cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/prisma
+            ${{ github.workspace }}/.next/cache
+          key: ${{ runner.os }}-node${{ hashFiles('.nvmrc') }}-build-${{ hashFiles('package-lock.json', 'prisma/schema.prisma') }}
+          restore-keys: |
+            ${{ runner.os }}-node${{ hashFiles('.nvmrc') }}-build-
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar cliente Prisma
+        run: npx prisma generate
+
+      - name: Build
+        run: npm run build
