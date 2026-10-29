@@ -468,7 +468,7 @@ Multi-stage con tres objetivos:
 
 | Stage | Uso | Notas |
 |---|---|---|
-| `web` | `app` (Next.js en producción) | `next build` + `next start`; `BUILD_MAX_OLD_SPACE_SIZE` controla la memoria del build |
+| `web` | `app` (Next.js en producción) | `next build` + `next start`; `BUILD_MAX_OLD_SPACE_SIZE` (default **4096**) controla la memoria del build |
 | `worker` | `worker` (BullMQ OCR) | ejecuta `scripts/ocr-worker.ts` |
 | `migrate` | job one-shot | `prisma migrate deploy` antes de arrancar `app` |
 
@@ -514,7 +514,7 @@ Composes auxiliares: `docker-compose.ocr.yml` (OCR local) y `docker-compose.queu
 | `ADMIN_API_KEY` | Autentica `/api/admin/jobs/*` (cron/integraciones) |
 | `SHARE_TOKEN_SECRET` | Firma de tokens públicos de cotización |
 | `SUPER_ADMIN_EMAIL` | Cuenta de back-office |
-| `BUILD_MAX_OLD_SPACE_SIZE` | Memoria máxima durante `next build` |
+| `BUILD_MAX_OLD_SPACE_SIZE` | Heap de Node durante `next build` (default **4096**; el worker de typecheck de Next muere por OOM con 1024–1536 MB) |
 
 ### 11.2 Base de datos y colas
 

@@ -64,7 +64,7 @@ services:
       context: .
       target: web
       args:
-        BUILD_MAX_OLD_SPACE_SIZE: ${BUILD_MAX_OLD_SPACE_SIZE:-1536}
+        BUILD_MAX_OLD_SPACE_SIZE: ${BUILD_MAX_OLD_SPACE_SIZE:-4096}
         NEXT_PUBLIC_WEBSITE_BASE_DOMAIN: ${NEXT_PUBLIC_WEBSITE_BASE_DOMAIN:-sgdigitalordex.com}
         NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
     environment:

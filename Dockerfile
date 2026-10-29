@@ -35,14 +35,23 @@ FROM source AS web
 # errores de tipos o de lint (ver PLAN-MAESTRO-REFACTORIZACION.md §4.9, tarea 1.3).
 ENV CI=1
 ENV NEXT_TELEMETRY_DISABLED=1
-ARG BUILD_MAX_OLD_SPACE_SIZE=1536
+
+# Memoria del build. `next build` (Next 16 + Turbopack) compila y después corre
+# el chequeo de tipos en un worker que hereda NODE_OPTIONS; con menos de ~2 GB
+# ese worker muere con `Reached heap limit Allocation failed - JavaScript heap
+# out of memory` (visto en VPS Kamatera con 1024/1536 MB). 4096 es el mismo
+# valor que usa CI (.github/workflows/ci.yml).
+# En VPS con poca RAM: verifica `free -h` y la swap antes de subir el valor
+# (ver DEPLOY-KAMATERA.md, sección "Build en VPS pequeños").
+ARG BUILD_MAX_OLD_SPACE_SIZE=4096
 ENV NODE_OPTIONS=--max-old-space-size=${BUILD_MAX_OLD_SPACE_SIZE}
 ARG NEXT_PUBLIC_WEBSITE_BASE_DOMAIN
 ENV NEXT_PUBLIC_WEBSITE_BASE_DOMAIN=${NEXT_PUBLIC_WEBSITE_BASE_DOMAIN}
 ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
 ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY}
 RUN --mount=type=cache,target=/app/.next/cache \
-	npm run build
+	node -e "const v8=require('node:v8');const mb=(n)=>Math.round(n/1048576);console.log('[build] NODE_OPTIONS='+(process.env.NODE_OPTIONS||'(sin definir)')+' heap_limit='+mb(v8.getHeapStatistics().heap_size_limit)+'MB');" \
+	&& npm run build
 
 ENV NODE_ENV=production
 EXPOSE 3000

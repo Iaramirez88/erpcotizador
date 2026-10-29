@@ -331,16 +331,37 @@ Notas prácticas:
 - `sudo apt full-upgrade -y` úsalo cuando quieras dejar el sistema completamente al día y aceptas posibles cambios adicionales de paquetes
 - Si solo quieres instalar parches de seguridad automáticos, puedes evaluar `unattended-upgrades`, pero en este servidor hoy no está configurado
 
-Para VPS pequeños, usa esta secuencia para reducir picos y hacer el proceso más predecible:
+#### Build en VPS pequeños (memoria y OOM)
+
+Usa esta secuencia para reducir picos y hacer el proceso más predecible:
+- `free -h` para confirmar RAM y swap disponibles antes de empezar
+- `docker compose -f docker-compose.prod.yml stop ocr` (el OCR tiene `mem_limit` de 2g; liberarlo durante el build ayuda en VPS de 4 GB)
 - `BUILDKIT_PROGRESS=plain docker compose -f docker-compose.prod.yml build app ocr`
-- Evita `--no-cache` en despliegues normales. Con el Dockerfile actual, BuildKit puede reutilizar cache de `npm ci` y de `.next/cache`; usar `--no-cache` elimina justamente esa optimización y vuelve a forzar un `next build` frío.
 - `docker compose -f docker-compose.prod.yml up -d --no-build`
+- Evita `--no-cache` en despliegues normales. Con el Dockerfile actual, BuildKit puede reutilizar cache de `npm ci` y de `.next/cache`; usar `--no-cache` elimina justamente esa optimización y vuelve a forzar un `next build` frío.
 
 Si el build parece quedarse congelado en `Creating an optimized production build ...` pero luego avanza apenas tocas el teclado, normalmente no es un error del código sino de la vista interactiva de BuildKit. En ese caso:
 - usa `BUILDKIT_PROGRESS=plain docker compose -f docker-compose.prod.yml build app`
 - o `docker compose --progress plain -f docker-compose.prod.yml build app`
 
-Eso fuerza salida lineal continua y evita la pantalla "pausada" del renderer TTY. Si aun con progreso plano el build tarda demasiado o termina por OOM, sube `BUILD_MAX_OLD_SPACE_SIZE` en `.env` y confirma que el VPS tenga swap activa.
+Eso fuerza salida lineal continua y evita la pantalla "pausada" del renderer TTY.
+
+**OOM durante `Running TypeScript ...`.** Si el build muere con `FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory` justo después de `✓ Compiled successfully`, no es un error de tipos: el worker de typecheck de Next se quedó sin heap (con 1024/1536 MB pasa siempre en este proyecto).
+
+1. Confirma el valor efectivo en el servidor. El Dockerfile imprime una línea `[build] NODE_OPTIONS=... heap_limit=...MB` antes de compilar; además:
+   - `grep -n BUILD_MAX_OLD_SPACE_SIZE .env` (si no existe, el compose usa el default del `docker-compose.prod.yml`)
+   - el valor debe ser `4096` (igual que `.github/workflows/ci.yml`)
+2. Si aparece 1024 o 1536, súbelo en el `.env` del servidor: `BUILD_MAX_OLD_SPACE_SIZE=4096`
+3. Confirma memoria real: `free -h`. Si el VPS tiene menos de ~4 GB libres y poca swap, crea swap antes de reconstruir:
+   - `sudo fallocate -l 4G /swapfile`
+   - `sudo chmod 600 /swapfile`
+   - `sudo mkswap /swapfile`
+   - `sudo swapon /swapfile`
+   - `echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab`
+   - verifica con `free -h` y `swapon --show`
+4. Reconstruye sin tocar el código del build (el cache de `npm ci` y `.next/cache` se conserva):
+   - `BUILDKIT_PROGRESS=plain docker compose -f docker-compose.prod.yml build app`
+5. Si aun así no entra, baja el pico de memoria limitando los workers de render estático en `next.config.ts` (`experimental.memoryBasedWorkersCount` / `experimental.cpus`), pero **no** desactives el typecheck del build: la política del repo (PLAN-MAESTRO §4.9) es que un error de tipos rompa la imagen.
 
 ### Observabilidad mínima
 - Alertas de disco (40GB se llena fácil con scans si no usas S3)
