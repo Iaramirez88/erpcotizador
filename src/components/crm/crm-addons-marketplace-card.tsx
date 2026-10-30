@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { UsageMeter } from '@/components/ui/usage-meter'
 
 type CrmAddonState = {
   code: 'DAILY_CALLS'
@@ -444,6 +445,9 @@ export function CrmAddonsMarketplaceCard() {
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Minutos acumulados</div>
                     <div className="mt-2 text-2xl font-semibold text-slate-950">{addon.metrics.trailing30Days.totalMinutes}</div>
                   </div>
+                </div>
+                <div className="mt-4">
+                  <UsageMeter label="Minutos acumulados (30 días)" used={addon.metrics.trailing30Days.totalMinutes} unit="min" />
                 </div>
               </div>
               </div>

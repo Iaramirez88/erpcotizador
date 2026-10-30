@@ -713,6 +713,34 @@ export async function getCrmStorageUsageSummary(args: { empresaId: string }): Pr
   }
 }
 
+export type CrmStorageByOwnerEntry = {
+  userId: string
+  usedBytes: number
+  filesCount: number
+}
+
+export async function getCrmStorageUsageByOwner(args: { empresaId: string }): Promise<CrmStorageByOwnerEntry[]> {
+  const root = await ensureCrmFilesRoot(args.empresaId)
+  const index = await readIndex(args.empresaId)
+  const byOwner = new Map<string, { usedBytes: number; filesCount: number }>()
+
+  for (const [entryPath, entry] of Object.entries(index.entries)) {
+    if (entry.kind !== 'file') continue
+    const segments = normalizeCrmFilesPath(entryPath)
+    const absolute = getAbsolutePathForSegments(root, segments)
+    const stats = await fs.stat(absolute).catch(() => null)
+    if (!stats || !stats.isFile()) continue
+
+    const ownerId = entry.createdById || 'unassigned'
+    const current = byOwner.get(ownerId) ?? { usedBytes: 0, filesCount: 0 }
+    current.usedBytes += stats.size
+    current.filesCount += 1
+    byOwner.set(ownerId, current)
+  }
+
+  return Array.from(byOwner.entries()).map(([userId, value]) => ({ userId, ...value }))
+}
+
 export async function getCrmFileItemByPath(args: { empresaId: string; entryPath: string; currentUserId?: string | null; bypassAccessControl?: boolean }) {
   const root = await ensureCrmFilesRoot(args.empresaId)
   const index = await readIndex(args.empresaId)

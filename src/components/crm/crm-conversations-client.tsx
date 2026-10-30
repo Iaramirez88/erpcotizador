@@ -4,8 +4,15 @@ import Link from 'next/link'
 import type { CSSProperties, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, Facebook, FileAudio, FileText, Image as ImageIcon, Instagram, Mail, MessageCircle, MoreVertical, Pencil, PhoneCall, Plus, RefreshCcw, SendHorizontal, Smile, Video, X } from 'lucide-react'
+import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, Copy, FileAudio, FileText, Image as ImageIcon, Mail, MessageCircle, MoreVertical, Pencil, PhoneCall, Plus, RefreshCcw, SendHorizontal, Smile, Video, X } from 'lucide-react'
 import { CrmDailyCallEmbed } from '@/components/crm/crm-daily-call-embed'
+import {
+  FacebookBrandLogo,
+  InstagramBrandLogo,
+  MessengerBrandLogo,
+  WhatsAppBrandLogo,
+  type BrandLogoComponent,
+} from '@/components/crm/crm-brand-logos'
 import { CrmFileLibraryPicker } from '@/components/crm/crm-file-library-picker'
 import type { CrmFileItem } from '@/components/crm/crm-files-types'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
@@ -208,6 +215,7 @@ type DailyCallsAddonState = {
     defaultCallType: 'video' | 'audio'
     hasApiKey: boolean
   }
+  checklist?: Array<{ key: string; label: string; done: boolean }>
 }
 
 type PreparedCallSession = {
@@ -462,55 +470,30 @@ function isConversationWithinDatePreset(lastMessageAt: string, preset: InboxDate
   return date.getTime() >= threshold
 }
 
-function WhatsAppLogo({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
-      <circle cx="24" cy="24" r="16" fill="#25D366" />
-      <path d="M14.7 36.1 16.9 30a12.5 12.5 0 1 1 4.5 4.4l-6.7 1.7Z" fill="#25D366" />
-      <path d="M20.9 17.8c-.4-.9-.8-1-1.3-1h-1.1c-.4 0-.9.1-1.3.6-.4.5-1.7 1.6-1.7 3.9 0 2.3 1.7 4.6 1.9 4.9.3.3 3.2 5 8 6.8 1.2.4 2.1.7 2.8.8 1.2.2 2.3.2 3.1-.1.9-.3 2.6-1.1 2.9-2.2.4-1 .4-1.9.3-2-.1-.2-.5-.3-1-.6-.5-.2-2.9-1.4-3.4-1.6-.4-.2-.7-.2-1 .2-.3.5-1.2 1.6-1.4 1.9-.3.3-.5.4-1 .1-.5-.2-2-.8-3.8-2.4-1.4-1.2-2.3-2.7-2.6-3.2-.3-.5 0-.7.2-1 .2-.2.5-.5.7-.8.2-.3.3-.5.5-.8.2-.3.1-.6 0-.8-.1-.2-1-2.4-1.4-3.3Z" fill="#fff" />
-    </svg>
-  )
+const CHANNEL_BRAND_LOGOS: Partial<Record<ChannelProvider, BrandLogoComponent>> = {
+  WHATSAPP_CLOUD: WhatsAppBrandLogo,
+  WHATSAPP_SANDBOX: WhatsAppBrandLogo,
+  MESSENGER: MessengerBrandLogo,
+  INSTAGRAM_DM: InstagramBrandLogo,
+  FACEBOOK_PAGE: FacebookBrandLogo,
 }
 
 function ChannelProviderBadge({ provider, size = 'sm' }: { provider: ChannelProvider; size?: 'sm' | 'md' }) {
   const shellClassName = size === 'md' ? 'h-9 w-9 rounded-2xl' : 'h-7 w-7 rounded-xl'
   const iconClassName = size === 'md' ? 'h-5 w-5' : 'h-4 w-4'
+  const BrandLogo = CHANNEL_BRAND_LOGOS[provider]
 
-  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') {
+  if (BrandLogo) {
     return (
-      <span className={`inline-flex items-center justify-center border border-emerald-200 bg-white shadow-sm ${shellClassName}`}>
-        <WhatsAppLogo className={iconClassName} />
-      </span>
-    )
-  }
-
-  if (provider === 'INSTAGRAM_DM') {
-    return (
-      <span className={`inline-flex items-center justify-center border border-fuchsia-200 bg-[linear-gradient(135deg,_#fdf2f8,_#eef2ff)] text-fuchsia-700 shadow-sm ${shellClassName}`}>
-        <Instagram className={iconClassName} />
-      </span>
-    )
-  }
-
-  if (provider === 'FACEBOOK_PAGE') {
-    return (
-      <span className={`inline-flex items-center justify-center border border-blue-200 bg-blue-50 text-blue-700 shadow-sm ${shellClassName}`}>
-        <Facebook className={iconClassName} />
-      </span>
-    )
-  }
-
-  if (provider === 'MESSENGER') {
-    return (
-      <span className={`inline-flex items-center justify-center border border-sky-200 bg-sky-50 text-sky-700 shadow-sm ${shellClassName}`}>
-        <MessageCircle className={iconClassName} />
+      <span className={`inline-flex items-center justify-center border border-slate-200 bg-white shadow-sm ${shellClassName}`}>
+        <BrandLogo className={iconClassName} />
       </span>
     )
   }
 
   if (provider === 'WEB_CHATBOT') {
     return (
-      <span className={`inline-flex items-center justify-center border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm ${shellClassName}`}>
+      <span className={`inline-flex items-center justify-center border border-violet-200 bg-violet-50 text-violet-700 shadow-sm ${shellClassName}`}>
         <Bot className={iconClassName} />
       </span>
     )
@@ -605,6 +588,11 @@ function buildCallSetupItems(args: {
       tone: 'ready',
       title: 'Sala CRM disponible',
       detail: `Daily ya está listo para abrir una ${args.callType === 'audio' ? 'llamada' : 'videollamada'} embebida para el asesor dentro del CRM.`,
+    })
+    items.push({
+      tone: 'ready',
+      title: 'Llamada por enlace',
+      detail: 'Ningún canal (WhatsApp Cloud, Messenger o Instagram) permite marcar al prospecto por API. El CRM crea una sala Daily y el prospecto entra desde un enlace en su navegador permitiendo micrófono y cámara.',
     })
   }
 
@@ -1194,6 +1182,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [interestNotes, setInterestNotes] = useState('')
   const [savingInterest, setSavingInterest] = useState(false)
   const [dailyCallsAddon, setDailyCallsAddon] = useState<DailyCallsAddonState | null>(null)
+  const [dailyCallsAddonError, setDailyCallsAddonError] = useState<string | null>(null)
+  const [callLinkCopied, setCallLinkCopied] = useState(false)
   const [callDialogOpen, setCallDialogOpen] = useState(false)
   const [preparingCall, setPreparingCall] = useState(false)
   const [callError, setCallError] = useState<string | null>(null)
@@ -1374,7 +1364,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
   const loadDailyCallsAddon = useCallback(async () => {
     const json = await requestJson<DailyCallsAddonState>('/api/crm/addons/DAILY_CALLS')
-    setDailyCallsAddon(json.success && json.data ? json.data : null)
+    const row = json.success && json.data ? json.data : null
+    setDailyCallsAddon(row)
+    setDailyCallsAddonError(row ? null : json.error || 'No se pudo consultar el addon de llamadas (revisa permisos de Integraciones CRM).')
   }, [])
 
   const loadDetail = useCallback(async (conversationId: string) => {
@@ -1496,7 +1488,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     }
 
     if (!dailyCallsAddon?.enabled) {
-      setCallError('El addon Daily está inactivo para esta empresa. Actívalo en Integraciones CRM.')
+      setCallError(dailyCallsAddonError
+        ? `No se pudo consultar el addon de llamadas: ${dailyCallsAddonError}`
+        : 'El addon Videollamadas Daily está inactivo para esta empresa. Actívalo en CRM → Integraciones → Addons.')
       return
     }
 
@@ -1523,6 +1517,27 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       setCallError(error instanceof Error ? error.message : 'No se pudo conectar con el servicio de llamadas.')
     } finally {
       setPreparingCall(false)
+    }
+  }
+
+  async function copyGuestCallLink(url: string) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url)
+      } else {
+        const helper = document.createElement('textarea')
+        helper.value = url
+        helper.style.position = 'fixed'
+        helper.style.opacity = '0'
+        document.body.appendChild(helper)
+        helper.select()
+        document.execCommand('copy')
+        document.body.removeChild(helper)
+      }
+      setCallLinkCopied(true)
+      window.setTimeout(() => setCallLinkCopied(false), 2500)
+    } catch {
+      setCallLinkCopied(false)
     }
   }
 
@@ -2716,11 +2731,15 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                   </Link>
                                 </DropdownMenuItem>
                               ) : null}
+                              <DropdownMenuItem onSelect={() => void openCallDialog('audio')}>
+                                <PhoneCall className="mr-2 h-4 w-4" />
+                                Llamada CRM (link)
+                              </DropdownMenuItem>
                               {selectedConversation.contactPhone ? (
                                 <DropdownMenuItem asChild>
                                   <a href={`tel:${selectedConversation.contactPhone}`}>
                                     <PhoneCall className="mr-2 h-4 w-4" />
-                                    Llamar
+                                    Marcar en mi teléfono
                                   </a>
                                 </DropdownMenuItem>
                               ) : null}
@@ -2816,7 +2835,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                 <div className="space-y-2">
                                   <p className="font-semibold">Posible cruce de respuestas</p>
                                   <p>Detectamos una respuesta desde el CRM y otra fuera del CRM casi al mismo tiempo. Revisa el hilo antes de volver a responder.</p>
-                                  {hybridComposerGuard.bodyText ? <p className="rounded-xl bg-white/70 px-2.5 py-2 text-[11px] leading-5 text-slate-700">"{hybridComposerGuard.bodyText}"</p> : null}
+                                  {hybridComposerGuard.bodyText ? <p className="rounded-xl bg-white/70 px-2.5 py-2 text-[11px] leading-5 text-slate-700">&quot;{hybridComposerGuard.bodyText}&quot;</p> : null}
                                   <label className="flex items-start gap-2 text-[11px] text-slate-700">
                                     <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-slate-300" checked={hybridOverrideConfirmed} onChange={(event) => setHybridOverrideConfirmed(event.target.checked)} />
                                     <span>Ya revisé el cruce y aun así quiero responder desde el CRM.</span>
@@ -3697,9 +3716,13 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                         <Link href={`/dashboard/crm/leads/${selectedConversation.lead.id}`}>Abrir lead</Link>
                       </Button>
                     ) : null}
+                    <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void openCallDialog('audio')}>
+                      <PhoneCall className="mr-2 h-4 w-4" />
+                      Llamada CRM
+                    </Button>
                     {selectedConversation.contactPhone ? (
                       <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
-                        <a href={`tel:${selectedConversation.contactPhone}`}>Llamar</a>
+                        <a href={`tel:${selectedConversation.contactPhone}`}>Marcar</a>
                       </Button>
                     ) : null}
                     {!selectedConversation.assignedTo && currentUserId ? (
@@ -4065,7 +4088,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                 <div className="space-y-2">
                                   <p className="font-semibold">Posible cruce de respuestas</p>
                                   <p>Detectamos una respuesta desde el CRM y otra fuera del CRM casi al mismo tiempo. Revisa el hilo antes de volver a responder.</p>
-                                  {hybridComposerGuard.bodyText ? <p className="rounded-xl bg-white/70 px-2.5 py-2 text-[11px] leading-5 text-slate-700">"{hybridComposerGuard.bodyText}"</p> : null}
+                                  {hybridComposerGuard.bodyText ? <p className="rounded-xl bg-white/70 px-2.5 py-2 text-[11px] leading-5 text-slate-700">&quot;{hybridComposerGuard.bodyText}&quot;</p> : null}
                                   <label className="flex items-start gap-2 text-[11px] text-slate-700">
                                     <input
                                       type="checkbox"
@@ -4397,6 +4420,21 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
               ))}
             </div>
 
+            {dailyCallsAddon && !dailyCallsAddon.ready ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
+                <div className="font-semibold">Requisitos para habilitar llamadas</div>
+                <ul className="mt-2 space-y-1 text-amber-900">
+                  {(dailyCallsAddon.checklist ?? []).map((item) => (
+                    <li key={item.key} className="flex items-start gap-2">
+                      <span className={item.done ? 'mt-0.5 font-semibold text-emerald-700' : 'mt-0.5 font-semibold text-rose-700'}>{item.done ? 'OK' : 'Falta'}</span>
+                      <span className={item.done ? 'opacity-70 line-through' : ''}>{item.label}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-2 text-xs text-amber-900/80">Se corrige en CRM → Integraciones → Addons → Videollamadas Daily.</div>
+              </div>
+            ) : null}
+
             {dailyCallsAddon?.settings.connectionMode === 'CUSTOMER_DAILY' ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
                 <div className="flex items-start gap-2.5">
@@ -4448,22 +4486,44 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                 </div>
                 {preparedCallSession.guestInviteUrl ? (
                   <div className={preparedCallSession.inviteDispatch.sent ? 'rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900' : 'rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900'}>
-                    <div className="font-semibold">Invitación al cliente</div>
+                    <div className="font-semibold">Enlace para el prospecto</div>
                     <div className="mt-1 leading-6">
                       {preparedCallSession.inviteDispatch.sent
                         ? `Se envió el enlace de acceso por WhatsApp a ${preparedCallSession.inviteDispatch.recipient || 'el contacto'}.`
-                        : preparedCallSession.inviteDispatch.error || 'No se pudo enviar automáticamente la invitación por WhatsApp.'}
+                        : preparedCallSession.inviteDispatch.error || 'No se pudo enviar automáticamente la invitación. Copia el enlace y compártelo manualmente con el prospecto.'}
                     </div>
-                    {preparedCallSession.guestInviteUrl ? <div className="mt-2 break-all text-xs opacity-80">Enlace invitado: {preparedCallSession.guestInviteUrl}</div> : null}
+                    <div className="mt-2 break-all text-xs opacity-80">{preparedCallSession.guestInviteUrl}</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" className="rounded-xl" onClick={() => void copyGuestCallLink(preparedCallSession.guestInviteUrl as string)}>
+                        <Copy className="mr-2 h-4 w-4" />
+                        {callLinkCopied ? 'Enlace copiado' : 'Copiar enlace'}
+                      </Button>
+                      <Button asChild variant="outline" className="rounded-xl">
+                        <a href={preparedCallSession.guestInviteUrl} target="_blank" rel="noreferrer">Abrir como invitado</a>
+                      </Button>
+                    </div>
+                    <div className="mt-2 text-xs opacity-80">El prospecto debe abrir este enlace en su navegador (Chrome/Safari) y permitir micrófono y cámara. La sala expira junto con el enlace.</div>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                    No se pudo generar el enlace público del prospecto. Revisa la URL base del CRM o vuelve a preparar la sala.
+                  </div>
+                )}
                 <CrmDailyCallEmbed session={preparedCallSession} onStateChange={setCallState} />
               </div>
             ) : null}
           </div>
           <DialogFooter className="border-t border-slate-200 px-6 py-4">
             <Button type="button" variant="outline" className="rounded-2xl" onClick={() => setCallDialogOpen(false)}>Cerrar</Button>
-            {preparedCallSession ? <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">{callState === 'JOINED' ? 'Sesión activa' : callState === 'LEFT' ? 'Sesión cerrada' : callState === 'ERROR' ? 'Revisar error' : 'Abriendo sesión'}</div> : <Button asChild className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800"><Link href="/dashboard/crm/integraciones">Configurar addon</Link></Button>}
+            {preparedCallSession ? <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">{callState === 'JOINED' ? 'Sesión activa' : callState === 'LEFT' ? 'Sesión cerrada' : callState === 'ERROR' ? 'Revisar error' : 'Abriendo sesión'}</div> : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="outline" className="rounded-2xl" onClick={() => void openCallDialog(callDialogType)} disabled={preparingCall}>
+                  <RefreshCcw className="mr-2 h-4 w-4" />
+                  {preparingCall ? 'Preparando...' : 'Reintentar'}
+                </Button>
+                <Button asChild className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800"><Link href="/dashboard/crm/integraciones">Configurar addon</Link></Button>
+              </div>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

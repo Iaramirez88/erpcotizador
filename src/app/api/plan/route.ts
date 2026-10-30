@@ -7,7 +7,8 @@ import type { ModuleKey } from '@prisma/client'
 import { getPlanModulePriceRows } from '@/lib/plan-module-prices'
 import { getCommercialPriceRows } from '@/lib/commercial-price-settings'
 import { getManagedPlanByTier, getManagedPlans } from '@/lib/managed-plans'
-import { getCrmStorageUsageSummary } from '@/lib/crm-files'
+import { getEmpresaStorageUsageSummary } from '@/lib/empresa-storage'
+import { getPlanUsageSummary } from '@/lib/plan-limits'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 
 export const runtime = 'nodejs'
@@ -94,10 +95,11 @@ export async function GET() {
       : paywall
 
     const resolvedTier = effectivePaywall?.effectiveTier ?? empresa?.planTier ?? getDefaultPlanTier()
-    const [plan, allPlans, storageUsage] = await Promise.all([
+    const [plan, allPlans, storageUsage, planUsage] = await Promise.all([
       getManagedPlanByTier(resolvedTier),
       getManagedPlans(),
-      user?.empresaId ? getCrmStorageUsageSummary({ empresaId: user.empresaId }) : Promise.resolve(null),
+      user?.empresaId ? getEmpresaStorageUsageSummary({ empresaId: user.empresaId }) : Promise.resolve(null),
+      user?.empresaId ? getPlanUsageSummary(user.empresaId) : Promise.resolve(null),
     ])
 
     return NextResponse.json({
@@ -169,6 +171,7 @@ export async function GET() {
       commercialPrices,
       all: allPlans,
         storageUsage,
+        planUsage,
       devDefault: getDefaultPlanTier(),
     })
   } catch (error: unknown) {

@@ -24,8 +24,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Bot, FileText, Mail, MessageCircle, PhoneCall } from 'lucide-react'
+import { Bot, FileText, MessageCircle, PhoneCall } from 'lucide-react'
 import { CrmLinkedFilesPanel } from '@/components/crm/crm-linked-files-panel'
+import { ORIGIN_BRAND_LOGOS } from '@/components/crm/crm-brand-logos'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
 
@@ -146,15 +147,14 @@ function getOriginTone(originKey: CrmOriginKey) {
 }
 
 function OriginBadge({ originKey, label }: { originKey: CrmOriginKey; label: string }) {
-  const Icon = originKey === 'EMAIL_GMAIL' || originKey === 'EMAIL_OUTLOOK'
-    ? Mail
-    : originKey === 'FORM_WEB'
-      ? FileText
-      : originKey === 'CHATBOT_WEB'
-        ? Bot
-        : originKey === 'PHONE_CALL'
-          ? PhoneCall
-          : MessageCircle
+  const BrandLogo = ORIGIN_BRAND_LOGOS[originKey]
+  const Icon = BrandLogo ?? (originKey === 'FORM_WEB'
+    ? FileText
+    : originKey === 'CHATBOT_WEB'
+      ? Bot
+      : originKey === 'PHONE_CALL'
+        ? PhoneCall
+        : MessageCircle)
 
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${getOriginTone(originKey)}`}>

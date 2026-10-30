@@ -15,7 +15,9 @@ import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { getServerLanguage } from '@/lib/i18n/server'
 import { translate, type UiLanguage } from '@/lib/i18n/messages'
 import { resolveUserIdFromSession } from '@/lib/session-user'
-import { getCrmStorageUsageSummary } from '@/lib/crm-files'
+import { getEmpresaStorageUsageSummary, getEmpresaStorageUsageByOwner } from '@/lib/empresa-storage'
+import { getPlanUsageSummary } from '@/lib/plan-limits'
+import { UsageMeter } from '@/components/ui/usage-meter'
 import { cn } from '@/lib/utils'
 
 function fmtDate(date: Date | null | undefined, locale: string, naText: string) {
@@ -123,10 +125,13 @@ export default async function PerfilPage() {
   const empresaId = user.empresa?.id ?? null
   const isSystemSuperAdmin = isSuperAdminEmail(user.email)
   const isPlanOwner = empresaId ? await isPlanOwnerForEmpresa({ empresaId, userId: user.id }) : false
-    const storageUsage = empresaId ? await getCrmStorageUsageSummary({ empresaId }) : null
+    const storageUsage = empresaId ? await getEmpresaStorageUsageSummary({ empresaId }) : null
     const storagePct = storageUsage?.totalBytes ? Math.min(100, Math.round((storageUsage.usedBytes / storageUsage.totalBytes) * 100)) : 0
   const storageLevel = getStorageLevel(storagePct)
+  const planUsage = empresaId ? await getPlanUsageSummary(empresaId) : null
+  const usersMeter = planUsage?.meters.find((meter) => meter.key === 'USUARIOS_MAX') ?? null
   const canManageBilling = isSystemSuperAdmin || isPlanOwner
+  const storageByOwner = canManageBilling && empresaId ? await getEmpresaStorageUsageByOwner({ empresaId }) : []
 
   const roleLabel = (role?: string | null) => tOrFallback(t, `rbac.userRole.${role || 'USER'}`, String(role || 'USER'))
   const sedeRoleLabel = (role?: string | null) => tOrFallback(t, `rbac.sedeRole.${role || ''}`, String(role || naText))
@@ -358,6 +363,30 @@ export default async function PerfilPage() {
               <div className="text-xs text-muted-foreground">
                 {language === 'en' ? 'Last uploaded file' : 'Último archivo subido'}: {fmtDate(storageUsage?.lastUploadedAt ? new Date(storageUsage.lastUploadedAt) : null, locale, naText)}
               </div>
+
+              {usersMeter ? (
+                <div className="pt-1">
+                  <UsageMeter label={language === 'en' ? 'Team seats' : 'Usuarios del plan'} used={usersMeter.current} limit={usersMeter.max} showRemaining />
+                </div>
+              ) : null}
+
+              {storageUsage?.breakdown ? (
+                <div className="text-xs text-muted-foreground">
+                  {language === 'en' ? 'Breakdown' : 'Desglose'}: CRM {formatBytes(storageUsage.breakdown.crm)} · {language === 'en' ? 'uploads' : 'subidas'} {formatBytes(storageUsage.breakdown.uploads)} · {language === 'en' ? 'scans' : 'escaneos'} {formatBytes(storageUsage.breakdown.scans)} · {language === 'en' ? 'backups' : 'backups'} {formatBytes(storageUsage.breakdown.backups)} · S3 {formatBytes(storageUsage.breakdown.s3)}
+                </div>
+              ) : null}
+
+              {storageByOwner.length > 0 ? (
+                <div className="space-y-1.5 border-t pt-3">
+                  <div className="text-xs font-semibold text-slate-700">{language === 'en' ? 'By user (CRM files)' : 'Por usuario (archivos CRM)'}</div>
+                  {storageByOwner.slice(0, 8).map((owner) => (
+                    <div key={owner.userId} className="flex items-center justify-between gap-3 text-xs text-slate-600">
+                      <span className="truncate">{owner.name}</span>
+                      <span className="shrink-0 font-medium">{formatBytes(owner.usedBytes)} · {owner.filesCount}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 

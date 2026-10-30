@@ -87,6 +87,82 @@ async function getEmpresaPlanContext(empresaId: string): Promise<EmpresaPlanCont
   }
 }
 
+async function getCurrentPlanLimitValue(empresaId: string, limitKey: PlanLimitKey): Promise<number> {
+  const now = new Date()
+  const { from, to } = monthRange(now)
+
+  switch (limitKey) {
+    case 'COTIZACIONES_PER_MONTH':
+      return prisma.cotizacion.count({
+        where: { cliente: { empresaId }, createdAt: { gte: from, lt: to } },
+      })
+    case 'ORDENES_PER_MONTH':
+      return prisma.ordenTrabajo.count({
+        where: { cliente: { empresaId }, createdAt: { gte: from, lt: to } },
+      })
+    case 'REMISIONES_PER_MONTH':
+      return prisma.remision.count({
+        where: { empresaId, createdAt: { gte: from, lt: to } },
+      })
+    case 'PRODUCTOS_MAX':
+      return prisma.material.count({ where: { empresaId, activo: true } })
+    case 'CLIENTES_MAX':
+      return prisma.cliente.count({ where: { empresaId } })
+    case 'PROVEEDORES_MAX':
+      return prisma.proveedor.count({ where: { empresaId, activo: true } })
+    case 'SEDES_MAX':
+      return prisma.sede.count({ where: { empresaId } })
+    case 'USUARIOS_MAX': {
+      const memberships = await prisma.sedeMembership.findMany({
+        where: { sede: { empresaId } },
+        select: { userId: true },
+      })
+      return new Set(memberships.map((m) => m.userId)).size
+    }
+    default:
+      return 0
+  }
+}
+
+export type PlanUsageMeter = {
+  key: PlanLimitKey
+  label: string
+  current: number
+  max: number | null
+  unit: string
+  monthly: boolean
+}
+
+export type PlanUsageSummary = {
+  planTier: PlanTier
+  meters: PlanUsageMeter[]
+}
+
+const PLAN_LIMIT_META: Array<{ key: PlanLimitKey; label: string; unit: string; monthly: boolean }> = [
+  { key: 'USUARIOS_MAX', label: 'Usuarios', unit: '', monthly: false },
+  { key: 'SEDES_MAX', label: 'Sedes', unit: '', monthly: false },
+  { key: 'CLIENTES_MAX', label: 'Clientes', unit: '', monthly: false },
+  { key: 'PRODUCTOS_MAX', label: 'Productos', unit: '', monthly: false },
+  { key: 'PROVEEDORES_MAX', label: 'Proveedores', unit: '', monthly: false },
+  { key: 'COTIZACIONES_PER_MONTH', label: 'Cotizaciones (mes)', unit: '', monthly: true },
+  { key: 'ORDENES_PER_MONTH', label: 'Órdenes de trabajo (mes)', unit: '', monthly: true },
+  { key: 'REMISIONES_PER_MONTH', label: 'Remisiones (mes)', unit: '', monthly: true },
+]
+
+export async function getPlanUsageSummary(empresaId: string): Promise<PlanUsageSummary> {
+  const empresa = await getEmpresaPlanContext(empresaId)
+  const planTier = empresa ? resolveEffectivePlanTier(empresa, new Date()) : 'FULL'
+  const limits = getLimitsForTier(planTier)
+
+  const meters = await Promise.all(PLAN_LIMIT_META.map(async (meta) => {
+    const max = limits[meta.key] ?? null
+    const current = max ? await getCurrentPlanLimitValue(empresaId, meta.key) : 0
+    return { key: meta.key, label: meta.label, current, max, unit: meta.unit, monthly: meta.monthly }
+  }))
+
+  return { planTier, meters }
+}
+
 export async function checkPlanLimit(empresaId: string, limitKey: PlanLimitKey): Promise<PlanLimitOk | PlanLimitError> {
   const empresa = await getEmpresaPlanContext(empresaId)
   const planTier = empresa ? resolveEffectivePlanTier(empresa, new Date()) : 'FULL'
@@ -95,50 +171,7 @@ export async function checkPlanLimit(empresaId: string, limitKey: PlanLimitKey):
   const max = limits[limitKey]
   if (!max) return { ok: true, planTier }
 
-  const now = new Date()
-  const { from, to } = monthRange(now)
-
-  let current = 0
-
-  switch (limitKey) {
-    case 'COTIZACIONES_PER_MONTH':
-      current = await prisma.cotizacion.count({
-        where: { cliente: { empresaId }, createdAt: { gte: from, lt: to } },
-      })
-      break
-    case 'ORDENES_PER_MONTH':
-      current = await prisma.ordenTrabajo.count({
-        where: { cliente: { empresaId }, createdAt: { gte: from, lt: to } },
-      })
-      break
-    case 'REMISIONES_PER_MONTH':
-      current = await prisma.remision.count({
-        where: { empresaId, createdAt: { gte: from, lt: to } },
-      })
-      break
-    case 'PRODUCTOS_MAX':
-      current = await prisma.material.count({ where: { empresaId, activo: true } })
-      break
-    case 'CLIENTES_MAX':
-      current = await prisma.cliente.count({ where: { empresaId } })
-      break
-    case 'PROVEEDORES_MAX':
-      current = await prisma.proveedor.count({ where: { empresaId, activo: true } })
-      break
-    case 'SEDES_MAX':
-      current = await prisma.sede.count({ where: { empresaId } })
-      break
-    case 'USUARIOS_MAX': {
-      const memberships = await prisma.sedeMembership.findMany({
-        where: { sede: { empresaId } },
-        select: { userId: true },
-      })
-      current = new Set(memberships.map((m) => m.userId)).size
-      break
-    }
-    default:
-      current = 0
-  }
+  const current = await getCurrentPlanLimitValue(empresaId, limitKey)
 
   if (current >= max) {
     return {

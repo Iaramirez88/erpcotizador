@@ -17,7 +17,7 @@ import { resolveEffectivePlanTier } from '@/lib/plan-access'
 import { isPlanOwnerForEmpresa } from '@/lib/plan-owner'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 import { isSuperAdminEmail } from '@/lib/super-admin'
-import { getCrmStorageUsageSummary } from '@/lib/crm-files'
+import { getEmpresaStorageUsageSummary } from '@/lib/empresa-storage'
 import { resolveDashboardConfig } from '@/lib/company-onboarding'
 import { redirect } from 'next/navigation'
 import { buildAllowedDashboardHrefsForUser, getAllowedModulesFromDashboardHrefs } from '@/lib/dashboard-access'
@@ -60,7 +60,7 @@ export default async function DashboardPage() {
   let canManageBilling = session.user.role === 'ADMIN'
   let canViewCompanyStorage = session.user.role === 'ADMIN'
   let activeSedeName: string | null = null
-  let storageUsage: Awaited<ReturnType<typeof getCrmStorageUsageSummary>> | null = null
+  let storageUsage: Awaited<ReturnType<typeof getEmpresaStorageUsageSummary>> | null = null
   let dashboardConfig: ReturnType<typeof resolveDashboardConfig> = null
   let permissionAllowedHrefs: string[] = []
   let intelligenceEnabled = false
@@ -130,7 +130,7 @@ export default async function DashboardPage() {
       }
 
       if (canViewCompanyStorage) {
-        storageUsage = await getCrmStorageUsageSummary({ empresaId: user.empresaId })
+        storageUsage = await getEmpresaStorageUsageSummary({ empresaId: user.empresaId })
       }
       canManageBilling = isSuperAdminEmail(user?.email) || await isPlanOwnerForEmpresa({ empresaId: user.empresaId, userId })
     }

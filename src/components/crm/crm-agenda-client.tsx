@@ -3,8 +3,9 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Bot, FileText, Mail, MessageCircle, PhoneCall } from 'lucide-react'
+import { Bot, FileText, MessageCircle, PhoneCall } from 'lucide-react'
 import { CrmNegotiationsPageHeader } from '@/components/crm/crm-negotiations-page-header'
+import { ORIGIN_BRAND_LOGOS } from '@/components/crm/crm-brand-logos'
 import { CrmNegotiationsTabs } from '@/components/crm/crm-negotiations-tabs'
 import { CardInfoHeader } from '@/components/ui/card-info-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -95,15 +96,14 @@ function getOriginTone(originKey: CrmOriginKey) {
 }
 
 function OriginBadge({ originKey, label }: { originKey: CrmOriginKey; label: string }) {
-  const Icon = originKey === 'EMAIL_GMAIL' || originKey === 'EMAIL_OUTLOOK'
-    ? Mail
-    : originKey === 'FORM_WEB'
-      ? FileText
-      : originKey === 'CHATBOT_WEB'
-        ? Bot
-        : originKey === 'PHONE_CALL'
-          ? PhoneCall
-          : MessageCircle
+  const BrandLogo = ORIGIN_BRAND_LOGOS[originKey]
+  const Icon = BrandLogo ?? (originKey === 'FORM_WEB'
+    ? FileText
+    : originKey === 'CHATBOT_WEB'
+      ? Bot
+      : originKey === 'PHONE_CALL'
+        ? PhoneCall
+        : MessageCircle)
 
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${getOriginTone(originKey)}`}>

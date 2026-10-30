@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { UsageMeter } from "@/components/ui/usage-meter"
 import { Button } from "@/components/ui/button"
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -208,6 +209,17 @@ type PlanApiResponse =
         filesCount: number
         foldersCount: number
         lastUploadedAt: string | null
+        breakdown: {
+          crm: number
+          uploads: number
+          scans: number
+          backups: number
+          s3: number
+        } | null
+      } | null
+      planUsage: {
+        planTier: PlanTier
+        meters: Array<{ key: string; label: string; current: number; max: number | null; unit: string; monthly: boolean }>
       } | null
       devDefault: PlanTier
     }
@@ -270,6 +282,17 @@ export default function PlanPage() {
     filesCount: number
     foldersCount: number
     lastUploadedAt: string | null
+    breakdown: {
+      crm: number
+      uploads: number
+      scans: number
+      backups: number
+      s3: number
+    } | null
+  } | null>(null)
+  const [planUsage, setPlanUsage] = useState<{
+    planTier: PlanTier
+    meters: Array<{ key: string; label: string; current: number; max: number | null; unit: string; monthly: boolean }>
   } | null>(null)
 
   function formatBytes(value: number) {
@@ -318,6 +341,7 @@ export default function PlanPage() {
           setLastInvoice(json.lastInvoice)
           setInvoices(json.invoices)
           setStorageUsage(json.storageUsage)
+          setPlanUsage(json.planUsage)
           setModulePriceMap(Object.fromEntries(json.modulePrices.map((row) => [row.module, row.priceCOP])) as Partial<Record<ModuleKey, number>>)
           setCommercialPriceMap(Object.fromEntries(json.commercialPrices.map((row) => [row.code, row.priceCOP])))
           return
@@ -1326,7 +1350,7 @@ export default function PlanPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Consumo actual de almacenamiento</CardTitle>
-                    <CardDescription>Capacidad usada por la empresa frente al límite actual del plan para archivos CRM.</CardDescription>
+                    <CardDescription>Capacidad total usada por la empresa (archivos CRM, subidas, escaneos, backups y S3) frente al límite del plan.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className={cn('rounded-2xl border px-4 py-3 text-sm', storagePanelClass)}>
@@ -1338,6 +1362,29 @@ export default function PlanPage() {
                       </div>
                       <p className="mt-2 text-sm text-slate-700">{storageAlertCopy}</p>
                     </div>
+
+                    {(() => {
+                      const usersMeter = planUsage?.meters.find((meter) => meter.key === 'USUARIOS_MAX')
+                      if (!usersMeter) return null
+                      return (
+                        <div className="rounded-2xl border border-slate-200 p-4">
+                          <UsageMeter label={usersMeter.label} used={usersMeter.current} limit={usersMeter.max} showRemaining />
+                        </div>
+                      )
+                    })()}
+
+                    {storageUsage?.breakdown ? (
+                      <div className="rounded-2xl border border-slate-200 p-4">
+                        <div className="mb-2 text-sm font-semibold text-slate-950">Desglose del consumo</div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-slate-600">
+                          <span>Archivos CRM</span><span className="text-right font-medium">{formatBytes(storageUsage.breakdown.crm)}</span>
+                          <span>Subidas</span><span className="text-right font-medium">{formatBytes(storageUsage.breakdown.uploads)}</span>
+                          <span>Escaneos</span><span className="text-right font-medium">{formatBytes(storageUsage.breakdown.scans)}</span>
+                          <span>Backups</span><span className="text-right font-medium">{formatBytes(storageUsage.breakdown.backups)}</span>
+                          <span>S3</span><span className="text-right font-medium">{formatBytes(storageUsage.breakdown.s3)}</span>
+                        </div>
+                      </div>
+                    ) : null}
 
                     <div className="grid gap-3 md:grid-cols-3">
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">

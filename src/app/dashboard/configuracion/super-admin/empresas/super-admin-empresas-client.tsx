@@ -108,6 +108,19 @@ type DetailEmpresa = {
   updatedAt: string
   hasCompanyCode: boolean
   billingInvoices: DetailInvoice[]
+  planUsage: {
+    planTier: PlanTier
+    meters: Array<{ key: string; label: string; current: number; max: number | null; unit: string; monthly: boolean }>
+  } | null
+  storageUsage: {
+    totalBytes: number
+    usedBytes: number
+    freeBytes: number
+    filesCount: number
+    foldersCount: number
+    lastUploadedAt: string | null
+    breakdown: { crm: number; uploads: number; scans: number; backups: number; s3: number } | null
+  } | null
 }
 
 type DetailResponse =
@@ -164,6 +177,15 @@ function moneyCOP(value: number | null | undefined, locale: string): string {
   } catch {
     return String(n)
   }
+}
+
+function formatBytes(value: number | null | undefined): string {
+  const n = typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
+  if (n <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const exponent = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1)
+  const size = n / 1024 ** exponent
+  return `${size >= 100 || exponent === 0 ? Math.round(size) : size.toFixed(1)} ${units[exponent]}`
 }
 
 const PLAN_OPTIONS: { value: PlanTier; label: string }[] = [
@@ -1344,6 +1366,23 @@ export default function SuperAdminEmpresasClient() {
                               </div>
                             </div>
                           ))}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="font-medium text-slate-900">{language === 'en' ? 'Plan usage' : 'Consumo del plan'}</div>
+                      {(() => {
+                        const usersMeter = detail.planUsage?.meters.find((meter) => meter.key === 'USUARIOS_MAX')
+                        return usersMeter ? (
+                          <div className="text-xs text-slate-600">
+                            {language === 'en' ? 'Users' : 'Usuarios'}: {usersMeter.current} / {usersMeter.max ?? '∞'}
+                          </div>
+                        ) : null
+                      })()}
+                      {detail.storageUsage ? (
+                        <div className="text-xs text-slate-600">
+                          {language === 'en' ? 'Storage' : 'Almacenamiento'}: {formatBytes(detail.storageUsage.usedBytes)} / {formatBytes(detail.storageUsage.totalBytes)}
                         </div>
                       ) : null}
                     </div>

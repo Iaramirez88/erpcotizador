@@ -6,6 +6,8 @@ import { isSuperAdminEmail } from '@/lib/super-admin'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
 import { syncEnabledVerticalGrantsForUser } from '@/lib/company-preset-sync'
 import { mergeCompanyLithographySettings, parseCompanyLithographySettings } from '@/lib/lithography-access'
+import { getEmpresaStorageUsageSummary } from '@/lib/empresa-storage'
+import { getPlanUsageSummary } from '@/lib/plan-limits'
 
 export const runtime = 'nodejs'
 
@@ -151,6 +153,11 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       )?.email ?? null
     : null
 
+  const [planUsage, storageUsage] = await Promise.all([
+    getPlanUsageSummary(empresa.id),
+    getEmpresaStorageUsageSummary({ empresaId: empresa.id }),
+  ])
+
   return NextResponse.json({
     ok: true,
     empresa: {
@@ -159,6 +166,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       hasCompanyCode: Boolean(empresa.registrationCodeHash),
       lithographyQuoteToolsEnabled: parseCompanyLithographySettings(empresa.dashboardConfig).quoteToolsEnabled,
       planOwnerEmail,
+      planUsage,
+      storageUsage,
       billingInvoices: empresa.billingInvoices.map((invoice) => ({
         ...invoice,
         quotedModules: parseQuotedModules(invoice.quotedModulesJson),

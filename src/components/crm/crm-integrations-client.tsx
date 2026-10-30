@@ -3,8 +3,24 @@
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
-import { Activity, Bot, Copy, Download, Eye, Facebook, Globe, Goal, Info, Instagram, MoreHorizontal, Target, TrendingUp, Upload } from 'lucide-react'
+import { Activity, Bot, Copy, Download, Eye, Facebook, Globe, Goal, Info, Instagram, MessageCircle, MoreHorizontal, Target, TrendingUp, Upload } from 'lucide-react'
 import { CrmAddonsMarketplaceCard } from '@/components/crm/crm-addons-marketplace-card'
+import {
+  FacebookBrandLogo,
+  GmailBrandLogo,
+  GoogleCalendarBrandLogo,
+  GoogleSheetsBrandLogo,
+  InstagramBrandLogo,
+  MessengerBrandLogo,
+  MetaBrandLogo,
+  MicrosoftBrandLogo,
+  OutlookBrandLogo,
+  SlackBrandLogo,
+  TeamsBrandLogo,
+  TikTokBrandLogo,
+  WhatsAppBrandLogo,
+  YouTubeBrandLogo,
+} from '@/components/crm/crm-brand-logos'
 import { CrmIntegrationsChatbotBuilderSections } from '@/components/crm/crm-integrations-chatbot-builder-sections'
 import { CrmIntegrationsChatbotFlowSection } from '@/components/crm/crm-integrations-chatbot-flow-section'
 import type { ChatbotCanvasConnection, ChatbotCanvasNode } from '@/components/crm/crm-integrations-chatbot-flow-types'
@@ -146,154 +162,6 @@ type MetaWhatsAppAsset = {
 
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
 
-type BrandLogoProps = { className?: string }
-
-function GmailLogo({ className }: BrandLogoProps) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
-      <rect x="6" y="10" width="36" height="28" rx="6" fill="#fff" />
-      <path d="M10 16.5V34a2 2 0 0 0 2 2h5V22.6L24 28l7-5.4V36h5a2 2 0 0 0 2-2V16.5l-14 10.8-14-10.8Z" fill="#EA4335" />
-      <path d="M10 16.5 24 27.3 38 16.5V14a2 2 0 0 0-2-2h-2.3L24 19.2 14.3 12H12a2 2 0 0 0-2 2v2.5Z" fill="#4285F4" />
-      <path d="M10 16.5V34a2 2 0 0 0 2 2h2.5V18.5L10 16.5Z" fill="#34A853" />
-      <path d="M38 16.5V34a2 2 0 0 1-2 2h-2.5V18.5L38 16.5Z" fill="#FBBC04" />
-    </svg>
-  )
-}
-
-function OutlookLogo({ className }: BrandLogoProps) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
-      <path d="M18 10h18a4 4 0 0 1 4 4v20a4 4 0 0 1-4 4H18V10Z" fill="#0A64C9" />
-      <path d="M18 14h18v20H18V14Z" fill="#1173D4" />
-      <path d="M18 18l9 7 9-7" stroke="#D9ECFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M8 14.5 22 12v24L8 33.5V14.5Z" fill="#0F5FB9" />
-      <circle cx="15.5" cy="24" r="5.3" fill="#fff" />
-      <circle cx="15.5" cy="24" r="2.8" fill="#0F5FB9" />
-    </svg>
-  )
-}
-
-function GoogleSheetsLogo({ className }: BrandLogoProps) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
-      <path d="M14 6h14l10 10v22a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4Z" fill="#0F9D58" />
-      <path d="M28 6v10h10" fill="#2BB673" />
-      <path d="M17 19h14M17 25h14M17 31h14M22 16v18" stroke="#E8F5E9" strokeWidth="2.6" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function GoogleCalendarLogo({ className }: BrandLogoProps) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
-      <rect x="8" y="10" width="32" height="30" rx="6" fill="#4285F4" />
-      <rect x="8" y="10" width="32" height="8" rx="6" fill="#1A73E8" />
-      <path d="M16 6v8M32 6v8" stroke="#DCEBFF" strokeWidth="3" strokeLinecap="round" />
-      <path d="M24 24c-4 0-7 3-7 7h14c0-4-3-7-7-7Zm0 0a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" fill="#fff" />
-    </svg>
-  )
-}
-
-function MicrosoftLogo({ className }: BrandLogoProps) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
-      <rect x="8" y="8" width="14" height="14" fill="#F25022" />
-      <rect x="26" y="8" width="14" height="14" fill="#7FBA00" />
-      <rect x="8" y="26" width="14" height="14" fill="#00A4EF" />
-      <rect x="26" y="26" width="14" height="14" fill="#FFB900" />
-    </svg>
-  )
-}
-
-function SlackLogo({ className }: BrandLogoProps) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
-      <path d="M18.4 7.5a4.4 4.4 0 1 0-8.8 0v8.9a4.4 4.4 0 0 0 8.8 0V7.5Z" fill="#E01E5A" />
-      <path d="M22 18.4a4.4 4.4 0 0 0 0-8.8h-8.9a4.4 4.4 0 1 0 0 8.8H22Z" fill="#E01E5A" />
-      <path d="M40.5 18.4a4.4 4.4 0 1 0 0-8.8h-8.9a4.4 4.4 0 1 0 0 8.8h8.9Z" fill="#36C5F0" />
-      <path d="M29.6 22a4.4 4.4 0 0 0 8.8 0v-8.9a4.4 4.4 0 1 0-8.8 0V22Z" fill="#36C5F0" />
-      <path d="M29.6 40.5a4.4 4.4 0 1 0 8.8 0v-8.9a4.4 4.4 0 1 0-8.8 0v8.9Z" fill="#2EB67D" />
-      <path d="M26 29.6a4.4 4.4 0 0 0 0 8.8h8.9a4.4 4.4 0 1 0 0-8.8H26Z" fill="#2EB67D" />
-      <path d="M7.5 29.6a4.4 4.4 0 1 0 0 8.8h8.9a4.4 4.4 0 1 0 0-8.8H7.5Z" fill="#ECB22E" />
-      <path d="M18.4 26a4.4 4.4 0 0 0-8.8 0v8.9a4.4 4.4 0 1 0 8.8 0V26Z" fill="#ECB22E" />
-    </svg>
-  )
-}
-
-function TeamsLogo({ className }: BrandLogoProps) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
-      <circle cx="34" cy="16" r="5" fill="#7B83EB" />
-      <circle cx="39" cy="29" r="4" fill="#A6AAF5" />
-      <rect x="10" y="12" width="22" height="24" rx="5" fill="#5059C9" />
-      <rect x="6" y="16" width="17" height="18" rx="4" fill="#3E45A8" />
-      <path d="M11.5 20h8v3h-2.4v7h-3.2v-7h-2.4v-3Z" fill="#fff" />
-      <path d="M32 20h8a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4h-8V20Z" fill="#7B83EB" />
-    </svg>
-  )
-}
-
-function MetaLogo({ className }: BrandLogoProps) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
-      <path d="M10.5 30.2c2.4-8.5 5.9-13 10.3-13 4.5 0 6.8 5.7 9.1 10.8 1.8 4 3.1 5.9 5.3 5.9 2 0 3.3-1.4 3.3-3.7 0-4.9-3.9-12.1-8-15.7-2.2-1.9-4.5-2.8-7.1-2.8-3.7 0-6.8 1.8-9.6 5.5-3.2 4.1-5.7 10.2-5.7 14.7 0 3.7 2.1 6.2 5.7 6.2 3.5 0 5.8-2.7 8.5-8.8 2.1-4.6 3.7-6.8 5.5-6.8 1.7 0 3.2 2.2 5.1 6.8 2.4 5.8 4.7 8.8 8.4 8.8 3.6 0 6.4-2.7 6.4-7 0-7.1-4.8-15.8-10-20.4-3.6-3.2-8.3-5-13.3-5-6.2 0-11.5 3.1-15.8 8.9C4.6 20.5 2 27 2 31.9" stroke="#0866FF" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function TikTokLogo({ className }: BrandLogoProps) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
-      <path d="M24 8v20.2a7.6 7.6 0 1 1-7.6-7.6" stroke="#25F4EE" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M28 8c1 3.8 3.6 6.9 7.2 8.6" stroke="#FE2C55" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M24 8v20.2a7.6 7.6 0 1 1-7.6-7.6" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M28 8c1 3.8 3.6 6.9 7.2 8.6V21c-2.8-.1-5.4-1-7.6-2.6V31a10.6 10.6 0 1 1-10.6-10.6" stroke="#111827" strokeWidth="4.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function YouTubeLogo({ className }: BrandLogoProps) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
-      <rect x="6" y="12" width="36" height="24" rx="8" fill="#FF0033" />
-      <path d="M21 18.5 31 24l-10 5.5v-11Z" fill="#fff" />
-    </svg>
-  )
-}
-
-function WhatsAppLogo({ className }: BrandLogoProps) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
-      <circle cx="24" cy="24" r="16" fill="#25D366" />
-      <path d="M14.7 36.1 16.9 30a12.5 12.5 0 1 1 4.5 4.4l-6.7 1.7Z" fill="#25D366" />
-      <path d="M20.9 17.8c-.4-.9-.8-1-1.3-1h-1.1c-.4 0-.9.1-1.3.6-.4.5-1.7 1.6-1.7 3.9 0 2.3 1.7 4.6 1.9 4.9.3.3 3.2 5 8 6.8 1.2.4 2.1.7 2.8.8 1.2.2 2.3.2 3.1-.1.9-.3 2.6-1.1 2.9-2.2.4-1 .4-1.9.3-2-.1-.2-.5-.3-1-.6-.5-.2-2.9-1.4-3.4-1.6-.4-.2-.7-.2-1 .2-.3.5-1.2 1.6-1.4 1.9-.3.3-.5.4-1 .1-.5-.2-2-.8-3.8-2.4-1.4-1.2-2.3-2.7-2.6-3.2-.3-.5 0-.7.2-1 .2-.2.5-.5.7-.8.2-.3.3-.5.5-.8.2-.3.1-.6 0-.8-.1-.2-1-2.4-1.4-3.3Z" fill="#fff" />
-    </svg>
-  )
-}
-
-// Logos oficiales de cada tecnologia, servidos como SVG desde /public/brand-logos.
-function brandLogo(src: string) {
-  return function BrandLogoImage({ className = 'h-5 w-5' }: BrandLogoProps) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={src} alt="" aria-hidden="true" draggable={false} className={`object-contain ${className}`} />
-    )
-  }
-}
-
-const MetaBrandLogo = brandLogo('/brand-logos/meta.svg')
-const TeamsBrandLogo = brandLogo('/brand-logos/teams.svg')
-const TikTokBrandLogo = brandLogo('/brand-logos/tiktok.svg')
-const WhatsAppBrandLogo = brandLogo('/brand-logos/whatsapp.svg')
-const SlackBrandLogo = brandLogo('/brand-logos/slack.svg')
-const GmailBrandLogo = brandLogo('/brand-logos/gmail.svg')
-const OutlookBrandLogo = brandLogo('/brand-logos/outlook.svg')
-const GoogleSheetsBrandLogo = brandLogo('/brand-logos/google-sheets.svg')
-const GoogleCalendarBrandLogo = brandLogo('/brand-logos/google-calendar.svg')
-const MicrosoftBrandLogo = brandLogo('/brand-logos/microsoft.svg')
-const YouTubeBrandLogo = brandLogo('/brand-logos/youtube.svg')
-const InstagramBrandLogo = brandLogo('/brand-logos/instagram.svg')
-const FacebookBrandLogo = brandLogo('/brand-logos/facebook.svg')
 
 type TemplatePreset = {
   key: string
@@ -1220,26 +1088,28 @@ function getTemplatePresetLogo(preset: TemplatePreset): ComponentType<{ classNam
   if (preset.bridgeKind === 'YOUTUBE') return YouTubeBrandLogo
   if (preset.provider === 'WHATSAPP_CLOUD' || preset.provider === 'WHATSAPP_SANDBOX') return WhatsAppBrandLogo
   if (preset.provider === 'INSTAGRAM_DM') return InstagramBrandLogo
-  if (preset.provider === 'FACEBOOK_PAGE' || preset.provider === 'MESSENGER') return FacebookBrandLogo
+  if (preset.provider === 'MESSENGER') return MessengerBrandLogo
+  if (preset.provider === 'FACEBOOK_PAGE') return FacebookBrandLogo
   if (preset.provider === 'WEB_CHATBOT') return Bot
   if (preset.bridgeKind === 'BOOKING') return Target
   return Globe
 }
 
 function getChannelLogo(provider: CrmChannelProvider, bridgeKind: CrmBridgeKind): ComponentType<{ className?: string }> {
-  if (bridgeKind === 'GMAIL') return GmailLogo
-  if (bridgeKind === 'OUTLOOK') return OutlookLogo
-  if (bridgeKind === 'GOOGLE_SHEETS') return GoogleSheetsLogo
-  if (bridgeKind === 'GOOGLE_CALENDAR') return GoogleCalendarLogo
-  if (bridgeKind === 'MICROSOFT_365_CALENDAR') return MicrosoftLogo
-  if (bridgeKind === 'SLACK') return SlackLogo
-  if (bridgeKind === 'TEAMS') return TeamsLogo
-  if (bridgeKind === 'META_LEAD_ADS') return MetaLogo
-  if (bridgeKind === 'TIKTOK') return TikTokLogo
-  if (bridgeKind === 'YOUTUBE') return YouTubeLogo
-  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') return WhatsAppLogo
-  if (provider === 'INSTAGRAM_DM') return Instagram
-  if (provider === 'FACEBOOK_PAGE' || provider === 'MESSENGER') return Facebook
+  if (bridgeKind === 'GMAIL') return GmailBrandLogo
+  if (bridgeKind === 'OUTLOOK') return OutlookBrandLogo
+  if (bridgeKind === 'GOOGLE_SHEETS') return GoogleSheetsBrandLogo
+  if (bridgeKind === 'GOOGLE_CALENDAR') return GoogleCalendarBrandLogo
+  if (bridgeKind === 'MICROSOFT_365_CALENDAR') return MicrosoftBrandLogo
+  if (bridgeKind === 'SLACK') return SlackBrandLogo
+  if (bridgeKind === 'TEAMS') return TeamsBrandLogo
+  if (bridgeKind === 'META_LEAD_ADS') return MetaBrandLogo
+  if (bridgeKind === 'TIKTOK') return TikTokBrandLogo
+  if (bridgeKind === 'YOUTUBE') return YouTubeBrandLogo
+  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') return WhatsAppBrandLogo
+  if (provider === 'INSTAGRAM_DM') return InstagramBrandLogo
+  if (provider === 'FACEBOOK_PAGE') return FacebookBrandLogo
+  if (provider === 'MESSENGER') return MessengerBrandLogo
   if (provider === 'WEB_CHATBOT') return Bot
   if (bridgeKind === 'BOOKING') return Target
   return Globe
@@ -2436,7 +2306,8 @@ function getMetaSelectionTarget(provider: CrmChannelProvider): MetaSelectionTarg
 }
 
 function getMetaConnectBrandIcon(provider: CrmChannelProvider): ComponentType<{ className?: string }> {
-  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') return WhatsAppLogo
+  // El boton azul de Meta usa iconos monocromos (currentColor) para mantener contraste.
+  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') return MessageCircle
   if (provider === 'INSTAGRAM_DM') return Instagram
   return Facebook
 }

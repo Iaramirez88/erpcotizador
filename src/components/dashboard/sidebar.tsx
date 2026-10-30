@@ -6,7 +6,7 @@
 "use client"
 
 import Link from "next/link"
-import { Lock, Building2, Home, Briefcase, Store, Boxes, Landmark, BarChart3, Sparkles, Package, Shield, ChefHat, Bot, Funnel, Settings, ReceiptText, LayoutGrid } from "lucide-react"
+import { Lock, Building2, Home, Briefcase, Store, Boxes, Landmark, BarChart3, Sparkles, Package, Shield, ChefHat, Bot, Funnel, Settings, ReceiptText, LayoutGrid, LifeBuoy } from "lucide-react"
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react"
 import { usePathname, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -553,16 +553,6 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h10M4 17h16M18 10l2 2 4-4" />
-      </svg>
-    ),
-  },
-  {
-    name: "Mesa de Ayuda",
-    href: "/dashboard/mesa-ayuda",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7a2 2 0 012-2h12a2 2 0 012 2v3a2 2 0 010 4v3a2 2 0 01-2 2H6a2 2 0 01-2-2v-3a2 2 0 010-4V7z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9h6M9 13h4" />
       </svg>
     ),
   },
@@ -1792,7 +1782,21 @@ export default function Sidebar({ user }: SidebarProps) {
         </TooltipProvider>
 
         <div className={cn("shrink-0 border-t p-2.5", sectionBorder, sidebarCollapsed ? "px-1.5" : "px-2.5")}>
-          <div className={cn("flex w-full", sidebarCollapsed ? "justify-center" : "justify-start")}>
+          <div className={cn("flex w-full flex-col gap-2", sidebarCollapsed ? "items-center" : "items-stretch")}>
+            <Link
+              href="/dashboard/mesa-ayuda"
+              onClick={() => setMobileNavOpen(false)}
+              aria-label="Soporte"
+              title="Soporte"
+              className={cn(
+                "flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                navFocusRing,
+                isNavActive('/dashboard/mesa-ayuda') ? navActive : cn(navText, navHover)
+              )}
+            >
+              <LifeBuoy className="h-5 w-5 shrink-0" />
+              {!sidebarCollapsed ? <span>Soporte</span> : null}
+            </Link>
             <Header user={user} variant="sidebar-footer" />
           </div>
         </div>
