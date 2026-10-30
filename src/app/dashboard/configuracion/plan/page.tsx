@@ -587,12 +587,22 @@ export default function PlanPage() {
               El módulo <span className="font-medium">{blockedModule}</span> no está habilitado en tu plan actual.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <div className="text-sm text-gray-700">
               {purchaseMode === 'ADDON'
-                ? 'Estás cotizando este módulo como adicional independiente. Si prefieres que quede cubierto por un plan superior, cambia a modo upgrade desde el dashboard.'
-                : 'Selecciona un plan superior para activarlo o vuelve al dashboard para comprarlo como adicional independiente.'}
+                ? 'Estás cotizando este módulo como adicional independiente. Si prefieres que quede cubierto por un plan superior, cambia al modo upgrade.'
+                : 'Selecciona un plan superior para activarlo o cómpralo como adicional independiente sin cambiar de plan.'}
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const base = `/dashboard/configuracion/plan?blockedModule=${encodeURIComponent(blockedModule)}`
+                window.location.href = purchaseMode === 'ADDON' ? base : `${base}&purchaseMode=ADDON`
+              }}
+            >
+              {purchaseMode === 'ADDON' ? 'Ver planes superiores' : 'Comprar como adicional independiente'}
+            </Button>
           </CardContent>
         </Card>
       ) : null}

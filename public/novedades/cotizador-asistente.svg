@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-label="Cotizador con asistente inteligente">
+  <defs>
+    <linearGradient id="cotizador" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c2d12" />
+      <stop offset="0.5" stop-color="#f59e0b" />
+      <stop offset="1" stop-color="#fde68a" />
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#cotizador)" />
+  <circle cx="760" cy="430" r="220" fill="#ffffff" opacity="0.12" />
+  <circle cx="180" cy="90" r="140" fill="#ffffff" opacity="0.09" />
+  <g fill="#ffffff">
+    <rect x="130" y="140" width="300" height="24" rx="12" opacity="0.9" />
+    <rect x="130" y="186" width="180" height="16" rx="8" opacity="0.5" />
+    <rect x="130" y="240" width="420" height="220" rx="28" opacity="0.18" />
+    <rect x="600" y="150" width="230" height="150" rx="28" opacity="0.24" />
+    <rect x="600" y="330" width="230" height="130" rx="28" opacity="0.16" />
+  </g>
+  <g fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" opacity="0.7">
+    <path d="M180 300h60" />
+    <path d="M180 340h120" />
+    <path d="M180 380h90" />
+    <path d="M180 420h150" />
+  </g>
+  <path d="M700 205l24 48 48 24-48 24-24 48-24-48-48-24 48-24z" fill="#ffffff" opacity="0.8" />
+</svg>

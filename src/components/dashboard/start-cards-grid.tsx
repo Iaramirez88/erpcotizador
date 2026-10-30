@@ -3,8 +3,9 @@
 import Link from 'next/link'
 import type { ModuleKey } from '@prisma/client'
 import { isOnboardingScopedDashboardHref } from '@/lib/dashboard-navigation'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 import {
-  ArrowRight,
   BarChart3,
   Boxes,
   BriefcaseBusiness,
@@ -290,10 +291,6 @@ function buildUpgradeHref(moduleKey: ModuleKey) {
   return `/dashboard/configuracion/plan?blockedModule=${encodeURIComponent(moduleKey)}`
 }
 
-function buildAddonHref(moduleKey: ModuleKey) {
-  return `/dashboard/configuracion/plan?blockedModule=${encodeURIComponent(moduleKey)}&purchaseMode=ADDON`
-}
-
 export default function StartCardsGrid({ allowedModules, enabledPlanModules, canManageBilling, prioritizedHrefs = [], visibleHrefs = [] }: StartCardsGridProps) {
   const allowedSet = allowedModules ? new Set(allowedModules) : null
   const enabledSet = enabledPlanModules ? new Set(enabledPlanModules) : null
@@ -315,167 +312,64 @@ export default function StartCardsGrid({ allowedModules, enabledPlanModules, can
   const recommendedSet = new Set(cards.slice(0, Math.min(3, prioritizedHrefs.length)).map((card) => card.href))
 
   return (
-    <>
-      <div className="hidden gap-3 p-3 md:grid md:grid-cols-2 xl:grid-cols-4">
+    <TooltipProvider delayDuration={150}>
+      <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
         {cards.map((card) => {
           const Icon = ICONS[card.icon]
           const isRecommended = recommendedSet.has(card.href) && !card.locked
-
-          if (!card.locked) {
-            return (
-              <details key={card.href} className={`group rounded-[20px] border transition-all hover:-translate-y-0.5 hover:shadow-lg ${card.surface}`}>
-                <summary className="flex cursor-pointer list-none items-center gap-3 px-3.5 py-3.5 [&::-webkit-details-marker]:hidden">
-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-[15px] font-semibold leading-none text-slate-950">{card.title}</h2>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      {isRecommended ? (
-                        <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-sky-700">
-                          Recomendado
-                        </span>
-                      ) : null}
-                      <span className="rounded-full border border-white/80 bg-white/90 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                        Disponible
-                      </span>
-                    </div>
-                  </div>
-                  <span className="shrink-0 text-[12px] font-semibold text-slate-600">Ver más</span>
-                </summary>
-                <div className="border-t border-white/70 px-3.5 pb-3.5 pt-3">
-                  <p className="text-[12px] leading-5 text-slate-700">{card.description}</p>
-                  <Link href={card.href} className="mt-3 inline-flex items-center gap-2 text-[12px] font-semibold text-slate-950">
-                    {card.cta}
-                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                  </Link>
-                </div>
-              </details>
-            )
-          }
+          const href = card.locked
+            ? canManageBilling
+              ? buildUpgradeHref(card.moduleKey)
+              : '/dashboard/configuracion/plan'
+            : card.href
 
           return (
-            <details key={card.href} className={`group relative overflow-hidden rounded-[20px] border ${card.surface}`}>
-              <div className="absolute inset-0 bg-white/55 backdrop-blur-[1px]" />
-              <div className="relative">
-                <summary className="flex cursor-pointer list-none items-center gap-3 px-3.5 py-3.5 [&::-webkit-details-marker]:hidden">
-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-[15px] font-semibold leading-none text-slate-950">{card.title}</h2>
-                    <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-700">
-                      <Lock className="h-3 w-3" />
-                      Bloqueado
-                    </div>
-                  </div>
-                  <span className="shrink-0 text-[12px] font-semibold text-slate-600">Ver más</span>
-                </summary>
-                <div className="border-t border-white/70 px-3.5 pb-3.5 pt-3">
-                  <p className="text-[12px] leading-5 text-slate-700">{card.description}</p>
-                  <p className="mt-2 text-[12px] font-medium text-slate-900">Tu plan actual no incluye este módulo.</p>
-                  {canManageBilling ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Link
-                        href={buildUpgradeHref(card.moduleKey)}
-                        className="inline-flex items-center rounded-full bg-slate-950 px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-slate-800"
-                      >
-                        Actualiza tu plan
-                      </Link>
-                      <Link
-                        href={buildAddonHref(card.moduleKey)}
-                        className="inline-flex items-center rounded-full border border-slate-300 bg-white/90 px-3.5 py-1.5 text-[12px] font-semibold text-slate-900 transition hover:bg-white"
-                      >
-                        Agrégalo independiente
-                      </Link>
-                    </div>
-                  ) : (
-                    <div className="mt-3 rounded-[18px] border border-white/70 bg-white/80 px-3.5 py-2.5 text-[12px] text-slate-700">
-                      Solo la persona dueña del plan o un administrador puede activarlo.
-                    </div>
+            <Tooltip key={card.href}>
+              <TooltipTrigger asChild>
+                <Link
+                  href={href}
+                  aria-label={`${card.title}. ${card.description}`}
+                  className={cn(
+                    'group relative flex flex-col items-start gap-2 rounded-2xl border px-2.5 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2',
+                    card.surface,
+                    card.locked && 'opacity-75 hover:opacity-100',
                   )}
-                </div>
-              </div>
-            </details>
-          )
-        })}
-      </div>
-
-      <div className="space-y-2.5 p-2.5 md:hidden">
-        {cards.map((card) => {
-          const Icon = ICONS[card.icon]
-          const isRecommended = recommendedSet.has(card.href) && !card.locked
-
-          if (!card.locked) {
-            return (
-              <details key={card.href} className={`group rounded-[20px] border ${card.surface}`}>
-                <summary className="flex cursor-pointer list-none items-center gap-3 px-3.5 py-3 [&::-webkit-details-marker]:hidden">
-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
-                    <Icon className="h-5 w-5" />
+                >
+                  <div className="flex w-full items-start justify-between gap-1">
+                    <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border border-white/70 bg-white/85 shadow-sm', card.tone)}>
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    {card.locked ? (
+                      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-900/10 text-slate-700">
+                        <Lock className="h-2.5 w-2.5" />
+                        <span className="sr-only">Requiere actualizar plan</span>
+                      </span>
+                    ) : isRecommended ? (
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-sky-500" aria-hidden="true" />
+                    ) : null}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-semibold text-slate-950">{card.title}</div>
-                    <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">{isRecommended ? 'Recomendado' : 'Disponible'}</div>
-                  </div>
-                  <div className="text-[11px] font-semibold text-slate-600">Ver más</div>
-                </summary>
-                <div className="border-t border-white/70 px-3.5 pb-3.5 pt-3">
-                  <p className="text-[12px] leading-5 text-slate-700">{card.description}</p>
-                  <Link
-                    href={card.href}
-                    className="mt-3 inline-flex items-center gap-2 text-[12px] font-semibold text-slate-950"
-                  >
-                    {card.cta}
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
-              </details>
-            )
-          }
-
-          return (
-            <details key={card.href} className={`group rounded-[20px] border ${card.surface}`}>
-              <summary className="flex cursor-pointer list-none items-center gap-3 px-3.5 py-3 [&::-webkit-details-marker]:hidden">
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-semibold text-slate-950">{card.title}</div>
-                  <div className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-600">
-                    <Lock className="h-3 w-3" />
-                    Bloqueado
-                  </div>
-                </div>
-                <div className="text-[11px] font-semibold text-slate-600">Ver</div>
-              </summary>
-              <div className="border-t border-white/70 px-3.5 pb-3.5 pt-3">
-                <p className="text-[12px] leading-5 text-slate-700">{card.description}</p>
-                <p className="mt-2 text-[12px] font-medium text-slate-900">Tu plan actual no incluye este módulo.</p>
-                {canManageBilling ? (
-                  <div className="mt-3 flex flex-col gap-2">
-                    <Link
-                      href={buildUpgradeHref(card.moduleKey)}
-                      className="inline-flex items-center justify-center rounded-full bg-slate-950 px-3.5 py-1.5 text-[12px] font-semibold text-white"
-                    >
-                      Actualiza tu plan
-                    </Link>
-                    <Link
-                      href={buildAddonHref(card.moduleKey)}
-                      className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white/90 px-3.5 py-1.5 text-[12px] font-semibold text-slate-900"
-                    >
-                      Agrégalo independiente
-                    </Link>
-                  </div>
+                  <span className="line-clamp-2 min-h-[28px] text-[11px] font-semibold leading-[14px] text-slate-950">{card.title}</span>
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="center" className="max-w-[240px]">
+                <p className="text-[11px] font-semibold text-slate-900">{card.title}</p>
+                <p className="mt-1 text-[11px] leading-4 text-slate-600">{card.description}</p>
+                {isRecommended ? (
+                  <p className="mt-1 text-[11px] font-medium text-sky-700">Sugerido para tu operación</p>
+                ) : null}
+                {card.locked ? (
+                  <p className="mt-1 text-[11px] font-medium text-amber-700">
+                    Tu plan actual no incluye este módulo. Haz clic para ver cómo activarlo.
+                  </p>
                 ) : (
-                  <div className="mt-3 rounded-[18px] border border-white/70 bg-white/80 px-3.5 py-2.5 text-[12px] text-slate-700">
-                    Solo la persona dueña del plan o un administrador puede activarlo.
-                  </div>
+                  <p className="mt-1 text-[11px] font-medium text-slate-900">{card.cta}</p>
                 )}
-              </div>
-            </details>
+              </TooltipContent>
+            </Tooltip>
           )
         })}
       </div>
-    </>
+    </TooltipProvider>
   )
 }
+

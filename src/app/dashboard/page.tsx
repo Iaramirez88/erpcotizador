@@ -6,10 +6,10 @@ import { auth } from '@/lib/auth'
 import ContinueLastViewButton from '@/components/dashboard/continue-last-view-button'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import StartCardsGrid from '@/components/dashboard/start-cards-grid'
+import DashboardNewsSlider from '@/components/dashboard/dashboard-news-slider'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CardInfoHeader } from '@/components/ui/card-info-header'
-import { InfoHint } from '@/components/ui/info-hint'
 import { getActiveSedeForUser, getEffectiveAccessMap, NAV_MODULES } from '@/lib/rbac'
 import { prisma } from '@/lib/prisma'
 import { getEnabledModulesForEmpresa, ALL_MODULE_KEYS } from '@/lib/plan-modules'
@@ -259,6 +259,8 @@ export default async function DashboardPage() {
           />
         </CardContent>
       </Card>
+
+      <DashboardNewsSlider />
     </div>
   )
 }

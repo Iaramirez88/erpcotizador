@@ -1367,16 +1367,16 @@ export default function Sidebar({ user }: SidebarProps) {
       <aside
         ref={sidebarRef}
         className={cn(
-          "relative flex flex-col border-r",
+          "relative flex min-h-0 flex-col border-r",
           sidebarSurface,
-          "fixed inset-y-0 left-0 z-50 md:static",
+          "fixed inset-y-0 left-0 z-50 md:static md:h-full md:max-h-screen md:shrink-0",
           sidebarCollapsed ? "w-[4.25rem]" : "w-[86vw] max-w-[300px] md:w-56 md:max-w-none",
           "transform transition-transform md:translate-x-0",
           mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
         {/* Logo */}
-        <div className={cn("border-b p-2.5", sectionBorder)}>
+        <div className={cn("shrink-0 border-b p-2.5", sectionBorder)}>
           <div className={cn("flex items-start justify-between gap-2", sidebarCollapsed ? "flex-col items-center" : "") }>
             <Link
               href="/dashboard"
@@ -1441,8 +1441,8 @@ export default function Sidebar({ user }: SidebarProps) {
 
         {/* Navigation */}
         <TooltipProvider delayDuration={150}>
-        <nav className={cn("flex-1 overflow-visible py-2", sidebarCollapsed ? "px-1.5" : "px-2")}>
-          <div className={cn("space-y-0.5", sidebarCollapsed ? "max-h-full overflow-y-auto overflow-x-hidden" : "") }>
+        <nav className={cn("min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain py-2 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-400/40 [&::-webkit-scrollbar-track]:bg-transparent", sidebarCollapsed ? "px-1.5" : "px-2")}>
+          <div className="space-y-0.5">
           {sections.map((section) => {
             const visibleItems = section.items.filter((it) => visibleHrefs.has(it.href))
             if (!visibleItems.length) return null
@@ -1791,7 +1791,7 @@ export default function Sidebar({ user }: SidebarProps) {
         ) : null}
         </TooltipProvider>
 
-        <div className={cn("border-t p-2.5", sectionBorder, sidebarCollapsed ? "px-1.5" : "px-2.5")}>
+        <div className={cn("shrink-0 border-t p-2.5", sectionBorder, sidebarCollapsed ? "px-1.5" : "px-2.5")}>
           <div className={cn("flex w-full", sidebarCollapsed ? "justify-center" : "justify-start")}>
             <Header user={user} variant="sidebar-footer" />
           </div>

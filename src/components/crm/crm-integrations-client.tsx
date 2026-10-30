@@ -271,6 +271,30 @@ function WhatsAppLogo({ className }: BrandLogoProps) {
   )
 }
 
+// Logos oficiales de cada tecnologia, servidos como SVG desde /public/brand-logos.
+function brandLogo(src: string) {
+  return function BrandLogoImage({ className = 'h-5 w-5' }: BrandLogoProps) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={src} alt="" aria-hidden="true" draggable={false} className={`object-contain ${className}`} />
+    )
+  }
+}
+
+const MetaBrandLogo = brandLogo('/brand-logos/meta.svg')
+const TeamsBrandLogo = brandLogo('/brand-logos/teams.svg')
+const TikTokBrandLogo = brandLogo('/brand-logos/tiktok.svg')
+const WhatsAppBrandLogo = brandLogo('/brand-logos/whatsapp.svg')
+const SlackBrandLogo = brandLogo('/brand-logos/slack.svg')
+const GmailBrandLogo = brandLogo('/brand-logos/gmail.svg')
+const OutlookBrandLogo = brandLogo('/brand-logos/outlook.svg')
+const GoogleSheetsBrandLogo = brandLogo('/brand-logos/google-sheets.svg')
+const GoogleCalendarBrandLogo = brandLogo('/brand-logos/google-calendar.svg')
+const MicrosoftBrandLogo = brandLogo('/brand-logos/microsoft.svg')
+const YouTubeBrandLogo = brandLogo('/brand-logos/youtube.svg')
+const InstagramBrandLogo = brandLogo('/brand-logos/instagram.svg')
+const FacebookBrandLogo = brandLogo('/brand-logos/facebook.svg')
+
 type TemplatePreset = {
   key: string
   name: string
@@ -1184,19 +1208,19 @@ function getProviderChartColor(provider: CrmChannelProvider) {
 }
 
 function getTemplatePresetLogo(preset: TemplatePreset): ComponentType<{ className?: string }> {
-  if (preset.bridgeKind === 'GMAIL') return GmailLogo
-  if (preset.bridgeKind === 'OUTLOOK') return OutlookLogo
-  if (preset.bridgeKind === 'GOOGLE_SHEETS') return GoogleSheetsLogo
-  if (preset.bridgeKind === 'GOOGLE_CALENDAR') return GoogleCalendarLogo
-  if (preset.bridgeKind === 'MICROSOFT_365_CALENDAR') return MicrosoftLogo
-  if (preset.bridgeKind === 'SLACK') return SlackLogo
-  if (preset.bridgeKind === 'TEAMS') return TeamsLogo
-  if (preset.bridgeKind === 'META_LEAD_ADS') return MetaLogo
-  if (preset.bridgeKind === 'TIKTOK') return TikTokLogo
-  if (preset.bridgeKind === 'YOUTUBE') return YouTubeLogo
-  if (preset.provider === 'WHATSAPP_CLOUD' || preset.provider === 'WHATSAPP_SANDBOX') return WhatsAppLogo
-  if (preset.provider === 'INSTAGRAM_DM') return Instagram
-  if (preset.provider === 'FACEBOOK_PAGE' || preset.provider === 'MESSENGER') return Facebook
+  if (preset.bridgeKind === 'GMAIL') return GmailBrandLogo
+  if (preset.bridgeKind === 'OUTLOOK') return OutlookBrandLogo
+  if (preset.bridgeKind === 'GOOGLE_SHEETS') return GoogleSheetsBrandLogo
+  if (preset.bridgeKind === 'GOOGLE_CALENDAR') return GoogleCalendarBrandLogo
+  if (preset.bridgeKind === 'MICROSOFT_365_CALENDAR') return MicrosoftBrandLogo
+  if (preset.bridgeKind === 'SLACK') return SlackBrandLogo
+  if (preset.bridgeKind === 'TEAMS') return TeamsBrandLogo
+  if (preset.bridgeKind === 'META_LEAD_ADS') return MetaBrandLogo
+  if (preset.bridgeKind === 'TIKTOK') return TikTokBrandLogo
+  if (preset.bridgeKind === 'YOUTUBE') return YouTubeBrandLogo
+  if (preset.provider === 'WHATSAPP_CLOUD' || preset.provider === 'WHATSAPP_SANDBOX') return WhatsAppBrandLogo
+  if (preset.provider === 'INSTAGRAM_DM') return InstagramBrandLogo
+  if (preset.provider === 'FACEBOOK_PAGE' || preset.provider === 'MESSENGER') return FacebookBrandLogo
   if (preset.provider === 'WEB_CHATBOT') return Bot
   if (preset.bridgeKind === 'BOOKING') return Target
   return Globe
@@ -6429,19 +6453,16 @@ export function CrmIntegrationsClient() {
                           key={preset.key}
                           type="button"
                           onClick={() => applyTemplate(preset.key)}
+                          aria-pressed={selected}
+                          title={preset.name}
                           className={selected
-                            ? `h-full rounded-[26px] p-3.5 text-left shadow-sm transition-shadow ${surface.card} ${surface.selected}`
-                            : `h-full rounded-[26px] p-3.5 text-left shadow-sm transition-shadow hover:shadow-md ${surface.card}`}
+                            ? `flex h-full items-center gap-3 rounded-2xl border p-3 text-left shadow-sm transition-shadow ${surface.card} ${surface.selected}`
+                            : `flex h-full items-center gap-3 rounded-2xl border p-3 text-left shadow-sm transition-shadow hover:shadow-md ${surface.card}`}
                         >
-                          <div className="flex items-start gap-3">
-                            <div className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${surface.iconWrap}`}>
-                              <Icon className="h-5 w-5" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[15px] font-semibold leading-5 text-slate-950">{preset.name}</p>
-                              <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] ${surface.pill}`}>{preset.connectionModel}</span>
-                            </div>
-                          </div>
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.06)]">
+                            <Icon className="h-6 w-6" />
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-5 text-slate-950">{preset.name}</span>
                         </button>
                       )
                     })()

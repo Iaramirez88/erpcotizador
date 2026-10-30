@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <title>Google Sheets</title>
+  <path fill="#0F9D58" d="M6.545 1.091h7.273l5.818 5.818v13.818a2.182 2.182 0 0 1-2.181 2.182H6.545a2.182 2.182 0 0 1-2.181-2.182V3.273a2.182 2.182 0 0 1 2.181-2.182Z"/>
+  <path fill="#87CEAC" d="M13.818 1.091v4.727a1.091 1.091 0 0 0 1.091 1.091h4.727l-5.818-5.818Z"/>
+  <rect x="8.727" y="10.364" width="6.546" height="6.545" fill="#F1F1F1"/>
+  <path d="M8.727 12.545h6.546M8.727 14.727h6.546M11.818 10.364v6.545" stroke="#0F9D58" stroke-width="0.545" fill="none"/>
+</svg>
