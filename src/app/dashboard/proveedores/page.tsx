@@ -154,11 +154,11 @@ export default function ProveedoresPage() {
           { label: 'Compras', href: '/dashboard/compras' },
           { label: t('suppliers.title') },
         ]}
-        title={t('suppliers.title')}
+        title={<span data-tour="proveedores-title">{t('suppliers.title')}</span>}
         description={t('suppliers.subtitle')}
         actions={
           <>
-            {canManageSuppliers ? <Button onClick={() => setCreateOpen(true)}>
+            {canManageSuppliers ? <Button onClick={() => setCreateOpen(true)} data-tour="proveedores-new">
               Nuevo proveedor
             </Button> : null}
             {canManageSuppliers ? <ImportDialog

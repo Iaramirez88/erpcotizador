@@ -235,7 +235,7 @@ export default async function NotificacionesPage({ searchParams }: PageProps) {
     <div className="flex h-[calc(100vh-10rem)] flex-col gap-4 overflow-hidden md:h-[calc(100vh-8.5rem)]">
       <ErpPageHero
         eyebrow="ERP comunicación"
-        title={t('notifications.title')}
+        title={<span data-tour="notificaciones-title">{t('notifications.title')}</span>}
         description={
           unreadCount > 0
             ? t('notifications.unreadCount', { count: String(unreadCount) })

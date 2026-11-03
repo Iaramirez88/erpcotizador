@@ -7,6 +7,8 @@ import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -195,7 +197,7 @@ export default function NominaSeleccionPage() {
             { key: 'owner', label: language === 'en' ? 'Recruiter' : 'Responsable', className: 'max-w-[170px]', render: (item) => <div className="truncate">{item.ownerName ?? '—'}</div> },
             { key: 'terms', label: language === 'en' ? 'Start / expectation' : 'Ingreso / aspiración', className: 'whitespace-nowrap', render: (item) => <><div>{formatDate(item.expectedStartDate ?? null, locale)}</div><div className="text-xs text-slate-500">{item.salaryExpectation != null ? formatCurrency(item.salaryExpectation) : '—'}</div></> },
             { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
-            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div> },
+            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end"><RowActionsMenu><DropdownMenuItem onSelect={(e) => { e.preventDefault(); openEdit(item); }}>{copy.actions.edit}</DropdownMenuItem><DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => { e.preventDefault(); void handleDelete(item.id); }}>{copy.actions.remove}</DropdownMenuItem></RowActionsMenu></div> },
           ]} />
         </CardContent>
       </Card>

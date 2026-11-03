@@ -65,7 +65,7 @@ import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdow
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
-import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 import { formatCurrency, formatUnidadMedidaLabel } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useI18n } from '@/components/providers/i18n-provider'
@@ -2696,7 +2696,7 @@ export default function PosPage() {
     <div className="space-y-6">
       <ErpPageHero
         breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Ventas' }, { label: t('pos.title') }]}
-        title={t('pos.title')}
+        title={<span data-tour="pos-title">{t('pos.title')}</span>}
         description={t('pos.subtitle')}
         actions={activeTab === 'interna' ? (
           <>
@@ -2716,7 +2716,7 @@ export default function PosPage() {
             <Button onClick={openReturn} variant="outline" disabled={isLoading}>
               {t('pos.actions.newReturn')}
             </Button>
-            <Button onClick={openCreate} disabled={isLoading}>
+            <Button onClick={openCreate} disabled={isLoading} data-tour="pos-new">
               {t('pos.actions.newInvoice')}
             </Button>
           </>
@@ -2790,7 +2790,7 @@ export default function PosPage() {
                             <p className="mt-1 text-sm text-muted-foreground">{new Date(inv.createdAt).toLocaleString(locale)}</p>
                             <p className="mt-2 text-sm font-medium text-foreground">{inv.clienteNombre}</p>
                           </div>
-                          <MobileActionsMenu label={inv.numero}>
+                          <RowActionsMenu label={inv.numero}>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={(e) => {
                               e.preventDefault();
@@ -2840,7 +2840,7 @@ export default function PosPage() {
                             }}>
                               Eliminar venta
                             </DropdownMenuItem>
-                          </MobileActionsMenu>
+                          </RowActionsMenu>
                         </div>
 
                         <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -2890,101 +2890,56 @@ export default function PosPage() {
                           <td className="py-2 pr-4 text-gray-700">{inv.status}</td>
                           <td className="py-2 pr-4 font-medium">{formatCurrency(n(inv.total, 0))}</td>
                           <td className="py-2 pr-2">
-                            <div className="flex flex-wrap justify-end gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-9 w-9 rounded-full p-0"
-                                title={t('pos.actions.view')}
-                                onClick={() => void openDetail(inv.id)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-9 w-9 rounded-full p-0"
-                                title={t('pos.invoiceDetailDialog.audit.title')}
-                                onClick={() => void openInvoiceTraceability(inv.id)}
-                              >
-                                <History className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-9 w-9 rounded-full p-0"
-                                title={t('common.edit')}
-                                onClick={() => void openInvoiceEditorFromRow(inv.id)}
-                                disabled={inv.status !== 'DRAFT'}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-9 w-9 rounded-full p-0"
-                                title={t('pos.actions.finalize')}
-                                onClick={() => void finalizar(inv.id)}
-                                disabled={inv.status !== 'DRAFT' || finalizeSubmitting}
-                              >
-                                <CheckCircle className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-9 w-9 rounded-full p-0"
-                                title={t('pos.actions.downloadPdf')}
-                                onClick={() => void downloadInvoicePdf(inv.id, inv.numero)}
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-9 w-9 rounded-full p-0"
-                                title={t('pos.invoiceDetailDialog.share.sendEmail')}
-                                onClick={() => void sendInvoiceByEmailQuick(inv.id)}
-                                disabled={inlineEmailingId === inv.id}
-                              >
-                                {inlineEmailingId === inv.id ? (
-                                  <div className="h-4 w-4 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
-                                ) : (
-                                  <Mail className="h-4 w-4" />
-                                )}
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-9 w-9 rounded-full p-0"
-                                title={t('pos.invoiceDetailDialog.share.sendWhatsapp')}
-                                onClick={() => void shareInvoiceByWhatsappQuick(inv.id)}
-                                disabled={inlineWhatsappId === inv.id}
-                              >
-                                {inlineWhatsappId === inv.id ? (
-                                  <div className="h-4 w-4 rounded-full border-2 border-emerald-600 border-t-transparent animate-spin" />
-                                ) : (
-                                  <MessageCircle className="h-4 w-4" />
-                                )}
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-9 w-9 rounded-full p-0 text-red-600 hover:text-red-700"
-                                title="Eliminar venta"
-                                onClick={() => void eliminarVenta(inv.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </td>
+                            <RowActionsMenu label={inv.numero}>
+                              <DropdownMenuItem onSelect={(e) => {
+                                e.preventDefault();
+                                void openDetail(inv.id);
+                              }}>
+                                <Eye className="mr-2 h-4 w-4" /> {t('pos.actions.view')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={(e) => {
+                                e.preventDefault();
+                                void openInvoiceTraceability(inv.id);
+                              }}>
+                                <History className="mr-2 h-4 w-4" /> {t('pos.invoiceDetailDialog.audit.title')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={(e) => {
+                                e.preventDefault();
+                                void openInvoiceEditorFromRow(inv.id);
+                              }} disabled={inv.status !== 'DRAFT'}>
+                                <Pencil className="mr-2 h-4 w-4" /> {t('common.edit')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={(e) => {
+                                e.preventDefault();
+                                void finalizar(inv.id);
+                              }} disabled={inv.status !== 'DRAFT' || finalizeSubmitting}>
+                                <CheckCircle className="mr-2 h-4 w-4" /> {t('pos.actions.finalize')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={(e) => {
+                                e.preventDefault();
+                                void downloadInvoicePdf(inv.id, inv.numero);
+                              }}>
+                                <Download className="mr-2 h-4 w-4" /> {t('pos.actions.downloadPdf')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={(e) => {
+                                e.preventDefault();
+                                void sendInvoiceByEmailQuick(inv.id);
+                              }} disabled={inlineEmailingId === inv.id}>
+                                <Mail className="mr-2 h-4 w-4" /> {t('pos.invoiceDetailDialog.share.sendEmail')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={(e) => {
+                                e.preventDefault();
+                                void shareInvoiceByWhatsappQuick(inv.id);
+                              }} disabled={inlineWhatsappId === inv.id}>
+                                <MessageCircle className="mr-2 h-4 w-4" /> {t('pos.invoiceDetailDialog.share.sendWhatsapp')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => {
+                                e.preventDefault();
+                                void eliminarVenta(inv.id);
+                              }}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Eliminar venta
+                              </DropdownMenuItem>
+                            </RowActionsMenu></td>
                         </tr>
                       ))}
                     </tbody>

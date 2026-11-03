@@ -59,7 +59,7 @@ export function ErpPageHero({
               <div className="flex items-start gap-2">
                 {!collapsed ? <NominaMenuToggle /> : null}
                 <h1 className={cn("truncate font-semibold tracking-tight text-slate-950 dark:text-[#e0e0e0]", collapsed ? "text-sm" : "max-w-3xl text-lg lg:text-[1.65rem]")}>{title}</h1>
-                {!collapsed && description ? <InfoHint content={description} label="Ver descripción de la página" className="mt-0.5" /> : null}
+                {!collapsed && description ? <InfoHint content={description} className="mt-0.5" /> : null}
               </div>
               {!collapsed && actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
             </div>
@@ -120,7 +120,7 @@ export function ErpSectionHeading({ title, description, actions, className }: Er
     <div className={cn("flex flex-col gap-1 lg:flex-row lg:items-end lg:justify-between", className)}>
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-semibold text-slate-950 dark:text-[#e0e0e0] lg:text-base">{title}</h2>
-        {description ? <InfoHint content={description} label="Ver descripción del bloque" /> : null}
+        {description ? <InfoHint content={description} /> : null}
       </div>
       {actions ? <div className="flex flex-wrap gap-2 text-[13px]">{actions}</div> : null}
     </div>

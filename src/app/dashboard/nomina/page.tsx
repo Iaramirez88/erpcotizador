@@ -193,7 +193,7 @@ export default function NominaDashboardPage() {
           ? 'Consulta tu información laboral, vacaciones, desprendibles, beneficios y solicitudes desde un resumen personal sin entrar al backoffice de RRHH.'
           : 'La nómina ahora vive como módulo hermano con separación clara entre operación administrativa de RRHH y autoservicio del colaborador.'}
         actions={
-          <>
+          <div data-tour="nomina-quick-actions">
             {isEmployeeOnly ? (
               <Button asChild className="rounded-2xl">
                 <Link href={nominaHref('portal-empleado')}>Entrar a mi portal</Link>
@@ -211,7 +211,7 @@ export default function NominaDashboardPage() {
                 </Button>
               </>
             )}
-          </>
+          </div>
         }
         stats={[
           isEmployeeOnly
@@ -385,7 +385,7 @@ export default function NominaDashboardPage() {
         </section>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-3" data-tour="nomina-modules">
         <Card className="rounded-[28px] border-slate-200 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.28)]">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base"><BriefcaseBusiness className="h-4 w-4 text-sky-700" /> Administración de personal</CardTitle>

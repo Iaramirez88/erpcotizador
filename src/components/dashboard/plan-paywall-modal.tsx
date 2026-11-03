@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -56,6 +57,7 @@ type StartTrialResponse =
 
 export default function PlanPaywallModal() {
   const router = useRouter()
+  const { t } = useI18n()
 
   const [open, setOpen] = useState(false)
   const [blocking, setBlocking] = useState(false)
@@ -112,7 +114,7 @@ export default function PlanPaywallModal() {
       const json = (await res.json().catch(() => ({}))) as PlanApiResponse
 
       if (!res.ok || !('ok' in json) || !json.ok) {
-        setError(('error' in json && json.error) || 'No se pudo cargar el plan')
+        setError(('error' in json && json.error) || t('planPaywall.error.loadPlan'))
         setOpen(false)
         return
       }
@@ -125,7 +127,7 @@ export default function PlanPaywallModal() {
       setBlocking(Boolean(pw?.blocking))
       setOpen(resolveClientVisibility(pw?.reason ?? 'NONE', tr, Boolean(pw?.show)))
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error inesperado')
+      setError(e instanceof Error ? e.message : t('planPaywall.error.unexpected'))
       setOpen(false)
     } finally {
       setIsLoading(false)
@@ -143,29 +145,31 @@ export default function PlanPaywallModal() {
   }, [reason, trial?.startedAt])
 
   const title = useMemo(() => {
-    if (reason === 'TRIAL_ACTIVE' && noticeMode === 'last-day') return 'Tu prueba termina pronto'
-    if (reason === 'TRIAL_ACTIVE') return 'Tu prueba ya esta activa'
-    if (reason === 'TRIAL_EXPIRED') return 'Tu prueba terminó'
-    if (reason === 'PERSONAL_NO_PLAN') return 'Activa tu prueba gratis'
-    return 'Plan'
-  }, [noticeMode, reason])
+    if (reason === 'TRIAL_ACTIVE' && noticeMode === 'last-day') return t('planPaywall.title.lastDay')
+    if (reason === 'TRIAL_ACTIVE') return t('planPaywall.title.trialActive')
+    if (reason === 'TRIAL_EXPIRED') return t('planPaywall.title.trialExpired')
+    if (reason === 'PERSONAL_NO_PLAN') return t('planPaywall.title.personalNoPlan')
+    return t('planPaywall.title.default')
+  }, [noticeMode, reason, t])
 
   const description = useMemo(() => {
     if (reason === 'TRIAL_ACTIVE') {
       const days = trial?.daysLeft
       if (noticeMode === 'last-day') {
-        return 'Te queda 1 dia de prueba. Elige ahora el plan con el que quieres continuar para no perder acceso.'
+        return t('planPaywall.description.lastDay')
       }
-      return days ? `Tu cuenta tiene ${days} dia(s) de prueba activa en Intermedio.` : 'Tu prueba Intermedio esta activa.'
+      return days
+        ? t('planPaywall.description.trialActiveDays', { days })
+        : t('planPaywall.description.trialActive')
     }
     if (reason === 'TRIAL_EXPIRED') {
-      return 'Para seguir usando las funciones, elige un plan y realiza el pago.'
+      return t('planPaywall.description.trialExpired')
     }
     if (reason === 'PERSONAL_NO_PLAN') {
-      return 'Puedes activar 7 días gratis del plan Intermedio o elegir un plan.'
+      return t('planPaywall.description.personalNoPlan')
     }
-    return 'Gestiona tu plan.'
-  }, [noticeMode, reason, trial?.daysLeft])
+    return t('planPaywall.description.default')
+  }, [noticeMode, reason, t, trial?.daysLeft])
 
   async function startTrial() {
     setIsStartingTrial(true)
@@ -175,13 +179,13 @@ export default function PlanPaywallModal() {
       const json = (await res.json().catch(() => ({}))) as StartTrialResponse
 
       if (!res.ok || !('ok' in json) || !json.ok) {
-        setError(('error' in json && json.error) || 'No se pudo iniciar el trial')
+        setError(('error' in json && json.error) || t('planPaywall.error.startTrial'))
         return
       }
 
       await load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error inesperado')
+      setError(e instanceof Error ? e.message : t('planPaywall.error.unexpected'))
     } finally {
       setIsStartingTrial(false)
     }
@@ -203,7 +207,7 @@ export default function PlanPaywallModal() {
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
 
       if (!res.ok || !json.ok) {
-        setError(json.error || 'No se pudo validar el código')
+        setError(json.error || t('planPaywall.error.invalidCode'))
         return
       }
 
@@ -211,7 +215,7 @@ export default function PlanPaywallModal() {
       await load()
       router.refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error inesperado')
+      setError(e instanceof Error ? e.message : t('planPaywall.error.unexpected'))
     } finally {
       setIsClaimingCode(false)
     }
@@ -242,7 +246,7 @@ export default function PlanPaywallModal() {
         {reason === 'PERSONAL_NO_PLAN' || reason === 'TRIAL_EXPIRED' ? (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              ¿Tienes un código del espacio? Ingresa el código WS-... que aparece en la empresa para activar tu acceso.
+              {t('planPaywall.companyCode.hint')}
             </p>
             <div className="flex gap-2">
               <Input
@@ -256,7 +260,7 @@ export default function PlanPaywallModal() {
                 onClick={claimCompanyCode}
                 disabled={isClaimingCode || isLoading || !companyCode.trim()}
               >
-                Validar
+                {t('planPaywall.companyCode.validate')}
               </Button>
             </div>
           </div>
@@ -266,24 +270,24 @@ export default function PlanPaywallModal() {
 
         <DialogFooter>
           <Button variant="outline" onClick={goToPlans} disabled={isLoading}>
-            Ver planes
+            {t('planPaywall.actions.viewPlans')}
           </Button>
 
           {canStartTrial ? (
             <Button onClick={startTrial} disabled={isStartingTrial || isLoading}>
-              Activar prueba 7 días
+              {t('planPaywall.actions.startTrial7')}
             </Button>
           ) : reason === 'TRIAL_ACTIVE' && noticeMode === 'last-day' ? (
             <Button onClick={goToPlans} disabled={isLoading}>
-              Elegir plan
+              {t('planPaywall.actions.choosePlan')}
             </Button>
           ) : blocking ? (
             <Button onClick={goToPlans} disabled={isLoading}>
-              Elegir plan y pagar
+              {t('planPaywall.actions.choosePlanAndPay')}
             </Button>
           ) : (
             <Button onClick={() => setOpen(false)} disabled={isLoading}>
-              Continuar
+              {t('planPaywall.actions.continue')}
             </Button>
           )}
         </DialogFooter>

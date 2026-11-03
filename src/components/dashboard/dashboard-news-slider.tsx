@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight, ChevronLeft, ChevronRight, ImageIcon, Sparkles } from 'lucide-react'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CardInfoHeader } from '@/components/ui/card-info-header'
@@ -90,6 +91,7 @@ type DashboardNewsSliderProps = {
 }
 
 export default function DashboardNewsSlider({ items = SAMPLE_NEWS }: DashboardNewsSliderProps) {
+  const { t } = useI18n()
   const trackRef = useRef<HTMLDivElement | null>(null)
   const [canScrollPrev, setCanScrollPrev] = useState(false)
   const [canScrollNext, setCanScrollNext] = useState(false)
@@ -131,10 +133,10 @@ export default function DashboardNewsSlider({ items = SAMPLE_NEWS }: DashboardNe
           title={
             <CardTitle className="flex items-center gap-2 text-2xl text-slate-950">
               <Sparkles className="h-5 w-5 text-amber-500" />
-              Novedades
+              {t('newsSlider.title')}
             </CardTitle>
           }
-          description="Funciones nuevas, mejoras y contenidos de apoyo publicados por el equipo. Desliza para ver todas."
+          description={t('newsSlider.description')}
           tone="data"
           actions={
             <div className="flex items-center gap-2">
@@ -142,7 +144,7 @@ export default function DashboardNewsSlider({ items = SAMPLE_NEWS }: DashboardNe
                 type="button"
                 variant="outline"
                 size="icon"
-                aria-label="Ver novedades anteriores"
+                aria-label={t('newsSlider.prev')}
                 className="rounded-full border-slate-200 bg-white/90"
                 onClick={() => move(-1)}
                 disabled={!canScrollPrev}
@@ -153,7 +155,7 @@ export default function DashboardNewsSlider({ items = SAMPLE_NEWS }: DashboardNe
                 type="button"
                 variant="outline"
                 size="icon"
-                aria-label="Ver más novedades"
+                aria-label={t('newsSlider.next')}
                 className="rounded-full border-slate-200 bg-white/90"
                 onClick={() => move(1)}
                 disabled={!canScrollNext}
@@ -168,7 +170,7 @@ export default function DashboardNewsSlider({ items = SAMPLE_NEWS }: DashboardNe
         <div
           ref={trackRef}
           role="list"
-          aria-label="Novedades del producto"
+          aria-label={t('newsSlider.list')}
           tabIndex={0}
           onScroll={syncScrollState}
           className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth px-3 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-inset [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"

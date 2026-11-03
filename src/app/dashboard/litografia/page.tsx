@@ -31,7 +31,7 @@ export default function LitografiaPage() {
     <div className="space-y-4 p-3 sm:p-4 lg:p-6">
       <ErpPageHero
         breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Configuración' }, { label: 'Costos' }]}
-        title="Costos"
+        title={<span data-tour="litografia-title">Costos</span>}
         description="Alterna entre la configuración clásica y un ingreso asistido para interpretar briefs comerciales y construir costos más rápido."
         actions={
           <Button asChild variant="outline">

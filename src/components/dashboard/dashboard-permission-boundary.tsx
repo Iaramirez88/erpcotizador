@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { LockKeyhole } from 'lucide-react'
 import { useMemo } from 'react'
 import { usePathname } from 'next/navigation'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { Button } from '@/components/ui/button'
 import { labelForDashboardPath } from '@/lib/dashboard-navigation'
 
@@ -36,6 +37,7 @@ type Props = {
 
 export default function DashboardPermissionBoundary({ allowedHrefs, children }: Props) {
   const pathname = usePathname() ?? ''
+  const { t } = useI18n()
   const allowedHrefSet = useMemo(() => (allowedHrefs?.length ? new Set(allowedHrefs) : null), [allowedHrefs])
 
   const isAllowed = useMemo(() => {
@@ -47,7 +49,7 @@ export default function DashboardPermissionBoundary({ allowedHrefs, children }: 
 
   if (isAllowed) return <>{children}</>
 
-  const sectionLabel = labelForDashboardPath(pathname)
+  const sectionLabel = labelForDashboardPath(t, pathname)
 
   return (
     <div className="space-y-4">
@@ -58,13 +60,13 @@ export default function DashboardPermissionBoundary({ allowedHrefs, children }: 
               <LockKeyhole className="h-5 w-5" />
             </div>
             <div className="space-y-1">
-              <div className="text-sm font-semibold uppercase tracking-[0.14em] text-amber-700">Sin permisos</div>
-              <div className="text-base font-semibold">No tienes permisos para esta sección: {sectionLabel}.</div>
-              <div className="text-sm text-amber-900/80">Solicítalo a tu administrador para que te habilite el acceso correspondiente y puedas continuar.</div>
+              <div className="text-sm font-semibold uppercase tracking-[0.14em] text-amber-700">{t('permissionBoundary.noPermission')}</div>
+              <div className="text-base font-semibold">{t('permissionBoundary.title', { section: sectionLabel })}</div>
+              <div className="text-sm text-amber-900/80">{t('permissionBoundary.description')}</div>
             </div>
           </div>
           <Button asChild variant="outline" className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100">
-            <Link href="/dashboard">Volver a Inicio</Link>
+            <Link href="/dashboard">{t('permissionBoundary.backHome')}</Link>
           </Button>
         </div>
       </div>

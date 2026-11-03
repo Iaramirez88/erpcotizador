@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { MoreHorizontal, Pin, PinOff, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { useContabilidadNavPins } from '@/hooks/use-contabilidad-nav-pins'
 import {
   isContabilidadNavItemActive,
@@ -31,6 +32,7 @@ function itemClassName(active: boolean) {
 export function ContabilidadSubnav() {
   const pathname = usePathname() ?? ''
   const router = useRouter()
+  const { t } = useI18n()
   const { pinnedHrefs, togglePinned, clearPinned, syncState } = useContabilidadNavPins()
 
   const { visibleItems, overflowItems } = useMemo(
@@ -42,7 +44,7 @@ export function ContabilidadSubnav() {
     <div className="sticky top-[4.9rem] z-20 rounded-[26px] border border-[#2b2e401a] bg-white/96 py-0.5 backdrop-blur supports-[backdrop-filter]:bg-white/88">
       <div className="flex items-center gap-2 rounded-[24px] bg-slate-50/90 p-1.5">
         <nav
-          aria-label="Secciones de contabilidad"
+          aria-label={t('contabilidad.subnav.navLabel')}
           className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto"
         >
           {visibleItems.map((item) => {
@@ -55,10 +57,10 @@ export function ContabilidadSubnav() {
                 href={item.href}
                 className={itemClassName(active)}
                 aria-current={active ? 'page' : undefined}
-                title={item.description}
+                title={t(item.descriptionKey)}
               >
-                <span className="sm:hidden">{item.shortLabel ?? item.label}</span>
-                <span className="hidden sm:inline">{item.label}</span>
+                <span className="sm:hidden">{item.shortLabelKey ? t(item.shortLabelKey) : t(item.labelKey)}</span>
+                <span className="hidden sm:inline">{t(item.labelKey)}</span>
                 {pinned ? <Pin className="h-3 w-3 text-slate-400" aria-hidden /> : null}
               </Link>
             )
@@ -72,36 +74,37 @@ export function ContabilidadSubnav() {
               className={cn(itemClassName(false), 'shrink-0 gap-2 px-3')}
               aria-label={
                 overflowItems.length > 0
-                  ? `Más secciones de contabilidad (${overflowItems.length})`
-                  : 'Más secciones de contabilidad'
+                  ? t('contabilidad.subnav.moreWithCount', { count: overflowItems.length })
+                  : t('contabilidad.subnav.more')
               }
             >
               <MoreHorizontal className="h-4 w-4" aria-hidden />
-              <span className="hidden md:inline">Más</span>
+              <span className="hidden md:inline">{t('contabilidad.subnav.moreLabel')}</span>
               <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-1.5 text-[11px] font-semibold text-white">
                 {overflowItems.length}
               </span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80 rounded-2xl">
-            <DropdownMenuLabel>Más secciones</DropdownMenuLabel>
+            <DropdownMenuLabel>{t('contabilidad.subnav.moreSections')}</DropdownMenuLabel>
             <p className="px-2 pb-2 text-[11px] leading-4 text-slate-500">
-              Ancla con el pin las secciones que más uses y quedarán fijas en la barra.
+              {t('contabilidad.subnav.pinHint')}
             </p>
             <p className="px-2 pb-2 text-[11px] leading-4 text-slate-400">
               {syncState === 'synced'
-                ? 'Anclas guardadas en tu cuenta.'
+                ? t('contabilidad.subnav.syncSynced')
                 : syncState === 'local'
-                  ? 'Anclas guardadas en este dispositivo.'
-                  : 'Cargando anclas…'}
+                  ? t('contabilidad.subnav.syncLocal')
+                  : t('contabilidad.subnav.syncLoading')}
             </p>
             <DropdownMenuSeparator />
             {overflowItems.length === 0 ? (
-              <div className="px-2 py-3 text-xs text-slate-500">Todas las secciones están visibles en la barra.</div>
+              <div className="px-2 py-3 text-xs text-slate-500">{t('contabilidad.subnav.allVisible')}</div>
             ) : (
               overflowItems.map((item) => {
                 const active = isContabilidadNavItemActive(pathname, item.href)
                 const pinned = pinnedHrefs.includes(item.href)
+                const label = t(item.labelKey)
 
                 return (
                   <DropdownMenuItem
@@ -111,15 +114,15 @@ export function ContabilidadSubnav() {
                   >
                     <div className="min-w-0 flex-1">
                       <div className={cn('truncate text-sm font-medium', active ? 'text-slate-950' : 'text-slate-700')}>
-                        {item.label}
+                        {label}
                       </div>
-                      <div className="truncate text-xs text-slate-500">{item.description}</div>
+                      <div className="truncate text-xs text-slate-500">{t(item.descriptionKey)}</div>
                     </div>
                     <button
                       type="button"
                       aria-pressed={pinned}
-                      aria-label={pinned ? `Quitar ancla de ${item.label}` : `Anclar ${item.label} en la barra`}
-                      title={pinned ? `Quitar ancla de ${item.label}` : `Anclar ${item.label} en la barra`}
+                      aria-label={pinned ? t('contabilidad.subnav.unpin', { label }) : t('contabilidad.subnav.pin', { label })}
+                      title={pinned ? t('contabilidad.subnav.unpin', { label }) : t('contabilidad.subnav.pin', { label })}
                       onPointerDown={(event) => {
                         event.preventDefault()
                         event.stopPropagation()
@@ -151,7 +154,7 @@ export function ContabilidadSubnav() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="gap-2 rounded-xl text-xs text-slate-600" onSelect={clearPinned}>
                   <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-                  Restablecer barra
+                  {t('contabilidad.subnav.reset')}
                 </DropdownMenuItem>
               </>
             ) : null}

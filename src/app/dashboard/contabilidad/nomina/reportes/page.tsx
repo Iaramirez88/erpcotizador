@@ -7,6 +7,8 @@ import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -358,7 +360,7 @@ export default function NominaReportesPage() {
                 { key: 'approvals', label: language === 'en' ? 'HR / direction' : 'RRHH / dirección', className: 'max-w-[210px]', render: (item) => <><div className="truncate">{item.hrApprovalStatus}{item.hrApproverName ? ` · ${item.hrApproverName}` : ''}</div><div className="truncate text-xs text-slate-500">{item.directorApprovalStatus}{item.directorApproverName ? ` · ${item.directorApproverName}` : ''}</div></> },
                 { key: 'dates', label: language === 'en' ? 'Requested / signed' : 'Solicitado / firmado', className: 'whitespace-nowrap', render: (item) => <><div>{formatDate(item.requestedAt, locale)}</div><div className="text-xs text-slate-500">{formatDate(item.signedAt, locale)}</div></> },
                 { key: 'status', label: copy.labels.status, render: (item) => <div className="space-y-1"><NominaStatusBadge status={item.status} /><div><NominaStatusBadge status={item.signatureStatus} /></div><div className="text-[10px] uppercase text-slate-500">{item.approvalStatus.replaceAll('_', ' ')}</div></div> },
-                { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button asChild size="sm" variant="outline" className="h-8 rounded-lg px-2.5"><Link href={`/api/nomina/documentos/${item.id}/pdf`} target="_blank">PDF</Link></Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div> },
+                { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end"><RowActionsMenu><DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}><Link href={`/api/nomina/documentos/${item.id}/pdf`} target="_blank">PDF</Link></DropdownMenuItem><DropdownMenuItem onSelect={(e) => { e.preventDefault(); openEdit(item); }}>{copy.actions.edit}</DropdownMenuItem><DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => { e.preventDefault(); void handleDelete(item.id); }}>{copy.actions.remove}</DropdownMenuItem></RowActionsMenu></div> },
               ]} />
             </CardContent>
           </Card>

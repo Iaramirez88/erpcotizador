@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { useI18n } from '@/components/providers/i18n-provider'
 
 type NominaNavigationContextValue = {
   menuVisible: boolean
@@ -39,10 +40,11 @@ export function useNominaNavigation() {
 
 export function NominaMenuToggle() {
   const navigation = useNominaNavigation()
+  const { t } = useI18n()
 
   if (!navigation) return null
 
-  const label = navigation.menuVisible ? 'Ocultar menú de nómina' : 'Abrir menú de nómina'
+  const label = navigation.menuVisible ? t('nav.ui.hideNominaMenu') : t('nav.ui.showNominaMenu')
 
   return (
     <button

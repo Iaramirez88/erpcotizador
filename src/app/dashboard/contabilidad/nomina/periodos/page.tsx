@@ -8,6 +8,8 @@ import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/no
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { Input } from '@/components/ui/input'
@@ -318,7 +320,7 @@ export default function NominaPeriodosPage() {
                   { key: 'net', label: copy.metrics.net, className: 'whitespace-nowrap text-right font-semibold tabular-nums', headerClassName: 'text-right', render: (period) => formatCurrency(period.netTotal) },
                   { key: 'contributions', label: language === 'en' ? 'Security / taxes' : 'Seguridad / parafiscales', className: 'whitespace-nowrap text-right tabular-nums', headerClassName: 'text-right', render: (period) => <><div>{formatCurrency(period.socialSecurityTotal)}</div><div className="text-xs text-slate-500">{formatCurrency(period.parafiscalesTotal)}</div></> },
                   { key: 'status', label: copy.dialog.status, render: (period) => <div className="space-y-1"><NominaStatusBadge status={periodStatusLabel[period.status as keyof typeof periodStatusLabel] ?? period.status} /><div><NominaStatusBadge status={accountingStatusLabel[period.accountingStatus as keyof typeof accountingStatusLabel] ?? period.accountingStatus} /></div></div> },
-                  { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (period) => <div className="flex justify-end gap-1.5">{period.accountingStatus === 'PENDIENTE' && period.status !== 'BORRADOR' ? <Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void contabilizar(period.id)}>{copy.actions.post}</Button> : null}<Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(period)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(period.id)}>{copy.actions.delete}</Button></div> },
+                  { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (period) => <div className="flex justify-end"><RowActionsMenu label={period.label}>{period.accountingStatus === 'PENDIENTE' && period.status !== 'BORRADOR' ? <DropdownMenuItem onSelect={(e) => { e.preventDefault(); void contabilizar(period.id); }}>{copy.actions.post}</DropdownMenuItem> : null}<DropdownMenuItem onSelect={(e) => { e.preventDefault(); openEdit(period); }}>{copy.actions.edit}</DropdownMenuItem><DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => { e.preventDefault(); void handleDelete(period.id); }}>{copy.actions.delete}</DropdownMenuItem></RowActionsMenu></div> },
                 ]} />
               </CardContent>
             </Card>

@@ -10,9 +10,9 @@ import { nominaHref, normalizeNominaPathname } from '@/lib/nomina-routes'
 import { cn } from '@/lib/utils'
 
 type NominaNavItem = {
-  label: string
+  labelKey: string
   href: string
-  shortLabel?: string
+  shortLabelKey?: string
   icon: React.ComponentType<{ className?: string }>
 }
 
@@ -32,53 +32,34 @@ function isItemActive(pathname: string, href: string) {
 
 export function NominaSubnav({ orientation = 'horizontal' }: NominaSubnavProps) {
   const pathname = usePathname() ?? ''
-  const { language } = useI18n()
+  const { t } = useI18n()
   const { canAccessPayrollAdmin, hasPayrollPortal } = useDashboardAccess()
   const navigation = useNominaNavigation()
 
-  const adminItems: NominaNavItem[] = language === 'en'
-    ? [
-        { label: 'Overview', href: nominaHref(), icon: LayoutGrid },
-        { label: 'Employees', href: nominaHref('empleados'), icon: Contact },
-        { label: 'Attendance', href: nominaHref('asistencia'), shortLabel: 'Attend.', icon: CalendarClock },
-        { label: 'Benefits', href: nominaHref('beneficios'), icon: Gift },
-        { label: 'Onboarding', href: nominaHref('onboarding'), icon: UserPlus },
-        { label: 'Service', href: nominaHref('servicio-colaborador'), icon: HandHelping },
-        { label: 'Ethics', href: nominaHref('canal-denuncias'), icon: ShieldAlert },
-        { label: 'Recruiting', href: nominaHref('seleccion'), icon: UserSearch },
-        { label: 'Surveys', href: nominaHref('encuestas'), icon: Bell },
-        { label: 'Performance', href: nominaHref('desempeno'), icon: TrendingUp },
-        { label: 'Learning', href: nominaHref('capacitaciones'), icon: BookOpen },
-        { label: 'People', href: nominaHref('gestion-personas'), icon: Network },
-        { label: 'Periods', href: nominaHref('periodos'), icon: CalendarDays },
-        { label: 'Changes', href: nominaHref('novedades'), icon: Megaphone },
-        { label: 'Settlements', href: nominaHref('liquidaciones'), shortLabel: 'Settle', icon: Calculator },
-        { label: 'Reports', href: nominaHref('reportes'), icon: FileBarChart },
-      ]
-    : [
-        { label: 'Resumen', href: nominaHref(), icon: LayoutGrid },
-        { label: 'Empleados', href: nominaHref('empleados'), icon: Contact },
-        { label: 'Asistencia', href: nominaHref('asistencia'), icon: CalendarClock },
-        { label: 'Beneficios', href: nominaHref('beneficios'), icon: Gift },
-        { label: 'Onboarding', href: nominaHref('onboarding'), icon: UserPlus },
-        { label: 'Servicio', href: nominaHref('servicio-colaborador'), icon: HandHelping },
-        { label: 'Denuncias', href: nominaHref('canal-denuncias'), icon: ShieldAlert },
-        { label: 'Selección', href: nominaHref('seleccion'), icon: UserSearch },
-        { label: 'Encuestas', href: nominaHref('encuestas'), icon: Bell },
-        { label: 'Desempeño', href: nominaHref('desempeno'), icon: TrendingUp },
-        { label: 'Capacitaciones', href: nominaHref('capacitaciones'), icon: BookOpen },
-        { label: 'Gestión de personas', href: nominaHref('gestion-personas'), shortLabel: 'Personas', icon: Network },
-        { label: 'Períodos', href: nominaHref('periodos'), icon: CalendarDays },
-        { label: 'Novedades', href: nominaHref('novedades'), icon: Megaphone },
-        { label: 'Liquidaciones', href: nominaHref('liquidaciones'), shortLabel: 'Liquidar', icon: Calculator },
-        { label: 'Reportes', href: nominaHref('reportes'), icon: FileBarChart },
-      ]
+  const adminItems: NominaNavItem[] = [
+    { labelKey: 'nomina.subnav.resumen', href: nominaHref(), icon: LayoutGrid },
+    { labelKey: 'nomina.subnav.empleados', href: nominaHref('empleados'), icon: Contact },
+    { labelKey: 'nomina.subnav.asistencia', href: nominaHref('asistencia'), shortLabelKey: 'nomina.subnav.asistenciaShort', icon: CalendarClock },
+    { labelKey: 'nomina.subnav.beneficios', href: nominaHref('beneficios'), icon: Gift },
+    { labelKey: 'nomina.subnav.onboarding', href: nominaHref('onboarding'), icon: UserPlus },
+    { labelKey: 'nomina.subnav.servicio', href: nominaHref('servicio-colaborador'), icon: HandHelping },
+    { labelKey: 'nomina.subnav.denuncias', href: nominaHref('canal-denuncias'), icon: ShieldAlert },
+    { labelKey: 'nomina.subnav.seleccion', href: nominaHref('seleccion'), icon: UserSearch },
+    { labelKey: 'nomina.subnav.encuestas', href: nominaHref('encuestas'), icon: Bell },
+    { labelKey: 'nomina.subnav.desempeno', href: nominaHref('desempeno'), icon: TrendingUp },
+    { labelKey: 'nomina.subnav.capacitaciones', href: nominaHref('capacitaciones'), icon: BookOpen },
+    { labelKey: 'nomina.subnav.gestionPersonas', href: nominaHref('gestion-personas'), shortLabelKey: 'nomina.subnav.gestionPersonasShort', icon: Network },
+    { labelKey: 'nomina.subnav.periodos', href: nominaHref('periodos'), icon: CalendarDays },
+    { labelKey: 'nomina.subnav.novedades', href: nominaHref('novedades'), icon: Megaphone },
+    { labelKey: 'nomina.subnav.liquidaciones', href: nominaHref('liquidaciones'), shortLabelKey: 'nomina.subnav.liquidacionesShort', icon: Calculator },
+    { labelKey: 'nomina.subnav.reportes', href: nominaHref('reportes'), icon: FileBarChart },
+  ]
 
   const portalItem: NominaNavItem | null = hasPayrollPortal
     ? {
-        label: language === 'en' ? 'My portal' : 'Mi portal',
+        labelKey: 'nomina.subnav.portal',
         href: nominaHref('portal-empleado'),
-        shortLabel: 'Portal',
+        shortLabelKey: 'nomina.subnav.portalShort',
         icon: UserRound,
       }
     : null
@@ -95,7 +76,7 @@ export function NominaSubnav({ orientation = 'horizontal' }: NominaSubnavProps) 
     return (
       <aside className="hidden xl:block xl:w-[280px] xl:shrink-0">
         <div className="sticky top-24 rounded-[24px] border border-slate-200 bg-[linear-gradient(160deg,#f7fbff_0%,#ffffff_45%,#f6fffb_100%)] p-3 shadow-[0_24px_50px_-36px_rgba(15,23,42,0.35)]">
-          <nav className="space-y-0.5" aria-label={language === 'en' ? 'Payroll sections' : 'Secciones de nómina'}>
+          <nav className="space-y-0.5" aria-label={t('nomina.subnav.ariaLabel')}>
             {nominaNavItems.map((item) => {
               const active = isItemActive(pathname, item.href)
               const Icon = item.icon
@@ -114,7 +95,7 @@ export function NominaSubnav({ orientation = 'horizontal' }: NominaSubnavProps) 
                   <span className={cn('inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border', active ? 'border-sky-200 bg-white text-sky-700' : 'border-slate-200 bg-white text-slate-500 group-hover:text-slate-700')}>
                     <Icon className="h-3.5 w-3.5" />
                   </span>
-                  <span className="truncate">{item.label}</span>
+                  <span className="truncate">{t(item.labelKey)}</span>
                 </Link>
               )
             })}
@@ -142,8 +123,8 @@ export function NominaSubnav({ orientation = 'horizontal' }: NominaSubnavProps) 
               )}
               aria-current={active ? 'page' : undefined}
             >
-              <span className="sm:hidden">{item.shortLabel ?? item.label}</span>
-              <span className="hidden sm:inline">{item.label}</span>
+              <span className="sm:hidden">{item.shortLabelKey ? t(item.shortLabelKey) : t(item.labelKey)}</span>
+              <span className="hidden sm:inline">{t(item.labelKey)}</span>
             </Link>
           )
         })}

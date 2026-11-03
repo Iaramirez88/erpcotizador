@@ -7,6 +7,8 @@ import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -216,7 +218,7 @@ export default function NominaCanalDenunciasPage() {
             { key: 'owner', label: language === 'en' ? 'Owner' : 'Responsable', className: 'max-w-[180px]', render: (item) => <div className="truncate text-slate-700">{item.assignedToName ?? '—'}</div> },
             { key: 'date', label: language === 'en' ? 'Occurred' : 'Ocurrió', className: 'whitespace-nowrap text-slate-700', render: (item) => formatDate(item.occurredAt ?? null, locale) },
             { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
-            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div> },
+            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end"><RowActionsMenu><DropdownMenuItem onSelect={(e) => { e.preventDefault(); openEdit(item); }}>{copy.actions.edit}</DropdownMenuItem><DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => { e.preventDefault(); void handleDelete(item.id); }}>{copy.actions.remove}</DropdownMenuItem></RowActionsMenu></div> },
           ]} />
         </CardContent>
       </Card>
@@ -234,7 +236,7 @@ export default function NominaCanalDenunciasPage() {
             { key: 'date', label: language === 'en' ? 'Resolved' : 'Resuelto', className: 'whitespace-nowrap', render: (item) => formatDate(item.resolvedAt ?? null, locale) },
             { key: 'followup', label: language === 'en' ? 'Follow-up' : 'Seguimiento', render: (item) => item.followUpRequired ? (language === 'en' ? 'Required' : 'Requerido') : (language === 'en' ? 'Closed' : 'Cerrado') },
             { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
-            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div> },
+            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end"><RowActionsMenu><DropdownMenuItem onSelect={(e) => { e.preventDefault(); openEdit(item); }}>{copy.actions.edit}</DropdownMenuItem><DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => { e.preventDefault(); void handleDelete(item.id); }}>{copy.actions.remove}</DropdownMenuItem></RowActionsMenu></div> },
           ]} />
         </CardContent>
       </Card>

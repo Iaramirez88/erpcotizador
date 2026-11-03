@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
-import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { formatUnidadMedidaLabel } from "@/lib/utils"
@@ -360,7 +360,7 @@ export default function RemisionesPage() {
     <div className="space-y-4 p-3 sm:p-4 lg:p-6">
       <ErpPageHero
         breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Ventas' }, { label: 'Remisiones' }]}
-        title="Remisiones"
+        title={<span data-tour="remisiones-title">Remisiones</span>}
         description="Salida de inventario con trazabilidad por documento."
         actions={
           <Button variant="outline" onClick={exportExcel}>
@@ -383,7 +383,7 @@ export default function RemisionesPage() {
         <TabsContent value="listado" className="space-y-4">
           <div className="flex items-center justify-between gap-3">
             <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
-            <Button onClick={openNew}>Nueva remisión</Button>
+            <Button onClick={openNew} data-tour="remisiones-new">Nueva remisión</Button>
           </div>
 
           <Card>
@@ -427,7 +427,7 @@ export default function RemisionesPage() {
                         <p className="mt-1 text-sm text-muted-foreground">{new Date(r.createdAt).toLocaleString('es-CO')}</p>
                         <p className="mt-2 text-sm font-medium text-foreground">{r.clienteNombre || 'Consumidor final'}</p>
                       </div>
-                      <MobileActionsMenu label={r.numero}>
+                      <RowActionsMenu label={r.numero}>
                         <DropdownMenuSeparator />
                         {r.status === 'EMITIDA' ? (
                           <>
@@ -463,7 +463,7 @@ export default function RemisionesPage() {
                             </DropdownMenuItem>
                           </>
                         ) : null}
-                      </MobileActionsMenu>
+                      </RowActionsMenu>
                     </div>
 
                     <div className="mt-4 space-y-3 text-sm">
@@ -555,58 +555,42 @@ export default function RemisionesPage() {
                         </div>
                       </td>
                       <td className="py-3 pr-4">
-                        <div className="flex min-w-[220px] flex-wrap justify-end gap-2">
+                        <RowActionsMenu label={r.numero}>
                           {r.status === 'EMITIDA' ? (
                             <>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-9 w-9 rounded-full p-0"
-                                onClick={() => abrirPreview(r)}
-                                title="Vista previa"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-9 w-9 rounded-full p-0"
-                                onClick={() => descargarPDF(r.id, r.numero)}
-                                title="Descargar PDF"
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-9 w-9 rounded-full p-0"
-                                onClick={() => enviarPorEmail(r)}
-                                disabled={enviando === r.id}
-                                title="Enviar por email"
-                              >
-                                <Mail className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-9 w-9 rounded-full p-0"
-                                onClick={() => compartirWhatsApp(r)}
-                                title="Compartir por WhatsApp"
-                              >
-                                <MessageCircle className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-9 w-9 rounded-full p-0 text-red-600 hover:text-red-700"
-                                onClick={() => anular(r.id)}
-                                title="Anular remisión"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              <DropdownMenuItem onSelect={(e) => {
+                                e.preventDefault();
+                                abrirPreview(r);
+                              }}>
+                                <Eye className="mr-2 h-4 w-4" /> Vista previa
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={(e) => {
+                                e.preventDefault();
+                                descargarPDF(r.id, r.numero);
+                              }}>
+                                <Download className="mr-2 h-4 w-4" /> Descargar PDF
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={(e) => {
+                                e.preventDefault();
+                                enviarPorEmail(r);
+                              }} disabled={enviando === r.id}>
+                                <Mail className="mr-2 h-4 w-4" /> Enviar por email
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={(e) => {
+                                e.preventDefault();
+                                compartirWhatsApp(r);
+                              }}>
+                                <MessageCircle className="mr-2 h-4 w-4" /> Compartir por WhatsApp
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => {
+                                e.preventDefault();
+                                anular(r.id);
+                              }}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Anular remisión
+                              </DropdownMenuItem>
                             </>
                           ) : null}
-                        </div>
+                        </RowActionsMenu>
                       </td>
                     </tr>
                   ))}

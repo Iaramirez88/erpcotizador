@@ -1513,6 +1513,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       }
 
       setPreparedCallSession(json.data)
+      void loadDetail(selectedConversation.id)
     } catch (error) {
       setCallError(error instanceof Error ? error.message : 'No se pudo conectar con el servicio de llamadas.')
     } finally {

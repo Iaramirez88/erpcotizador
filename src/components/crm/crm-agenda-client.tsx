@@ -389,7 +389,7 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
           { label: 'CRM', href: '/dashboard/crm' },
           { label: 'Calendario' },
         ]}
-        title="Calendario comercial y agendamiento"
+        title={<span data-tour="agenda-title">Calendario comercial y agendamiento</span>}
         actions={
           <>
             {canAccessAnyChat ? <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">

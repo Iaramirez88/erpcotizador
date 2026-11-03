@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { subscribeToNotificationReceivedEvent } from '@/lib/notification-browser-events'
 import { syncAppBadge } from '@/lib/app-badge'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { DEFAULT_NOTIFICATION_ACTION_LABEL } from '@/lib/notifications'
@@ -25,6 +26,7 @@ type Props = {
 }
 
 export default function NotificationsPanel({ onUnreadCountChange }: Props) {
+  const { t } = useI18n()
   const [items, setItems] = useState<NotificationItem[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -81,18 +83,18 @@ export default function NotificationsPanel({ onUnreadCountChange }: Props) {
       <div className="p-4 border-b bg-background">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <div className="text-sm font-medium">Notificaciones</div>
+            <div className="text-sm font-medium">{t('header.notifications')}</div>
             <div className="text-xs text-muted-foreground">
-              {unreadCount} sin leer
+              {t('notificationsPanel.unreadCount', { count: unreadCount })}
             </div>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={() => void markAllRead()} disabled={!unreadCount}>
-            Marcar todo como leido
+            {t('notificationsPanel.markAllRead')}
           </Button>
         </div>
         <div className="mt-3 flex items-center gap-2">
           <Button asChild variant="outline" size="sm" className="rounded-full border-slate-200 bg-white">
-            <Link href="/dashboard/notificaciones">Todos</Link>
+            <Link href="/dashboard/notificaciones">{t('notificationsPanel.all')}</Link>
           </Button>
           <Button
             type="button"
@@ -101,14 +103,14 @@ export default function NotificationsPanel({ onUnreadCountChange }: Props) {
             className={activeTab === 'unread' ? 'rounded-full border-sky-200 bg-sky-50 text-sky-700' : 'rounded-full border-slate-200 bg-white'}
             onClick={() => setActiveTab('unread')}
           >
-            Sin leer
+            {t('notificationsPanel.unread')}
           </Button>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
         {loading ? (
-          <div className="text-sm text-muted-foreground">Cargando…</div>
+          <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
         ) : visibleItems.length ? (
           <div className="space-y-2">
             {visibleItems.map((n) => (
@@ -130,7 +132,7 @@ export default function NotificationsPanel({ onUnreadCountChange }: Props) {
             ))}
           </div>
         ) : (
-          <div className="text-sm text-muted-foreground">{activeTab === 'unread' ? 'No hay notificaciones sin leer.' : 'Sin notificaciones.'}</div>
+          <div className="text-sm text-muted-foreground">{activeTab === 'unread' ? t('notificationsPanel.emptyUnread') : t('notificationsPanel.empty')}</div>
         )}
       </div>
     </div>

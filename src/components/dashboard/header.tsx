@@ -276,7 +276,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
   const configMenu = isMobileViewport
     ? renderMobileSubmenu({
         keyName: 'configuracion',
-        label: 'Configuración',
+        label: t('nav.section.settings'),
         icon: (
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
@@ -285,7 +285,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
         children: (
           <>
             <Link href="/dashboard/configuracion/notificaciones" className={mobileMenuItemClass} onClick={() => setUserMenuOpen(false)}>
-              Dispositivos
+              {t('nav.devices')}
             </Link>
             {navPrefs ? (
               <button type="button" className={mobileMenuItemClass} onClick={() => { setUserMenuOpen(false); setNavSettingsOpen(true) }}>
@@ -295,10 +295,10 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
             {canManageBilling ? (
               <>
                 <Link href="/dashboard/configuracion/plan" className={mobileMenuItemClass} onClick={() => setUserMenuOpen(false)}>
-                  Facturación
+                  {t('nav.billing')}
                 </Link>
                 <Link href="/dashboard/configuracion/plan?tab=almacenamiento" className={mobileMenuItemClass} onClick={() => setUserMenuOpen(false)}>
-                  Consumo actual de espacio
+                  {t('header.storageUsage')}
                 </Link>
               </>
             ) : null}
@@ -315,14 +315,14 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                 </svg>
               </MenuIcon>
-              <span>Configuración</span>
+              <span>{t('nav.section.settings')}</span>
             </span>
             <MenuChevron />
           </div>
         </DropdownMenuSubTriggerItem>
         <DropdownMenuSubContentPanel className="w-64 rounded-2xl p-2">
           <DropdownMenuItem asChild className={desktopMenuItemClass}>
-            <Link href="/dashboard/configuracion/notificaciones">Dispositivos</Link>
+            <Link href="/dashboard/configuracion/notificaciones">{t('nav.devices')}</Link>
           </DropdownMenuItem>
           {navPrefs ? (
             <DropdownMenuItem className={desktopMenuItemClass} onSelect={() => { setUserMenuOpen(false); setNavSettingsOpen(true) }}>
@@ -332,10 +332,10 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
           {canManageBilling ? (
             <>
               <DropdownMenuItem asChild className={desktopMenuItemClass}>
-                <Link href="/dashboard/configuracion/plan">Facturación</Link>
+                <Link href="/dashboard/configuracion/plan">{t('nav.billing')}</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild className={desktopMenuItemClass}>
-                <Link href="/dashboard/configuracion/plan?tab=almacenamiento">Consumo actual de espacio</Link>
+                <Link href="/dashboard/configuracion/plan?tab=almacenamiento">{t('header.storageUsage')}</Link>
               </DropdownMenuItem>
             </>
           ) : null}
@@ -346,7 +346,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
   const themeMenu = isMobileViewport
     ? renderMobileSubmenu({
         keyName: 'tema',
-        label: 'Tema',
+        label: t('header.theme'),
         icon: (
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3c4.97 0 9 4.03 9 9s-4.03 9-9 9-9-4.03-9-9 4.03-9 9-9Zm0 4v5l3 3" />
@@ -355,13 +355,13 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
         children: (
           <>
             <button type="button" className={mobileMenuItemClass} onClick={() => { setTheme('light'); setUserMenuOpen(false) }}>
-              Claro{theme === 'light' ? ' ✓' : ''}
+              {t('header.themeLight')}{theme === 'light' ? ' ✓' : ''}
             </button>
             <button type="button" className={mobileMenuItemClass} onClick={() => { setTheme('dark'); setUserMenuOpen(false) }}>
-              Oscuro{theme === 'dark' ? ' ✓' : ''}
+              {t('header.themeDark')}{theme === 'dark' ? ' ✓' : ''}
             </button>
             <button type="button" className={mobileMenuItemClass} onClick={() => { setTheme('system'); setUserMenuOpen(false) }}>
-              Sistema{theme === 'system' ? ' ✓' : ''}
+              {t('header.themeSystem')}{theme === 'system' ? ' ✓' : ''}
             </button>
           </>
         ),
@@ -376,20 +376,20 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3c4.97 0 9 4.03 9 9s-4.03 9-9 9-9-4.03-9-9 4.03-9 9-9Zm0 4v5l3 3" />
                 </svg>
               </MenuIcon>
-              <span>Tema</span>
+              <span>{t('header.theme')}</span>
             </span>
             <MenuChevron />
           </div>
         </DropdownMenuSubTriggerItem>
         <DropdownMenuSubContentPanel className="w-56 rounded-2xl p-2">
           <DropdownMenuItem className={desktopMenuItemClass} onSelect={(e) => { e.preventDefault(); setTheme('light') }}>
-            Claro{theme === 'light' ? ' ✓' : ''}
+            {t('header.themeLight')}{theme === 'light' ? ' ✓' : ''}
           </DropdownMenuItem>
           <DropdownMenuItem className={desktopMenuItemClass} onSelect={(e) => { e.preventDefault(); setTheme('dark') }}>
-            Oscuro{theme === 'dark' ? ' ✓' : ''}
+            {t('header.themeDark')}{theme === 'dark' ? ' ✓' : ''}
           </DropdownMenuItem>
           <DropdownMenuItem className={desktopMenuItemClass} onSelect={(e) => { e.preventDefault(); setTheme('system') }}>
-            Sistema{theme === 'system' ? ' ✓' : ''}
+            {t('header.themeSystem')}{theme === 'system' ? ' ✓' : ''}
           </DropdownMenuItem>
         </DropdownMenuSubContentPanel>
       </DropdownMenuSub>
@@ -444,7 +444,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
   const helpMenu = isMobileViewport
     ? renderMobileSubmenu({
         keyName: 'ayuda',
-        label: 'Ayuda y recursos educativos',
+        label: t('header.helpResources'),
         icon: (
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.305-.88 2.418-2.13 2.83-.97.32-1.87 1.1-1.87 2.17V16m0 4h.01M12 22a10 10 0 100-20 10 10 0 000 20z" />
@@ -453,10 +453,10 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
         children: (
           <>
             <Link href="/dashboard/ayuda" className={mobileMenuItemClass} onClick={() => setUserMenuOpen(false)}>
-              Centro de ayuda
+              {t('header.helpCenter')}
             </Link>
             <Link href="/dashboard/ayuda" className={mobileMenuItemClass} onClick={() => setUserMenuOpen(false)}>
-              Documentación y videos
+              {t('header.helpDocs')}
             </Link>
             <button type="button" disabled={!hasCurrentTour} className={`${mobileMenuItemClass} disabled:opacity-50`} onClick={() => { startCurrentTour(); setUserMenuOpen(false) }}>
               {t('header.tour.view')}
@@ -477,17 +477,17 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.305-.88 2.418-2.13 2.83-.97.32-1.87 1.1-1.87 2.17V16m0 4h.01M12 22a10 10 0 100-20 10 10 0 000 20z" />
                 </svg>
               </MenuIcon>
-              <span>Ayuda y recursos educativos</span>
+              <span>{t('header.helpResources')}</span>
             </span>
             <MenuChevron />
           </div>
         </DropdownMenuSubTriggerItem>
         <DropdownMenuSubContentPanel className="w-72 rounded-2xl p-2">
           <DropdownMenuItem asChild className={desktopMenuItemClass}>
-            <Link href="/dashboard/ayuda">Centro de ayuda</Link>
+            <Link href="/dashboard/ayuda">{t('header.helpCenter')}</Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild className={desktopMenuItemClass}>
-            <Link href="/dashboard/ayuda">Documentación y videos</Link>
+            <Link href="/dashboard/ayuda">{t('header.helpDocs')}</Link>
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={!hasCurrentTour}
@@ -549,7 +549,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
               >
                 <div className={isMobileFooter ? 'relative h-11 w-11 overflow-hidden rounded-full bg-muted' : 'relative h-8 w-8 overflow-hidden rounded-full bg-muted'}>
                   {user.image ? (
-                    <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes={isMobileFooter ? '44px' : '32px'} unoptimized />
+                    <Image src={user.image} alt={user.name ?? t('header.user')} fill className="object-cover" sizes={isMobileFooter ? '44px' : '32px'} unoptimized />
                   ) : (
                     <div className="grid h-full w-full place-items-center bg-muted text-[11px] font-semibold text-foreground">
                       {initials}
@@ -573,7 +573,7 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2m16 0v-2a4 4 0 00-3-3.87M7 7a4 4 0 118 0 4 4 0 01-8 0z" />
                       </svg>
                     </MenuIcon>
-                    <span>Mi cuenta</span>
+                    <span>{t('header.account')}</span>
                   </span>
                   <MenuChevron />
                 </Link>

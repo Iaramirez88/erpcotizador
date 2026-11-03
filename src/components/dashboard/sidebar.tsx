@@ -17,7 +17,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import Image from "next/image"
 import { useI18n } from "@/components/providers/i18n-provider"
 import { useTheme } from "@/components/providers/theme-provider"
-import { buildDashboardNavDefinitions, getDashboardSectionOrder, isOnboardingScopedDashboardHref, moduleForDashboardHref, sectionForDashboardHref } from "@/lib/dashboard-navigation"
+import { buildDashboardNavDefinitions, getDashboardSectionOrder, isOnboardingScopedDashboardHref, moduleForDashboardHref, sectionForDashboardHref, dashboardSectionLabel } from "@/lib/dashboard-navigation"
 import { nominaHref } from '@/lib/nomina-routes'
 
 interface SidebarProps {
@@ -57,67 +57,68 @@ interface NavSection {
 
 const DEFAULT_SIDEBAR_TOOLTIP_PREFS: SidebarTooltipPrefs = { desktop: true, mobile: true }
 
-const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
-  "/dashboard": "Resumen rapido de ventas, tareas y actividad del negocio.",
-  "/dashboard/inteligencia": "Cockpit ejecutivo con lectura asistida del negocio, pendientes, mejoras y acciones sugeridas.",
-  "/dashboard/mapa-producto": "Vista general del sistema y sus modulos disponibles.",
-  "/dashboard/reportes": "Indicadores, resultados y analisis para tomar decisiones.",
-  "/dashboard/plantillas": "Formatos reutilizables para cotizaciones, mensajes y documentos.",
-  "/dashboard/contabilidad": "Movimientos contables, comprobantes y control financiero.",
-  "/dashboard/nomina": "Nomina, RRHH y portal del empleado con autoservicio y gestion people.",
-  "/dashboard/cotizador": "Crea cotizaciones nuevas de forma rapida y guiada.",
-  "/dashboard/cotizaciones": "Consulta, edita y da seguimiento a cotizaciones creadas.",
-  "/dashboard/remisiones": "Gestiona entregas, despachos y soportes de salida.",
-  "/dashboard/pos": "Factura, cobra y registra ventas del punto de venta.",
-  "/dashboard/restaurante": "Opera mesas, cocina, domicilios, caja rapida y seguimiento del turno restaurante.",
-  "/dashboard/clientes": "Base de clientes con datos, historial y relacion comercial.",
-  "/dashboard/odontologia": "Opera pacientes, tratamientos y procesos odontologicos.",
-  "/dashboard/crm": "Panel comercial para captar, atender y convertir oportunidades.",
-  "/dashboard/crm/negociaciones": "Consolida pipeline, oportunidades, calendario y actividades comerciales en una sola vista.",
-  "/dashboard/crm/conversations": "Ruta heredada del inbox CRM.",
-  "/dashboard/crm/agenda": "Programa seguimientos, citas y recordatorios comerciales.",
-  "/dashboard/crm/chatbot": "Automatiza conversaciones para atender y vender sin estar presente.",
-  "/dashboard/crm/archivos": "Drive comercial para guardar y organizar archivos del proceso comercial.",
-  "/dashboard/crm/integraciones": "Automatiza canales, flujos y conexiones del CRM desde un solo frente.",
-  "/dashboard/crm/auditoria-ia": "Revisa calidad, contexto y decisiones de la IA comercial.",
-  "/dashboard/crm/leads": "Captura clientes potenciales y haz seguimiento a cada contacto.",
-  "/dashboard/crm/oportunidades": "Gestiona etapas de negocio hasta cerrar la venta.",
-  "/dashboard/crm/tareas": "Controla pendientes, seguimientos y trabajo del equipo.",
-  "/dashboard/espacios-trabajo": "Coordina tareas, proyectos y listas internas del equipo.",
-  "/dashboard/chat": "Centraliza conversaciones de WhatsApp, redes, chatbot y coordinación interna del equipo.",
-  "/dashboard/ordenes": "Administra ordenes de produccion, servicio o trabajo.",
-  "/dashboard/litografia": "Gestiona costos, configuraciones y criterios operativos de producción especializada.",
-  "/dashboard/litografia/conocimiento-ia": "Entrena la IA con reglas, productos y criterios del negocio.",
-  "/dashboard/litografia/auditoria-ia": "Supervisa respuestas y decisiones de la IA de litografia.",
-  "/dashboard/imagenes-ia/generador": "Genera imagenes de apoyo para ventas y produccion.",
-  "/dashboard/imagenes-ia/vectorizador": "Convierte imagenes en vectores listos para produccion.",
-  "/dashboard/escaneos": "Digitaliza documentos y extrae informacion util.",
-  "/dashboard/productos": "Catálogo de productos, referencias activas y estructura base del inventario.",
-  "/dashboard/inventario": "Existencias actuales por bodega, stock minimo y control general.",
-  "/dashboard/inventario/movimientos": "Historial reciente de entradas, salidas y ajustes de inventario.",
-  "/dashboard/inventario/traslados": "Mueve inventario entre sedes o bodegas.",
-  "/dashboard/inventario/abastecimiento": "Solicitudes internas de compra y abastecimiento entre bodegas.",
-  "/dashboard/compras": "Recepciones y registro formal de compras ya ingresadas.",
-  "/dashboard/compras?mode=order": "Órdenes de compra pendientes por registrar o recibir.",
-  "/dashboard/proveedores": "Base de proveedores, contactos y condiciones de compra.",
-  "/dashboard/configuracion/desperdicios": "Controla mermas y desperdicios operativos.",
-  "/dashboard/configuracion/sedes": "Administra sucursales, ubicaciones y operacion por sede.",
-  "/dashboard/configuracion/usuarios": "Crea usuarios y administra roles, permisos y acceso al sistema.",
-  "/dashboard/configuracion/respaldo": "Genera copias por empresa, controla accesos exclusivos y restaura respaldos seguros.",
-  "/dashboard/configuracion/empresa": "Configura datos, imagen y parametros de la empresa.",
-  "/dashboard/configuracion/notificaciones": "Administra dispositivos vinculados y el estado de notificaciones push de tu usuario.",
-  "/dashboard/configuracion/servicios-web": "Gestiona sitios web, renovaciones, accesos y servicios digitales asociados.",
-  "/dashboard/configuracion/plan": "Consulta tu plan, limites y opciones de actualizacion.",
-  "/dashboard/configuracion/super-admin/modulos-por-plan": "Configura modulos y alcances por tipo de plan.",
-  "/dashboard/configuracion/super-admin/empresas": "Administra empresas registradas en la plataforma.",
-  "/dashboard/configuracion/super-admin/usuarios": "Gestiona usuarios globales de todas las empresas.",
-  "/dashboard/perfil": "Actualiza tus datos personales y preferencias de cuenta.",
-  "/dashboard/notificaciones": "Revisa alertas, avisos y eventos pendientes.",
-  "/dashboard/ayuda": "Encuentra guias, soporte y documentacion del sistema.",
+const NAV_DESCRIPTION_KEYS: Record<string, string> = {
+  '/dashboard': 'nav.desc.dashboard',
+  '/dashboard/inteligencia': 'nav.desc.intelligence',
+  '/dashboard/mapa-producto': 'nav.desc.productMap',
+  '/dashboard/reportes': 'nav.desc.reports',
+  '/dashboard/plantillas': 'nav.desc.templates',
+  '/dashboard/contabilidad': 'nav.desc.accounting',
+  '/dashboard/nomina': 'nav.desc.payroll',
+  '/dashboard/cotizador': 'nav.desc.quote',
+  '/dashboard/cotizaciones': 'nav.desc.quotes',
+  '/dashboard/remisiones': 'nav.desc.deliveries',
+  '/dashboard/pos': 'nav.desc.pos',
+  '/dashboard/restaurante': 'nav.desc.restaurant',
+  '/dashboard/clientes': 'nav.desc.clients',
+  '/dashboard/odontologia': 'nav.desc.dentistry',
+  '/dashboard/crm': 'nav.desc.crm',
+  '/dashboard/crm/negociaciones': 'nav.desc.crmPipeline',
+  '/dashboard/crm/conversations': 'nav.desc.crmLegacyInbox',
+  '/dashboard/crm/agenda': 'nav.desc.crmCalendar',
+  '/dashboard/crm/chatbot': 'nav.desc.crmChatbot',
+  '/dashboard/crm/archivos': 'nav.desc.crmDrive',
+  '/dashboard/crm/integraciones': 'nav.desc.crmAutomation',
+  '/dashboard/crm/auditoria-ia': 'nav.desc.crmAiAudit',
+  '/dashboard/crm/leads': 'nav.desc.crmLeads',
+  '/dashboard/crm/oportunidades': 'nav.desc.crmOpportunities',
+  '/dashboard/crm/tareas': 'nav.desc.crmActivities',
+  '/dashboard/espacios-trabajo': 'nav.desc.workspace',
+  '/dashboard/chat': 'nav.desc.conversations',
+  '/dashboard/ordenes': 'nav.desc.orders',
+  '/dashboard/litografia': 'nav.desc.costs',
+  '/dashboard/litografia/conocimiento-ia': 'nav.desc.aiKnowledge',
+  '/dashboard/litografia/auditoria-ia': 'nav.desc.aiAudit',
+  '/dashboard/imagenes-ia/generador': 'nav.desc.imageGenerator',
+  '/dashboard/imagenes-ia/vectorizador': 'nav.desc.imageVectorizer',
+  '/dashboard/escaneos': 'nav.desc.scans',
+  '/dashboard/productos': 'nav.desc.products',
+  '/dashboard/inventario': 'nav.desc.stock',
+  '/dashboard/inventario/movimientos': 'nav.desc.movements',
+  '/dashboard/inventario/traslados': 'nav.desc.transfers',
+  '/dashboard/inventario/abastecimiento': 'nav.desc.purchaseRequests',
+  '/dashboard/compras': 'nav.desc.purchaseReceipts',
+  '/dashboard/compras?mode=order': 'nav.desc.purchaseOrders',
+  '/dashboard/proveedores': 'nav.desc.suppliers',
+  '/dashboard/configuracion/desperdicios': 'nav.desc.waste',
+  '/dashboard/configuracion/sedes': 'nav.desc.branches',
+  '/dashboard/configuracion/usuarios': 'nav.desc.users',
+  '/dashboard/configuracion/respaldo': 'nav.desc.backup',
+  '/dashboard/configuracion/empresa': 'nav.desc.company',
+  '/dashboard/configuracion/notificaciones': 'nav.desc.devices',
+  '/dashboard/configuracion/servicios-web': 'nav.desc.websites',
+  '/dashboard/configuracion/plan': 'nav.desc.plan',
+  '/dashboard/configuracion/super-admin/modulos-por-plan': 'nav.desc.superAdminModules',
+  '/dashboard/configuracion/super-admin/empresas': 'nav.desc.superAdminCompanies',
+  '/dashboard/configuracion/super-admin/usuarios': 'nav.desc.superAdminUsers',
+  '/dashboard/perfil': 'nav.desc.profile',
+  '/dashboard/notificaciones': 'nav.desc.notifications',
+  '/dashboard/ayuda': 'nav.desc.help',
 }
 
-function getNavItemDescription(item: NavItem) {
-  return item.description ?? NAV_ITEM_DESCRIPTIONS[item.href] ?? item.name
+function getNavItemDescription(item: NavItem, t: (key: string) => string) {
+  const key = NAV_DESCRIPTION_KEYS[item.href]
+  return item.description ?? (key ? t(key) : item.name)
 }
 
 function normalizeNavHref(href: string) {
@@ -137,12 +138,14 @@ function normalizeSidebarTooltipPrefs(value: Partial<SidebarTooltipPrefs> | null
 }
 
 function NavItemTooltipContent({ item, isBlocked, upgradePlanLabel }: { item: NavItem; isBlocked?: boolean; upgradePlanLabel: string }) {
+  const { t } = useI18n()
+
   return (
     <TooltipContent side="right" align="center" className="max-w-64 text-[11px] leading-4">
       <div className="font-medium text-foreground">{item.name}</div>
-      <div className="mt-1 text-muted-foreground">{getNavItemDescription(item)}</div>
+      <div className="mt-1 text-muted-foreground">{getNavItemDescription(item, t)}</div>
       {isBlocked ? (
-        <div className="mt-2 text-[10px] font-medium text-amber-600">Disponible al actualizar a plan {upgradePlanLabel}.</div>
+        <div className="mt-2 text-[10px] font-medium text-amber-600">{t('nav.ui.blockedUpgrade', { plan: upgradePlanLabel })}</div>
       ) : null}
     </TooltipContent>
   )
@@ -386,7 +389,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Inteligencia',
+    name: t('nav.intelligence'),
     href: "/dashboard/inteligencia",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -396,7 +399,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Mapa de producto',
+    name: t('nav.productMap'),
     href: "/dashboard/mapa-producto",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -434,7 +437,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Notificaciones',
+    name: t('nav.notifications'),
     href: "/dashboard/notificaciones",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -443,7 +446,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Nómina',
+    name: t('nav.payroll'),
     href: "/dashboard/nomina",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -497,7 +500,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Restaurante',
+    name: t('nav.restaurant'),
     href: "/dashboard/restaurante",
     icon: <ChefHat className="h-5 w-5" />,
   },
@@ -511,7 +514,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Odontología',
+    name: t('nav.dentistry'),
     href: "/dashboard/odontologia",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -529,12 +532,12 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: "Automatización",
+    name: t('nav.crmAutomation'),
     href: "/dashboard/crm/integraciones",
     icon: <Bot className="h-5 w-5" />,
   },
   {
-    name: "Auditoría IA CRM",
+    name: t('nav.crmAiAudit'),
     href: "/dashboard/crm/auditoria-ia",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -577,7 +580,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Costos',
+    name: t('nav.costs'),
     href: "/dashboard/litografia",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -586,7 +589,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Conocimiento IA',
+    name: t('nav.aiKnowledge'),
     href: "/dashboard/litografia/conocimiento-ia",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -596,7 +599,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Auditoría IA',
+    name: t('nav.aiAudit'),
     href: "/dashboard/litografia/auditoria-ia",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -607,7 +610,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Generador de imágenes',
+    name: t('nav.imageGenerator'),
     href: "/dashboard/imagenes-ia/generador",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -618,7 +621,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: 'Vectorizador de imágenes',
+    name: t('nav.imageVectorizer'),
     href: "/dashboard/imagenes-ia/vectorizador",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -654,7 +657,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     icon: movementsSubmoduleIcon,
   },
   {
-    name: 'Traslados',
+    name: t('nav.transfers'),
     href: "/dashboard/inventario/traslados",
     scopeHref: '/dashboard/inventario',
     icon: transfersSubmoduleIcon,
@@ -1138,9 +1141,9 @@ export default function Sidebar({ user }: SidebarProps) {
       if (user.canAccessPayrollAdmin !== true && user.hasPayrollPortal === true) {
         return {
           ...item,
-          name: 'Mi portal',
+          name: t('nav.myWorkPortal'),
           href: payrollEntryHref,
-          description: 'Portal del empleado con desprendibles, vacaciones, beneficios y solicitudes.',
+          description: t('nav.desc.myWorkPortal'),
         }
       }
 
@@ -1249,10 +1252,10 @@ export default function Sidebar({ user }: SidebarProps) {
 
     return {
       title: section.title,
-      label: section.title === 'Captación' ? 'CRM' : section.title === 'Recursos' ? 'Inventario' : section.title,
+      label: dashboardSectionLabel(t, section.title),
       items,
     }
-  }, [clickedCollapsedSectionTitle, hoveredCollapsedSectionTitle, sections, sidebarCollapsed, visibleHrefs])
+  }, [clickedCollapsedSectionTitle, hoveredCollapsedSectionTitle, sections, sidebarCollapsed, visibleHrefs, t])
 
   const activeSectionTitle = useMemo(() => {
     if (pathname === '/dashboard') return 'Inicio'
@@ -1398,7 +1401,7 @@ export default function Sidebar({ user }: SidebarProps) {
                 type="button"
                 className={cn("inline-flex h-8 w-8 items-center justify-center rounded-lg border md:hidden", softButton)}
                 onClick={() => setMobileNavOpen(false)}
-                aria-label="Cerrar menú"
+                aria-label={t('nav.ui.closeMenu')}
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1412,8 +1415,8 @@ export default function Sidebar({ user }: SidebarProps) {
                   softButton
                 )}
                 onClick={toggleSidebarCollapsed}
-                title={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
-                aria-label={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
+                title={sidebarCollapsed ? t('nav.ui.expandMenu') : t('nav.ui.collapseMenu')}
+                aria-label={sidebarCollapsed ? t('nav.ui.expandMenu') : t('nav.ui.collapseMenu')}
               >
                 <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -1442,9 +1445,9 @@ export default function Sidebar({ user }: SidebarProps) {
               const isActive = isNavActive(item.href)
               const isBlocked = isPersonal && blockedModules.has(item.href)
               const singleItemLabel = section.title === 'Inicio'
-                ? 'Inicio'
+                ? t('nav.section.home')
                 : section.title === 'Inventario' || section.title === 'Recursos'
-                  ? 'Inventario'
+                  ? t('nav.section.inventory')
                   : item.name
 
               return (
@@ -1556,7 +1559,7 @@ export default function Sidebar({ user }: SidebarProps) {
                       navFocusRing,
                       isActiveSection ? sectionHeaderActive : cn(navText, navHover)
                     )}
-                    aria-label={`Abrir ${section.title === 'Captación' ? 'CRM' : section.title === 'Recursos' ? 'Inventario' : section.title}`}
+                    aria-label={t('nav.ui.openSection', { section: dashboardSectionLabel(t, section.title) })}
                     aria-expanded={isPinnedOpen}
                   >
                     <span
@@ -1635,7 +1638,7 @@ export default function Sidebar({ user }: SidebarProps) {
                     <span className={cn(
                       "text-[10px] font-semibold uppercase tracking-[0.12em]",
                       isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : cn(sectionTitleText, "group-hover:text-white")
-                    )}>{section.title === 'Captación' ? 'CRM' : section.title === 'Recursos' ? 'Inventario' : section.title}</span>
+                    )}>{dashboardSectionLabel(t, section.title)}</span>
                   </span>
                   <svg
                     className={cn(
@@ -1786,8 +1789,8 @@ export default function Sidebar({ user }: SidebarProps) {
             <Link
               href="/dashboard/mesa-ayuda"
               onClick={() => setMobileNavOpen(false)}
-              aria-label="Soporte"
-              title="Soporte"
+              aria-label={t('nav.ui.support')}
+              title={t('nav.ui.support')}
               className={cn(
                 "flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
                 navFocusRing,
@@ -1795,7 +1798,7 @@ export default function Sidebar({ user }: SidebarProps) {
               )}
             >
               <LifeBuoy className="h-5 w-5 shrink-0" />
-              {!sidebarCollapsed ? <span>Soporte</span> : null}
+              {!sidebarCollapsed ? <span>{t('nav.ui.support')}</span> : null}
             </Link>
             <Header user={user} variant="sidebar-footer" />
           </div>

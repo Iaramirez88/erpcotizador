@@ -27,7 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
-import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 
 interface Cliente {
   id: string
@@ -627,7 +627,7 @@ export default function ClientesPage() {
                           <p className="mt-1 text-sm text-muted-foreground">{cliente.email || t('customers.noEmail')}</p>
                           <p className="mt-1 text-xs text-muted-foreground">{cliente.tipoDocumento} · {cliente.documento}</p>
                         </div>
-                        {canManageClientes ? <MobileActionsMenu label={cliente.nombre}>
+                        {canManageClientes ? <RowActionsMenu label={cliente.nombre}>
                           <DropdownMenuItem
                             disabled={!resolveWhatsAppNumber(cliente) || openingChatClienteId === cliente.id}
                             onSelect={(e) => {
@@ -650,7 +650,7 @@ export default function ClientesPage() {
                           }}>
                             {t('common.delete')}
                           </DropdownMenuItem>
-                        </MobileActionsMenu> : null}
+                        </RowActionsMenu> : null}
                       </div>
 
                       <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -775,27 +775,30 @@ export default function ClientesPage() {
                         <td className="py-4 text-sm text-right">{fmtMoney(cliente.invoiceCost, locale)}</td>
                         <td className="py-4 text-sm">{fmtDate(cliente.ultimaActividadAt, locale, naText)}</td>
                         <td className="py-4">
-                          {canManageClientes ? <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => void openWhatsappConversation(cliente)}
+                          {canManageClientes ? <RowActionsMenu label={cliente.nombre}>
+                            <DropdownMenuItem
                               disabled={!resolveWhatsAppNumber(cliente) || openingChatClienteId === cliente.id}
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                void openWhatsappConversation(cliente);
+                              }}
                             >
-                              {openingChatClienteId === cliente.id ? 'Abriendo...' : 'Chat WhatsApp'}
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => handleEdit(cliente)}>
+                              {openingChatClienteId === cliente.id ? 'Abriendo chat...' : 'Abrir chat WhatsApp'}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              handleEdit(cliente);
+                            }}>
                               {t('common.edit')}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDelete(cliente.id)}
-                              className="text-red-600 hover:text-red-700"
-                            >
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => {
+                              e.preventDefault();
+                              handleDelete(cliente.id);
+                            }}>
                               {t('common.delete')}
-                            </Button>
-                          </div> : <div className="text-right text-sm text-muted-foreground">{naText}</div>}
+                            </DropdownMenuItem>
+                          </RowActionsMenu> : <div className="text-right text-sm text-muted-foreground">{naText}</div>}
                         </td>
                       </tr>
                     ))}

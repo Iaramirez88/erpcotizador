@@ -524,7 +524,7 @@ export function CrmFilesManagerClient({ currentUserId, canViewAllFiles, activeSe
     <div className="space-y-4.5 pb-4">
       <ErpPageHero
         breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'CRM', href: '/dashboard/crm' }, { label: 'DRIVE' }]}
-        title="DRIVE"
+        title={<span data-tour="archivos-title">DRIVE</span>}
         description="Centraliza assets comerciales, documentos, audios y piezas de soporte del CRM con estructura por carpetas, historial y acceso directo desde el dashboard."
         actions={
           <>

@@ -1,76 +1,76 @@
 export type ContabilidadNavItem = {
-  label: string
+  labelKey: string
   href: string
-  shortLabel?: string
-  description: string
+  shortLabelKey?: string
+  descriptionKey: string
   primary?: boolean
 }
 
 export const CONTABILIDAD_NAV_ITEMS: ContabilidadNavItem[] = [
   {
-    label: 'Resumen',
+    labelKey: 'contabilidad.nav.resumen',
     href: '/dashboard/contabilidad',
-    description: 'Tablero contable y estado del motor',
+    descriptionKey: 'contabilidad.nav.resumen.description',
     primary: true,
   },
   {
-    label: 'Comprobantes',
+    labelKey: 'contabilidad.nav.comprobantes',
     href: '/dashboard/contabilidad/comprobantes',
-    shortLabel: 'Comprob.',
-    description: 'Registro y aprobación de asientos',
+    shortLabelKey: 'contabilidad.nav.comprobantes.short',
+    descriptionKey: 'contabilidad.nav.comprobantes.description',
     primary: true,
   },
   {
-    label: 'Libros',
+    labelKey: 'contabilidad.nav.libros',
     href: '/dashboard/contabilidad/libros',
-    description: 'Diario, mayor y auxiliares',
+    descriptionKey: 'contabilidad.nav.libros.description',
     primary: true,
   },
   {
-    label: 'Estados financieros',
+    labelKey: 'contabilidad.nav.estados',
     href: '/dashboard/contabilidad/estados-financieros',
-    shortLabel: 'Estados',
-    description: 'ESF, ERI y balance de prueba',
+    shortLabelKey: 'contabilidad.nav.estados.short',
+    descriptionKey: 'contabilidad.nav.estados.description',
     primary: true,
   },
   {
-    label: 'Tesorería',
+    labelKey: 'contabilidad.nav.tesoreria',
     href: '/dashboard/contabilidad/tesoreria',
-    description: 'Bancos y movimientos',
+    descriptionKey: 'contabilidad.nav.tesoreria.description',
     primary: true,
   },
   {
-    label: 'Conciliaciones',
+    labelKey: 'contabilidad.nav.conciliaciones',
     href: '/dashboard/contabilidad/conciliaciones',
-    shortLabel: 'Conciliar',
-    description: 'Cierre de cortes bancarios',
+    shortLabelKey: 'contabilidad.nav.conciliaciones.short',
+    descriptionKey: 'contabilidad.nav.conciliaciones.description',
     primary: true,
   },
   {
-    label: 'Impuestos',
+    labelKey: 'contabilidad.nav.impuestos',
     href: '/dashboard/contabilidad/impuestos',
-    description: 'IVA, retenciones y calendario',
+    descriptionKey: 'contabilidad.nav.impuestos.description',
   },
   {
-    label: 'Cierres',
+    labelKey: 'contabilidad.nav.cierres',
     href: '/dashboard/contabilidad/cierres',
-    description: 'Cierre y bloqueo de períodos',
+    descriptionKey: 'contabilidad.nav.cierres.description',
   },
   {
-    label: 'Plan de cuentas',
+    labelKey: 'contabilidad.nav.planCuentas',
     href: '/dashboard/contabilidad/plan-de-cuentas',
-    shortLabel: 'Cuentas',
-    description: 'PUC y jerarquía de cuentas',
+    shortLabelKey: 'contabilidad.nav.planCuentas.short',
+    descriptionKey: 'contabilidad.nav.planCuentas.description',
   },
   {
-    label: 'Centros',
+    labelKey: 'contabilidad.nav.centros',
     href: '/dashboard/contabilidad/centros-de-costo',
-    description: 'Centros de costo',
+    descriptionKey: 'contabilidad.nav.centros.description',
   },
   {
-    label: 'Reglas',
+    labelKey: 'contabilidad.nav.reglas',
     href: '/dashboard/contabilidad/reglas',
-    description: 'Automatización de asientos',
+    descriptionKey: 'contabilidad.nav.reglas.description',
   },
 ]
 

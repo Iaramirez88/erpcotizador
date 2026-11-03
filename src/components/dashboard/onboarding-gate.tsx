@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -20,6 +21,7 @@ type OnboardingStatusResponse = {
 
 export default function OnboardingGate() {
   const pathname = usePathname() ?? ''
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -66,29 +68,29 @@ export default function OnboardingGate() {
       <DialogContent className="max-w-xl rounded-[30px] border-slate-200 p-0">
         <div className="border-b border-slate-100 px-6 py-5">
           <DialogHeader>
-            <DialogTitle className="text-2xl text-slate-950">Gracias por registrarte</DialogTitle>
+            <DialogTitle className="text-2xl text-slate-950">{t('onboardingGate.title')}</DialogTitle>
             <DialogDescription className="text-sm leading-6 text-slate-600">
-              Tu espacio ya fue creado correctamente.
+              {t('onboardingGate.description')}
             </DialogDescription>
           </DialogHeader>
         </div>
 
         <div className="space-y-4 px-6 py-5">
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Bienvenida</div>
-            <div className="mt-2 text-2xl font-semibold text-emerald-950">Tienes 15 días gratis</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">{t('onboardingGate.welcome')}</div>
+            <div className="mt-2 text-2xl font-semibold text-emerald-950">{t('onboardingGate.trialTitle')}</div>
             <div className="mt-2 text-sm text-emerald-900">
-              Durante este periodo podrás explorar la plataforma y empezar a trabajar con tu espacio sin pasos adicionales de configuración inicial.
+              {t('onboardingGate.trialBody')}
             </div>
           </div>
 
           <p className="text-sm text-slate-600">
-            Cuando quieras, puedes continuar directamente al dashboard y comenzar a usar el sistema.
+            {t('onboardingGate.nextStep')}
           </p>
         </div>
 
         <DialogFooter className="border-t border-slate-100 px-6 py-4">
-          <Button type="button" onClick={() => void handleDismiss()}>Continuar</Button>
+          <Button type="button" onClick={() => void handleDismiss()}>{t('common.continue')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -144,7 +144,7 @@ export default async function PerfilPage() {
     <div className="p-3 sm:p-4 lg:p-6 space-y-4">
       <ErpPageHero
         eyebrow="ERP personal"
-        title={t('profile.title')}
+        title={<span data-tour="perfil-title">{t('profile.title')}</span>}
         description={t('profile.subtitle')}
         stats={[
           { label: t('profile.meta.role'), value: roleLabel(user.role), hint: user.empresa?.nombre ?? naText, tone: 'neutral' },

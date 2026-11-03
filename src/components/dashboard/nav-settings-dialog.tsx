@@ -13,6 +13,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { useI18n } from '@/components/providers/i18n-provider'
+import { dashboardSectionLabel } from '@/lib/dashboard-navigation'
 
 type NavPrefs = Record<string, boolean>
 type NavOrder = string[]
@@ -259,7 +260,7 @@ export function NavSettingsDialog({
                   {t('navSettings.hideAll')}
                 </Button>
                 <Button type="button" variant="outline" size="sm" onClick={resetOrder} disabled={saving}>
-                  Restablecer orden
+                  {t('navSettings.resetOrder')}
                 </Button>
               </div>
             </div>
@@ -269,15 +270,15 @@ export function NavSettingsDialog({
             <div className="space-y-5 pb-1">
               <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
                 <div className="mb-3">
-                  <h3 className="text-sm font-semibold text-slate-900">Tooltips del menu</h3>
-                  <p className="text-xs text-slate-500">Activa o desactiva las ayudas del menu lateral en escritorio y movil.</p>
+                  <h3 className="text-sm font-semibold text-slate-900">{t('navSettings.tooltipsTitle')}</h3>
+                  <p className="text-xs text-slate-500">{t('navSettings.tooltipsDescription')}</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                     <div>
-                      <div className="text-sm font-medium text-slate-900">Escritorio</div>
-                      <div className="text-xs text-slate-500">Muestra tooltips con el menu abierto o colapsado.</div>
+                      <div className="text-sm font-medium text-slate-900">{t('navSettings.desktop')}</div>
+                      <div className="text-xs text-slate-500">{t('navSettings.desktopHint')}</div>
                     </div>
                     <Switch
                       checked={draftTooltipPrefs.desktop}
@@ -288,8 +289,8 @@ export function NavSettingsDialog({
 
                   <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                     <div>
-                      <div className="text-sm font-medium text-slate-900">Movil</div>
-                      <div className="text-xs text-slate-500">Permite usar tooltips tambien en la navegacion movil.</div>
+                      <div className="text-sm font-medium text-slate-900">{t('navSettings.mobile')}</div>
+                      <div className="text-xs text-slate-500">{t('navSettings.mobileHint')}</div>
                     </div>
                     <Switch
                       checked={draftTooltipPrefs.mobile}
@@ -317,18 +318,18 @@ export function NavSettingsDialog({
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div className="flex items-start gap-3">
                       <span className="cursor-grab select-none pt-0.5 text-slate-400" aria-hidden="true">⋮⋮</span>
-                      <h3 className="text-sm font-semibold text-slate-900">{group.section}</h3>
-                      <p className="text-xs text-slate-500">Activa, oculta y reordena los accesos de esta seccion.</p>
+                      <h3 className="text-sm font-semibold text-slate-900">{dashboardSectionLabel(t, group.section)}</h3>
+                      <p className="text-xs text-slate-500">{t('navSettings.sectionHint')}</p>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <Button type="button" variant="outline" size="sm" onClick={() => setSectionVisibility(group.section, true)} disabled={saving}>
-                        Mostrar seccion
+                        {t('navSettings.showSection')}
                       </Button>
                       <Button type="button" variant="outline" size="sm" onClick={() => setSectionVisibility(group.section, false)} disabled={saving}>
-                        Ocultar seccion
+                        {t('navSettings.hideSection')}
                       </Button>
                       <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 shadow-sm">
-                        {group.items.filter((item) => draft[item.href] !== false).length}/{group.items.length} visibles
+                        {t('navSettings.visibleCount', { visible: group.items.filter((item) => draft[item.href] !== false).length, total: group.items.length })}
                       </span>
                     </div>
                   </div>

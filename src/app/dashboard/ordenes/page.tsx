@@ -852,7 +852,7 @@ export default function OrdenesPage() {
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <ErpPageHero
-        title={t('orders.title')}
+        title={<span data-tour="ordenes-title">{t('orders.title')}</span>}
         description={t('orders.subtitle')}
         actions={
           <>
@@ -861,7 +861,7 @@ export default function OrdenesPage() {
               <Download className="mr-2 h-4 w-4" />
               {t('orders.actions.exportExcel')}
             </Button>
-            <Button variant="outline" onClick={() => setManualOrderOpen(true)}>
+            <Button variant="outline" onClick={() => setManualOrderOpen(true)} data-tour="ordenes-new">
               <SquarePlus className="mr-2 h-4 w-4" />
               Nueva orden
             </Button>

@@ -3698,7 +3698,7 @@ export function CrmTaskWorkspacesClient() {
           { label: "Inicio", href: "/dashboard" },
           { label: "Proyectos" },
         ]}
-        title="Tareas y proyectos"
+        title={<span data-tour="tareas-title">Tareas y proyectos</span>}
         description="Crea tareas de forma directa, relaciónalas opcionalmente con proyectos o listas existentes, y centraliza el seguimiento con responsables, evidencia y estados claros."
         collapsed={pageHeaderCollapsed}
         onCollapsedChange={setPageHeaderCollapsed}

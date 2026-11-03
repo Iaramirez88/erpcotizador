@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -13,40 +14,41 @@ import {
 } from '@/components/ui/dialog'
 import { usePlanLimitStore } from '@/lib/plan-limit-store'
 
-function labelForLimitKey(key: string): string {
+function limitLabelKey(key: string): string {
   switch (key) {
     case 'COTIZACIONES_PER_MONTH':
-      return 'Cotizaciones (por mes)'
+      return 'planLimit.limit.cotizaciones'
     case 'ORDENES_PER_MONTH':
-      return 'Órdenes de trabajo (por mes)'
+      return 'planLimit.limit.ordenes'
     case 'REMISIONES_PER_MONTH':
-      return 'Remisiones (por mes)'
+      return 'planLimit.limit.remisiones'
     case 'PRODUCTOS_MAX':
-      return 'Productos'
+      return 'planLimit.limit.productos'
     case 'CLIENTES_MAX':
-      return 'Clientes'
+      return 'planLimit.limit.clientes'
     case 'PROVEEDORES_MAX':
-      return 'Proveedores'
+      return 'planLimit.limit.proveedores'
     case 'SEDES_MAX':
-      return 'Sedes'
+      return 'planLimit.limit.sedes'
     case 'USUARIOS_MAX':
-      return 'Usuarios'
+      return 'planLimit.limit.usuarios'
     default:
-      return 'Límite'
+      return 'planLimit.limit.default'
   }
 }
 
 export default function PlanLimitModal() {
   const router = useRouter()
+  const { t } = useI18n()
   const { open, payload, hide } = usePlanLimitStore()
 
-  const title = 'Límite alcanzado'
+  const title = t('planLimit.title')
 
   const description = useMemo(() => {
-    if (!payload) return 'Has alcanzado el límite de tu plan.'
-    const label = labelForLimitKey(payload.limitKey)
-    return `${payload.message}\n\n${label}: ${payload.current} de ${payload.max}`
-  }, [payload])
+    if (!payload) return t('planLimit.defaultDescription')
+    const label = t(limitLabelKey(payload.limitKey))
+    return `${payload.message}\n\n${t('planLimit.details', { label, current: payload.current, max: payload.max })}`
+  }, [payload, t])
 
   function upgrade() {
     const url = payload?.upgradeUrl || '/dashboard/configuracion/plan'
@@ -66,9 +68,9 @@ export default function PlanLimitModal() {
 
         <DialogFooter>
           <Button variant="outline" onClick={hide}>
-            Cerrar
+            {t('common.close')}
           </Button>
-          <Button onClick={upgrade}>Mejorar plan</Button>
+          <Button onClick={upgrade}>{t('planLimit.upgrade')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

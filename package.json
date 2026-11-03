@@ -20,6 +20,7 @@
     "seed:acabados": "tsx scripts/seed-litografia-finish-options.ts",
     "seed:odontologia": "tsx scripts/seed-odontologia-base.ts",
     "litografia:reset": "tsx scripts/reset-litografia.ts",
+    "i18n:check": "node scripts/check-i18n-parity.js",
     "litografia:test": "tsx scripts/test-litografia-pricing.ts",
     "worker:ocr": "tsx scripts/ocr-worker.ts",
     "smoke:cotizaciones": "tsx scripts/smoke-cotizaciones.ts",

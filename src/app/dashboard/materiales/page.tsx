@@ -24,8 +24,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
-import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 import { CustomProductRequestsAdminDialog } from "@/components/materiales/custom-product-requests-admin-dialog"
 import { CustomProductRequestsMyDialog } from "@/components/materiales/custom-product-requests-my-dialog"
 import {
@@ -1804,32 +1804,26 @@ export default function ProductosPage() {
                         )}
                       </div>
 
-                      {canManageProducts ? <div className="mt-4 flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEdit(material)}
-                          className="h-8 px-3"
-                        >
+                      {canManageProducts ? <RowActionsMenu label={material.nombre}>
+                        <DropdownMenuItem onSelect={(e) => {
+                          e.preventDefault();
+                          handleEdit(material);
+                        }}>
                           Editar
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDuplicate(material)}
-                          className="h-8 px-3"
-                        >
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={(e) => {
+                          e.preventDefault();
+                          handleDuplicate(material);
+                        }}>
                           Duplicar
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDelete(material.id)}
-                          className="h-8 px-3 text-red-600"
-                        >
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => {
+                          e.preventDefault();
+                          handleDelete(material.id);
+                        }}>
                           Eliminar
-                        </Button>
-                      </div> : null}
+                        </DropdownMenuItem>
+                      </RowActionsMenu> : null}
                     </CardContent>
                   </Card>
                 )
@@ -1906,56 +1900,26 @@ export default function ProductosPage() {
                           )}
                         </div>
 
-                        {canManageProducts ? <div className="md:hidden">
-                          <MobileActionsMenu label={material.nombre}>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onSelect={(e) => {
-                              e.preventDefault();
-                              handleEdit(material);
-                            }}>
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={(e) => {
-                              e.preventDefault();
-                              handleDuplicate(material);
-                            }}>
-                              Duplicar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => {
-                              e.preventDefault();
-                              handleDelete(material.id);
-                            }}>
-                              Eliminar
-                            </DropdownMenuItem>
-                          </MobileActionsMenu>
-                        </div> : null}
-
-                        {canManageProducts ? <div className="hidden gap-2 md:flex md:justify-end">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEdit(material)}
-                            className="h-8 px-3"
-                          >
+                        {canManageProducts ? <RowActionsMenu label={material.nombre}>
+                          <DropdownMenuItem onSelect={(e) => {
+                            e.preventDefault();
+                            handleEdit(material);
+                          }}>
                             Editar
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDuplicate(material)}
-                            className="h-8 px-3"
-                          >
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={(e) => {
+                            e.preventDefault();
+                            handleDuplicate(material);
+                          }}>
                             Duplicar
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDelete(material.id)}
-                            className="h-8 px-3 text-red-600"
-                          >
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => {
+                            e.preventDefault();
+                            handleDelete(material.id);
+                          }}>
                             Eliminar
-                          </Button>
-                        </div> : null}
+                          </DropdownMenuItem>
+                        </RowActionsMenu> : null}
                       </div>
                     </div>
                   </div>

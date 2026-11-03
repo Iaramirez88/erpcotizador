@@ -32,7 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu';
+import { RowActionsMenu } from '@/components/ui/row-actions-menu';
 import CotizacionPDF, { type CotizacionPdfData } from '@/lib/pdf-template.client';
 import type { CotizacionTemplateSettings } from '@/lib/cotizacion-template';
 import { useI18n } from '@/components/providers/i18n-provider';
@@ -931,7 +931,7 @@ export default function CotizacionesPage() {
                       <p className="mt-1 text-sm text-muted-foreground">{formatDate(cot.createdAt)}</p>
                       <p className="mt-2 text-sm font-medium text-foreground">{cot.cliente.nombre}</p>
                     </div>
-                    <MobileActionsMenu label={cot.numero}>
+                    <RowActionsMenu label={cot.numero}>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onSelect={(e) => {
                         e.preventDefault();
@@ -1009,7 +1009,7 @@ export default function CotizacionesPage() {
                       }}>
                         Eliminar
                       </DropdownMenuItem>
-                    </MobileActionsMenu>
+                    </RowActionsMenu>
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -1095,154 +1095,86 @@ export default function CotizacionesPage() {
                       ) : null}
                     </td>
                     <td className="py-3 pr-4">
-                      <div className="flex min-w-[280px] flex-wrap justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-9 w-9 rounded-full p-0"
-                          onClick={() => abrirPreview(cot)}
-                          title={t('quotes.actions.preview')}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-9 w-9 rounded-full p-0"
-                          onClick={() => void abrirTrazabilidad(cot)}
-                          title="Trazabilidad"
-                        >
-                          <History className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-9 rounded-full px-3"
-                          onClick={() => void abrirBuscarAliado(cot)}
-                          title="Buscar aliado en ORDEX ROP"
-                        >
-                          <Search className="w-4 h-4 sm:mr-1" />
-                          <span className="hidden sm:inline">Buscar aliado</span>
-                        </Button>
+                      <RowActionsMenu label={cot.numero}>
+                        <DropdownMenuItem onSelect={(e) => {
+                          e.preventDefault();
+                          abrirPreview(cot);
+                        }}>
+                          <Eye className="mr-2 h-4 w-4" /> Ver vista previa
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={(e) => {
+                          e.preventDefault();
+                          void abrirTrazabilidad(cot);
+                        }}>
+                          <History className="mr-2 h-4 w-4" /> Trazabilidad
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={(e) => {
+                          e.preventDefault();
+                          void abrirBuscarAliado(cot);
+                        }}>
+                          <Search className="mr-2 h-4 w-4" /> Buscar aliado
+                        </DropdownMenuItem>
                         {!cot.orden ? (
-                          <Link href={`/dashboard/cotizador?id=${cot.id}`}>
-                            <Button size="sm" variant="outline" className="h-9 w-9 rounded-full p-0" title={t('quotes.actions.edit')}>
-                              <Pencil className="w-4 h-4" />
-                            </Button>
-                          </Link>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-9 w-9 rounded-full p-0"
-                            title="No se puede editar: tiene una orden asociada"
-                            disabled
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                        )}
-                        {cot.estado !== 'APROBADA' && cot.estado !== 'CONVERTIDA' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-9 w-9 rounded-full p-0"
-                            onClick={() => aprobarCotizacion(cot.id, cot.numero)}
-                            disabled={aprobando === cot.id}
-                            title={t('quotes.actions.approveToSend')}
-                          >
-                            {aprobando === cot.id ? (
-                              <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <CheckCircle className="w-4 h-4" />
-                            )}
-                          </Button>
-                        )}
-                        {cot.estado === 'APROBADA' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-9 w-9 rounded-full p-0"
-                            onClick={() => facturarCotizacion(cot.id, cot.numero)}
-                            title={!electronicBillingEnabled ? t('quoteBuilder.preview.billingDisabled') : t('quotes.actions.createInvoice')}
-                            disabled={!electronicBillingEnabled || facturando === cot.id}
-                          >
-                            {facturando === cot.id ? (
-                              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <FileText className="w-4 h-4" />
-                            )}
-                          </Button>
+                          <DropdownMenuItem asChild>
+                            <Link href={`/dashboard/cotizador?id=${cot.id}`}>
+                              <Pencil className="mr-2 h-4 w-4" /> Editar
+                            </Link>
+                          </DropdownMenuItem>
                         ) : null}
-                        {cot.estado === 'APROBADA' && !cot.orden && (
-                          <Button
-                            size="sm"
-                            variant="default"
-                            className="h-9 rounded-full px-3"
-                            onClick={() => crearOrden(cot.id, cot.numero)}
-                            title={t('quotes.actions.createOrder')}
-                          >
-                            <ClipboardCheck className="w-4 h-4 sm:mr-1" />
-                            <span className="hidden sm:inline">{t('quotes.actions.createOrderShort')}</span>
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-9 w-9 rounded-full p-0"
-                          onClick={() => descargarPDF(cot.id, cot.numero)}
-                          title={t('quotes.actions.downloadPdf')}
-                        >
-                          <Download className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => enviarPorEmail(cot)}
-                          disabled={enviando === cot.id}
-                          title={t('quotes.actions.sendEmail')}
-                          className="relative h-9 w-9 rounded-full p-0"
-                        >
-                          {enviando === cot.id ? (
-                            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <Mail className="w-4 h-4" />
-                          )}
-                          {cot.emailSentCount > 0 && (
-                            <span className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] px-1 flex items-center justify-center">
-                              {cot.emailSentCount}
-                            </span>
-                          )}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => compartirPorWhatsApp(cot)}
-                          disabled={compartiendo === cot.id}
-                          title={t('quotes.actions.shareWhatsapp')}
-                          className="relative h-9 w-9 rounded-full p-0"
-                        >
-                          {compartiendo === cot.id ? (
-                            <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <MessageCircle className="w-4 h-4" />
-                          )}
-                          {cot.whatsappSentCount > 0 && (
-                            <span className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] px-1 flex items-center justify-center">
-                              {cot.whatsappSentCount}
-                            </span>
-                          )}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-9 w-9 rounded-full p-0"
-                          onClick={() => eliminarCotizacion(cot.id, cot.numero)}
-                          title={t('quotes.actions.delete')}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </td>
+                        {cot.estado !== 'APROBADA' && cot.estado !== 'CONVERTIDA' ? (
+                          <DropdownMenuItem onSelect={(e) => {
+                            e.preventDefault();
+                            aprobarCotizacion(cot.id, cot.numero);
+                          }} disabled={aprobando === cot.id}>
+                            <CheckCircle className="mr-2 h-4 w-4" /> Aprobar para facturar
+                          </DropdownMenuItem>
+                        ) : null}
+                        {cot.estado === 'APROBADA' && !electronicBillingEnabled ? (
+                          <DropdownMenuItem disabled>
+                            {t('quoteBuilder.preview.billingDisabled')}
+                          </DropdownMenuItem>
+                        ) : null}
+                        {cot.estado === 'APROBADA' && electronicBillingEnabled ? (
+                          <DropdownMenuItem onSelect={(e) => {
+                            e.preventDefault();
+                            facturarCotizacion(cot.id, cot.numero);
+                          }} disabled={facturando === cot.id}>
+                            <FileText className="mr-2 h-4 w-4" /> Crear factura
+                          </DropdownMenuItem>
+                        ) : null}
+                        {cot.estado === 'APROBADA' && !cot.orden ? (
+                          <DropdownMenuItem onSelect={(e) => {
+                            e.preventDefault();
+                            crearOrden(cot.id, cot.numero);
+                          }}>
+                            <ClipboardCheck className="mr-2 h-4 w-4" /> Crear orden
+                          </DropdownMenuItem>
+                        ) : null}
+                        <DropdownMenuItem onSelect={(e) => {
+                          e.preventDefault();
+                          descargarPDF(cot.id, cot.numero);
+                        }}>
+                          <Download className="mr-2 h-4 w-4" /> Descargar PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={(e) => {
+                          e.preventDefault();
+                          enviarPorEmail(cot);
+                        }} disabled={enviando === cot.id}>
+                          <Mail className="mr-2 h-4 w-4" /> Enviar por email{cot.emailSentCount > 0 ? ` (${cot.emailSentCount})` : ''}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={(e) => {
+                          e.preventDefault();
+                          compartirPorWhatsApp(cot);
+                        }} disabled={compartiendo === cot.id}>
+                          <MessageCircle className="mr-2 h-4 w-4" /> Compartir por WhatsApp{cot.whatsappSentCount > 0 ? ` (${cot.whatsappSentCount})` : ''}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => {
+                          e.preventDefault();
+                          eliminarCotizacion(cot.id, cot.numero);
+                        }}>
+                          <Trash2 className="mr-2 h-4 w-4" /> Eliminar
+                        </DropdownMenuItem>
+                      </RowActionsMenu></td>
                   </tr>
                 ))}
               </tbody>

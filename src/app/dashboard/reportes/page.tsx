@@ -2287,11 +2287,11 @@ export default function ReportesPage() {
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <ErpPageHero
-        title={t('reports.title')}
+        title={<span data-tour="reportes-title">{t('reports.title')}</span>}
         description="Centro analítico configurable para armar reportes con bloques del negocio, exportarlos en varios formatos y conservar historial operativo."
         actions={
           <>
-            <Button type="button" variant="outline" onClick={() => { setReportPrefsDraft(clonePrefs(reportPrefs)); setLayoutOpen(true); }} disabled={prefsLoading}>
+            <Button type="button" variant="outline" onClick={() => { setReportPrefsDraft(clonePrefs(reportPrefs)); setLayoutOpen(true); }} disabled={prefsLoading} data-tour="reportes-customize">
               <Settings2 className="mr-2 h-4 w-4" />
               Personalizar
             </Button>

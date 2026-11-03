@@ -17,6 +17,20 @@ export type TourId =
   | 'dashboard-nomina-novedades.v1'
   | 'dashboard-nomina-periodos.v1'
   | 'dashboard-nomina-liquidaciones.v1'
+  | 'dashboard-remisiones.v1'
+  | 'dashboard-proveedores.v1'
+  | 'dashboard-pos.v1'
+  | 'dashboard-ordenes.v1'
+  | 'dashboard-compras.v1'
+  | 'dashboard-escaneos.v1'
+  | 'dashboard-reportes.v1'
+  | 'dashboard-notificaciones.v1'
+  | 'dashboard-perfil.v1'
+  | 'dashboard-plantillas.v1'
+  | 'dashboard-litografia.v1'
+  | 'dashboard-crm-agenda.v1'
+  | 'dashboard-tareas.v1'
+  | 'dashboard-archivos.v1'
 
 export type TourDefinition = {
   id: TourId
@@ -42,6 +56,20 @@ export function tourIdFromPath(pathname: string): TourId | null {
   if (pathname.startsWith('/dashboard/materiales') || pathname.startsWith('/dashboard/productos')) return 'dashboard-materiales.v1'
   if (pathname.startsWith('/dashboard/inventario')) return 'dashboard-inventario.v1'
   if (pathname.startsWith('/dashboard/configuracion/sedes')) return 'dashboard-sedes.v1'
+  if (pathname.startsWith('/dashboard/remisiones')) return 'dashboard-remisiones.v1'
+  if (pathname.startsWith('/dashboard/proveedores')) return 'dashboard-proveedores.v1'
+  if (pathname.startsWith('/dashboard/pos')) return 'dashboard-pos.v1'
+  if (pathname.startsWith('/dashboard/ordenes')) return 'dashboard-ordenes.v1'
+  if (pathname.startsWith('/dashboard/compras')) return 'dashboard-compras.v1'
+  if (pathname.startsWith('/dashboard/escaneos')) return 'dashboard-escaneos.v1'
+  if (pathname.startsWith('/dashboard/reportes')) return 'dashboard-reportes.v1'
+  if (pathname.startsWith('/dashboard/notificaciones')) return 'dashboard-notificaciones.v1'
+  if (pathname.startsWith('/dashboard/perfil')) return 'dashboard-perfil.v1'
+  if (pathname.startsWith('/dashboard/plantillas')) return 'dashboard-plantillas.v1'
+  if (pathname.startsWith('/dashboard/litografia')) return 'dashboard-litografia.v1'
+  if (pathname.startsWith('/dashboard/crm/agenda')) return 'dashboard-crm-agenda.v1'
+  if (pathname.startsWith('/dashboard/crm/archivos')) return 'dashboard-archivos.v1'
+  if (pathname.startsWith('/dashboard/espacios-trabajo')) return 'dashboard-tareas.v1'
   return null
 }
 
@@ -396,6 +424,97 @@ export const TOURS: Record<TourId, TourDefinition> = {
       { element: '[data-tour="nomina-liquidaciones-title"]', popover: { title: 'Liquidaciones', description: 'Esta pantalla centraliza retiros y pagos finales.' } },
       { element: '[data-tour="nomina-liquidaciones-actions"]', popover: { title: 'Crear liquidación', description: 'Desde el botón superior se registra el retiro y cálculo final.' } },
       { element: '[data-tour="nomina-liquidaciones-list"]', popover: { title: 'Bandeja', description: 'Aquí se sigue el estado de cada liquidación y su contabilización.' } },
+    ],
+  },
+  'dashboard-remisiones.v1': {
+    id: 'dashboard-remisiones.v1',
+    steps: [
+      { element: '[data-tour="remisiones-title"]', popover: { title: 'Remisiones', description: 'Aquí registras la salida de inventario con trazabilidad por documento y cliente.' } },
+      { element: '[data-tour="remisiones-new"]', popover: { title: 'Nueva remisión', description: 'Este botón crea la remisión y descuenta el inventario al emitirla.' } },
+    ],
+  },
+  'dashboard-proveedores.v1': {
+    id: 'dashboard-proveedores.v1',
+    steps: [
+      { element: '[data-tour="proveedores-title"]', popover: { title: 'Proveedores', description: 'Aquí administras el directorio de proveedores y su información de contacto y pagos.' } },
+      { element: '[data-tour="proveedores-new"]', popover: { title: 'Nuevo proveedor', description: 'Registra un proveedor nuevo desde este botón para luego usarlo en compras.' } },
+    ],
+  },
+  'dashboard-pos.v1': {
+    id: 'dashboard-pos.v1',
+    steps: [
+      { element: '[data-tour="pos-title"]', popover: { title: 'Facturación (POS)', description: 'Aquí gestionas las ventas, facturas electrónicas y devoluciones del punto de venta.' } },
+      { element: '[data-tour="pos-new"]', popover: { title: 'Nueva factura', description: 'Este botón abre el formulario para crear una nueva factura o venta.' } },
+    ],
+  },
+  'dashboard-ordenes.v1': {
+    id: 'dashboard-ordenes.v1',
+    steps: [
+      { element: '[data-tour="ordenes-title"]', popover: { title: 'Órdenes de trabajo', description: 'Aquí sigues las órdenes de producción y su avance hasta el cierre.' } },
+      { element: '[data-tour="ordenes-new"]', popover: { title: 'Nueva orden', description: 'Crea una orden manual desde este botón o genera una desde una cotización.' } },
+    ],
+  },
+  'dashboard-compras.v1': {
+    id: 'dashboard-compras.v1',
+    steps: [
+      { element: '[data-tour="compras-title"]', popover: { title: 'Compras y recepciones', description: 'Aquí alternas entre órdenes de compra y recepciones, con su estado y pagos.' } },
+      { element: '[data-tour="compras-new"]', popover: { title: 'Crear documento', description: 'El botón principal crea el documento del modo activo (orden o recepción).' } },
+    ],
+  },
+  'dashboard-escaneos.v1': {
+    id: 'dashboard-escaneos.v1',
+    steps: [
+      { element: '[data-tour="escaneos-title"]', popover: { title: 'Escaneos', description: 'Aquí digitalizas facturas y cotizaciones para validar coherencia y aprobar su captura.' } },
+      { element: '[data-tour="escaneos-upload"]', popover: { title: 'Nuevo escaneo', description: 'Sube una imagen o PDF desde esta tarjeta para iniciar el flujo de validación.' } },
+    ],
+  },
+  'dashboard-reportes.v1': {
+    id: 'dashboard-reportes.v1',
+    steps: [
+      { element: '[data-tour="reportes-title"]', popover: { title: 'Reportes', description: 'Centro analítico para armar reportes por bloques y exportarlos en varios formatos.' } },
+      { element: '[data-tour="reportes-customize"]', popover: { title: 'Personalizar', description: 'Ajusta los bloques y columnas visibles de tu reporte antes de descargarlo.' } },
+    ],
+  },
+  'dashboard-notificaciones.v1': {
+    id: 'dashboard-notificaciones.v1',
+    steps: [
+      { element: '[data-tour="notificaciones-title"]', popover: { title: 'Notificaciones', description: 'Aquí se concentran avisos del sistema y del negocio, con su estado leído/no leído.' } },
+    ],
+  },
+  'dashboard-perfil.v1': {
+    id: 'dashboard-perfil.v1',
+    steps: [
+      { element: '[data-tour="perfil-title"]', popover: { title: 'Mi perfil', description: 'Aquí actualizas tus datos personales, preferencias, seguridad y accesos.' } },
+    ],
+  },
+  'dashboard-plantillas.v1': {
+    id: 'dashboard-plantillas.v1',
+    steps: [
+      { element: '[data-tour="plantillas-title"]', popover: { title: 'Plantillas', description: 'Reúne las plantillas activas de documentos (cotización, remisión, compras y POS).' } },
+    ],
+  },
+  'dashboard-litografia.v1': {
+    id: 'dashboard-litografia.v1',
+    steps: [
+      { element: '[data-tour="litografia-title"]', popover: { title: 'Costos', description: 'Aquí configuras costos de producción especializada y el ingreso asistido de briefs.' } },
+    ],
+  },
+  'dashboard-crm-agenda.v1': {
+    id: 'dashboard-crm-agenda.v1',
+    steps: [
+      { element: '[data-tour="agenda-title"]', popover: { title: 'Agenda comercial', description: 'Aquí ves y agendes citas, tareas y seguimiento comercial del equipo.' } },
+    ],
+  },
+  'dashboard-tareas.v1': {
+    id: 'dashboard-tareas.v1',
+    steps: [
+      { element: '[data-tour="tareas-title"]', popover: { title: 'Tareas y proyectos', description: 'Espacios de trabajo para organizar tareas, proyectos y responsables.' } },
+    ],
+  },
+  'dashboard-archivos.v1': {
+    id: 'dashboard-archivos.v1',
+    steps: [
+      { element: '[data-tour="archivos-title"]', popover: { title: 'Drive / Archivos', description: 'Repositorio de archivos con permisos por usuario, carpetas y entidades vinculadas.' } },
     ],
   },
 }

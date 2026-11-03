@@ -5,26 +5,30 @@ import { usePathname } from 'next/navigation'
 import { driver, type Config, type Driver } from 'driver.js'
 import { TOURS, tourIdFromPath, type TourId } from './tours'
 
-async function waitForTourSelectors(
+async function resolveAvailableSelectors(
   selectors: string[],
   {
     timeoutMs,
     intervalMs,
     isActive,
   }: { timeoutMs: number; intervalMs: number; isActive: () => boolean }
-): Promise<boolean> {
+): Promise<string[]> {
   const uniq = Array.from(new Set(selectors.map((s) => s.trim()).filter(Boolean)))
-  if (uniq.length === 0) return true
+  if (uniq.length === 0) return []
 
   const start = Date.now()
+  const found = new Set<string>()
+
   while (Date.now() - start < timeoutMs) {
-    if (!isActive()) return false
-    const allFound = uniq.every((sel) => typeof document !== 'undefined' && !!document.querySelector(sel))
-    if (allFound) return true
+    if (!isActive()) return []
+    for (const sel of uniq) {
+      if (typeof document !== 'undefined' && document.querySelector(sel)) found.add(sel)
+    }
+    if (found.size === uniq.length) break
     await new Promise((r) => setTimeout(r, intervalMs))
   }
 
-  return false
+  return Array.from(found)
 }
 
 type TutorialPrefs = {
@@ -128,14 +132,22 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
         .filter((el): el is string => typeof el === 'string')
 
       void (async () => {
-        const ready = await waitForTourSelectors(stepSelectors, {
+        const availableSelectors = await resolveAvailableSelectors(stepSelectors, {
           timeoutMs: 5000,
           intervalMs: 120,
           isActive: () => startSeqRef.current === startSeq,
         })
 
-        if (!ready) return
         if (startSeqRef.current !== startSeq) return
+
+        // Descarta pasos cuyo selector no existe para que el tour siga sin trabarse
+        const availableSet = new Set(availableSelectors)
+        const steps = def.steps.filter((step) => {
+          if (typeof step.element !== 'string') return true
+          return availableSet.has(step.element)
+        })
+
+        if (steps.length === 0) return
 
         const onEnd = () => {
           const activeId = activeTourIdRef.current
@@ -153,7 +165,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
           nextBtnText: 'Siguiente',
           prevBtnText: 'Atrás',
           doneBtnText: 'Listo',
-          steps: def.steps,
+          steps,
           onDestroyed: () => onEnd(),
           onCloseClick: () => onEnd(),
         }

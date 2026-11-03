@@ -5,6 +5,7 @@ import { Menu, MessageSquareText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import NotificationsBell from '@/components/dashboard/notifications-bell'
 import Header from '@/components/dashboard/header'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { useUiStore } from '@/lib/ui-store'
 import { cn } from '@/lib/utils'
 
@@ -29,6 +30,7 @@ type Props = {
 }
 
 export default function MobileDashboardFooter({ user, canAccessConversations }: Props) {
+  const { t } = useI18n()
   const toggleMobileNav = useUiStore((state) => state.toggleMobileNav)
   const mobileNavOpen = useUiStore((state) => state.mobileNavOpen)
   const setMobileNavOpen = useUiStore((state) => state.setMobileNavOpen)
@@ -70,7 +72,7 @@ export default function MobileDashboardFooter({ user, canAccessConversations }: 
               'h-12 w-full max-w-[4.5rem] rounded-2xl text-slate-700 hover:bg-slate-100/80 [&_svg]:!size-5',
               mobileNavOpen && 'bg-[#ff9800] text-white hover:bg-[#ff9800]'
             )}
-            aria-label="Abrir menú"
+            aria-label={t('header.openMenu')}
             onClick={() => {
               window.dispatchEvent(new CustomEvent(MOBILE_FOOTER_TOGGLE_EVENT, { detail: { source: 'menu' } }))
               toggleMobileNav()
@@ -89,7 +91,7 @@ export default function MobileDashboardFooter({ user, canAccessConversations }: 
               'h-12 w-full max-w-[4.5rem] rounded-2xl text-slate-700 hover:bg-slate-100/80 disabled:opacity-45 [&_svg]:!size-5',
               chatOpen && 'bg-[#ff9800] text-white hover:bg-[#ff9800]'
             )}
-            aria-label="Abrir conversaciones"
+            aria-label={t('header.openConversations')}
             disabled={!canAccessConversations}
             onClick={() => {
               window.dispatchEvent(new CustomEvent(MOBILE_FOOTER_TOGGLE_EVENT, { detail: { source: 'chat' } }))

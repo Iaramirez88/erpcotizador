@@ -68,7 +68,7 @@ export default function PlantillasPage() {
   return (
     <div className="space-y-6">
       <ErpPageHero
-        title="Plantillas globales"
+        title={<span data-tour="plantillas-title">Plantillas globales</span>}
         description="Reúne las plantillas activas del sistema y muestra una demo rápida de cada documento antes de entrar al editor o al módulo origen."
         stats={[
           { label: 'Plantillas activas', value: templates.length, hint: 'Cotización, remisión, compras y POS', tone: 'neutral' },

@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { ImportDialog } from '@/components/import/import-dialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -760,12 +762,12 @@ export default function ComprasPage() {
           { label: 'Compras', href: '/dashboard/compras' },
           { label: currentPurchaseSection.label },
         ]}
-        title={currentPurchaseSection.title}
+        title={<span data-tour="compras-title">{currentPurchaseSection.title}</span>}
         description={currentPurchaseSection.description}
         actions={
           <>
             {canManagePurchases ? <ImportDialog module="compras" title={t('purchases.actions.import')} /> : null}
-            {canManagePurchases ? <Button onClick={() => openForm(currentPurchaseSection.primaryActionMode)}>
+            {canManagePurchases ? <Button onClick={() => openForm(currentPurchaseSection.primaryActionMode)} data-tour="compras-new">
               {currentPurchaseSection.primaryActionLabel}
             </Button> : null}
             {canManagePurchases ? <Button variant="outline" onClick={() => openForm(currentPurchaseSection.secondaryActionMode)}>
@@ -1218,17 +1220,53 @@ export default function ComprasPage() {
                       <td className="py-2 whitespace-nowrap">{formatCOP(n(c.pagado, 0), locale)}</td>
                       <td className="py-2 whitespace-nowrap">{formatCOP(n(c.saldo, n(c.total, 0) - n(c.pagado, 0)), locale)}</td>
                       <td className="py-2">{c.autorizado ? t('common.yes') : t('common.no')}</td>
-                      <td className="py-2 text-right space-x-2">
-                        {canManagePurchases && c.estado === 'BORRADOR' ? <Button variant="outline" onClick={() => void openRopSuppliers(c)}>Proveedores sugeridos</Button> : null}
-                        {canManagePurchases && c.estado !== 'BORRADOR' ? <Button variant="outline" onClick={() => openPagos(c)}>{t('purchases.actions.payments')}</Button> : null}
-                        <Button variant="outline" onClick={() => openCompraPdf(c)}>{t('purchases.actions.print')}</Button>
-                        <Button variant="outline" onClick={() => void downloadCompraPdf(c)}>{t('purchases.actions.downloadPdf')}</Button>
-                        {canManagePurchases ? <Button variant="outline" onClick={() => loadCompraIntoForm(c, getCompraMode(c))}>{t('purchases.actions.edit')}</Button> : null}
-                        {canManagePurchases && c.estado === 'BORRADOR' ? <Button variant="outline" onClick={() => loadCompraIntoForm(c, 'purchase')}>{t('purchases.actions.registerPurchase')}</Button> : null}
+                      <td className="py-2 text-right">
                         <Dialog>
-                          <DialogTrigger asChild>
-                            <Button variant="outline">{t('purchases.actions.view')}</Button>
-                          </DialogTrigger>
+                          <RowActionsMenu label={c.proveedorNombre}>
+                            {canManagePurchases && c.estado === 'BORRADOR' ? (
+                              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); void openRopSuppliers(c); }}>
+                                Proveedores sugeridos
+                              </DropdownMenuItem>
+                            ) : null}
+                            {canManagePurchases && c.estado !== 'BORRADOR' ? (
+                              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openPagos(c); }}>
+                                {t('purchases.actions.payments')}
+                              </DropdownMenuItem>
+                            ) : null}
+                            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openCompraPdf(c); }}>
+                              {t('purchases.actions.print')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); void downloadCompraPdf(c); }}>
+                              {t('purchases.actions.downloadPdf')}
+                            </DropdownMenuItem>
+                            {canManagePurchases ? (
+                              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); loadCompraIntoForm(c, getCompraMode(c)); }}>
+                                {t('purchases.actions.edit')}
+                              </DropdownMenuItem>
+                            ) : null}
+                            {canManagePurchases && c.estado === 'BORRADOR' ? (
+                              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); loadCompraIntoForm(c, 'purchase'); }}>
+                                {t('purchases.actions.registerPurchase')}
+                              </DropdownMenuItem>
+                            ) : null}
+                            <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
+                              <DialogTrigger asChild>
+                                <button type="button" className="w-full cursor-default px-2 py-1.5 text-left text-sm outline-none transition-colors hover:bg-accent">
+                                  {t('purchases.actions.view')}
+                                </button>
+                              </DialogTrigger>
+                            </DropdownMenuItem>
+                            {canManagePurchases ? (
+                              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); toggleAutorizar(c); }}>
+                                {c.autorizado ? t('purchases.actions.removeAuthorization') : t('purchases.actions.authorize')}
+                              </DropdownMenuItem>
+                            ) : null}
+                            {canManagePurchases ? (
+                              <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => { e.preventDefault(); deleteCompra(c); }}>
+                                {t('common.delete')}
+                              </DropdownMenuItem>
+                            ) : null}
+                          </RowActionsMenu>
                           <DialogContent className="max-w-3xl">
                             <DialogHeader>
                               <DialogTitle>{t('purchases.view.title')}</DialogTitle>
@@ -1325,13 +1363,6 @@ export default function ComprasPage() {
                             </div>
                           </DialogContent>
                         </Dialog>
-
-                        {canManagePurchases ? <Button variant={c.autorizado ? 'outline' : 'default'} onClick={() => toggleAutorizar(c)}>
-                          {c.autorizado ? t('purchases.actions.removeAuthorization') : t('purchases.actions.authorize')}
-                        </Button> : null}
-                        {canManagePurchases ? <Button variant="outline" onClick={() => deleteCompra(c)}>
-                          {t('common.delete')}
-                        </Button> : null}
                       </td>
                     </tr>
                   ))}

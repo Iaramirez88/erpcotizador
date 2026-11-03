@@ -7,6 +7,8 @@ import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -218,7 +220,7 @@ export default function NominaDesempenoPage() {
             { key: 'deals', label: language === 'en' ? 'Deals actual / target' : 'Negocios real / meta', className: 'text-center tabular-nums', headerClassName: 'text-center', render: (item) => `${item.salesAchievedDeals ?? '—'} / ${item.salesTargetDeals ?? '—'}` },
             { key: 'dates', label: language === 'en' ? 'Due / completed' : 'Vence / completada', className: 'whitespace-nowrap', render: (item) => <><div>{formatDate(item.dueDate ?? null, locale)}</div><div className="text-xs text-slate-500">{formatDate(item.completedAt ?? null, locale)}</div></> },
             { key: 'status', label: language === 'en' ? 'Status' : 'Estado', render: (item) => <NominaStatusBadge status={item.status} /> },
-            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{language === 'en' ? 'Edit' : 'Editar'}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{language === 'en' ? 'Delete' : 'Eliminar'}</Button></div> },
+            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end"><RowActionsMenu><DropdownMenuItem onSelect={(e) => { e.preventDefault(); openEdit(item); }}>{language === 'en' ? 'Edit' : 'Editar'}</DropdownMenuItem><DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => { e.preventDefault(); void handleDelete(item.id); }}>{language === 'en' ? 'Delete' : 'Eliminar'}</DropdownMenuItem></RowActionsMenu></div> },
           ]} />
         </CardContent>
       </Card>

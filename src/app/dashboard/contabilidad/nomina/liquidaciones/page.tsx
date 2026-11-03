@@ -7,6 +7,8 @@ import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -290,7 +292,7 @@ export default function NominaLiquidacionesPage() {
             { key: 'days', label: copy.labels.workedDays, className: 'text-center tabular-nums', headerClassName: 'text-center', render: (settlement) => settlement.workedDays },
             { key: 'total', label: copy.labels.payout, className: 'whitespace-nowrap text-right font-semibold tabular-nums', headerClassName: 'text-right', render: (settlement) => formatCurrency(settlement.total) },
             { key: 'status', label: copy.labels.status, render: (settlement) => <div className="space-y-1"><NominaStatusBadge status={copy.statuses[settlement.status]} /><div><NominaStatusBadge status={copy.accountingStatus[settlement.accountingStatus]} /></div></div> },
-            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (settlement) => <div className="flex justify-end gap-1.5">{settlement.accountingStatus === 'PENDIENTE' && settlement.total > 0 ? <Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void contabilizar(settlement.id)}>{copy.actions.post}</Button> : null}<Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(settlement)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(settlement.id)}>{copy.actions.remove}</Button></div> },
+            { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (settlement) => <div className="flex justify-end"><RowActionsMenu label={settlement.employeeName}>{settlement.accountingStatus === 'PENDIENTE' && settlement.total > 0 ? <DropdownMenuItem onSelect={(e) => { e.preventDefault(); void contabilizar(settlement.id); }}>{copy.actions.post}</DropdownMenuItem> : null}<DropdownMenuItem onSelect={(e) => { e.preventDefault(); openEdit(settlement); }}>{copy.actions.edit}</DropdownMenuItem><DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => { e.preventDefault(); void handleDelete(settlement.id); }}>{copy.actions.remove}</DropdownMenuItem></RowActionsMenu></div> },
           ]} />
         </CardContent>
       </Card>

@@ -58,8 +58,7 @@ function buildGuestInviteMessage(args: {
 function buildCrmInviteSummary(callType: 'video' | 'audio') {
   return callType === 'audio' ? 'Invitacion a llamada de audio' : 'Invitacion a videollamada'
 }
-
-async function sendWhatsAppDailyInvite(args: {
+async function persistCrmCallInviteMessage(args: {
   empresaId: string
   userId: string
   conversation: {
@@ -70,6 +69,80 @@ async function sendWhatsAppDailyInvite(args: {
     clienteId: string | null
     status: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'DISABLED' | 'RESOLVED' | 'SPAM'
     resolvedAt: Date | null
+    provider: 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM'
+  }
+  inviteUrl: string
+  callType: 'video' | 'audio'
+  dispatch: InviteDispatchResult
+}) {
+  const providerPayload = withMessageOrigin({
+    provider: args.conversation.provider,
+    dispatch: 'whatsapp-call-invite',
+    inviteUrl: args.inviteUrl,
+    callType: args.callType,
+    channel: args.dispatch.channel,
+    sent: args.dispatch.sent,
+    error: args.dispatch.error,
+  }, 'CRM_AGENT')
+
+  const bodyText = buildCrmInviteSummary(args.callType)
+  const occurredAt = new Date()
+  const messageStatus = args.dispatch.sent ? 'SENT' : 'FAILED'
+
+  await prisma.$transaction(async (tx) => {
+    await tx.crmMessage.create({
+      data: {
+        empresaId: args.empresaId,
+        sedeId: args.conversation.sedeId,
+        conversationId: args.conversation.id,
+        providerMessageId: null,
+        direction: 'OUTBOUND',
+        messageType: 'TEXT',
+        status: messageStatus,
+        bodyText,
+        payloadJson: providerPayload,
+        attachmentsJson: [],
+        sentByUserId: args.userId,
+        occurredAt,
+      },
+    })
+
+    await tx.crmConversation.update({
+      where: { id: args.conversation.id },
+      data: {
+        lastMessageAt: occurredAt,
+        directionLastMessage: 'OUTBOUND',
+        status: args.conversation.status === 'RESOLVED' || args.conversation.status === 'DISABLED' ? 'HUMAN_ACTIVE' : 'PENDING',
+        resolvedAt: args.conversation.status === 'RESOLVED' || args.conversation.status === 'DISABLED' ? null : args.conversation.resolvedAt,
+      },
+    })
+
+    await tx.crmActivity.create({
+      data: {
+        empresaId: args.empresaId,
+        sedeId: args.conversation.sedeId,
+        type: 'WHATSAPP',
+        summary: args.dispatch.sent
+          ? `Invitacion a ${args.callType === 'audio' ? 'llamada' : 'videollamada'} preparada y compartida`
+          : `Invitacion a ${args.callType === 'audio' ? 'llamada' : 'videollamada'} preparada (enlace para compartir)`,
+        details: `Enlace invitado: ${args.inviteUrl}${args.dispatch.error ? '\n\nNota: ' + args.dispatch.error : ''}`,
+        leadId: args.conversation.leadId,
+        opportunityId: args.conversation.opportunityId,
+        clienteId: args.conversation.clienteId,
+        occurredAt,
+        createdById: args.userId,
+      },
+    })
+  })
+}
+
+
+
+async function sendWhatsAppDailyInvite(args: {
+  empresaId: string
+  userId: string
+  conversation: {
+    id: string
     contactPhone: string | null
     channelConnection: {
       id: string
@@ -88,16 +161,16 @@ async function sendWhatsAppDailyInvite(args: {
 }): Promise<InviteDispatchResult> {
   const isWhatsApp = args.conversation.channelConnection.provider === 'WHATSAPP_CLOUD' || args.conversation.channelConnection.provider === 'WHATSAPP_SANDBOX'
   if (!isWhatsApp) {
-    return { attempted: false, sent: false, channel: 'NONE', recipient: null, inviteUrl: args.inviteUrl, error: 'La invitación automática solo está disponible para conversaciones de WhatsApp.' }
+    return { attempted: false, sent: false, channel: 'NONE', recipient: null, inviteUrl: args.inviteUrl, error: 'La invitacion automatica solo esta disponible para conversaciones de WhatsApp.' }
   }
 
   const recipientPhone = normalizeWhatsAppRecipient(args.conversation.contactPhone)
   if (!recipientPhone) {
-    return { attempted: true, sent: false, channel: 'WHATSAPP', recipient: null, inviteUrl: args.inviteUrl, error: 'La conversación no tiene un número válido para enviar la invitación.' }
+    return { attempted: true, sent: false, channel: 'WHATSAPP', recipient: null, inviteUrl: args.inviteUrl, error: 'La conversacion no tiene un numero valido para enviar la invitacion.' }
   }
 
   if (!hasOpenMessagingWindow(args.conversation.messages[0]?.occurredAt ?? null)) {
-    return { attempted: true, sent: false, channel: 'WHATSAPP', recipient: recipientPhone, inviteUrl: args.inviteUrl, error: 'La ventana de 24 horas de WhatsApp está cerrada. Aún no implementamos plantillas aprobadas para invitar a llamada.' }
+    return { attempted: true, sent: false, channel: 'WHATSAPP', recipient: recipientPhone, inviteUrl: args.inviteUrl, error: 'La ventana de 24 horas de WhatsApp esta cerrada.' }
   }
 
   const whatsappConfig = getWhatsAppDispatchConfig(args.conversation.channelConnection)
@@ -115,70 +188,13 @@ async function sendWhatsAppDailyInvite(args: {
   }
 
   const providerBodyText = buildGuestInviteMessage(args)
-  const crmBodyText = buildCrmInviteSummary(args.callType)
-  let providerMessageId: string | null = null
-  let messageStatus: 'SENT' | 'FAILED' = 'SENT'
-  let sendErrorMessage: string | null = null
-  let providerPayload: Prisma.InputJsonValue = withMessageOrigin({ provider: args.conversation.channelConnection.provider, dispatch: 'whatsapp-call-invite', inviteUrl: args.inviteUrl, callType: args.callType }, 'CRM_AGENT')
 
   try {
-    const result = await sendWhatsAppTextMessage({ config: whatsappConfig, to: recipientPhone, bodyText: providerBodyText })
-    providerMessageId = result.providerMessageId
-    providerPayload = withMessageOrigin({ ...(result.payloadJson as Record<string, unknown>), dispatch: 'whatsapp-call-invite', inviteUrl: args.inviteUrl, callType: args.callType }, 'CRM_AGENT')
+    await sendWhatsAppTextMessage({ config: whatsappConfig, to: recipientPhone, bodyText: providerBodyText })
+    return { attempted: true, sent: true, channel: 'WHATSAPP', recipient: recipientPhone, inviteUrl: args.inviteUrl, error: null }
   } catch (error) {
-    messageStatus = 'FAILED'
-    sendErrorMessage = error instanceof Error ? error.message : 'No se pudo enviar la invitación por WhatsApp.'
-    providerPayload = withMessageOrigin({ provider: args.conversation.channelConnection.provider, dispatch: 'whatsapp-call-invite', inviteUrl: args.inviteUrl, callType: args.callType, error: sendErrorMessage }, 'CRM_AGENT')
+    return { attempted: true, sent: false, channel: 'WHATSAPP', recipient: recipientPhone, inviteUrl: args.inviteUrl, error: error instanceof Error ? error.message : 'No se pudo enviar la invitacion por WhatsApp.' }
   }
-
-  const occurredAt = new Date()
-  await prisma.$transaction(async (tx) => {
-    await tx.crmMessage.create({
-      data: {
-        empresaId: args.empresaId,
-        sedeId: args.conversation.sedeId,
-        conversationId: args.conversation.id,
-        providerMessageId,
-        direction: 'OUTBOUND',
-        messageType: 'TEXT',
-        status: messageStatus,
-        bodyText: crmBodyText,
-        payloadJson: providerPayload,
-        attachmentsJson: [],
-        sentByUserId: args.userId,
-        occurredAt,
-      },
-    })
-
-    await tx.crmConversation.update({
-      where: { id: args.conversation.id },
-      data: {
-        lastMessageAt: occurredAt,
-        directionLastMessage: 'OUTBOUND',
-        status: messageStatus === 'FAILED' ? args.conversation.status : args.conversation.status === 'RESOLVED' || args.conversation.status === 'DISABLED' ? 'HUMAN_ACTIVE' : 'PENDING',
-        resolvedAt: messageStatus === 'FAILED' ? args.conversation.resolvedAt : args.conversation.status === 'RESOLVED' || args.conversation.status === 'DISABLED' ? null : args.conversation.resolvedAt,
-      },
-    })
-
-    await tx.crmActivity.create({
-      data: {
-        empresaId: args.empresaId,
-        sedeId: args.conversation.sedeId,
-        type: 'WHATSAPP',
-        summary: messageStatus === 'FAILED'
-          ? `Falló el envío de invitación a ${args.callType === 'audio' ? 'llamada' : 'videollamada'}`
-          : `Invitación a ${args.callType === 'audio' ? 'llamada' : 'videollamada'} enviada por WhatsApp`,
-        details: sendErrorMessage ? `${providerBodyText}\n\nError proveedor: ${sendErrorMessage}` : `${providerBodyText}\n\nInvitación enviada al contacto ${recipientPhone}.`,
-        leadId: args.conversation.leadId,
-        opportunityId: args.conversation.opportunityId,
-        clienteId: args.conversation.clienteId,
-        occurredAt,
-        createdById: args.userId,
-      },
-    })
-  })
-
-  return { attempted: true, sent: messageStatus === 'SENT', channel: 'WHATSAPP', recipient: recipientPhone, inviteUrl: args.inviteUrl, error: sendErrorMessage }
 }
 
 async function resolveDailyCallPermissions(args: {
@@ -335,12 +351,6 @@ export async function POST(request: Request, context: RouteContext) {
           userId: access.userId,
           conversation: {
             id: conversation.id,
-            sedeId: conversation.sedeId,
-            leadId: conversation.leadId,
-            opportunityId: conversation.opportunityId,
-            clienteId: conversation.clienteId,
-            status: conversation.status,
-            resolvedAt: conversation.resolvedAt,
             contactPhone: conversation.contactPhone,
             channelConnection: conversation.channelConnection,
             messages: conversation.messages,
@@ -358,6 +368,26 @@ export async function POST(request: Request, context: RouteContext) {
           inviteUrl: guestInviteUrl,
           error: guestInviteUrl ? null : 'No se pudo resolver la URL pública del invitado.',
         }
+
+    if (guestInviteUrl) {
+      await persistCrmCallInviteMessage({
+        empresaId: access.empresaId,
+        userId: access.userId,
+        conversation: {
+          id: conversation.id,
+          sedeId: conversation.sedeId,
+          leadId: conversation.leadId,
+          opportunityId: conversation.opportunityId,
+          clienteId: conversation.clienteId,
+          status: conversation.status,
+          resolvedAt: conversation.resolvedAt,
+          provider: conversation.channelConnection.provider,
+        },
+        inviteUrl: guestInviteUrl,
+        callType: requestedCallType,
+        dispatch: inviteDispatch,
+      })
+    }
 
     return NextResponse.json({
       success: true,

@@ -8,6 +8,8 @@ import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { NominaCompactTable, NominaStatusBadge } from '@/components/dashboard/nomina-compact-table'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { Button } from '@/components/ui/button'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -384,7 +386,7 @@ export default function NominaNovedadesPage() {
                 { key: 'values', label: language === 'en' ? 'Value / quantity' : 'Valor / cantidad', className: 'whitespace-nowrap text-right tabular-nums', headerClassName: 'text-right', render: (item) => <><div>{typeof item.amount === 'number' ? formatCurrency(item.amount) : '—'}</div><div className="text-xs text-slate-500">{item.days != null ? `${item.days} ${copy.labels.days.toLowerCase()}` : item.quantity != null ? `${item.quantity} ${copy.labels.quantity.toLowerCase()}` : '—'}</div></> },
                 { key: 'support', label: copy.labels.attachment, render: (item) => item.supportUrl ? <Link href={item.supportUrl} target="_blank" className="font-medium text-sky-700">{copy.labels.openAttachment}</Link> : <span className="text-slate-400">{copy.labels.attachmentMissing}</span> },
                 { key: 'status', label: copy.labels.status, render: (item) => <NominaStatusBadge status={copy.statuses[item.status]} /> },
-                { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div> },
+                { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end"><RowActionsMenu><DropdownMenuItem onSelect={(e) => { e.preventDefault(); openEdit(item); }}>{copy.actions.edit}</DropdownMenuItem><DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => { e.preventDefault(); void handleDelete(item.id); }}>{copy.actions.remove}</DropdownMenuItem></RowActionsMenu></div> },
               ]} />
             </CardContent>
           </Card>
@@ -403,7 +405,7 @@ export default function NominaNovedadesPage() {
                 { key: 'value', label: language === 'en' ? 'Days / value' : 'Días / valor', className: 'whitespace-nowrap text-right tabular-nums', headerClassName: 'text-right', render: (item) => <><div>{item.days ?? 0} {copy.labels.days.toLowerCase()}</div><div className="text-xs text-slate-500">{typeof item.amount === 'number' ? formatCurrency(item.amount) : '—'}</div></> },
                 { key: 'support', label: copy.labels.supportNumber, render: (item) => <><div>{item.supportNumber ?? '—'}</div>{item.supportUrl ? <Link href={item.supportUrl} target="_blank" className="text-xs font-medium text-sky-700">{copy.labels.openAttachment}</Link> : <div className="text-xs text-slate-400">{copy.labels.attachmentMissing}</div>}</> },
                 { key: 'status', label: copy.labels.status, render: (item) => <NominaStatusBadge status={copy.statuses[item.status]} /> },
-                { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end gap-1.5"><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => openEdit(item)}>{copy.actions.edit}</Button><Button size="sm" variant="outline" className="h-8 rounded-lg px-2.5" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button></div> },
+                { key: 'actions', label: language === 'en' ? 'Actions' : 'Acciones', headerClassName: 'text-right', render: (item) => <div className="flex justify-end"><RowActionsMenu><DropdownMenuItem onSelect={(e) => { e.preventDefault(); openEdit(item); }}>{copy.actions.edit}</DropdownMenuItem><DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => { e.preventDefault(); void handleDelete(item.id); }}>{copy.actions.remove}</DropdownMenuItem></RowActionsMenu></div> },
               ]} />
             </CardContent>
           </Card>

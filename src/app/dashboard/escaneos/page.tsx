@@ -531,7 +531,7 @@ export default function EscaneosPage() {
     <div className="space-y-6">
       <ErpPageHero
         breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Operaciones' }, { label: 'Escaneos' }]}
-        title="Escaneos"
+        title={<span data-tour="escaneos-title">Escaneos</span>}
         description="Escanea facturas o cotizaciones, valida coherencia contable y administra el flujo de confirmacion desde un mismo tablero."
         stats={[
           {
@@ -555,7 +555,7 @@ export default function EscaneosPage() {
         ]}
       />
 
-      <Card>
+      <Card data-tour="escaneos-upload">
         <CardHeader>
           <CardTitle>Nuevo escaneo</CardTitle>
           <CardDescription>Sube una imagen o PDF</CardDescription>
