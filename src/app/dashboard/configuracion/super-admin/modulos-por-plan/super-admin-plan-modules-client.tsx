@@ -1,6 +1,6 @@
-'use client'
+﻿'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
@@ -9,19 +9,28 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import PlanCapacityAdminPanel from '@/components/dashboard/plan-capacity-admin-panel'
+import PlanModuleAssignmentPanel from '@/components/dashboard/plan-module-assignment-panel'
 import type { ModuleKey } from '@prisma/client'
 
 type PlanTier = 'CRM' | 'BASIC' | 'MEDIO' | 'INTERMEDIO' | 'FULL'
 
-type Row = { planTier: PlanTier; module: ModuleKey; enabled: boolean; updatedAt: string }
+/** Planes comerciales vigentes: Básico, Medio, Intermedio y Full (el tier `CRM` es legado). */
+const COMMERCIAL_PLAN_TIERS: PlanTier[] = ['BASIC', 'MEDIO', 'INTERMEDIO', 'FULL']
 
-type GetResponse =
-  | { ok: true; planTiers: PlanTier[]; modules: ModuleKey[]; rows: Row[] }
-  | { ok?: false; error?: string }
+const PLAN_TIER_LABELS: Partial<Record<PlanTier, string>> = {
+  BASIC: 'Básico',
+  MEDIO: 'Medio',
+  INTERMEDIO: 'Intermedio',
+  FULL: 'Full',
+}
 
-type PutResponse =
-  | { ok: true; row: Row }
-  | { ok?: false; error?: string }
+/** Nombre comercial del plan (editable en el catálogo) con respaldo por tier. */
+function resolvePlanLabel(tier: PlanTier, rows: PlanCatalogRow[]): string {
+  const nombre = rows.find((row) => row.tier === tier)?.nombre?.trim()
+  return nombre || PLAN_TIER_LABELS[tier] || tier
+}
 
 type PriceRow = {
   module: ModuleKey
@@ -121,54 +130,33 @@ function parseScope(value: string) {
   return value.split('\n').map((item) => item.trim()).filter(Boolean)
 }
 
-function titleForModule(moduleKey: ModuleKey): string {
-  switch (moduleKey) {
-    case 'DASHBOARD':
-      return 'Dashboard'
-    case 'COTIZADOR':
-      return 'Cotizador'
-    case 'COTIZACIONES':
-      return 'Cotizaciones'
-    case 'CLIENTES':
-      return 'Clientes'
-    case 'CRM':
-      return 'CRM'
-    case 'MATERIALES':
-      return 'Productos'
-    case 'INVENTARIO':
-      return 'Inventario'
-    case 'REMISIONES':
-      return 'Remisiones'
-    case 'POS':
-      return 'POS / Facturación'
-    case 'PROVEEDORES':
-      return 'Proveedores'
-    case 'COMPRAS':
-      return 'Compras'
-    case 'ORDENES':
-      return 'Órdenes'
-    case 'ESCANEOS':
-      return 'Escaneos'
-    case 'REPORTES':
-      return 'Reportes'
-    case 'CONTABILIDAD':
-      return 'Contabilidad'
-    case 'NOTIFICACIONES':
-      return 'Notificaciones'
-    case 'CONFIG':
-      return 'Configuración'
-    default:
-      return moduleKey
-  }
+/** Campo con etiqueta visible y ayuda corta: evita depender del placeholder precargado. */
+function Field({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string
+  hint?: string
+  htmlFor?: string
+  children: ReactNode
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={htmlFor} className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+        {label}
+      </Label>
+      {children}
+      {hint ? <p className="text-[11px] leading-4 text-slate-500">{hint}</p> : null}
+    </div>
+  )
 }
 
 export default function SuperAdminPlanModulesClient() {
+  const [activeTab, setActiveTab] = useState<'planes' | 'catalogo' | 'facturacion' | 'nichos' | 'acceso'>('planes')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [planTiers, setPlanTiers] = useState<PlanTier[]>([])
-  const [modules, setModules] = useState<ModuleKey[]>([])
-  const [rows, setRows] = useState<Row[]>([])
-  const [savingKey, setSavingKey] = useState<string | null>(null)
   const [priceRows, setPriceRows] = useState<PriceRow[]>([])
   const [savingPriceKey, setSavingPriceKey] = useState<string | null>(null)
   const [commercialPriceRows, setCommercialPriceRows] = useState<CommercialPriceRow[]>([])
@@ -192,8 +180,6 @@ export default function SuperAdminPlanModulesClient() {
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch('/api/super-admin/plan-modules', { cache: 'no-store' })
-        const json = (await res.json().catch(() => ({}))) as GetResponse
         const pricesRes = await fetch('/api/super-admin/module-prices', { cache: 'no-store' })
         const pricesJson = (await pricesRes.json().catch(() => ({}))) as PricesResponse
         const commercialPricesRes = await fetch('/api/super-admin/commercial-prices', { cache: 'no-store' })
@@ -202,10 +188,6 @@ export default function SuperAdminPlanModulesClient() {
         const planCatalogJson = (await planCatalogRes.json().catch(() => ({}))) as PlanCatalogResponse
         const businessTypesRes = await fetch('/api/super-admin/onboarding-business-types', { cache: 'no-store' })
         const businessTypesJson = (await businessTypesRes.json().catch(() => ({}))) as BusinessTypesResponse
-        if (!res.ok || !('ok' in json) || !json.ok) {
-          setError(('error' in json && json.error) || 'No se pudo cargar la configuración')
-          return
-        }
         if (!pricesRes.ok || !('ok' in pricesJson) || !pricesJson.ok) {
           setError(('error' in pricesJson && pricesJson.error) || 'No se pudo cargar los precios')
           return
@@ -224,9 +206,6 @@ export default function SuperAdminPlanModulesClient() {
         }
 
         if (!cancelled) {
-          setPlanTiers(json.planTiers)
-          setModules(json.modules)
-          setRows(json.rows)
           setPriceRows(pricesJson.rows)
           setCommercialPriceRows(commercialPricesJson.rows)
           setPlanRows(planCatalogJson.rows)
@@ -245,60 +224,6 @@ export default function SuperAdminPlanModulesClient() {
     }
   }, [])
 
-  const rowMap = useMemo(() => {
-    const map = new Map<string, Row>()
-    for (const r of rows) {
-      map.set(`${r.planTier}::${r.module}`, r)
-    }
-    return map
-  }, [rows])
-
-  async function setEnabled(planTier: PlanTier, moduleKey: ModuleKey, enabled: boolean) {
-    const key = `${planTier}::${moduleKey}`
-    setSavingKey(key)
-    setError(null)
-
-    // Optimistic update
-    setRows((prev) => {
-      const next = [...prev]
-      const idx = next.findIndex((r) => r.planTier === planTier && r.module === moduleKey)
-      const updated: Row = {
-        planTier,
-        module: moduleKey,
-        enabled,
-        updatedAt: new Date().toISOString(),
-      }
-      if (idx >= 0) next[idx] = updated
-      else next.push(updated)
-      return next
-    })
-
-    try {
-      const res = await fetch('/api/super-admin/plan-modules', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planTier, module: moduleKey, enabled }),
-      })
-
-      const json = (await res.json().catch(() => ({}))) as PutResponse
-      if (!res.ok || !('ok' in json) || !json.ok) {
-        setError(('error' in json && json.error) || 'No se pudo guardar')
-        return
-      }
-
-      setRows((prev) => {
-        const next = [...prev]
-        const idx = next.findIndex((r) => r.planTier === planTier && r.module === moduleKey)
-        if (idx >= 0) next[idx] = json.row
-        else next.push(json.row)
-        return next
-      })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error inesperado')
-    } finally {
-      setSavingKey(null)
-    }
-  }
 
   async function setPrice(moduleKey: ModuleKey, value: string) {
     const numericValue = Number(value)
@@ -460,21 +385,35 @@ export default function SuperAdminPlanModulesClient() {
   return (
     <div className="space-y-4 p-3 sm:p-4 lg:p-6">
       <ErpPageHero
-        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Administración' }, { label: 'Super Admin · Módulos por plan' }]}
-        title="Super Admin · Módulos por plan"
-        description="Habilita o deshabilita módulos para cada plan."
+        breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'Administración' }, { label: 'Super Admin · Planes y capacidad' }]}
+        title="Super Admin · Planes y capacidad"
+        description="Todos los planes incluyen todos los módulos. Lo que se configura aquí es la capacidad y el consumo de cada plan; los módulos se ajustan por cliente en “Módulos y facturación”."
         actions={
           <>
             <Button asChild variant="outline">
               <Link href="/dashboard/configuracion/super-admin/empresas">Empresas</Link>
             </Button>
-            <Button asChild variant="outline">
-              <Link href="/dashboard/configuracion/super-admin/usuarios">Usuarios</Link>
-            </Button>
           </>
         }
       />
 
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1">
+          <TabsTrigger value="planes">Capacidad y consumo por plan</TabsTrigger>
+          <TabsTrigger value="catalogo">Catálogo y precios</TabsTrigger>
+          <TabsTrigger value="facturacion">Cliente: módulos y facturación</TabsTrigger>
+          <TabsTrigger value="nichos">Nichos</TabsTrigger>
+          <TabsTrigger value="acceso">Acceso</TabsTrigger>
+        </TabsList>
+
+        {loading ? <div className="mt-3 text-sm text-gray-600">Cargando configuración…</div> : null}
+        {error ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : null}
+
+        <TabsContent value="planes" className="mt-4">
+          <PlanCapacityAdminPanel />
+        </TabsContent>
+
+        <TabsContent value="acceso" className="mt-4 space-y-4">
       <Card>
         <CardHeader>
           <CardTitle>Código de espacio (WS-...)</CardTitle>
@@ -499,11 +438,11 @@ export default function SuperAdminPlanModulesClient() {
                   <SelectValue placeholder="Selecciona" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="CRM">CRM</SelectItem>
-                  <SelectItem value="BASIC">BASIC</SelectItem>
-                  <SelectItem value="MEDIO">MEDIO</SelectItem>
-                  <SelectItem value="INTERMEDIO">INTERMEDIO</SelectItem>
-                  <SelectItem value="FULL">FULL</SelectItem>
+                  {COMMERCIAL_PLAN_TIERS.map((tier) => (
+                    <SelectItem key={tier} value={tier}>
+                      {resolvePlanLabel(tier, planRows)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -526,7 +465,9 @@ export default function SuperAdminPlanModulesClient() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
+        <TabsContent value="nichos" className="mt-4 space-y-4">
       {!loading && !error ? (
         <Card>
           <CardHeader>
@@ -566,12 +507,48 @@ export default function SuperAdminPlanModulesClient() {
           </CardContent>
         </Card>
       ) : null}
+        </TabsContent>
+
+        <TabsContent value="catalogo" className="mt-4 space-y-4">
+      {!loading && !error ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cobertura de módulos</CardTitle>
+            <CardDescription>
+              Todos los planes incluyen todos los módulos. Lo que diferencia a los planes es la capacidad y el consumo
+              (sedes, usuarios, cotizaciones, productos, clientes…). Para apagar un módulo a un cliente puntual usa
+              “Cliente: módulos y facturación”.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cómo se compone el precio</CardTitle>
+          <CardDescription>Tres capas independientes que se suman en la propuesta comercial.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-sm text-slate-600 md:grid-cols-3">
+          <div className="rounded-lg border border-slate-200 p-3">
+            <div className="font-semibold text-slate-800">1. Catálogo de planes</div>
+            <p className="mt-1 text-xs">Precio mensual base del plan, nombre visible, textos comerciales y espacio CRM incluido.</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3">
+            <div className="font-semibold text-slate-800">2. Precios por módulo</div>
+            <p className="mt-1 text-xs">Solo aplican al modo “solo módulos” (clientes sin plan base): se cobra cada módulo habilitado, sin plan que lo absorba.</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3">
+            <div className="font-semibold text-slate-800">3. Pricing comercial</div>
+            <p className="mt-1 text-xs">Valores de suite, módulos padre y submódulos que alimentan la calculadora comercial y el checkout.</p>
+          </div>
+        </CardContent>
+      </Card>
 
       {!loading && !error ? (
         <Card>
           <CardHeader>
             <CardTitle>Catálogo comercial de planes</CardTitle>
-            <CardDescription>Edita título, textos, costo, espacio CRM, orden, copia desde otro plan y anula la visibilidad comercial.</CardDescription>
+            <CardDescription>Edita título, textos, costo, espacio CRM, orden, copia desde otro plan y anula la visibilidad comercial. El límite de consumo interno de cada plan se define en la pestaña “Capacidad y consumo”.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             {planRows.map((row) => {
@@ -581,8 +558,10 @@ export default function SuperAdminPlanModulesClient() {
                 <div key={row.tier} className="rounded-2xl border border-slate-200 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="text-base font-semibold text-slate-900">{row.tier}</div>
-                      <div className="text-xs text-slate-500">Base operativa del tier actual</div>
+                      <div className="text-base font-semibold text-slate-900">{resolvePlanLabel(row.tier, planRows)}</div>
+                      <div className="text-xs text-slate-500">
+                        Código {row.tier} · base operativa del plan actual
+                      </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Select value={copySourceByTier[row.tier] ?? row.tier} onValueChange={(value) => setCopySourceByTier((prev) => ({ ...prev, [row.tier]: value as PlanTier }))}>
@@ -591,7 +570,9 @@ export default function SuperAdminPlanModulesClient() {
                         </SelectTrigger>
                         <SelectContent>
                           {planRows.map((plan) => (
-                            <SelectItem key={`${row.tier}-${plan.tier}`} value={plan.tier}>{plan.tier}</SelectItem>
+                            <SelectItem key={`${row.tier}-${plan.tier}`} value={plan.tier}>
+                              {resolvePlanLabel(plan.tier, planRows)}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -602,43 +583,112 @@ export default function SuperAdminPlanModulesClient() {
                   </div>
 
                   <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <Input value={row.nombre} onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, nombre: event.target.value }))} placeholder="Nombre" />
-                    <Input type="number" min={0} value={row.precioMensualCOP} onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, precioMensualCOP: Number(event.target.value || 0) }))} placeholder="Precio mensual" />
-                    <Input type="number" min={0} value={row.storageLimitGb ?? ''} onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, storageLimitGb: event.target.value === '' ? null : Number(event.target.value) }))} placeholder="Espacio CRM (GB)" />
-                    <Input type="number" min={0} value={row.displayOrder} onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, displayOrder: Number(event.target.value || 0) }))} placeholder="Orden" />
+                    <Field label="Nombre comercial" hint="Aparece en el catálogo de planes y en la propuesta comercial.">
+                      <Input
+                        value={row.nombre}
+                        onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, nombre: event.target.value }))}
+                        placeholder="Ej. Plan Full"
+                      />
+                    </Field>
+                    <Field label="Precio mensual (COP)" hint="Valor base del plan, antes de módulos adicionales.">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1000}
+                        value={row.precioMensualCOP}
+                        onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, precioMensualCOP: Number(event.target.value || 0) }))}
+                        placeholder="0"
+                      />
+                    </Field>
+                    <Field label="Espacio CRM incluido (GB)" hint="Cuota de almacenamiento del plan. Vacío = sin cuota.">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={row.storageLimitGb ?? ''}
+                        onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, storageLimitGb: event.target.value === '' ? null : Number(event.target.value) }))}
+                        placeholder="Sin cuota"
+                      />
+                    </Field>
+                    <Field label="Orden de visualización" hint="Menor número aparece primero en el catálogo.">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={row.displayOrder}
+                        onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, displayOrder: Number(event.target.value || 0) }))}
+                        placeholder="0"
+                      />
+                    </Field>
                   </div>
 
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <Input value={row.tagline} onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, tagline: event.target.value }))} placeholder="Tagline" />
-                    <Input value={row.forWho} onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, forWho: event.target.value }))} placeholder="Enfoque comercial" />
+                    <Field label="Tagline" hint="Frase corta que resume el plan en la tarjeta.">
+                      <Input
+                        value={row.tagline}
+                        onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, tagline: event.target.value }))}
+                        placeholder="Ej. Todo el ERP en un solo plan"
+                      />
+                    </Field>
+                    <Field label="Enfoque comercial (a quién apunta)" hint="Describe el tipo de empresa ideal para este plan.">
+                      <Input
+                        value={row.forWho}
+                        onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, forWho: event.target.value }))}
+                        placeholder="Ej. Empresas con varias sedes y equipo comercial"
+                      />
+                    </Field>
                   </div>
 
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <textarea
-                      className="min-h-[96px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={row.descripcion}
-                      onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, descripcion: event.target.value }))}
-                      placeholder="Descripción"
-                    />
+                    <Field label="Descripción" hint="Texto largo que explica el plan en la tarjeta comercial.">
+                      <textarea
+                        className="min-h-[96px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={row.descripcion}
+                        onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, descripcion: event.target.value }))}
+                        placeholder="Ej. ERP completo con CRM, inventario, POS y contabilidad."
+                      />
+                    </Field>
                     <div className="rounded-md border border-dashed border-slate-200 p-3 text-xs text-slate-500">
                       Usa “Copiar desde otro plan” para arrancar desde una estructura existente y luego ajustar textos, costo y espacio.
                     </div>
                   </div>
 
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <textarea
-                      className="min-h-[180px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={includesText}
-                      onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, incluye: parseIncludeGroups(event.target.value) }))}
-                      placeholder={'Bloques de incluye. Primera línea = título. Siguientes líneas = items'}
-                    />
-                    <textarea
-                      className="min-h-[180px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={scopeText}
-                      onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, alcance: parseScope(event.target.value) }))}
-                      placeholder={'Una línea por alcance'}
-                    />
+                    <Field
+                      label={`Qué incluye · bloques (${row.incluye.length})`}
+                      hint="Primera línea = título del bloque; las siguientes con “-” son los bullets. Deja una línea en blanco entre bloques. Puedes agregar todos los bloques y bullets que necesites."
+                    >
+                      <textarea
+                        className="min-h-[180px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={includesText}
+                        onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, incluye: parseIncludeGroups(event.target.value) }))}
+                        placeholder={'Módulos operativos\n- Cotizaciones\n- Órdenes\n\nSoporte\n- Acompañamiento dedicado'}
+                      />
+                    </Field>
+                    <Field
+                      label={`Alcance visible · bullets (${row.alcance.length})`}
+                      hint="Una línea por bullet. Se muestran todos los que agregues, sin límite de cantidad."
+                    >
+                      <textarea
+                        className="min-h-[180px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={scopeText}
+                        onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, alcance: parseScope(event.target.value) }))}
+                        placeholder={'Hasta 3 sedes\nUsuarios ilimitados\nSoporte prioritario'}
+                      />
+                    </Field>
                   </div>
+
+                  {row.alcance.length ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Vista previa</span>
+                      {row.alcance.map((item, index) => (
+                        <span
+                          key={`${row.tier}-alcance-${index}`}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-600"
+                        >
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
 
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
@@ -656,32 +706,85 @@ export default function SuperAdminPlanModulesClient() {
         </Card>
       ) : null}
 
+      <Card className="border-dashed">
+        <CardHeader>
+          <CardTitle>Módulos y facturación</CardTitle>
+          <CardDescription>
+            Los precios por módulo, la asignación de módulos a un usuario/empresa (con su límite de consumo) y el
+            pricing comercial editable se administran en la pestaña “Módulos y facturación”.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+        </TabsContent>
+
+        <TabsContent value="facturacion" className="mt-4 space-y-4">
       {!loading && !error ? (
         <Card>
           <CardHeader>
-            <CardTitle>Precios por módulo</CardTitle>
-            <CardDescription>Ajusta el cargo mensual adicional que usa la calculadora comercial y el checkout.</CardDescription>
+            <CardTitle>Precios por módulo (modo solo módulos)</CardTitle>
+            <CardDescription>
+              Cada módulo se cobra mensualmente cuando está habilitado para una empresa con facturación “solo
+              módulos” (sin plan base). Con plan, todos los módulos van incluidos en el precio del plan y solo se factura
+              el consumo excedente.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {priceRows.map((row) => (
-              <div key={row.module} className="rounded-lg border p-3">
-                <div className="text-sm font-semibold text-slate-900">{row.nombre}</div>
-                <div className="mt-1 text-xs text-slate-500">{row.descripcion}</div>
-                <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-400">{row.category}</div>
-                <div className="mt-3 flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={0}
-                    defaultValue={row.priceCOP}
-                    disabled={savingPriceKey === row.module}
-                    onBlur={(event) => void setPrice(row.module, event.target.value)}
-                  />
-                  <span className="text-xs text-slate-500">COP/mes</span>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {priceRows.map((row) => (
+                <div key={row.module} className="rounded-lg border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm font-semibold text-slate-900">{row.nombre}</div>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      Opcional
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">{row.descripcion}</div>
+                  <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-400">{row.category}</div>
+                  <div className="mt-3 grid gap-1.5">
+                    <Label
+                      htmlFor={`module-price-${row.module}`}
+                      className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500"
+                    >
+                      Precio mensual (COP)
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id={`module-price-${row.module}`}
+                        type="number"
+                        min={0}
+                        step={1000}
+                        defaultValue={row.priceCOP}
+                        disabled={savingPriceKey === row.module}
+                        onBlur={(event) => void setPrice(row.module, event.target.value)}
+                      />
+                      <span className="text-xs text-slate-500">COP/mes</span>
+                    </div>
+                    <p className="text-[11px] leading-4 text-slate-500">
+                      Se cobra solo si el módulo se habilita para el cliente. Usa 0 para incluirlo sin cargo.
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            <div className="rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-600">
+              Si un cliente habilitara todos los módulos, el adicional mensual sería de{' '}
+              <span className="font-semibold text-slate-900">
+                {priceRows.reduce((sum, row) => sum + (Number.isFinite(row.priceCOP) ? row.priceCOP : 0), 0).toLocaleString('es-CO')} COP
+              </span>
+              . Usa el simulador de abajo para ver el total de un cliente puntual.
+            </div>
           </CardContent>
         </Card>
+      ) : null}
+
+      {!loading && !error ? (
+        <PlanModuleAssignmentPanel
+          planOptions={planRows.map((row) => ({
+            tier: row.tier,
+            nombre: row.nombre,
+            precioMensualCOP: row.precioMensualCOP,
+          }))}
+        />
       ) : null}
 
       {!loading && !error ? (
@@ -697,60 +800,34 @@ export default function SuperAdminPlanModulesClient() {
                 <div className="mt-1 text-xs text-slate-500">{row.description}</div>
                 <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-400">{row.category}</div>
                 <div className="mt-2 text-[11px] text-slate-500">Base: {row.defaultPriceCOP.toLocaleString('es-CO')} COP</div>
-                <div className="mt-3 flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={0}
-                    defaultValue={row.priceCOP}
-                    disabled={savingCommercialPriceKey === row.code}
-                    onBlur={(event) => void setCommercialPrice(row.code, event.target.value)}
-                  />
-                  <span className="text-xs text-slate-500">COP/mes</span>
+                <div className="mt-3 grid gap-1.5">
+                  <Label
+                    htmlFor={`commercial-price-${row.code}`}
+                    className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500"
+                  >
+                    Precio mensual (COP)
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id={`commercial-price-${row.code}`}
+                      type="number"
+                      min={0}
+                      step={1000}
+                      defaultValue={row.priceCOP}
+                      disabled={savingCommercialPriceKey === row.code}
+                      onBlur={(event) => void setCommercialPrice(row.code, event.target.value)}
+                    />
+                    <span className="text-xs text-slate-500">COP/mes</span>
+                  </div>
                 </div>
               </div>
             ))}
           </CardContent>
         </Card>
       ) : null}
+        </TabsContent>
 
-      {loading ? <div className="text-sm text-gray-600">Cargando…</div> : null}
-      {error ? <div className="text-sm text-red-600">{error}</div> : null}
-
-      {!loading && !error ? (
-        <div className="grid gap-4">
-          {planTiers.map((tier) => (
-            <Card key={tier}>
-              <CardHeader>
-                <CardTitle>{tier}</CardTitle>
-                <CardDescription>Define qué módulos incluye este plan.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                {modules.map((m) => {
-                  const key = `${tier}::${m}`
-                  const row = rowMap.get(key)
-                  const enabled = row?.enabled ?? true
-                  const disabled = savingKey === key
-
-                  return (
-                    <div key={m} className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5">
-                      <div className="min-w-0">
-                        <Label className="text-xs leading-4">{titleForModule(m)}</Label>
-                        <div className="truncate text-[10px] text-muted-foreground">{m}</div>
-                      </div>
-                      <Switch
-                        checked={enabled}
-                        disabled={disabled}
-                        onCheckedChange={(v) => void setEnabled(tier, m, Boolean(v))}
-                        aria-label={`Habilitar ${m} en ${tier}`}
-                      />
-                    </div>
-                  )
-                })}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : null}
+      </Tabs>
     </div>
   )
 }

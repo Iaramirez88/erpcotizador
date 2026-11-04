@@ -22,6 +22,12 @@ export type DashboardAccessContext = {
   isSuperAdmin: boolean
   membershipRole: SedeRole | null
   legacyAccess: Partial<Record<ModuleKey, AccessLevel>>
+  /**
+   * Módulos contratados/habilitados por la empresa (`getEnabledModulesForEmpresa`).
+   * `null` = sin restricción (super admin o dato no disponible). Evita que el menú ofrezca
+   * módulos que la empresa no tiene contratados y que luego `PlanModuleGate` rebote al paywall.
+   */
+  empresaEnabledModules?: Set<ModuleKey> | null
   disabledDomains: Set<string>
   disabledCapabilities: Set<string>
   grantsByCapability: Map<string, Array<{ allowed: boolean; scopeType: string; scopeValue: string | null; source: string }>>
@@ -202,6 +208,13 @@ function canAccessDashboardRuleFromContext(args: {
   })
 }
 
+function isModuleContractedForContext(context: DashboardAccessContext, moduleKey: ModuleKey | null) {
+  if (!moduleKey) return true
+  if (context.isSuperAdmin) return true
+  if (!context.empresaEnabledModules) return true
+  return context.empresaEnabledModules.has(moduleKey)
+}
+
 export function buildAllowedDashboardPermissionKeysFromContext(args: {
   context: DashboardAccessContext
   baseAllowedHrefs?: string[] | null
@@ -210,6 +223,8 @@ export function buildAllowedDashboardPermissionKeysFromContext(args: {
   const keys = new Set<string>()
 
   for (const rule of DASHBOARD_PERMISSION_RULES) {
+    if (!isModuleContractedForContext(args.context, (rule.moduleKey ?? null) as ModuleKey | null)) continue
+
     const canRead = canAccessDashboardRuleFromContext({ context: args.context, rule })
     if (!canRead) continue
 
@@ -228,6 +243,9 @@ export function buildAllowedDashboardHrefsFromContext(args: {
   const hrefs = new Set<string>()
 
   for (const item of DASHBOARD_NAV_CATALOG) {
+    const itemModule = moduleForDashboardHref(item.href) as ModuleKey | null
+    if (!isModuleContractedForContext(args.context, itemModule)) continue
+
     const rules = DASHBOARD_PERMISSION_RULES.filter((entry) => entry.hrefs.includes(item.href))
     const allowedByBase = !baseSet || item.href === '/dashboard' || baseSet.has(item.href)
 

@@ -30,6 +30,11 @@ type UserRef = {
 type Props = {
   sedeId: string
   sedeNombre: string
+  /**
+   * Empresa objetivo. El panel de la empresa administra la suya por sesión; el Super Admin
+   * la envía explícitamente para operar sobre cualquier empresa con el mismo motor.
+   */
+  empresaId?: string
   user: UserRef
   initialHasSedeAccess: boolean
   initialSedeRole: 'ADMIN' | 'MANAGER' | 'MEMBER' | 'READER'
@@ -149,7 +154,7 @@ function isOptionalQuoteTool(capability: CapabilityEntry) {
   return capability.domain === 'VENTAS' && (capability.subdomain === 'QUOTER_AI' || capability.subdomain === 'QUOTER_PRODUCTION_TOOLS')
 }
 
-export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeAccess, initialSedeRole, modules, initial, initialGlobalAccess, initialCapabilities, canManagePermissionProfiles = false, open: controlledOpen, onOpenChange: controlledOnOpenChange, trigger }: Props) {
+export function UserPermissionsModal({ sedeId, sedeNombre, empresaId, user, initialHasSedeAccess, initialSedeRole, modules, initial, initialGlobalAccess, initialCapabilities, canManagePermissionProfiles = false, open: controlledOpen, onOpenChange: controlledOnOpenChange, trigger }: Props) {
   const router = useRouter()
   const { t } = useI18n()
   const { toast } = useToast()
@@ -251,7 +256,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
       const res = await fetch('/api/admin/permisos/module-access', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sedeId, userId: user.id, module: moduleKey, level: value }),
+        body: JSON.stringify({ sedeId, userId: user.id, module: moduleKey, level: value, ...(empresaId ? { empresaId } : {}) }),
       })
       const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { level?: AccessLevel | null } } | null
       if (res.ok && json?.success) {
@@ -282,7 +287,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
       const res = await fetch('/api/admin/permisos/global-access', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sedeId, userId: user.id, level: nextLevel }),
+        body: JSON.stringify({ sedeId, userId: user.id, level: nextLevel, ...(empresaId ? { empresaId } : {}) }),
       })
       const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { level?: AccessLevel } } | null
       if (res.ok && json?.success) {
@@ -305,7 +310,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
       const res = await fetch('/api/admin/permisos/capability-access', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sedeId, userId: user.id, domain, subdomain, level: nextLevel }),
+        body: JSON.stringify({ sedeId, userId: user.id, domain, subdomain, level: nextLevel, ...(empresaId ? { empresaId } : {}) }),
       })
       const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { level?: AccessLevel | null } } | null
       if (res.ok && json?.success) {
@@ -347,7 +352,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
       const res = await fetch('/api/admin/permisos/sede-role', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sedeId, userId: user.id, role: nextRole }),
+        body: JSON.stringify({ sedeId, userId: user.id, role: nextRole, ...(empresaId ? { empresaId } : {}) }),
       })
       const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { role?: Props['initialSedeRole'] } } | null
       if (res.ok && json?.success) {
@@ -396,6 +401,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sedeId,
+          ...(empresaId ? { empresaId } : {}),
           name: trimmedName,
           description: profileDescription.trim() || null,
           sedeRole,
@@ -425,15 +431,18 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {trigger ? (
-          trigger
-        ) : (
-          <Button type="button" variant="outline" size="icon" aria-label={t('rbac.userPermissions.button')}>
-            <Plus className="h-4 w-4" />
-          </Button>
-        )}
-      </DialogTrigger>
+      {/* En modo controlado sin `trigger` (p. ej. super admin) no se renderiza botón interno. */}
+      {trigger || controlledOpen === undefined ? (
+        <DialogTrigger asChild>
+          {trigger ? (
+            trigger
+          ) : (
+            <Button type="button" variant="outline" size="icon" aria-label={t('rbac.userPermissions.button')}>
+              <Plus className="h-4 w-4" />
+            </Button>
+          )}
+        </DialogTrigger>
+      ) : null}
       <DialogContent className="w-[96vw] max-w-6xl">
         <DialogHeader>
           <DialogTitle>{t('rbac.userPermissions.title')}</DialogTitle>

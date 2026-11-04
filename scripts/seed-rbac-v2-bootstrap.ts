@@ -14,11 +14,18 @@ import { resolveEffectivePlanTier } from '../src/lib/plan-access'
 
 dotenv.config()
 
+/**
+ * Cobertura de módulos por plan.
+ *
+ * Todos los planes incluyen todos los módulos: la diferenciación comercial vive en la capacidad y
+ * el consumo, no en la matriz de módulos por plan (retirada). Solo los overrides por empresa
+ * agregan o quitan módulos.
+ */
 const DEFAULT_ENABLED_MODULES: Record<PlanTier, ModuleKey[]> = {
-  CRM: ['DASHBOARD', 'CRM', 'NOTIFICACIONES', 'CONFIG'],
-  BASIC: ['DASHBOARD', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'MATERIALES', 'REMISIONES', 'ORDENES', 'ESCANEOS', 'REPORTES', 'NOTIFICACIONES', 'CONFIG'],
-  MEDIO: ['DASHBOARD', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'MATERIALES', 'INVENTARIO', 'REMISIONES', 'POS', 'PROVEEDORES', 'COMPRAS', 'ORDENES', 'ESCANEOS', 'REPORTES', 'NOTIFICACIONES', 'CONFIG'],
-  INTERMEDIO: ['DASHBOARD', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'MATERIALES', 'INVENTARIO', 'REMISIONES', 'POS', 'PROVEEDORES', 'COMPRAS', 'ORDENES', 'ESCANEOS', 'REPORTES', 'CONTABILIDAD', 'NOTIFICACIONES', 'CONFIG'],
+  CRM: Object.values(ModuleKey),
+  BASIC: Object.values(ModuleKey),
+  MEDIO: Object.values(ModuleKey),
+  INTERMEDIO: Object.values(ModuleKey),
   FULL: Object.values(ModuleKey),
 }
 
@@ -160,18 +167,14 @@ async function getEnabledModulesForEmpresa(prisma: PrismaClient, empresa: Empres
     new Date(),
   )
 
-  const [planRows, overrideRows] = await Promise.all([
-    prisma.planModuleSetting.findMany({
-      where: { planTier: effectivePlanTier, enabled: true },
-      select: { module: true },
-    }).catch(() => []),
-    prisma.empresaModuleOverride.findMany({
+  const overrideRows = await prisma.empresaModuleOverride
+    .findMany({
       where: { empresaId: empresa.id },
       select: { module: true, enabled: true },
-    }).catch(() => []),
-  ])
+    })
+    .catch(() => [])
 
-  const enabled = new Set<ModuleKey>(planRows.length ? planRows.map((row) => row.module) : (DEFAULT_ENABLED_MODULES[effectivePlanTier] ?? Object.values(ModuleKey)))
+  const enabled = new Set<ModuleKey>(DEFAULT_ENABLED_MODULES[effectivePlanTier] ?? Object.values(ModuleKey))
 
   for (const row of overrideRows) {
     if (row.enabled) enabled.add(row.module)

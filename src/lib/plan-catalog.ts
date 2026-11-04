@@ -43,11 +43,39 @@ export const ALL_MODULE_KEYS: ModuleKey[] = [
 
 export const ALL_PLAN_TIERS: PlanTier[] = ['CRM', 'BASIC', 'MEDIO', 'INTERMEDIO', 'FULL']
 
+/**
+ * Planes comerciales vigentes: **Básico, Medio, Intermedio y Full**.
+ *
+ * El tier `CRM` (plan solo-CRM) quedó como legado: se conserva en el enum de base de datos para
+ * no romper históricos ni empresas antiguas, pero no se ofrece, no se configura y no aparece en
+ * catálogo, capacidad ni selectores.
+ */
+export const COMMERCIAL_PLAN_TIERS: PlanTier[] = ['BASIC', 'MEDIO', 'INTERMEDIO', 'FULL']
+
+export function isCommercialPlanTier(value: unknown): value is PlanTier {
+  return typeof value === 'string' && COMMERCIAL_PLAN_TIERS.includes(value as PlanTier)
+}
+
+/**
+ * Módulos no comerciales: no se cobran y sostienen la operación del espacio de trabajo
+ * (panel, avisos y administración de sedes/usuarios). Con facturación “solo módulos” se
+ * mantienen activos salvo que un override los deshabilite explícitamente.
+ */
+export const CORE_MODULE_KEYS: ModuleKey[] = ['DASHBOARD', 'NOTIFICACIONES', 'CONFIG']
+
+/**
+ * Módulos que incluye cada plan.
+ *
+ * Estrategia comercial vigente (2026): **todos los planes incluyen todos los módulos**.
+ * La diferenciación entre planes vive en la capacidad y el consumo (`plan_limit_settings`),
+ * no en la cobertura de módulos. Los módulos solo se restringen por empresa (add-ons o
+ * excepciones comerciales) desde “Módulos y facturación”.
+ */
 export const DEFAULT_ENABLED_MODULES: Record<PlanTier, ModuleKey[]> = {
-  CRM: ['DASHBOARD', 'CRM', 'NOTIFICACIONES', 'CONFIG'],
-  BASIC: ['DASHBOARD', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'MATERIALES', 'REMISIONES', 'ORDENES', 'ESCANEOS', 'REPORTES', 'NOTIFICACIONES', 'CONFIG'],
-  MEDIO: ['DASHBOARD', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'MATERIALES', 'INVENTARIO', 'REMISIONES', 'POS', 'PROVEEDORES', 'COMPRAS', 'ORDENES', 'ESCANEOS', 'REPORTES', 'NOTIFICACIONES', 'CONFIG'],
-  INTERMEDIO: ['DASHBOARD', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'MATERIALES', 'INVENTARIO', 'REMISIONES', 'POS', 'PROVEEDORES', 'COMPRAS', 'ORDENES', 'ESCANEOS', 'REPORTES', 'CONTABILIDAD', 'NOTIFICACIONES', 'CONFIG'],
+  CRM: [...ALL_MODULE_KEYS],
+  BASIC: [...ALL_MODULE_KEYS],
+  MEDIO: [...ALL_MODULE_KEYS],
+  INTERMEDIO: [...ALL_MODULE_KEYS],
   FULL: [...ALL_MODULE_KEYS],
 }
 
@@ -171,16 +199,10 @@ export function getDefaultEnabledModulesForPlan(planTier: PlanTier): ModuleKey[]
 }
 
 export function getMinimumPlanTierForModules(selectedModules: ModuleKey[]): PlanTier {
-  const uniqueModules = Array.from(new Set(selectedModules))
-  if (!uniqueModules.length) return 'BASIC'
-
-  for (const tier of ALL_PLAN_TIERS) {
-    const availableModules = new Set(getDefaultEnabledModulesForPlan(tier))
-    const supportsAllModules = uniqueModules.every((moduleKey) => availableModules.has(moduleKey))
-    if (supportsAllModules) return tier
-  }
-
-  return 'FULL'
+  // Todos los planes incluyen todos los módulos: el tier ya no se elige por módulos sino por
+  // capacidad y consumo, así que la recomendación base es el plan de entrada.
+  void selectedModules
+  return 'BASIC'
 }
 
 export function getPlanCatalogItem(moduleKey: ModuleKey, modulePriceMap?: ModulePriceMap): PlanModuleCatalogItem | null {
@@ -200,7 +222,10 @@ export function getModularPlanQuote(args: {
 
   const recommendedTier = getMinimumPlanTierForModules(selectedModules)
   const basePriceMonthlyCOP = args.basePlanPriceMap?.[recommendedTier] ?? getPlanPriceCOP(recommendedTier, 'MONTHLY')
-  const modulesSubtotalMonthlyCOP = selectedModules.reduce((sum, moduleKey) => {
+  // Solo se cobran módulos que el plan recomendado no incluya (hoy todos los planes incluyen todo).
+  const includedInRecommendedPlan = new Set(getDefaultEnabledModulesForPlan(recommendedTier))
+  const billableModules = selectedModules.filter((moduleKey) => !includedInRecommendedPlan.has(moduleKey))
+  const modulesSubtotalMonthlyCOP = billableModules.reduce((sum, moduleKey) => {
     const item = getPlanCatalogItem(moduleKey, args.modulePriceMap)
     return sum + (item?.activationPriceMonthlyCOP ?? 0)
   }, 0)

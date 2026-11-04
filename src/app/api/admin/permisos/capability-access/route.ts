@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { AccessLevel, RbacGrantSource, RbacScopeType } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { requireEmpresaIdForUser } from '@/lib/rbac'
+import { resolvePermissionScope } from '@/lib/super-admin-permission-scope'
 import { capabilityActionToAccessLevel, getCapabilityDefinition } from '@/lib/dashboard-access'
 import { detachPermissionProfileAssignment, publishPermissionUpdateNotification } from '@/lib/rbac-permission-sync'
 import type { RbacV2Domain } from '@/lib/rbac-v2-catalog'
@@ -53,7 +53,14 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: 'Solo el Super Admin puede asignar este acceso.' }, { status: 403 })
   }
 
-  const empresaId = await requireEmpresaIdForUser(session.user.id)
+  const scope = await resolvePermissionScope({
+    sessionUser: session.user,
+    requestedEmpresaId: body.empresaId,
+  })
+  if (!scope.ok) {
+    return NextResponse.json({ success: false, error: scope.error }, { status: scope.status })
+  }
+  const empresaId = scope.empresaId
   const sede = await prisma.sede.findUnique({ where: { id: sedeId }, select: { id: true, empresaId: true, nombre: true } })
   if (!sede || sede.empresaId !== empresaId) {
     return NextResponse.json({ success: false, error: 'Sede inválida' }, { status: 400 })
@@ -63,11 +70,20 @@ export async function PATCH(request: Request) {
     where: { sedeId_userId: { sedeId, userId: session.user.id } },
     select: { role: true },
   })
-  if (isAdminOnlyCapability(domain, subdomain) && session.user.role !== 'ADMIN' && requesterMembership?.role !== 'ADMIN') {
+  if (
+    isAdminOnlyCapability(domain, subdomain) &&
+    session.user.role !== 'ADMIN' &&
+    requesterMembership?.role !== 'ADMIN' &&
+    !scope.isSuperAdmin
+  ) {
     return NextResponse.json({ success: false, error: 'Solo un administrador puede habilitar estas herramientas de cotización.' }, { status: 403 })
   }
 
-  const requesterAllowed = session.user.role === 'ADMIN' || requesterMembership?.role === 'ADMIN' || requesterMembership?.role === 'MANAGER'
+  const requesterAllowed =
+    session.user.role === 'ADMIN' ||
+    requesterMembership?.role === 'ADMIN' ||
+    requesterMembership?.role === 'MANAGER' ||
+    scope.isSuperAdmin
   if (!requesterAllowed) {
     return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 403 })
   }

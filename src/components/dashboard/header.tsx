@@ -43,6 +43,7 @@ interface HeaderProps {
     allowedNavHrefs?: string[] | null
     canManageBilling?: boolean
     canAccessWebsiteServices?: boolean
+    isSuperAdmin?: boolean
   }
   variant?: 'sticky' | 'inline' | 'sidebar-footer' | 'mobile-footer' | 'mobile-footer-profile'
 }
@@ -198,9 +199,9 @@ export default function Header({ user, variant = 'sticky' }: HeaderProps) {
     return withBillingGate.filter((it) => {
       const isSuperAdminRoute = it.href === '/dashboard/configuracion/super-admin/modulos-por-plan'
       if (!isSuperAdminRoute) return true
-      return user.role === 'ADMIN'
+      return user.isSuperAdmin === true
     }).map((it) => ({ ...it, section: sectionForDashboardHref(it.href) }))
-  }, [allowedNavHrefSet, canAccessWebsiteServices, canManageBilling, t, allowedModules, user.role])
+  }, [allowedNavHrefSet, canAccessWebsiteServices, canManageBilling, t, allowedModules, user.isSuperAdmin])
 
   async function saveNav(next: Record<string, boolean>, nextOrder: string[], nextTooltipPrefs: SidebarTooltipPrefs) {
     setNavPrefs(next)

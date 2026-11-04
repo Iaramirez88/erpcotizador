@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey, RbacGrantSource, RbacScopeType, SedeRole } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { requireEmpresaIdForUser } from '@/lib/rbac'
+import { resolvePermissionScope } from '@/lib/super-admin-permission-scope'
 import { capabilityActionToAccessLevel, getCapabilityDefinition } from '@/lib/dashboard-access'
 import { publishPermissionUpdateNotification } from '@/lib/rbac-permission-sync'
 import type { RbacV2Domain } from '@/lib/rbac-v2-catalog'
@@ -214,7 +214,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: 'Parámetros inválidos' }, { status: 400 })
   }
 
-  const empresaId = await requireEmpresaIdForUser(session.user.id)
+  const scope = await resolvePermissionScope({ sessionUser: session.user, requestedEmpresaId: body.empresaId })
+  if (!scope.ok) return NextResponse.json({ success: false, error: scope.error }, { status: scope.status })
+  const empresaId = scope.empresaId
   const sede = await prisma.sede.findUnique({ where: { id: sedeId }, select: { id: true, empresaId: true } })
   if (!sede || sede.empresaId !== empresaId) {
     return NextResponse.json({ success: false, error: 'Sede inválida' }, { status: 400 })
@@ -225,7 +227,7 @@ export async function POST(request: Request) {
     select: { role: true },
   })
 
-  const isAllowed = session.user.role === 'ADMIN' || requesterMembership?.role === 'ADMIN'
+  const isAllowed = session.user.role === 'ADMIN' || requesterMembership?.role === 'ADMIN' || scope.isSuperAdmin
   if (!isAllowed) {
     return NextResponse.json({ success: false, error: 'Solo los administradores pueden crear reglas de permisos.' }, { status: 403 })
   }
@@ -274,7 +276,9 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: 'Parámetros inválidos' }, { status: 400 })
   }
 
-  const empresaId = await requireEmpresaIdForUser(session.user.id)
+  const scope = await resolvePermissionScope({ sessionUser: session.user, requestedEmpresaId: body.empresaId })
+  if (!scope.ok) return NextResponse.json({ success: false, error: scope.error }, { status: scope.status })
+  const empresaId = scope.empresaId
   const existingProfile = await prisma.permissionProfile.findUnique({
     where: { id: profileId },
     select: { id: true, empresaId: true, sedeId: true },
@@ -289,7 +293,7 @@ export async function PATCH(request: Request) {
     select: { role: true },
   })
 
-  const isAllowed = session.user.role === 'ADMIN' || requesterMembership?.role === 'ADMIN'
+  const isAllowed = session.user.role === 'ADMIN' || requesterMembership?.role === 'ADMIN' || scope.isSuperAdmin
   if (!isAllowed) {
     return NextResponse.json({ success: false, error: 'Solo los administradores pueden editar reglas de permisos.' }, { status: 403 })
   }
@@ -370,7 +374,9 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: false, error: 'Debes indicar la regla a eliminar.' }, { status: 400 })
   }
 
-  const empresaId = await requireEmpresaIdForUser(session.user.id)
+  const scope = await resolvePermissionScope({ sessionUser: session.user, requestedEmpresaId: body.empresaId })
+  if (!scope.ok) return NextResponse.json({ success: false, error: scope.error }, { status: scope.status })
+  const empresaId = scope.empresaId
   const existingProfile = await prisma.permissionProfile.findUnique({
     where: { id: profileId },
     select: { id: true, empresaId: true, sedeId: true, name: true },
@@ -385,7 +391,7 @@ export async function DELETE(request: Request) {
     select: { role: true },
   })
 
-  const isAllowed = session.user.role === 'ADMIN' || requesterMembership?.role === 'ADMIN'
+  const isAllowed = session.user.role === 'ADMIN' || requesterMembership?.role === 'ADMIN' || scope.isSuperAdmin
   if (!isAllowed) {
     return NextResponse.json({ success: false, error: 'Solo los administradores pueden eliminar reglas de permisos.' }, { status: 403 })
   }

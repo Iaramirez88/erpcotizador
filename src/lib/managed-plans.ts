@@ -1,5 +1,6 @@
 import type { BillingCycle, PlanTier, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { COMMERCIAL_PLAN_TIERS } from '@/lib/plan-catalog'
 import { ANNUAL_DISCOUNT_PCT, type PlanInfo, PLANES } from '@/lib/plans'
 
 export type PlanIncludeGroup = {
@@ -41,7 +42,8 @@ export const DEFAULT_MANAGED_PLANS: DefaultManagedPlan[] = [
     ],
     alcance: ['CRM y conversaciones', 'Sin ERP operativo', 'Mensual fijo'],
     storageLimitGb: DEFAULT_STORAGE_LIMIT_GB.CRM,
-    active: true,
+    // Plan legado: se mantiene la definición para precios históricos, pero no se ofrece.
+    active: false,
     displayOrder: 0,
   },
   {
@@ -210,7 +212,10 @@ function getDefaultManagedPlansList(options?: { includeInactive?: boolean }) {
     ? DEFAULT_MANAGED_PLANS
     : DEFAULT_MANAGED_PLANS.filter((plan) => plan.active !== false)
 
-  return [...base].sort((a, b) => a.displayOrder - b.displayOrder)
+  // Solo planes comerciales vigentes: el tier `CRM` es legado y no se lista.
+  return base
+    .filter((plan) => COMMERCIAL_PLAN_TIERS.includes(plan.tier))
+    .sort((a, b) => a.displayOrder - b.displayOrder)
 }
 
 export async function ensurePlanCatalogDefaults() {
@@ -306,7 +311,10 @@ export async function getManagedPlans(options?: { includeInactive?: boolean }) {
 
   try {
     const rows = await planCatalogSetting.findMany({
-      where: options?.includeInactive ? undefined : { active: true },
+      where: {
+        planTier: { in: COMMERCIAL_PLAN_TIERS },
+        ...(options?.includeInactive ? {} : { active: true }),
+      },
       orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
       select: {
         planTier: true,

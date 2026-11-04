@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { requireEmpresaIdForUser, sedeRoleToBaseAccess } from '@/lib/rbac'
+import { sedeRoleToBaseAccess } from '@/lib/rbac'
+import { resolvePermissionScope } from '@/lib/super-admin-permission-scope'
 import { detachPermissionProfileAssignment, publishPermissionUpdateNotification } from '@/lib/rbac-permission-sync'
 import { SedeRole } from '@prisma/client'
 
@@ -33,7 +34,14 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: 'Rol inválido' }, { status: 400 })
   }
 
-  const empresaId = await requireEmpresaIdForUser(session.user.id)
+  const scope = await resolvePermissionScope({
+    sessionUser: session.user,
+    requestedEmpresaId: body.empresaId,
+  })
+  if (!scope.ok) {
+    return NextResponse.json({ success: false, error: scope.error }, { status: scope.status })
+  }
+  const empresaId = scope.empresaId
 
   const sede = await prisma.sede.findUnique({
     where: { id: sedeId },
@@ -43,7 +51,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: 'Sede inválida' }, { status: 400 })
   }
 
-  const requesterIsSystemAdmin = session.user.role === 'ADMIN'
+  const requesterIsSystemAdmin = session.user.role === 'ADMIN' || scope.isSuperAdmin
   const requesterMembership = await prisma.sedeMembership.findUnique({
     where: { sedeId_userId: { sedeId, userId: session.user.id } },
     select: { role: true },

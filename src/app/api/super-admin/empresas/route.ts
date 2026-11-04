@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import bcrypt from 'bcryptjs'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import type { BillingCycle, PlanTier } from '@prisma/client'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
-import { syncEnabledVerticalGrantsForUser } from '@/lib/company-preset-sync'
+import { validatePassword } from '@/lib/password-policy'
+import { ensureDefaultSedeForEmpresa } from '@/lib/rbac'
+import { provisionDefaultAdminAccessForNewUser, syncEnabledVerticalGrantsForUser } from '@/lib/company-preset-sync'
 
 export const runtime = 'nodejs'
 
-function requireSuperAdmin(session: { user?: { role?: string; email?: string | null } } | null) {
+function requireSuperAdmin(session: { user?: { id?: string; role?: string; email?: string | null } } | null) {
   const email = session?.user?.email ?? null
   if (!session?.user || !isSuperAdminEmail(email)) return null
   return session
@@ -53,6 +56,21 @@ type CreateBody = {
   isPaid?: unknown
   planOwnerEmail?: unknown
   companyEmail?: unknown
+  /** Usuario administrador opcional: alta de cliente completa en un solo paso. */
+  adminUser?: unknown
+}
+
+type AdminUserInput = { name: string | null; email: string; password: string }
+
+function parseAdminUser(value: unknown): AdminUserInput | 'invalid' | null {
+  if (value == null) return null
+  if (typeof value !== 'object' || Array.isArray(value)) return 'invalid'
+  const record = value as Record<string, unknown>
+  const email = typeof record.email === 'string' ? record.email.trim().toLowerCase() : ''
+  const password = typeof record.password === 'string' ? record.password : ''
+  const name = normalizeNullableString(record.name)
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !password) return 'invalid'
+  return { name, email, password }
 }
 
 function lastDays(date: Date, days: number) {
@@ -184,6 +202,26 @@ export async function POST(req: NextRequest) {
       : addMonths(now, 1)
     : null
 
+  const parsedAdminUser = parseAdminUser(body.adminUser)
+  if (parsedAdminUser === 'invalid') {
+    return NextResponse.json({ ok: false, error: 'Datos del usuario administrador inválidos.' }, { status: 400 })
+  }
+
+  if (parsedAdminUser) {
+    const passwordError = validatePassword(parsedAdminUser.password)
+    if (passwordError) {
+      return NextResponse.json({ ok: false, error: passwordError }, { status: 400 })
+    }
+
+    const duplicatedEmail = await prisma.user.findUnique({
+      where: { email: parsedAdminUser.email },
+      select: { id: true },
+    })
+    if (duplicatedEmail) {
+      return NextResponse.json({ ok: false, error: 'Ese email ya está registrado' }, { status: 409 })
+    }
+  }
+
   try {
     const created = await prisma.$transaction(async (tx) => {
       const empresa = await tx.empresa.create({
@@ -232,6 +270,62 @@ export async function POST(req: NextRequest) {
 
     const workspaceCode = await ensureWorkspaceCodeForEmpresa(created.id)
 
+    let adminUserEmail: string | null = null
+    if (parsedAdminUser) {
+      const hashedPassword = await bcrypt.hash(parsedAdminUser.password, 12)
+      let createdUserId: string | null = null
+
+      try {
+        const adminUser = await prisma.user.create({
+          data: {
+            name: parsedAdminUser.name ?? nombre,
+            email: parsedAdminUser.email,
+            password: hashedPassword,
+            role: 'ADMIN',
+            empresaId: created.id,
+            // Alta hecha por super admin: no requiere verificación de correo.
+            emailVerified: new Date(),
+          },
+          select: { id: true, email: true },
+        })
+        createdUserId = adminUser.id
+
+        await ensureDefaultSedeForEmpresa(created.id, adminUser.id)
+        await prisma.empresa.updateMany({
+          where: { id: created.id, planOwnerUserId: null },
+          data: { planOwnerUserId: adminUser.id },
+        })
+
+        await provisionDefaultAdminAccessForNewUser({
+          empresaId: created.id,
+          userId: adminUser.id,
+          grantedByUserId: session.user?.id ?? null,
+        })
+        await syncEnabledVerticalGrantsForUser({
+          empresaId: created.id,
+          userId: adminUser.id,
+          grantedByUserId: session.user?.id ?? null,
+        })
+
+        adminUserEmail = adminUser.email
+      } catch (adminError) {
+        if (createdUserId) {
+          await prisma.user.deleteMany({ where: { id: createdUserId } }).catch(() => null)
+        }
+        console.error('Error creando el usuario administrador de la empresa:', adminError)
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              'La empresa se creó, pero no se pudo crear el usuario administrador. Créalo desde la pestaña “Usuarios y permisos”.',
+            empresaId: created.id,
+            workspaceCode,
+          },
+          { status: 500 }
+        )
+      }
+    }
+
     if (planOwnerEmail) {
       const owner = await prisma.user.findUnique({ where: { email: planOwnerEmail }, select: { id: true } })
       if (owner?.id) {
@@ -243,7 +337,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, empresaId: created.id, workspaceCode })
+    return NextResponse.json({ ok: true, empresaId: created.id, workspaceCode, adminUserEmail })
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Error inesperado'
     if (message === 'PLAN_OWNER_USER_NOT_FOUND') {

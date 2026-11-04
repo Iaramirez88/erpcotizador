@@ -1,8 +1,9 @@
 import 'server-only'
 
-import { type AccessLevel, type ModuleKey, type SedeRole } from '@prisma/client'
+import { type ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getEffectiveAccessMap, NAV_MODULES } from '@/lib/rbac'
+import { getEnabledModulesForEmpresa } from '@/lib/plan-modules'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import {
   type DashboardAccessContext,
@@ -32,7 +33,7 @@ async function buildDashboardAccessContext(args: {
   empresaId: string
   sedeId: string
 }): Promise<DashboardAccessContext> {
-  const [user, membership, legacyAccess, domainEntitlements, capabilityEntitlements, grants] = await Promise.all([
+  const [user, membership, legacyAccess, domainEntitlements, capabilityEntitlements, grants, empresaModules] = await Promise.all([
     prisma.user.findUnique({ where: { id: args.userId }, select: { email: true } }),
     prisma.sedeMembership.findUnique({
       where: { sedeId_userId: { sedeId: args.sedeId, userId: args.userId } },
@@ -45,7 +46,10 @@ async function buildDashboardAccessContext(args: {
       where: { empresaId: args.empresaId, userId: args.userId },
       select: { domain: true, subdomain: true, action: true, allowed: true, scopeType: true, scopeValue: true, source: true },
     }),
+    getEnabledModulesForEmpresa({ empresaId: args.empresaId, planTier: 'FULL' }),
   ])
+
+  const isSuperAdmin = isSuperAdminEmail(user?.email)
 
   const disabledDomains = new Set(domainEntitlements.filter((row) => !row.enabled).map((row) => row.domain))
   const disabledCapabilities = new Set(
@@ -64,9 +68,10 @@ async function buildDashboardAccessContext(args: {
     userId: args.userId,
     empresaId: args.empresaId,
     sedeId: args.sedeId,
-    isSuperAdmin: isSuperAdminEmail(user?.email),
+    isSuperAdmin,
     membershipRole: membership?.role ?? null,
     legacyAccess,
+    empresaEnabledModules: isSuperAdmin ? null : new Set<ModuleKey>(empresaModules),
     disabledDomains,
     disabledCapabilities,
     grantsByCapability,

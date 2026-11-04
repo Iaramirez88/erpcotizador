@@ -1,18 +1,26 @@
-import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { isSuperAdminEmail } from '@/lib/super-admin'
-import SuperAdminUsersClient from './super-admin-users-client'
 
 export const runtime = 'nodejs'
 
-export default async function SuperAdminUsersPage() {
-  const session = await auth()
-  if (!session?.user) redirect('/auth/login')
+type PageProps = {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
 
-  const email = session.user.email ?? null
-  if (!isSuperAdminEmail(email)) {
-    redirect('/dashboard')
+/**
+ * La administración de usuarios vive ahora dentro de la pantalla única de empresas
+ * (detalle de empresa → pestaña "Usuarios y permisos"). Esta ruta solo conserva enlaces viejos.
+ */
+export default async function SuperAdminUsersPage({ searchParams }: PageProps) {
+  const params = await searchParams
+  const empresaIdRaw = params?.empresaId ?? params?.empresa
+  const empresaId = typeof empresaIdRaw === 'string' ? empresaIdRaw.trim() : ''
+
+  if (empresaId) {
+    redirect(
+      `/dashboard/configuracion/super-admin/empresas?empresaId=${encodeURIComponent(empresaId)}&tab=usuarios`
+    )
   }
 
-  return <SuperAdminUsersClient />
+  redirect('/dashboard/configuracion/super-admin/empresas')
 }
+

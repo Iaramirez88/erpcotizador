@@ -153,6 +153,7 @@ export default async function DashboardLayout({
     canAccessWebsiteServices,
     canAccessBackups,
     intelligenceEnabled,
+    isSuperAdmin: isSuperAdminEmail(session.user.email),
   }
 
   return (

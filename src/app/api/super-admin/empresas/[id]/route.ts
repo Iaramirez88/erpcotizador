@@ -116,6 +116,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       stripeSubscriptionStatus: true,
       stripeCurrentPeriodEnd: true,
       stripeCancelAtPeriodEnd: true,
+      moduleOnlyBilling: true,
       createdAt: true,
       updatedAt: true,
       registrationCodeHash: true,

@@ -276,7 +276,7 @@ Empresa (tenant / cuenta de facturación)
   │     ├── secuencias: CotizacionSequence · PosSequence · RemisionSequence · HelpTicketSequence
   │     └── datos operativos: cotizaciones, POS, inventario, órdenes, remisiones…
   ├── User (identidad; empresaId nullable para SUPER_ADMIN)
-  ├── plan/entitlements: planTier, PlanModuleSetting, EmpresaModuleOverride,
+  ├── plan/entitlements: planTier, PlanLimitSetting (capacidad/consumo), EmpresaModuleOverride,
   │                      DomainEntitlement, CapabilityEntitlement
   └── verticales: litografía, odontología, restaurante, dotaciones, ROP, website
 ```
@@ -338,10 +338,19 @@ Scripts dedicados: `perf:benchmark`, `perf:analyze`, `perf:startup`, `perf:index
 |---|---|---|
 | **1. AccessLevel legacy** | `ModuleKey` × `NONE/READ/WRITE/ADMIN` | `requireApiAccess`, `dashboard-access.ts`, sidebar |
 | **2. RBAC v2** | `Capability` = `domain.subdomain.action` + `scope` (`OWN`/`SEDE`/`EMPRESA`/`GLOBAL`), agrupadas en `Role` por empresa | `requireCapabilityAccess`, `getEffectiveAccessMap` |
-| **3. Entitlements de plan** | `planTier` + `PlanModuleSetting` (default por tier) + `EmpresaModuleOverride` + `DomainEntitlement`/`CapabilityEntitlement` | `plan-modules.ts`, `PlanModuleGate`, guards de API |
+| **3. Entitlements de plan** | `planTier` + `PlanLimitSetting` (capacidad/consumo por plan; todos los planes incluyen todos los módulos) + `EmpresaModuleOverride` + `DomainEntitlement`/`CapabilityEntitlement`. Planes comerciales: `BASIC`, `MEDIO`, `INTERMEDIO`, `FULL` (`COMMERCIAL_PLAN_TIERS`); el tier `CRM` es legado y no se ofrece | `plan-catalog.ts`, `plan-capacity.ts`, `plan-modules.ts`, `PlanModuleGate`, guards de API |
 | **4. Reglas de vertical/contexto** | vertical activa (litografía, odontología, restaurante…), "scope externo ROP" por cookie, flags por empresa | `dashboard/layout.tsx`, guardas ad-hoc |
 
 **Efecto neto:** el acceso resulta de la intersección de las cuatro capas, con múltiples *fallbacks* (`allowLegacyFallback`) y sin un resolvedor único ni caché. Consecuencias: latencia alta en autorización, comportamiento difícil de predecir y riesgo de endpoints sin guarda.
+
+#### 6.2.1 Flujo de permisos: plan → empresa → usuario
+
+1. **El plan no limita módulos.** `getEnabledModulesForPlan()` devuelve `ALL_MODULE_KEYS`; la diferenciación comercial vive en capacidad/consumo (`PlanLimitSetting`). Ver §6.2, capa 3.
+2. **La empresa define qué módulos tiene contratados**: `EmpresaModuleOverride` (forzado sí/no) y `moduleOnlyBilling` (solo módulos base + asignados) resueltos por `getEnabledModulesForEmpresa()`.
+3. **La empresa otorga permisos a sus usuarios**: `SedeRole` → nivel base (`ADMIN`→ADMIN, `MANAGER`/`MEMBER`→WRITE, `READER`→READ), `UserModuleAccess` (override por módulo y sede), `UserGlobalAccess` (usuarios sin sede) y `UserCapabilityGrant`/`PermissionProfile` (submódulos y verticales).
+4. **El menú respeta la contratación**: `buildAllowedDashboardHrefsForUser()` recibe `empresaEnabledModules` en el `DashboardAccessContext` y descarta los hrefs de módulos no contratados. Antes el sidebar mostraba el módulo (por el permiso del usuario) y `PlanModuleGate` lo rebotaba a `/dashboard/configuracion/plan?blockedModule=…`, lo que se percibía como “permisos que se pelean”.
+5. **Una sola superficie de administración**: `/dashboard/configuracion/super-admin/empresas` es la pantalla única. El detalle de empresa tiene dos pestañas — **Empresa y plan** (datos, plan, facturación, overrides de módulos, verticales, código de acceso) y **Usuarios y permisos** (usuarios de esa empresa, alta de usuario, `Ver como`, `Permisos`). `/dashboard/configuracion/super-admin/usuarios` solo redirige (`?empresaId=…&tab=usuarios`).
+6. **Un solo motor de permisos**: el panel de la empresa usa `/api/admin/permisos/*` con la empresa de la sesión; el Super Admin reutiliza **los mismos endpoints** enviando `empresaId`. `resolvePermissionScope()` (`src/lib/super-admin-permission-scope.ts`) valida que solo un Super Admin pueda operar sobre otra empresa. El alta de usuarios dentro de una empresa existente y el catálogo de módulos contratados viven en `/api/super-admin/empresas/[id]/users`.
 
 ### 6.3 Red de seguridad actual
 

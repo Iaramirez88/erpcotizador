@@ -20,7 +20,7 @@ export default async function SuperAdminUserPreviewPage(props: { params: Promise
 
   const { id } = await props.params
   const userId = (id ?? '').trim()
-  if (!userId) redirect('/dashboard/configuracion/super-admin/usuarios')
+  if (!userId) redirect('/dashboard/configuracion/super-admin/empresas')
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -36,7 +36,7 @@ export default async function SuperAdminUserPreviewPage(props: { params: Promise
   })
 
   if (!user?.id || !user.empresaId || !user.empresa?.id) {
-    redirect('/dashboard/configuracion/super-admin/usuarios')
+    redirect('/dashboard/configuracion/super-admin/empresas')
   }
 
   const activeSede = await getActiveSedeForUser(user.id)
@@ -115,7 +115,7 @@ export default async function SuperAdminUserPreviewPage(props: { params: Promise
               <div className="text-lg font-semibold text-slate-950">Navegación permitida</div>
               <div className="text-sm text-slate-600">Resultado efectivo de allowed hrefs para este usuario.</div>
             </div>
-            <Link href="/dashboard/configuracion/super-admin/usuarios" className="text-sm font-medium text-sky-700 underline underline-offset-4">
+            <Link href="/dashboard/configuracion/super-admin/empresas" className="text-sm font-medium text-sky-700 underline underline-offset-4">
               Volver a superadmin
             </Link>
           </div>

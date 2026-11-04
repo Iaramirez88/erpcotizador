@@ -19,6 +19,11 @@ export type PlanLimitReachedPayload = {
   max: number
   planTier: string
   upgradeUrl: string
+  /** Datos opcionales que expone el servicio central de capacidad (`@/lib/plan-capacity`). */
+  resource?: string
+  unit?: string
+  percentage?: number
+  level?: 'ok' | 'warning' | 'critical' | 'reached'
 }
 
 type PlanLimitState = {

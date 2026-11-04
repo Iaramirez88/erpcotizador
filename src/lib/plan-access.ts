@@ -8,6 +8,11 @@ export type EmpresaPlanContext = {
   trialTier: PlanTier | null
   trialStartedAt: Date | null
   trialValidUntil: Date | null
+  /**
+   * Facturación “solo módulos”: la empresa no tiene plan base, así que el paywall por
+   * plan/trial no aplica. Los módulos habilitados se facturan individualmente.
+   */
+  moduleOnlyBilling?: boolean
 }
 
 type TrialState = {
@@ -66,11 +71,13 @@ function isPaidActive(empresa: Pick<EmpresaPlanContext, 'planValidUntil'>, now: 
 export function resolvePaywallState(empresa: EmpresaPlanContext, now: Date): PaywallState {
   const personal = isPersonalEmpresa(empresa)
   const bypass = hasEmpresaAccessCode(empresa)
+  const moduleOnly = empresa.moduleOnlyBilling === true
   const paid = isPaidActive(empresa, now)
   const trial = getTrialState(empresa, now)
 
-  // Bypass por código de empresa (o empresas no-personales): no mostramos modal.
-  if (!personal || bypass || paid) {
+  // Bypass: código de empresa, empresas no-personales, plan pagado vigente o
+  // facturación “solo módulos” (no hay plan base que cobrar ni trial que vencer).
+  if (!personal || bypass || paid || moduleOnly) {
     return {
       show: false,
       blocking: false,

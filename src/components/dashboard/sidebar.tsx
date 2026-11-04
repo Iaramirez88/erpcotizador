@@ -38,6 +38,8 @@ interface SidebarProps {
     canAccessWebsiteServices?: boolean
     canAccessBackups?: boolean
     intelligenceEnabled?: boolean
+    /** True solo para emails de `SUPER_ADMIN_EMAILS`; gobierna los accesos de super admin. */
+    isSuperAdmin?: boolean
   }
 }
 
@@ -110,7 +112,6 @@ const NAV_DESCRIPTION_KEYS: Record<string, string> = {
   '/dashboard/configuracion/plan': 'nav.desc.plan',
   '/dashboard/configuracion/super-admin/modulos-por-plan': 'nav.desc.superAdminModules',
   '/dashboard/configuracion/super-admin/empresas': 'nav.desc.superAdminCompanies',
-  '/dashboard/configuracion/super-admin/usuarios': 'nav.desc.superAdminUsers',
   '/dashboard/perfil': 'nav.desc.profile',
   '/dashboard/notificaciones': 'nav.desc.notifications',
   '/dashboard/ayuda': 'nav.desc.help',
@@ -769,15 +770,6 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
       </svg>
     ),
   },
-  {
-    name: "Super Admin · Usuarios",
-    href: "/dashboard/configuracion/super-admin/usuarios",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
-  },
   ]
 }
 
@@ -1167,10 +1159,9 @@ export default function Sidebar({ user }: SidebarProps) {
     const withAdminGate = withRbacGate.filter((it) => {
       const isSuperAdminRoute =
         it.href === '/dashboard/configuracion/super-admin/modulos-por-plan' ||
-        it.href === '/dashboard/configuracion/super-admin/empresas' ||
-        it.href === '/dashboard/configuracion/super-admin/usuarios'
+        it.href === '/dashboard/configuracion/super-admin/empresas'
       if (!isSuperAdminRoute) return true
-      return user?.role === 'ADMIN'
+      return user?.isSuperAdmin === true
     })
     const withBillingGate = withAdminGate.filter((it) => {
       if (it.href !== '/dashboard/configuracion/plan') return true
@@ -1196,7 +1187,7 @@ export default function Sidebar({ user }: SidebarProps) {
       return !isOnboardingScopedDashboardHref(it.href)
     })
     return sortNavItemsByOrder(withOnboardingScope, effectiveNavOrder)
-  }, [navPrefs, enabledModules, isPersonal, user?.role, user.canAccessBackups, user.intelligenceEnabled, user.canAccessPayrollAdmin, user.hasPayrollPortal, user.payrollEntryHref, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation, effectiveNavOrder, allowedNavHrefSet])
+  }, [navPrefs, enabledModules, isPersonal, user?.role, user?.isSuperAdmin, t, user.canAccessBackups, user.intelligenceEnabled, user.canAccessPayrollAdmin, user.hasPayrollPortal, user.payrollEntryHref, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation, effectiveNavOrder, allowedNavHrefSet])
 
   const visibleHrefs = useMemo(() => {
     return new Set(visibleNavigation.map((it) => it.href))

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { AccessLevel } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { requireEmpresaIdForUser } from '@/lib/rbac'
+import { resolvePermissionScope } from '@/lib/super-admin-permission-scope'
 import { detachPermissionProfileAssignment, publishPermissionUpdateNotification } from '@/lib/rbac-permission-sync'
 
 export const runtime = 'nodejs'
@@ -30,9 +30,16 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: 'Parámetros inválidos' }, { status: 400 })
   }
 
-  const empresaId = await requireEmpresaIdForUser(session.user.id)
+  const scope = await resolvePermissionScope({
+    sessionUser: session.user,
+    requestedEmpresaId: body.empresaId,
+  })
+  if (!scope.ok) {
+    return NextResponse.json({ success: false, error: scope.error }, { status: scope.status })
+  }
+  const empresaId = scope.empresaId
 
-  const requesterIsSystemAdmin = session.user.role === 'ADMIN'
+  const requesterIsSystemAdmin = session.user.role === 'ADMIN' || scope.isSuperAdmin
   const requesterMembership = await prisma.sedeMembership.findFirst({
     where: {
       userId: session.user.id,

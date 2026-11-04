@@ -1,16 +1,28 @@
-import { prisma } from '@/lib/prisma'
 import type { PlanTier } from '@prisma/client'
-import { resolveEffectivePlanTier, type EmpresaPlanContext } from '@/lib/plan-access'
+import {
+  LEGACY_LIMIT_KEY_TO_RESOURCE,
+  PLAN_CAPACITY_UPGRADE_URL,
+  checkPlanCapacity,
+  formatPlanCapacityAmount,
+  getPlanCapacitySnapshot,
+  type LegacyPlanLimitKey,
+  type PlanCapacityCheck,
+  type PlanCapacityLevel,
+  type PlanCapacityOveragePolicy,
+  type PlanCapacityResource,
+} from '@/lib/plan-capacity'
 
-export type PlanLimitKey =
-  | 'COTIZACIONES_PER_MONTH'
-  | 'ORDENES_PER_MONTH'
-  | 'REMISIONES_PER_MONTH'
-  | 'PRODUCTOS_MAX'
-  | 'CLIENTES_MAX'
-  | 'PROVEEDORES_MAX'
-  | 'SEDES_MAX'
-  | 'USUARIOS_MAX'
+/**
+ * Fachada histórica del control de planes.
+ *
+ * La lógica real vive en `@/lib/plan-capacity` (servicio central de capacidad).
+ * Este archivo mantiene la firma que ya consumen las rutas de la plataforma:
+ *
+ *   const limit = await checkPlanLimit(empresaId, 'COTIZACIONES_PER_MONTH')
+ *   if (!limit.ok) return NextResponse.json(limit, { status: 402 })
+ */
+
+export type PlanLimitKey = LegacyPlanLimitKey
 
 export type PlanLimitError = {
   ok: false
@@ -21,108 +33,13 @@ export type PlanLimitError = {
   max: number
   planTier: PlanTier
   upgradeUrl: '/dashboard/configuracion/plan'
+  resource: PlanCapacityResource
+  percentage: number
+  level: PlanCapacityLevel
+  unit: string
 }
 
 export type PlanLimitOk = { ok: true; planTier: PlanTier }
-
-type Limits = Partial<Record<PlanLimitKey, number>>
-
-function monthRange(now: Date): { from: Date; to: Date } {
-  const from = new Date(now.getFullYear(), now.getMonth(), 1)
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-  return { from, to }
-}
-
-function getLimitsForTier(tier: PlanTier): Limits {
-  if (tier === 'FULL') return {}
-
-  if (tier === 'INTERMEDIO' || tier === 'MEDIO') {
-    return {
-      SEDES_MAX: 6,
-      USUARIOS_MAX: 10,
-      CLIENTES_MAX: 8000,
-      COTIZACIONES_PER_MONTH: 5000,
-    }
-  }
-
-  // BASIC
-  return {
-    // límites mensuales
-    COTIZACIONES_PER_MONTH: 300,
-    REMISIONES_PER_MONTH: 100,
-    ORDENES_PER_MONTH: 100,
-    // límites de catálogo/config
-    PROVEEDORES_MAX: 50,
-    CLIENTES_MAX: 500,
-    PRODUCTOS_MAX: 200,
-    SEDES_MAX: 1,
-    USUARIOS_MAX: 2,
-  }
-}
-
-async function getEmpresaPlanContext(empresaId: string): Promise<EmpresaPlanContext | null> {
-  const empresa = await prisma.empresa.findUnique({
-    where: { id: empresaId },
-    select: {
-      nit: true,
-      registrationCodeHash: true,
-      planTier: true,
-      planValidUntil: true,
-      trialTier: true,
-      trialStartedAt: true,
-      trialValidUntil: true,
-    },
-  })
-
-  if (!empresa) return null
-
-  return {
-    nit: empresa.nit ?? '',
-    registrationCodeHash: empresa.registrationCodeHash ?? null,
-    planTier: empresa.planTier,
-    planValidUntil: empresa.planValidUntil,
-    trialTier: empresa.trialTier,
-    trialStartedAt: empresa.trialStartedAt,
-    trialValidUntil: empresa.trialValidUntil,
-  }
-}
-
-async function getCurrentPlanLimitValue(empresaId: string, limitKey: PlanLimitKey): Promise<number> {
-  const now = new Date()
-  const { from, to } = monthRange(now)
-
-  switch (limitKey) {
-    case 'COTIZACIONES_PER_MONTH':
-      return prisma.cotizacion.count({
-        where: { cliente: { empresaId }, createdAt: { gte: from, lt: to } },
-      })
-    case 'ORDENES_PER_MONTH':
-      return prisma.ordenTrabajo.count({
-        where: { cliente: { empresaId }, createdAt: { gte: from, lt: to } },
-      })
-    case 'REMISIONES_PER_MONTH':
-      return prisma.remision.count({
-        where: { empresaId, createdAt: { gte: from, lt: to } },
-      })
-    case 'PRODUCTOS_MAX':
-      return prisma.material.count({ where: { empresaId, activo: true } })
-    case 'CLIENTES_MAX':
-      return prisma.cliente.count({ where: { empresaId } })
-    case 'PROVEEDORES_MAX':
-      return prisma.proveedor.count({ where: { empresaId, activo: true } })
-    case 'SEDES_MAX':
-      return prisma.sede.count({ where: { empresaId } })
-    case 'USUARIOS_MAX': {
-      const memberships = await prisma.sedeMembership.findMany({
-        where: { sede: { empresaId } },
-        select: { userId: true },
-      })
-      return new Set(memberships.map((m) => m.userId)).size
-    }
-    default:
-      return 0
-  }
-}
 
 export type PlanUsageMeter = {
   key: PlanLimitKey
@@ -131,6 +48,11 @@ export type PlanUsageMeter = {
   max: number | null
   unit: string
   monthly: boolean
+  percentage: number
+  remaining: number | null
+  level: PlanCapacityLevel
+  allowed: boolean
+  policy: PlanCapacityOveragePolicy
 }
 
 export type PlanUsageSummary = {
@@ -138,53 +60,86 @@ export type PlanUsageSummary = {
   meters: PlanUsageMeter[]
 }
 
-const PLAN_LIMIT_META: Array<{ key: PlanLimitKey; label: string; unit: string; monthly: boolean }> = [
-  { key: 'USUARIOS_MAX', label: 'Usuarios', unit: '', monthly: false },
-  { key: 'SEDES_MAX', label: 'Sedes', unit: '', monthly: false },
-  { key: 'CLIENTES_MAX', label: 'Clientes', unit: '', monthly: false },
-  { key: 'PRODUCTOS_MAX', label: 'Productos', unit: '', monthly: false },
-  { key: 'PROVEEDORES_MAX', label: 'Proveedores', unit: '', monthly: false },
-  { key: 'COTIZACIONES_PER_MONTH', label: 'Cotizaciones (mes)', unit: '', monthly: true },
-  { key: 'ORDENES_PER_MONTH', label: 'Órdenes de trabajo (mes)', unit: '', monthly: true },
-  { key: 'REMISIONES_PER_MONTH', label: 'Remisiones (mes)', unit: '', monthly: true },
+const PLAN_LIMIT_META: Array<{ key: PlanLimitKey; label: string; monthly: boolean }> = [
+  { key: 'USUARIOS_MAX', label: 'Usuarios', monthly: false },
+  { key: 'SEDES_MAX', label: 'Sedes', monthly: false },
+  { key: 'CLIENTES_MAX', label: 'Clientes', monthly: false },
+  { key: 'PRODUCTOS_MAX', label: 'Productos', monthly: false },
+  { key: 'PROVEEDORES_MAX', label: 'Proveedores', monthly: false },
+  { key: 'COTIZACIONES_PER_MONTH', label: 'Cotizaciones (mes)', monthly: true },
+  { key: 'ORDENES_PER_MONTH', label: 'Órdenes de trabajo (mes)', monthly: true },
+  { key: 'REMISIONES_PER_MONTH', label: 'Remisiones (mes)', monthly: true },
 ]
 
+/** Resumen de consumo usado por /dashboard/perfil, /dashboard/configuracion/plan y super admin. */
 export async function getPlanUsageSummary(empresaId: string): Promise<PlanUsageSummary> {
-  const empresa = await getEmpresaPlanContext(empresaId)
-  const planTier = empresa ? resolveEffectivePlanTier(empresa, new Date()) : 'FULL'
-  const limits = getLimitsForTier(planTier)
+  const snapshot = await getPlanCapacitySnapshot({ companyId: empresaId })
+  if (!snapshot) return { planTier: 'FULL', meters: [] }
 
-  const meters = await Promise.all(PLAN_LIMIT_META.map(async (meta) => {
-    const max = limits[meta.key] ?? null
-    const current = max ? await getCurrentPlanLimitValue(empresaId, meta.key) : 0
-    return { key: meta.key, label: meta.label, current, max, unit: meta.unit, monthly: meta.monthly }
-  }))
+  const meters: PlanUsageMeter[] = PLAN_LIMIT_META.map((meta) => {
+    const resource = LEGACY_LIMIT_KEY_TO_RESOURCE[meta.key]
+    const meter = snapshot.meters.find((item) => item.resource === resource)
+    return {
+      key: meta.key,
+      label: meta.label,
+      current: meter?.used ?? 0,
+      max: meter?.limit ?? null,
+      unit: meter?.unit ?? '',
+      monthly: meta.monthly,
+      percentage: meter?.percentage ?? 0,
+      remaining: meter?.remaining ?? null,
+      level: meter?.level ?? 'ok',
+      allowed: meter?.allowed ?? true,
+      policy: meter?.policy ?? 'BLOCK',
+    }
+  })
 
-  return { planTier, meters }
+  return { planTier: snapshot.planTier, meters }
 }
 
-export async function checkPlanLimit(empresaId: string, limitKey: PlanLimitKey): Promise<PlanLimitOk | PlanLimitError> {
-  const empresa = await getEmpresaPlanContext(empresaId)
-  const planTier = empresa ? resolveEffectivePlanTier(empresa, new Date()) : 'FULL'
-  const limits = getLimitsForTier(planTier)
+/**
+ * Verifica capacidad antes de crear un registro.
+ * Si la política del plan permite excedente (`OVERAGE`) o solo advierte (`WARN`), `ok` será
+ * `true` aunque el consumo esté al 100%: la operación continúa y se registra como adicional.
+ */
+export async function checkPlanLimit(
+  empresaId: string,
+  limitKey: PlanLimitKey
+): Promise<PlanLimitOk | PlanLimitError> {
+  const resource = LEGACY_LIMIT_KEY_TO_RESOURCE[limitKey]
+  const check = await checkPlanCapacity({ companyId: empresaId, resource, notify: true })
 
-  const max = limits[limitKey]
-  if (!max) return { ok: true, planTier }
-
-  const current = await getCurrentPlanLimitValue(empresaId, limitKey)
-
-  if (current >= max) {
-    return {
-      ok: false,
-      code: 'PLAN_LIMIT_REACHED',
-      message: 'Has alcanzado el límite de tu plan. Mejora tu plan para continuar.',
-      limitKey,
-      current,
-      max,
-      planTier,
-      upgradeUrl: '/dashboard/configuracion/plan',
-    }
+  if (check.allowed) {
+    return { ok: true, planTier: check.planTier }
   }
 
-  return { ok: true, planTier }
+  return {
+    ok: false,
+    code: 'PLAN_LIMIT_REACHED',
+    message: `${check.message} Límite del plan: ${formatPlanCapacityAmount(check.limit, check.unit)}.`,
+    limitKey,
+    current: check.used,
+    max: check.limit ?? 0,
+    planTier: check.planTier,
+    upgradeUrl: PLAN_CAPACITY_UPGRADE_URL,
+    resource: check.resource,
+    percentage: check.percentage,
+    level: check.level,
+    unit: check.unit,
+  }
+}
+
+/** Contrato nuevo recomendado para flujos nuevos (acepta alias como 'quotations' o 'storage'). */
+export async function checkPlanLimitForResource(args: {
+  companyId: string
+  resource: PlanCapacityResource | string
+  period?: string | null
+  notify?: boolean
+}): Promise<PlanCapacityCheck> {
+  return checkPlanCapacity({
+    companyId: args.companyId,
+    resource: args.resource,
+    period: args.period,
+    notify: args.notify,
+  })
 }

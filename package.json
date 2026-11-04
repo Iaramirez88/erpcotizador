@@ -24,6 +24,7 @@
     "litografia:test": "tsx scripts/test-litografia-pricing.ts",
     "worker:ocr": "tsx scripts/ocr-worker.ts",
     "smoke:cotizaciones": "tsx scripts/smoke-cotizaciones.ts",
+    "smoke:module-assignments": "tsx scripts/smoke-module-assignments.ts",
     "test:cotizacion-sequence": "tsx scripts/test-cotizacion-sequence-concurrency.ts",
     "test:decision-engine": "tsx scripts/test-decision-engine-slices.ts",
     "test:ai-history-acl": "tsx scripts/test-ai-history-acl.ts",

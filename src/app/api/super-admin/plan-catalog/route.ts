@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { PlanTier } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { getManagedPlans, saveManagedPlan, type PlanIncludeGroup } from '@/lib/managed-plans'
+import { isCommercialPlanTier } from '@/lib/plan-catalog'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 
 export const runtime = 'nodejs'
@@ -10,10 +10,6 @@ function requireSuperAdmin(session: { user?: { email?: string | null } } | null)
   const email = session?.user?.email ?? null
   if (!session?.user || !isSuperAdminEmail(email)) return null
   return session
-}
-
-function isPlanTier(value: unknown): value is PlanTier {
-  return value === 'CRM' || value === 'BASIC' || value === 'MEDIO' || value === 'INTERMEDIO' || value === 'FULL'
 }
 
 function normalizeIncludeGroups(value: unknown): PlanIncludeGroup[] {
@@ -62,7 +58,7 @@ export async function PUT(req: NextRequest) {
   const incluye = normalizeIncludeGroups(body.incluye)
   const alcance = normalizeStringList(body.alcance)
 
-  if (!isPlanTier(tier)) {
+  if (!isCommercialPlanTier(tier)) {
     return NextResponse.json({ ok: false, error: 'PlanTier inválido' }, { status: 400 })
   }
 

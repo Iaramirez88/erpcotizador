@@ -26,7 +26,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import SuperAdminEmpresaUsersPanel from '@/components/dashboard/super-admin/super-admin-empresa-users-panel'
 import type { ModuleKey } from '@prisma/client'
+import { COMMERCIAL_PLAN_TIERS } from '@/lib/plan-catalog'
 import type { PlanTier } from '@/lib/plans'
 
 type BillingCycle = 'MONTHLY' | 'YEARLY'
@@ -104,6 +107,7 @@ type DetailEmpresa = {
   stripeSubscriptionStatus: string | null
   stripeCurrentPeriodEnd: string | null
   stripeCancelAtPeriodEnd: boolean
+  moduleOnlyBilling?: boolean
   createdAt: string
   updatedAt: string
   hasCompanyCode: boolean
@@ -188,13 +192,10 @@ function formatBytes(value: number | null | undefined): string {
   return `${size >= 100 || exponent === 0 ? Math.round(size) : size.toFixed(1)} ${units[exponent]}`
 }
 
-const PLAN_OPTIONS: { value: PlanTier; label: string }[] = [
-  { value: 'CRM', label: 'CRM' },
-  { value: 'BASIC', label: 'BASIC' },
-  { value: 'MEDIO', label: 'MEDIO' },
-  { value: 'INTERMEDIO', label: 'INTERMEDIO' },
-  { value: 'FULL', label: 'FULL' },
-]
+const PLAN_OPTIONS: { value: PlanTier; label: string }[] = COMMERCIAL_PLAN_TIERS.map((tier) => ({
+  value: tier,
+  label: tier,
+}))
 
 type CompanyFilter = 'ALL' | 'NEW' | 'TRIAL' | 'PAID' | 'EXPIRED'
 
@@ -354,9 +355,14 @@ export default function SuperAdminEmpresasClient() {
     planTier: 'FULL' as PlanTier,
     billingCycle: 'MONTHLY' as BillingCycle,
     isPaid: false,
+    createAdminUser: true,
+    adminName: '',
+    adminEmail: '',
+    adminPassword: '',
   })
 
   const [detailOpen, setDetailOpen] = useState(false)
+  const [detailTab, setDetailTab] = useState<'empresa' | 'usuarios'>('empresa')
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [detail, setDetail] = useState<DetailEmpresa | null>(null)
@@ -393,6 +399,7 @@ export default function SuperAdminEmpresasClient() {
 
   const [generatingForId, setGeneratingForId] = useState<string | null>(null)
   const [generatedCode, setGeneratedCode] = useState<Record<string, string>>({})
+  const [billingModeSaving, setBillingModeSaving] = useState(false)
   const pageSizeOptions: CompanyPageSize[] = [5, 10, 25, 50, 100, 'ALL']
 
   const statusFilterOptions = useMemo(
@@ -706,8 +713,9 @@ export default function SuperAdminEmpresasClient() {
     setCurrentPage(totalPages)
   }, [currentPage, totalPages])
 
-  async function openDetail(id: string) {
+  async function openDetail(id: string, tab: 'empresa' | 'usuarios' = 'empresa') {
     setDetailOpen(true)
+    setDetailTab(tab)
     setDetailLoading(true)
     setDetailError(null)
     setDetail(null)
@@ -779,7 +787,27 @@ export default function SuperAdminEmpresasClient() {
     }
   }
 
+  /**
+   * Enlaces profundos: `/super-admin/empresas?empresaId=...&tab=usuarios` abre el detalle en la
+   * pestaña correcta (lo usan los atajos internos y la antigua ruta de usuarios).
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const empresaId = (params.get('empresaId') ?? params.get('empresa') ?? '').trim()
+    if (!empresaId) return
+    const requestedTab = params.get('tab') === 'usuarios' ? 'usuarios' : 'empresa'
+    void openDetail(empresaId, requestedTab)
+    // Sólo al montar: el resto de la navegación ocurre dentro de la pantalla.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function createEmpresa() {
+    if (createForm.createAdminUser && (!createForm.adminEmail.trim() || !createForm.adminPassword)) {
+      setCreateError('Indica email y contraseña del usuario administrador (o desactiva esa opción).')
+      return
+    }
+
     setCreateLoading(true)
     setCreateError(null)
     try {
@@ -798,6 +826,15 @@ export default function SuperAdminEmpresasClient() {
           planTier: createForm.planTier,
           billingCycle: createForm.billingCycle,
           isPaid: createForm.isPaid,
+          ...(createForm.createAdminUser
+            ? {
+                adminUser: {
+                  name: createForm.adminName.trim() || undefined,
+                  email: createForm.adminEmail.trim(),
+                  password: createForm.adminPassword,
+                },
+              }
+            : {}),
         }),
       })
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; empresaId?: string }
@@ -818,6 +855,10 @@ export default function SuperAdminEmpresasClient() {
         planTier: 'FULL',
         billingCycle: 'MONTHLY',
         isPaid: false,
+        createAdminUser: true,
+        adminName: '',
+        adminEmail: '',
+        adminPassword: '',
       })
       await load()
       if (json.empresaId) {
@@ -872,6 +913,38 @@ export default function SuperAdminEmpresasClient() {
     }
   }
 
+  async function toggleModuleOnlyBilling(nextValue: boolean) {
+    if (!detail) return
+    setBillingModeSaving(true)
+    try {
+      const res = await fetch(`/api/super-admin/empresas/${encodeURIComponent(detail.id)}/module-assignments`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moduleOnlyBilling: nextValue }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      if (!res.ok || !json.ok) {
+        toast({
+          title: json.error || 'No se pudo cambiar el modo de facturación',
+          variant: 'destructive',
+        })
+        return
+      }
+      setDetail((prev) => (prev ? { ...prev, moduleOnlyBilling: nextValue } : prev))
+      toast({
+        title: nextValue ? 'Facturación solo módulos activada' : 'Facturación por plan activada',
+        description: nextValue
+          ? 'Solo quedan disponibles los módulos contratados y los módulos base.'
+          : 'La empresa vuelve a recibir todos los módulos del plan.',
+      })
+      await openDetail(detail.id, detailTab)
+    } catch {
+      toast({ title: 'No se pudo cambiar el modo de facturación', variant: 'destructive' })
+    } finally {
+      setBillingModeSaving(false)
+    }
+  }
+
   async function generateCode(empresaId: string) {
     setGeneratingForId(empresaId)
     try {
@@ -903,9 +976,6 @@ export default function SuperAdminEmpresasClient() {
             <Button onClick={() => setCreateOpen(true)}>{t('superAdmin.companies.actions.create')}</Button>
             <Button asChild variant="outline">
               <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">{t('superAdmin.nav.modulesByPlan')}</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/dashboard/configuracion/super-admin/usuarios">{t('superAdmin.nav.users')}</Link>
             </Button>
           </>
         }
@@ -1155,7 +1225,19 @@ export default function SuperAdminEmpresasClient() {
             <DialogDescription>{t('superAdmin.companies.detail.subtitle')}</DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto px-5 py-4">
+          <Tabs
+            value={detailTab}
+            onValueChange={(value) => setDetailTab(value === 'usuarios' ? 'usuarios' : 'empresa')}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
+            <div className="shrink-0 border-b border-slate-200 px-5 pt-3">
+              <TabsList>
+                <TabsTrigger value="empresa">Empresa y plan</TabsTrigger>
+                <TabsTrigger value="usuarios">Usuarios y permisos</TabsTrigger>
+              </TabsList>
+            </div>
+
+            <TabsContent value="empresa" className="m-0 min-h-0 flex-1 overflow-y-auto px-5 py-4">
             {detailLoading ? <div className="text-sm text-gray-600">{t('common.loading')}</div> : null}
             {detailError ? <div className="text-sm text-red-600">{detailError}</div> : null}
 
@@ -1237,6 +1319,23 @@ export default function SuperAdminEmpresasClient() {
                             <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium text-slate-600">
                               {language === 'en' ? 'Validated against DB' : 'Validado contra BD'}
                             </span>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700">
+                          <Switch
+                            checked={Boolean(detail.moduleOnlyBilling)}
+                            onCheckedChange={(checked) => void toggleModuleOnlyBilling(Boolean(checked))}
+                            disabled={billingModeSaving}
+                          />
+                          <div>
+                            <div className="font-medium text-slate-900">
+                              {language === 'en' ? 'Module-only billing' : 'Facturación solo módulos'}
+                            </div>
+                            <div>
+                              {language === 'en'
+                                ? 'When on, the company only gets its assigned modules plus the base modules (no plan modules).'
+                                : 'Si está activo, la empresa solo recibe los módulos asignados más los módulos base (sin módulos del plan).'}
+                            </div>
                           </div>
                         </div>
                         <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
@@ -1458,7 +1557,10 @@ export default function SuperAdminEmpresasClient() {
                         <SelectValue placeholder={t('superAdmin.companies.placeholders.selectPlan')} />
                       </SelectTrigger>
                       <SelectContent>
-                        {PLAN_OPTIONS.map((o) => (
+                        {(COMMERCIAL_PLAN_TIERS.includes(editForm.planTier)
+                          ? PLAN_OPTIONS
+                          : [{ value: editForm.planTier, label: `${editForm.planTier} (legado)` }, ...PLAN_OPTIONS]
+                        ).map((o) => (
                           <SelectItem key={o.value} value={o.value}>
                             {o.label}
                           </SelectItem>
@@ -1527,10 +1629,24 @@ export default function SuperAdminEmpresasClient() {
                 )}
               </div>
             ) : null}
-          </div>
+            </TabsContent>
+
+            <TabsContent value="usuarios" className="m-0 min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {detail ? (
+                <SuperAdminEmpresaUsersPanel empresaId={detail.id} empresaNombre={detail.nombre} />
+              ) : (
+                <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
+              )}
+            </TabsContent>
+          </Tabs>
 
           <DialogFooter className="shrink-0 border-t border-slate-200 px-5 py-4">
-            {!editMode ? (
+            {detailTab !== 'empresa' ? (
+              <Button variant="outline" onClick={() => setDetailOpen(false)}>
+                {t('common.close')}
+              </Button>
+            ) : null}
+            {detailTab === 'empresa' && !editMode ? (
               <>
                 <Button variant="outline" onClick={() => setDetailOpen(false)} disabled={detailLoading}>
                   {t('common.close')}
@@ -1539,7 +1655,7 @@ export default function SuperAdminEmpresasClient() {
                   {t('common.edit')}
                 </Button>
               </>
-            ) : (
+            ) : detailTab === 'empresa' ? (
               <>
                 <Button
                   variant="outline"
@@ -1555,7 +1671,7 @@ export default function SuperAdminEmpresasClient() {
                   {editLoading ? t('common.saving') : t('common.save')}
                 </Button>
               </>
-            )}
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1638,6 +1754,54 @@ export default function SuperAdminEmpresasClient() {
                 <div className="font-medium">{t('superAdmin.companies.fields.isPaid')}</div>
                 <div className="text-xs text-muted-foreground">{t('superAdmin.companies.create.isPaidHelp')}</div>
               </div>
+            </div>
+
+            <div className="sm:col-span-2 mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-start gap-3">
+                <Switch
+                  checked={createForm.createAdminUser}
+                  onCheckedChange={(checked) => setCreateForm((p) => ({ ...p, createAdminUser: Boolean(checked) }))}
+                  disabled={createLoading}
+                />
+                <div>
+                  <div className="font-medium text-slate-900">Crear usuario administrador de la empresa</div>
+                  <div className="text-xs text-muted-foreground">
+                    El usuario nace con acceso total en todas las sedes. Después puedes ajustar sus permisos en la
+                    pestaña “Usuarios y permisos”.
+                  </div>
+                </div>
+              </div>
+
+              {createForm.createAdminUser ? (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label>Nombre del administrador</Label>
+                    <Input
+                      value={createForm.adminName}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, adminName: e.target.value }))}
+                      placeholder="Opcional"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Email del administrador</Label>
+                    <Input
+                      type="email"
+                      value={createForm.adminEmail}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, adminEmail: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label>Contraseña temporal</Label>
+                    <Input
+                      value={createForm.adminPassword}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, adminPassword: e.target.value }))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Mínimo 8 caracteres con mayúscula, minúscula y número.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
 

@@ -8,6 +8,7 @@ import { UsageMeter } from "@/components/ui/usage-meter"
 import { Button } from "@/components/ui/button"
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { PlanCapacityPanel } from '@/components/dashboard/plan-capacity-panel'
 import type { ModuleKey } from '@prisma/client'
 import { cn } from "@/lib/utils"
 import { formatCOP, type BillingCycle, type PlanInfo, type PlanTier } from "@/lib/plans"
@@ -54,7 +55,7 @@ type PlanCatalogInfo = PlanInfo & {
   displayOrder?: number
 }
 
-type PlanSectionTab = 'planes' | 'suite' | 'modulos' | 'rrhh' | 'almacenamiento' | 'historial' | 'comparacion'
+type PlanSectionTab = 'planes' | 'suite' | 'modulos' | 'rrhh' | 'almacenamiento' | 'consumo' | 'historial' | 'comparacion'
 
 const PLAN_DETAILS: Record<PlanTier, PlanDetails> = {
   CRM: {
@@ -723,21 +724,21 @@ export default function PlanPage() {
                       </div>
 
                       <div className="flex flex-wrap gap-2">
-                        {details.alcance.slice(0, 4).map((item) => (
-                          <span key={item} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">{item}</span>
+                        {details.alcance.map((item, index) => (
+                          <span key={`${item}-${index}`} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">{item}</span>
                         ))}
                       </div>
 
                       <div className="space-y-3">
-                        {details.incluye.filter((group) => group.items.length > 0).map((group) => (
-                          <details key={group.title} className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 open:bg-white">
+                        {details.incluye.filter((group) => group.items.length > 0).map((group, groupIndex) => (
+                          <details key={`${group.title}-${groupIndex}`} className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 open:bg-white">
                             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-slate-900">
                               <span>{cleanPlanGroupTitle(group.title)}</span>
                               <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">{group.items.length} items</span>
                             </summary>
                             <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                              {group.items.map((item) => (
-                                <li key={item} className="flex items-start gap-2">
+                              {group.items.map((item, itemIndex) => (
+                                <li key={`${item}-${itemIndex}`} className="flex items-start gap-2">
                                   <span className="mt-1 h-1.5 w-1.5 rounded-full bg-sky-500" />
                                   <span>{item}</span>
                                 </li>
@@ -768,6 +769,7 @@ export default function PlanPage() {
               <TabsTrigger value="modulos" className="rounded-xl">Arma tu plan por módulos</TabsTrigger>
               <TabsTrigger value="rrhh" className="rounded-xl">Recursos Humanos</TabsTrigger>
               <TabsTrigger value="almacenamiento" className="rounded-xl">Almacenamiento</TabsTrigger>
+              <TabsTrigger value="consumo" className="rounded-xl">Consumo y límites</TabsTrigger>
               <TabsTrigger value="historial" className="rounded-xl">Historial de planes</TabsTrigger>
               <TabsTrigger value="comparacion" className="rounded-xl">Diferencias entre planes</TabsTrigger>
             </TabsList>
@@ -824,13 +826,13 @@ export default function PlanPage() {
                         <div className="mt-4 space-y-3">
                           <div className="text-sm font-semibold text-gray-900">Incluye</div>
                           <div className="space-y-2">
-                            {details.incluye.map((group) => (
-                              <div key={group.title} className="space-y-1">
+                            {details.incluye.map((group, groupIndex) => (
+                              <div key={`${group.title}-${groupIndex}`} className="space-y-1">
                                 <div className="text-sm font-medium text-gray-900">{group.title}</div>
                                 {group.items.length ? (
                                   <ul className="list-disc pl-5 text-sm text-gray-700">
-                                    {group.items.map((it) => (
-                                      <li key={it}>{it}</li>
+                                    {group.items.map((it, itemIndex) => (
+                                      <li key={`${it}-${itemIndex}`}>{it}</li>
                                     ))}
                                   </ul>
                                 ) : null}
@@ -842,8 +844,8 @@ export default function PlanPage() {
                         <div className="mt-4 space-y-2">
                           <div className="text-sm font-semibold text-gray-900">Alcance</div>
                           <ul className="list-disc pl-5 text-sm text-gray-700">
-                            {details.alcance.map((it) => (
-                              <li key={it}>{it}</li>
+                            {details.alcance.map((it, index) => (
+                              <li key={`${it}-${index}`}>{it}</li>
                             ))}
                           </ul>
                         </div>
@@ -1441,6 +1443,22 @@ export default function PlanPage() {
                     })}
                   </CardContent>
                 </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="consumo" className="space-y-4">
+              <PlanCapacityPanel
+                title="Consumo y límites del plan"
+                description="Todos los recursos medibles de tu plan: documentos del mes, registros acumulados y almacenamiento."
+              />
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                <p className="font-semibold text-slate-800">Cómo funcionan los límites</p>
+                <p className="mt-1">
+                  Al 80% recibes un aviso preventivo y al 90% una alerta al administrador. Al llegar al 100% la creación de
+                  nuevos registros de ese recurso se bloquea hasta ampliar el plan, pero tus datos existentes siempre quedan
+                  disponibles para consulta y exportación.
+                </p>
+                <p className="mt-1">El detalle de archivos y backups está en la pestaña “Almacenamiento”.</p>
               </div>
             </TabsContent>
 

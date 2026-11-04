@@ -127,7 +127,6 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/configuracion/servicios-web', label: 'Sitios web', labelKey: 'nav.websites', section: 'Captación', layer: 'Captación', domain: 'Sitios web', moduleKey: null },
   { href: '/dashboard/configuracion/plan', label: 'Plan', labelKey: 'nav.plan', section: 'Administración', layer: 'Administración', domain: 'Plan y suscripción', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/super-admin/empresas', label: 'Super Admin Empresas', labelKey: 'nav.superAdminCompanies', section: 'Administración', layer: 'Administración', domain: 'Tenant management', moduleKey: 'CONFIG' },
-  { href: '/dashboard/configuracion/super-admin/usuarios', label: 'Super Admin Usuarios', labelKey: 'nav.superAdminUsers', section: 'Administración', layer: 'Administración', domain: 'Tenant management', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/super-admin/modulos-por-plan', label: 'Super Admin', labelKey: 'nav.superAdmin', section: 'Administración', layer: 'Administración', domain: 'Packaging SaaS', moduleKey: 'CONFIG' },
 ]
 

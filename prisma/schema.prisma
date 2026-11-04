@@ -786,6 +786,11 @@ model Empresa {
   planTier     PlanTier     @default(FULL)
   billingCycle BillingCycle @default(MONTHLY)
 
+  // Facturación “solo módulos”: no se cobra plan base y cada módulo habilitado se factura
+  // individualmente, aunque el tier contratado lo incluya. El tier queda como referencia
+  // comercial y deja de aplicar límites de plan (solo cuentan los overrides de capacidad).
+  moduleOnlyBilling Boolean @default(false)
+
   // Vigencia del acceso por plan (Bold no expone suscripciones recurrentes públicas en docs;
   // se maneja por periodo pagado y renovaciones).
   planValidUntil DateTime?
@@ -804,6 +809,7 @@ model Empresa {
 
   billingInvoices BillingInvoice[]
   moduleOverrides EmpresaModuleOverride[]
+  capacityOverrides EmpresaCapacityOverride[]
   domainEntitlements DomainEntitlement[]
   capabilityEntitlements CapabilityEntitlement[]
   capabilityGrants UserCapabilityGrant[]
@@ -954,6 +960,14 @@ model EmpresaModuleOverride {
   module    ModuleKey
   enabled   Boolean
 
+  // Configuración opcional de consumo y cobro del módulo para esta empresa (super admin).
+  // `limitValue` en null = se hereda el límite del plan efectivo.
+  limitValue           Int?
+  limitPeriod          String  @default("MONTHLY")
+  overagePolicy        String?
+  pricePerExtraUnitCOP Int?
+  notes                String?
+
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
@@ -962,6 +976,36 @@ model EmpresaModuleOverride {
   @@unique([empresaId, module])
   @@index([empresaId])
   @@map("empresa_module_overrides")
+}
+
+/**
+ * Configuración de capacidad y cobro por consumo **por recurso** para una empresa.
+ *
+ * El consumo de la plataforma se mide por recurso (cotizaciones, productos, sedes,
+ * usuarios, …) y varios módulos pueden alimentar el mismo recurso: por eso el límite y el
+ * precio por unidad extra viven aquí y no en el módulo. `limitValue` en NULL = el recurso
+ * se rige por el plan efectivo (o queda ilimitado si la empresa factura solo módulos).
+ */
+model EmpresaCapacityOverride {
+  id        String @id @default(cuid())
+  empresaId String
+  /** PlanCapacityResource en texto para no acoplar la tabla a un enum de Prisma. */
+  resource  String
+
+  limitValue           Int?
+  limitPeriod          String  @default("MONTHLY")
+  overagePolicy        String?
+  pricePerExtraUnitCOP Int?
+  notes                String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, resource])
+  @@index([empresaId])
+  @@map("empresa_capacity_overrides")
 }
 
 model DomainEntitlement {
@@ -2542,20 +2586,6 @@ model EmpresaBackup {
   @@map("empresa_backups")
 }
 
-model PlanModuleSetting {
-  id       String   @id @default(cuid())
-  planTier PlanTier
-  module   ModuleKey
-  enabled  Boolean  @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([planTier, module])
-  @@index([module])
-  @@map("plan_module_settings")
-}
-
 model PlanModulePriceSetting {
   id        String    @id @default(cuid())
   module    ModuleKey @unique
@@ -2596,6 +2626,27 @@ model PlanCatalogSetting {
 
   @@index([active, displayOrder])
   @@map("plan_catalog_settings")
+}
+
+/// Límites de capacidad editables por plan (fuente de verdad del control de consumo centralizado).
+/// `limitValue` en `null` significa capacidad ilimitada.
+model PlanLimitSetting {
+  id            String   @id @default(cuid())
+  planTier      PlanTier
+  resource      String
+  limitValue    Int?
+  period        String   @default("MONTHLY")
+  overagePolicy String   @default("BLOCK")
+  warningPct    Int      @default(80)
+  criticalPct   Int      @default(90)
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([planTier, resource])
+  @@index([resource])
+  @@map("plan_limit_settings")
 }
 
 // ============================================
