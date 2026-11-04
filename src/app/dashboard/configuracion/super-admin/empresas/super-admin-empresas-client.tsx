@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Sparkles, Zap } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, Clock3, LoaderCircle, ShieldCheck, ShieldOff, Sparkles, Zap } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -82,6 +82,34 @@ type DetailInvoice = {
   updatedAt: string
 }
 
+type PlanAccessAction = 'GRANT_TRIAL' | 'GRANT_PLAN' | 'REVOKE_PLAN'
+
+type PlanAccessHistoryEntry = {
+  at: string
+  action: PlanAccessAction
+  byEmail: string | null
+  tier: PlanTier
+  billingCycle: BillingCycle | null
+  days: number | null
+  validUntil: string | null
+  note: string | null
+}
+
+type PlanAccessResponse =
+  | {
+      ok: true
+      access: {
+        planTier: PlanTier
+        billingCycle: BillingCycle
+        planValidUntil: string | null
+        trialTier: PlanTier | null
+        trialStartedAt: string | null
+        trialValidUntil: string | null
+        isActive: boolean
+      }
+    }
+  | { ok?: false; error?: string }
+
 type DetailEmpresa = {
   id: string
   workspaceCode: string
@@ -112,6 +140,7 @@ type DetailEmpresa = {
   updatedAt: string
   hasCompanyCode: boolean
   billingInvoices: DetailInvoice[]
+  planAccessHistory?: PlanAccessHistoryEntry[]
   planUsage: {
     planTier: PlanTier
     meters: Array<{ key: string; label: string; current: number; max: number | null; unit: string; monthly: boolean }>
@@ -232,6 +261,16 @@ function getCompanyRuntimeStatus(row: Pick<ListRow, 'planValidUntil' | 'trialVal
   if (hasActiveAccess) return 'ACTIVE'
   if (['active', 'trialing', 'past_due'].includes(stripeStatus)) return 'ACTIVE'
   return 'CANCELLED'
+}
+
+/**
+ * Rank para ordenar el listado: las empresas activas siempre van primero,
+ * sin importar la columna o la dirección de orden elegida.
+ */
+function getCompanyStatusRank(
+  row: Pick<ListRow, 'planValidUntil' | 'trialValidUntil' | 'stripeSubscriptionStatus'>,
+): number {
+  return getCompanyRuntimeStatus(row) === 'ACTIVE' ? 0 : 1
 }
 
 function titleForModule(moduleKey: ModuleKey): string {
@@ -376,6 +415,28 @@ export default function SuperAdminEmpresasClient() {
   const [verticalOverridesError, setVerticalOverridesError] = useState<string | null>(null)
   const [verticalOverrideSavingKey, setVerticalOverrideSavingKey] = useState<VerticalKey | null>(null)
 
+  const [planAccessSaving, setPlanAccessSaving] = useState<PlanAccessAction | null>(null)
+  const [planAccessError, setPlanAccessError] = useState<string | null>(null)
+  const [trialDialogOpen, setTrialDialogOpen] = useState(false)
+  const [grantDialogOpen, setGrantDialogOpen] = useState(false)
+  const [revokeDialogOpen, setRevokeDialogOpen] = useState(false)
+  const [trialForm, setTrialForm] = useState({
+    days: '15',
+    tier: 'FULL' as PlanTier,
+    extendFromCurrent: false,
+    note: '',
+  })
+  const [grantForm, setGrantForm] = useState({
+    tier: 'FULL' as PlanTier,
+    billingCycle: 'MONTHLY' as BillingCycle,
+    periodMode: 'PERIODS' as 'PERIODS' | 'DATE',
+    periods: '1',
+    validUntil: '',
+    extendFromCurrent: true,
+    note: '',
+  })
+  const [revokeNote, setRevokeNote] = useState('')
+
   const [editMode, setEditMode] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
@@ -433,6 +494,13 @@ export default function SuperAdminEmpresasClient() {
     [moduleOverrides]
   )
 
+  const planAccessActive = useMemo(() => {
+    if (!detail) return false
+    return isFutureDate(detail.planValidUntil) || isFutureDate(detail.trialValidUntil)
+  }, [detail])
+
+  const planAccessHistory = useMemo(() => detail?.planAccessHistory ?? [], [detail])
+
   function replaceModuleOverrideRow(rows: ModuleOverrideRow[], nextRow: ModuleOverrideRow) {
     return rows.map((row) => (row.module === nextRow.module ? nextRow : row))
   }
@@ -469,9 +537,6 @@ export default function SuperAdminEmpresasClient() {
   }
 
   function compareCompanies(a: ListRow, b: ListRow, key: CompanySortKey) {
-    const aStatus = getCompanyRuntimeStatus(a)
-    const bStatus = getCompanyRuntimeStatus(b)
-
     switch (key) {
       case 'nombre':
         return a.nombre.localeCompare(b.nombre, locale)
@@ -482,13 +547,20 @@ export default function SuperAdminEmpresasClient() {
       case 'planTier':
         return a.planTier.localeCompare(b.planTier, locale)
       case 'status':
-        return aStatus.localeCompare(bStatus, locale)
+        return getCompanyStatusRank(a) - getCompanyStatusRank(b)
       default:
         return 0
     }
   }
 
   function toggleSort(nextKey: CompanySortKey) {
+    if (nextKey === 'status') {
+      // El estado siempre ordena con las empresas activas primero.
+      setSortKey('status')
+      setSortDirection('asc')
+      return
+    }
+
     if (sortKey === nextKey) {
       setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))
       return
@@ -686,6 +758,10 @@ export default function SuperAdminEmpresasClient() {
   const filteredAndSorted = useMemo(() => {
     const next = [...filtered]
     next.sort((a, b) => {
+      // Las empresas activas siempre quedan de primeras (criterio primario).
+      const statusRank = getCompanyStatusRank(a) - getCompanyStatusRank(b)
+      if (statusRank !== 0) return statusRank
+
       const result = compareCompanies(a, b, sortKey)
       if (result !== 0) return sortDirection === 'asc' ? result : -result
       return a.nombre.localeCompare(b.nombre, locale)
@@ -911,6 +987,156 @@ export default function SuperAdminEmpresasClient() {
     } finally {
       setEditLoading(false)
     }
+  }
+
+  function openTrialAccessDialog() {
+    if (!detail) return
+    setPlanAccessError(null)
+    setTrialForm({
+      days: '15',
+      tier: detail.trialTier ?? detail.planTier,
+      extendFromCurrent: isFutureDate(detail.trialValidUntil),
+      note: '',
+    })
+    setTrialDialogOpen(true)
+  }
+
+  function openGrantAccessDialog() {
+    if (!detail) return
+    setPlanAccessError(null)
+    setGrantForm({
+      tier: detail.planTier,
+      billingCycle: detail.billingCycle,
+      periodMode: 'PERIODS',
+      periods: '1',
+      validUntil: '',
+      extendFromCurrent: isFutureDate(detail.planValidUntil),
+      note: '',
+    })
+    setGrantDialogOpen(true)
+  }
+
+  function openRevokeAccessDialog() {
+    setPlanAccessError(null)
+    setRevokeNote('')
+    setRevokeDialogOpen(true)
+  }
+
+  async function submitPlanAccess(action: PlanAccessAction, payload: Record<string, unknown>) {
+    if (!detail?.id) return
+    setPlanAccessSaving(action)
+    setPlanAccessError(null)
+
+    try {
+      const res = await fetch(`/api/super-admin/empresas/${encodeURIComponent(detail.id)}/plan-access`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...payload }),
+      })
+      const json = (await res.json().catch(() => ({}))) as PlanAccessResponse
+
+      if (!res.ok || !('ok' in json) || !json.ok) {
+        const message = ('error' in json && json.error) || t('superAdmin.companies.planAccess.errors.saveFailed')
+        setPlanAccessError(message)
+        toast({
+          title: t('superAdmin.companies.planAccess.errors.saveFailed'),
+          description: message,
+          variant: 'destructive',
+        })
+        return
+      }
+
+      setTrialDialogOpen(false)
+      setGrantDialogOpen(false)
+      setRevokeDialogOpen(false)
+      setRevokeNote('')
+
+      const until = json.access.planValidUntil ?? json.access.trialValidUntil
+      const untilText = until ? fmtDate(until, locale, naText) : naText
+
+      if (action === 'GRANT_TRIAL') {
+        toast({
+          title: t('superAdmin.companies.planAccess.toast.trial'),
+          description: t('superAdmin.companies.planAccess.toast.trialDescription', { date: untilText }),
+        })
+      } else if (action === 'GRANT_PLAN') {
+        toast({
+          title: t('superAdmin.companies.planAccess.toast.grant'),
+          description: t('superAdmin.companies.planAccess.toast.grantDescription', { date: untilText }),
+        })
+      } else {
+        toast({
+          title: t('superAdmin.companies.planAccess.toast.revoke'),
+          description: t('superAdmin.companies.planAccess.toast.revokeDescription'),
+        })
+      }
+
+      await load()
+      await openDetail(detail.id, detailTab)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : t('common.unexpectedError')
+      setPlanAccessError(message)
+      toast({
+        title: t('superAdmin.companies.planAccess.errors.saveFailed'),
+        description: message,
+        variant: 'destructive',
+      })
+    } finally {
+      setPlanAccessSaving(null)
+    }
+  }
+
+  async function submitTrialAccess() {
+    const days = Number(trialForm.days)
+    if (!Number.isFinite(days) || days < 1 || days > 365) {
+      setPlanAccessError(t('superAdmin.companies.planAccess.errors.invalidDays'))
+      return
+    }
+
+    await submitPlanAccess('GRANT_TRIAL', {
+      days: Math.trunc(days),
+      tier: trialForm.tier,
+      extendFromCurrent: trialForm.extendFromCurrent,
+      note: trialForm.note.trim() || null,
+    })
+  }
+
+  async function submitGrantAccess() {
+    const note = grantForm.note.trim() || null
+
+    if (grantForm.periodMode === 'DATE') {
+      if (!grantForm.validUntil) {
+        setPlanAccessError(t('superAdmin.companies.planAccess.errors.invalidDate'))
+        return
+      }
+
+      await submitPlanAccess('GRANT_PLAN', {
+        tier: grantForm.tier,
+        billingCycle: grantForm.billingCycle,
+        validUntil: grantForm.validUntil,
+        extendFromCurrent: grantForm.extendFromCurrent,
+        note,
+      })
+      return
+    }
+
+    const periods = Number(grantForm.periods)
+    if (!Number.isFinite(periods) || periods < 1 || periods > 36) {
+      setPlanAccessError(t('superAdmin.companies.planAccess.errors.invalidPeriods'))
+      return
+    }
+
+    await submitPlanAccess('GRANT_PLAN', {
+      tier: grantForm.tier,
+      billingCycle: grantForm.billingCycle,
+      periods: Math.trunc(periods),
+      extendFromCurrent: grantForm.extendFromCurrent,
+      note,
+    })
+  }
+
+  async function submitRevokeAccess() {
+    await submitPlanAccess('REVOKE_PLAN', { note: revokeNote.trim() || null })
   }
 
   async function toggleModuleOnlyBilling(nextValue: boolean) {
@@ -1304,6 +1530,123 @@ export default function SuperAdminEmpresasClient() {
                     </div>
 
                     <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="font-medium text-slate-900">{t('superAdmin.companies.planAccess.title')}</div>
+                          <div className="text-xs text-muted-foreground">{t('superAdmin.companies.planAccess.subtitle')}</div>
+                        </div>
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${planAccessActive ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`}
+                        >
+                          {planAccessActive
+                            ? t('superAdmin.companies.planAccess.statusActive')
+                            : t('superAdmin.companies.planAccess.statusInactive')}
+                        </span>
+                      </div>
+
+                      <div className="grid gap-2 text-xs text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          {t('superAdmin.companies.planAccess.planTier')}:{' '}
+                          <span className="font-medium text-slate-900">{detail.planTier}</span>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          {t('superAdmin.companies.planAccess.cycleShort')}:{' '}
+                          <span className="font-medium text-slate-900">{billingCycleLabel(detail.billingCycle)}</span>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          {t('superAdmin.companies.planAccess.planUntil')}:{' '}
+                          <span className="font-medium text-slate-900">{fmtDate(detail.planValidUntil, locale, naText)}</span>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          {t('superAdmin.companies.planAccess.trialUntil')}:{' '}
+                          <span className="font-medium text-slate-900">
+                            {detail.trialValidUntil
+                              ? `${fmtDate(detail.trialValidUntil, locale, naText)} (${detail.trialTier ?? detail.planTier})`
+                              : naText}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => openTrialAccessDialog()}
+                          disabled={planAccessSaving !== null || detailLoading}
+                        >
+                          <CalendarPlus className="h-4 w-4" />
+                          {planAccessSaving === 'GRANT_TRIAL'
+                            ? t('superAdmin.companies.planAccess.saving')
+                            : t('superAdmin.companies.planAccess.actions.trial')}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openGrantAccessDialog()}
+                          disabled={planAccessSaving !== null || detailLoading}
+                        >
+                          <ShieldCheck className="h-4 w-4" />
+                          {planAccessSaving === 'GRANT_PLAN'
+                            ? t('superAdmin.companies.planAccess.saving')
+                            : t('superAdmin.companies.planAccess.actions.grant')}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                          onClick={() => openRevokeAccessDialog()}
+                          disabled={planAccessSaving !== null || detailLoading || !planAccessActive}
+                        >
+                          <ShieldOff className="h-4 w-4" />
+                          {planAccessSaving === 'REVOKE_PLAN'
+                            ? t('superAdmin.companies.planAccess.saving')
+                            : t('superAdmin.companies.planAccess.actions.revoke')}
+                        </Button>
+                      </div>
+
+                      <p className="text-[11px] text-slate-500">{t('superAdmin.companies.planAccess.hint')}</p>
+
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          {t('superAdmin.companies.planAccess.history.title')}
+                        </div>
+                        {planAccessHistory.length === 0 ? (
+                          <div className="text-[11px] text-slate-500">{t('superAdmin.companies.planAccess.history.empty')}</div>
+                        ) : (
+                          planAccessHistory.map((entry) => (
+                            <div
+                              key={`${entry.at}-${entry.action}-${entry.tier}`}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-full bg-white px-2 py-0.5 font-semibold text-slate-700 ring-1 ring-slate-200">
+                                  {t(`superAdmin.companies.planAccess.history.actions.${entry.action}`)}
+                                </span>
+                                <span className="font-medium text-slate-900">{entry.tier}</span>
+                                {entry.billingCycle ? <span>· {billingCycleLabel(entry.billingCycle)}</span> : null}
+                                {entry.days ? (
+                                  <span>
+                                    · {entry.days} {t('superAdmin.companies.planAccess.days')}
+                                  </span>
+                                ) : null}
+                                {entry.validUntil ? (
+                                  <span>
+                                    · {t('superAdmin.companies.planAccess.history.until')}{' '}
+                                    {fmtDate(entry.validUntil, locale, naText)}
+                                  </span>
+                                ) : null}
+                                {entry.note ? <span className="italic text-slate-500">“{entry.note}”</span> : null}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 text-slate-500">
+                                <span>{fmtDate(entry.at, locale, naText)}</span>
+                                {entry.byEmail ? <span>· {entry.byEmail}</span> : null}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                       <div>
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
@@ -1672,6 +2015,255 @@ export default function SuperAdminEmpresasClient() {
                 </Button>
               </>
             ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={trialDialogOpen} onOpenChange={(v) => (!planAccessSaving ? setTrialDialogOpen(v) : null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{t('superAdmin.companies.planAccess.trial.title')}</DialogTitle>
+            <DialogDescription>{t('superAdmin.companies.planAccess.trial.subtitle')}</DialogDescription>
+          </DialogHeader>
+
+          {planAccessError ? <div className="text-sm text-red-600">{planAccessError}</div> : null}
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label>{t('superAdmin.companies.planAccess.trial.days')}</Label>
+              <Input
+                type="number"
+                min={1}
+                max={365}
+                value={trialForm.days}
+                onChange={(e) => setTrialForm((p) => ({ ...p, days: e.target.value }))}
+                disabled={planAccessSaving !== null}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>{t('superAdmin.companies.planAccess.trial.tier')}</Label>
+              <Select
+                value={trialForm.tier}
+                onValueChange={(v) => setTrialForm((p) => ({ ...p, tier: v as PlanTier }))}
+                disabled={planAccessSaving !== null}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PLAN_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-3 sm:col-span-2">
+              <Switch
+                checked={trialForm.extendFromCurrent}
+                onCheckedChange={(checked) => setTrialForm((p) => ({ ...p, extendFromCurrent: Boolean(checked) }))}
+                disabled={planAccessSaving !== null}
+              />
+              <div>
+                <div className="font-medium">{t('superAdmin.companies.planAccess.trial.extend')}</div>
+                <div className="text-xs text-muted-foreground">{t('superAdmin.companies.planAccess.trial.extendHelp')}</div>
+              </div>
+            </div>
+
+            <div className="space-y-1 sm:col-span-2">
+              <Label>{t('superAdmin.companies.planAccess.note')}</Label>
+              <Input
+                value={trialForm.note}
+                onChange={(e) => setTrialForm((p) => ({ ...p, note: e.target.value }))}
+                placeholder={t('superAdmin.companies.planAccess.trial.notePlaceholder')}
+                maxLength={280}
+                disabled={planAccessSaving !== null}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTrialDialogOpen(false)} disabled={planAccessSaving !== null}>
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={() => void submitTrialAccess()} disabled={planAccessSaving !== null}>
+              {planAccessSaving === 'GRANT_TRIAL'
+                ? t('superAdmin.companies.planAccess.saving')
+                : t('superAdmin.companies.planAccess.trial.submit')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={grantDialogOpen} onOpenChange={(v) => (!planAccessSaving ? setGrantDialogOpen(v) : null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{t('superAdmin.companies.planAccess.grant.title')}</DialogTitle>
+            <DialogDescription>{t('superAdmin.companies.planAccess.grant.subtitle')}</DialogDescription>
+          </DialogHeader>
+
+          {planAccessError ? <div className="text-sm text-red-600">{planAccessError}</div> : null}
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1 sm:col-span-2">
+              <Label>{t('superAdmin.companies.planAccess.grant.mode')}</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={grantForm.periodMode === 'PERIODS' ? 'default' : 'outline'}
+                  onClick={() => setGrantForm((p) => ({ ...p, periodMode: 'PERIODS' }))}
+                  disabled={planAccessSaving !== null}
+                >
+                  {t('superAdmin.companies.planAccess.grant.modePeriods')}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={grantForm.periodMode === 'DATE' ? 'default' : 'outline'}
+                  onClick={() => setGrantForm((p) => ({ ...p, periodMode: 'DATE' }))}
+                  disabled={planAccessSaving !== null}
+                >
+                  {t('superAdmin.companies.planAccess.grant.modeDate')}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label>{t('superAdmin.companies.planAccess.grant.tier')}</Label>
+              <Select
+                value={grantForm.tier}
+                onValueChange={(v) => setGrantForm((p) => ({ ...p, tier: v as PlanTier }))}
+                disabled={planAccessSaving !== null}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PLAN_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label>{t('superAdmin.companies.fields.billingCycle')}</Label>
+              <Select
+                value={grantForm.billingCycle}
+                onValueChange={(v) => setGrantForm((p) => ({ ...p, billingCycle: v as BillingCycle }))}
+                disabled={planAccessSaving !== null}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MONTHLY">{billingCycleLabel('MONTHLY')}</SelectItem>
+                  <SelectItem value="YEARLY">{billingCycleLabel('YEARLY')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {grantForm.periodMode === 'PERIODS' ? (
+              <div className="space-y-1 sm:col-span-2">
+                <Label>{t('superAdmin.companies.planAccess.grant.periods')}</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={36}
+                  value={grantForm.periods}
+                  onChange={(e) => setGrantForm((p) => ({ ...p, periods: e.target.value }))}
+                  disabled={planAccessSaving !== null}
+                />
+              </div>
+            ) : (
+              <div className="space-y-1 sm:col-span-2">
+                <Label>{t('superAdmin.companies.planAccess.grant.validUntil')}</Label>
+                <Input
+                  type="date"
+                  value={grantForm.validUntil}
+                  onChange={(e) => setGrantForm((p) => ({ ...p, validUntil: e.target.value }))}
+                  disabled={planAccessSaving !== null}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 sm:col-span-2">
+              <Switch
+                checked={grantForm.extendFromCurrent}
+                onCheckedChange={(checked) => setGrantForm((p) => ({ ...p, extendFromCurrent: Boolean(checked) }))}
+                disabled={planAccessSaving !== null || grantForm.periodMode === 'DATE'}
+              />
+              <div>
+                <div className="font-medium">{t('superAdmin.companies.planAccess.grant.extend')}</div>
+                <div className="text-xs text-muted-foreground">{t('superAdmin.companies.planAccess.grant.extendHelp')}</div>
+              </div>
+            </div>
+
+            <div className="space-y-1 sm:col-span-2">
+              <Label>{t('superAdmin.companies.planAccess.note')}</Label>
+              <Input
+                value={grantForm.note}
+                onChange={(e) => setGrantForm((p) => ({ ...p, note: e.target.value }))}
+                placeholder={t('superAdmin.companies.planAccess.grant.notePlaceholder')}
+                maxLength={280}
+                disabled={planAccessSaving !== null}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGrantDialogOpen(false)} disabled={planAccessSaving !== null}>
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={() => void submitGrantAccess()} disabled={planAccessSaving !== null}>
+              {planAccessSaving === 'GRANT_PLAN'
+                ? t('superAdmin.companies.planAccess.saving')
+                : t('superAdmin.companies.planAccess.grant.submit')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={revokeDialogOpen} onOpenChange={(v) => (!planAccessSaving ? setRevokeDialogOpen(v) : null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('superAdmin.companies.planAccess.revoke.title')}</DialogTitle>
+            <DialogDescription>{t('superAdmin.companies.planAccess.revoke.description')}</DialogDescription>
+          </DialogHeader>
+
+          {planAccessError ? <div className="text-sm text-red-600">{planAccessError}</div> : null}
+
+          {detail?.stripeSubscriptionStatus ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {t('superAdmin.companies.planAccess.revoke.stripeHint')}
+            </p>
+          ) : null}
+
+          <div className="space-y-1">
+            <Label>{t('superAdmin.companies.planAccess.note')}</Label>
+            <Input
+              value={revokeNote}
+              onChange={(e) => setRevokeNote(e.target.value)}
+              placeholder={t('superAdmin.companies.planAccess.revoke.notePlaceholder')}
+              maxLength={280}
+              disabled={planAccessSaving !== null}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRevokeDialogOpen(false)} disabled={planAccessSaving !== null}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="destructive" onClick={() => void submitRevokeAccess()} disabled={planAccessSaving !== null}>
+              {planAccessSaving === 'REVOKE_PLAN'
+                ? t('superAdmin.companies.planAccess.saving')
+                : t('superAdmin.companies.planAccess.revoke.submit')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -6,6 +6,7 @@ import { isSuperAdminEmail } from '@/lib/super-admin'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
 import { syncEnabledVerticalGrantsForUser } from '@/lib/company-preset-sync'
 import { mergeCompanyLithographySettings, parseCompanyLithographySettings } from '@/lib/lithography-access'
+import { parsePlanAccessHistory } from '@/lib/company-plan-access-history'
 import { getEmpresaStorageUsageSummary } from '@/lib/empresa-storage'
 import { getPlanUsageSummary } from '@/lib/plan-limits'
 
@@ -166,6 +167,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       workspaceCode,
       hasCompanyCode: Boolean(empresa.registrationCodeHash),
       lithographyQuoteToolsEnabled: parseCompanyLithographySettings(empresa.dashboardConfig).quoteToolsEnabled,
+      planAccessHistory: parsePlanAccessHistory(empresa.dashboardConfig),
       planOwnerEmail,
       planUsage,
       storageUsage,

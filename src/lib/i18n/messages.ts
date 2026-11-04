@@ -193,6 +193,76 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'superAdmin.companies.detail.title': 'Detalle de empresa',
     'superAdmin.companies.detail.subtitle': 'Historial básico: creación, plan y facturación reciente.',
 
+    'superAdmin.companies.planAccess.title': 'Vigencia y acceso',
+    'superAdmin.companies.planAccess.subtitle':
+      'Regala periodos de prueba o habilita el acceso manual cuando el pago se recibió por fuera de la plataforma.',
+    'superAdmin.companies.planAccess.statusActive': 'Con acceso',
+    'superAdmin.companies.planAccess.statusInactive': 'Sin acceso',
+    'superAdmin.companies.planAccess.planTier': 'Plan',
+    'superAdmin.companies.planAccess.cycleShort': 'Ciclo',
+    'superAdmin.companies.planAccess.planUntil': 'Plan hasta',
+    'superAdmin.companies.planAccess.trialUntil': 'Prueba hasta',
+    'superAdmin.companies.planAccess.note': 'Observación (opcional)',
+    'superAdmin.companies.planAccess.days': 'días',
+    'superAdmin.companies.planAccess.saving': 'Guardando…',
+    'superAdmin.companies.planAccess.actions.trial': 'Asignar prueba',
+    'superAdmin.companies.planAccess.actions.grant': 'Habilitar acceso (pago externo)',
+    'superAdmin.companies.planAccess.actions.revoke': 'Quitar acceso',
+    'superAdmin.companies.planAccess.hint':
+      'El acceso aplica a todos los usuarios de la empresa. Ninguna de estas acciones genera factura: regístrala luego en facturación y concíliala.',
+    'superAdmin.companies.planAccess.history.title': 'Historial de habilitaciones',
+    'superAdmin.companies.planAccess.history.empty': 'Sin habilitaciones manuales registradas.',
+    'superAdmin.companies.planAccess.history.until': 'hasta',
+    'superAdmin.companies.planAccess.history.actions.GRANT_TRIAL': 'Prueba asignada',
+    'superAdmin.companies.planAccess.history.actions.GRANT_PLAN': 'Acceso manual',
+    'superAdmin.companies.planAccess.history.actions.REVOKE_PLAN': 'Acceso retirado',
+
+    'superAdmin.companies.planAccess.trial.title': 'Asignar periodo de prueba',
+    'superAdmin.companies.planAccess.trial.subtitle':
+      'La empresa queda activa durante los días indicados y sin generar factura.',
+    'superAdmin.companies.planAccess.trial.days': 'Días de prueba',
+    'superAdmin.companies.planAccess.trial.tier': 'Plan de la prueba',
+    'superAdmin.companies.planAccess.trial.extend': 'Extender desde el vencimiento actual',
+    'superAdmin.companies.planAccess.trial.extendHelp':
+      'Si la prueba sigue vigente, los días se suman al vencimiento actual.',
+    'superAdmin.companies.planAccess.trial.notePlaceholder': 'Ej.: cliente referido, demo comercial...',
+    'superAdmin.companies.planAccess.trial.submit': 'Asignar prueba',
+
+    'superAdmin.companies.planAccess.grant.title': 'Habilitar acceso manual',
+    'superAdmin.companies.planAccess.grant.subtitle':
+      'Para pagos recibidos por fuera de la plataforma. No genera factura: regístrala luego y concíliala.',
+    'superAdmin.companies.planAccess.grant.mode': 'Forma de calcular la vigencia',
+    'superAdmin.companies.planAccess.grant.modePeriods': 'Por periodos',
+    'superAdmin.companies.planAccess.grant.modeDate': 'Fecha exacta',
+    'superAdmin.companies.planAccess.grant.tier': 'Plan a habilitar',
+    'superAdmin.companies.planAccess.grant.periods': 'Número de periodos',
+    'superAdmin.companies.planAccess.grant.validUntil': 'Vigente hasta',
+    'superAdmin.companies.planAccess.grant.extend': 'Extender desde la vigencia actual',
+    'superAdmin.companies.planAccess.grant.extendHelp':
+      'Si el plan sigue vigente, los periodos se suman a la fecha de corte actual.',
+    'superAdmin.companies.planAccess.grant.notePlaceholder': 'Ej.: transferencia bancaria #1234...',
+    'superAdmin.companies.planAccess.grant.submit': 'Activar acceso',
+
+    'superAdmin.companies.planAccess.revoke.title': 'Quitar acceso',
+    'superAdmin.companies.planAccess.revoke.description':
+      'Se limpian la vigencia pagada y la prueba. La empresa queda sin acceso hasta que vuelvas a habilitarla.',
+    'superAdmin.companies.planAccess.revoke.notePlaceholder': 'Motivo (opcional)',
+    'superAdmin.companies.planAccess.revoke.stripeHint':
+      'Esta empresa tiene una suscripción de Stripe: quitarla aquí no cancela los cobros recurrentes en Stripe.',
+    'superAdmin.companies.planAccess.revoke.submit': 'Quitar acceso',
+
+    'superAdmin.companies.planAccess.toast.trial': 'Prueba asignada',
+    'superAdmin.companies.planAccess.toast.trialDescription': 'La empresa queda activa hasta {date}.',
+    'superAdmin.companies.planAccess.toast.grant': 'Acceso habilitado',
+    'superAdmin.companies.planAccess.toast.grantDescription': 'La empresa queda activa hasta {date}.',
+    'superAdmin.companies.planAccess.toast.revoke': 'Acceso retirado',
+    'superAdmin.companies.planAccess.toast.revokeDescription': 'La empresa quedó sin vigencia ni prueba activa.',
+
+    'superAdmin.companies.planAccess.errors.saveFailed': 'No se pudo actualizar la vigencia',
+    'superAdmin.companies.planAccess.errors.invalidDays': 'Indica entre 1 y 365 días de prueba.',
+    'superAdmin.companies.planAccess.errors.invalidPeriods': 'Indica entre 1 y 36 periodos.',
+    'superAdmin.companies.planAccess.errors.invalidDate': 'Indica una fecha de vigencia válida.',
+
     'superAdmin.companies.invoices.title': 'Últimas facturas',
     'superAdmin.companies.invoices.paidAt': 'Pagada',
     'superAdmin.companies.invoices.reference': 'Ref',
@@ -2743,6 +2813,76 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'superAdmin.companies.detail.title': 'Company details',
     'superAdmin.companies.detail.subtitle': 'Basic history: creation, plan, and recent billing.',
+
+    'superAdmin.companies.planAccess.title': 'Validity and access',
+    'superAdmin.companies.planAccess.subtitle':
+      'Gift trial periods or enable manual access when the payment was received outside the platform.',
+    'superAdmin.companies.planAccess.statusActive': 'With access',
+    'superAdmin.companies.planAccess.statusInactive': 'No access',
+    'superAdmin.companies.planAccess.planTier': 'Plan',
+    'superAdmin.companies.planAccess.cycleShort': 'Cycle',
+    'superAdmin.companies.planAccess.planUntil': 'Plan until',
+    'superAdmin.companies.planAccess.trialUntil': 'Trial until',
+    'superAdmin.companies.planAccess.note': 'Note (optional)',
+    'superAdmin.companies.planAccess.days': 'days',
+    'superAdmin.companies.planAccess.saving': 'Saving…',
+    'superAdmin.companies.planAccess.actions.trial': 'Assign trial',
+    'superAdmin.companies.planAccess.actions.grant': 'Enable access (off-platform payment)',
+    'superAdmin.companies.planAccess.actions.revoke': 'Remove access',
+    'superAdmin.companies.planAccess.hint':
+      'Access applies to every user in the company. None of these actions creates an invoice: register it later in billing and reconcile it.',
+    'superAdmin.companies.planAccess.history.title': 'Access grant history',
+    'superAdmin.companies.planAccess.history.empty': 'No manual grants recorded yet.',
+    'superAdmin.companies.planAccess.history.until': 'until',
+    'superAdmin.companies.planAccess.history.actions.GRANT_TRIAL': 'Trial granted',
+    'superAdmin.companies.planAccess.history.actions.GRANT_PLAN': 'Manual access',
+    'superAdmin.companies.planAccess.history.actions.REVOKE_PLAN': 'Access removed',
+
+    'superAdmin.companies.planAccess.trial.title': 'Assign trial period',
+    'superAdmin.companies.planAccess.trial.subtitle':
+      'The company stays active for the given days without generating an invoice.',
+    'superAdmin.companies.planAccess.trial.days': 'Trial days',
+    'superAdmin.companies.planAccess.trial.tier': 'Trial plan',
+    'superAdmin.companies.planAccess.trial.extend': 'Extend from current expiry',
+    'superAdmin.companies.planAccess.trial.extendHelp':
+      'If the trial is still active, the days are added to the current expiry date.',
+    'superAdmin.companies.planAccess.trial.notePlaceholder': 'E.g.: referred customer, sales demo...',
+    'superAdmin.companies.planAccess.trial.submit': 'Assign trial',
+
+    'superAdmin.companies.planAccess.grant.title': 'Enable manual access',
+    'superAdmin.companies.planAccess.grant.subtitle':
+      'For payments received outside the platform. No invoice is created: register it later and reconcile it.',
+    'superAdmin.companies.planAccess.grant.mode': 'How to calculate validity',
+    'superAdmin.companies.planAccess.grant.modePeriods': 'By periods',
+    'superAdmin.companies.planAccess.grant.modeDate': 'Exact date',
+    'superAdmin.companies.planAccess.grant.tier': 'Plan to enable',
+    'superAdmin.companies.planAccess.grant.periods': 'Number of periods',
+    'superAdmin.companies.planAccess.grant.validUntil': 'Valid until',
+    'superAdmin.companies.planAccess.grant.extend': 'Extend from current validity',
+    'superAdmin.companies.planAccess.grant.extendHelp':
+      'If the plan is still active, the periods are added to the current cutoff date.',
+    'superAdmin.companies.planAccess.grant.notePlaceholder': 'E.g.: bank transfer #1234...',
+    'superAdmin.companies.planAccess.grant.submit': 'Activate access',
+
+    'superAdmin.companies.planAccess.revoke.title': 'Remove access',
+    'superAdmin.companies.planAccess.revoke.description':
+      'Paid validity and trial are cleared. The company has no access until you enable it again.',
+    'superAdmin.companies.planAccess.revoke.notePlaceholder': 'Reason (optional)',
+    'superAdmin.companies.planAccess.revoke.stripeHint':
+      'This company has a Stripe subscription: removing access here does not cancel the recurring charges in Stripe.',
+    'superAdmin.companies.planAccess.revoke.submit': 'Remove access',
+
+    'superAdmin.companies.planAccess.toast.trial': 'Trial assigned',
+    'superAdmin.companies.planAccess.toast.trialDescription': 'The company is active until {date}.',
+    'superAdmin.companies.planAccess.toast.grant': 'Access enabled',
+    'superAdmin.companies.planAccess.toast.grantDescription': 'The company is active until {date}.',
+    'superAdmin.companies.planAccess.toast.revoke': 'Access removed',
+    'superAdmin.companies.planAccess.toast.revokeDescription': 'The company has no active plan validity or trial.',
+
+    'superAdmin.companies.planAccess.errors.saveFailed': 'Could not update validity',
+    'superAdmin.companies.planAccess.errors.invalidDays': 'Enter between 1 and 365 trial days.',
+    'superAdmin.companies.planAccess.errors.invalidPeriods': 'Enter between 1 and 36 periods.',
+    'superAdmin.companies.planAccess.errors.invalidDate': 'Enter a valid validity date.',
 
     'superAdmin.companies.invoices.title': 'Latest invoices',
     'superAdmin.companies.invoices.paidAt': 'Paid',
