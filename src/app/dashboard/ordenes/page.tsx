@@ -817,11 +817,16 @@ export default function OrdenesPage() {
     try {
       const catalogRes = await fetch('/api/rop/v1/catalog/services', { cache: 'no-store' });
       const catalogJson = await catalogRes.json().catch(() => null);
-      if (!catalogRes.ok || !catalogJson?.data?.items) {
+      const catalogItems = Array.isArray(catalogJson?.data)
+        ? (catalogJson.data as RopServiceCatalogItem[])
+        : Array.isArray(catalogJson?.data?.items)
+          ? (catalogJson.data.items as RopServiceCatalogItem[])
+          : null;
+      if (!catalogRes.ok || !catalogItems) {
         throw new Error(catalogJson?.error || 'No se pudo cargar el catálogo ROP.');
       }
 
-      const catalog = (catalogJson.data.items as RopServiceCatalogItem[]) ?? [];
+      const catalog = catalogItems;
       const matchedService = inferRopServiceFromOrder(orden.itemsSnapshot, catalog);
       setRopMatchedService(matchedService);
 

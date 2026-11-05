@@ -383,6 +383,13 @@ export function RegisterPageClient({ defaultCallbackUrl }: RegisterPageClientPro
               {isLoading ? t('auth.register.creating') : t('auth.register.submit')}
             </Button>
 
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {t('auth.register.retentionNotice')}{' '}
+              <Link href="/politica-de-privacidad#conservacion" className="underline">
+                {t('auth.register.retentionLink')}
+              </Link>
+            </p>
+
             <p className="text-sm text-muted-foreground">
               {t('auth.register.haveAccount')}{" "}
               <Link href="/auth/login" className="underline">

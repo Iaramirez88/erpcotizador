@@ -121,10 +121,14 @@ export const authOptions: NextAuthConfig = {
 
         const remember = String((credentials as Record<string, unknown>)?.remember ?? '').toLowerCase() === 'true'
 
+        // Normalizar el email: las cuentas se guardan en minúsculas, así el mismo correo
+        // siempre entra a la misma cuenta (con su historial), sin importar mayúsculas.
+        const loginEmail = String(credentials.email).trim().toLowerCase()
+
         // Buscar usuario en la base de datos
         const user = await prisma.user.findUnique({
           where: {
-            email: credentials.email as string
+            email: loginEmail
           }
         })
 

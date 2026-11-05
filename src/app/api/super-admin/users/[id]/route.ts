@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { UserRole } from '@prisma/client'
+import { previewAccountDeletion, purgeUserAccount } from '@/lib/account-purge'
 
 export const runtime = 'nodejs'
 
@@ -78,6 +79,17 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   })
 }
 
+export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const session = requireSuperAdmin(await auth())
+  if (!session) return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 401 })
+
+  const { id } = await ctx.params
+  const preview = await previewAccountDeletion({ userId: id })
+  if (!preview) return NextResponse.json({ ok: false, error: 'Usuario no encontrado' }, { status: 404 })
+
+  return NextResponse.json({ ok: true, preview })
+}
+
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const session = requireSuperAdmin(await auth())
   if (!session) return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 401 })
@@ -89,14 +101,31 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   }
 
   try {
-    await prisma.user.delete({ where: { id } })
-    return NextResponse.json({ ok: true })
+    // Borrado definitivo: usuario + sus datos y, si es el único miembro (o un espacio
+    // personal), también la empresa con toda su información. No deja residuos.
+    const result = await purgeUserAccount({ userId: id })
+
+    return NextResponse.json({
+      ok: true,
+      deleted: {
+        userId: result.deletedUserId,
+        email: result.deletedUserEmail,
+        company: result.company,
+        rowsByTable: result.rowsByTable,
+        reassigned: result.reassigned,
+      },
+    })
   } catch (e) {
+    if (e instanceof Error && e.message === 'USER_NOT_FOUND') {
+      return NextResponse.json({ ok: false, error: 'Usuario no encontrado' }, { status: 404 })
+    }
+
     const msg = e instanceof Error ? e.message : 'Error inesperado'
+    console.error('Error eliminando cuenta desde super admin:', e)
     return NextResponse.json(
       {
         ok: false,
-        error: `No se pudo eliminar. Puede tener registros asociados. (${msg})`,
+        error: `No se pudo eliminar la cuenta definitivamente. (${msg})`,
       },
       { status: 400 }
     )

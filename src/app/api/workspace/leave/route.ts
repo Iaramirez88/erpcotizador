@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ensureDefaultSedeForEmpresa } from '@/lib/rbac'
+import { buildPersonalNit, findExistingPersonalEmpresa, isPersonalNit, normalizeAccountEmail } from '@/lib/trial-policy'
 
 export const runtime = 'nodejs'
 
@@ -26,12 +28,17 @@ export async function POST() {
   if (!empresa?.id) return NextResponse.json({ error: 'Espacio de trabajo no encontrado' }, { status: 404 })
 
   // No permitir darse de baja del espacio personal (se usa como fallback del sistema).
-  if (empresa.nit === `PERS-${userId}`) {
+  if (isPersonalNit(empresa.nit)) {
     return NextResponse.json({ error: 'No puedes darte de baja de tu espacio personal.' }, { status: 400 })
   }
 
-  const personalNit = `PERS-${userId}`
-  const personalNombre = `Espacio personal${user.email ? ` (${user.email.trim().toLowerCase()})` : ''}`
+  const personalNit = buildPersonalNit(userId)
+  const normalizedEmail = normalizeAccountEmail(user.email)
+  const personalNombre = `Espacio personal${normalizedEmail ? ` (${normalizedEmail})` : ''}`
+
+  // Reutiliza el espacio personal que la persona ya tenía: conserva historial y el estado
+  // del trial (no se reinicia ni se otorga uno nuevo).
+  const existingPersonal = await findExistingPersonalEmpresa({ userId, email: normalizedEmail })
 
   const result = await prisma.$transaction(async (tx) => {
     const myAdmin = await tx.sedeMembership.findFirst({
@@ -62,19 +69,22 @@ export async function POST() {
       }
     }
 
-    const personalEmpresa = await tx.empresa.upsert({
-      where: { nit: personalNit },
-      create: {
-        nombre: personalNombre,
-        nit: personalNit,
-        email: user.email ? user.email.trim().toLowerCase() : null,
-        planTier: 'BASIC',
-        billingCycle: 'MONTHLY',
-        planValidUntil: null,
-      },
-      update: {},
-      select: { id: true },
-    })
+    const personalEmpresa = existingPersonal
+      ? { id: existingPersonal.id }
+      : await tx.empresa.upsert({
+          where: { nit: personalNit },
+          create: {
+            nombre: personalNombre,
+            nit: personalNit,
+            email: normalizedEmail || null,
+            planOwnerUserId: userId,
+            planTier: 'BASIC',
+            billingCycle: 'MONTHLY',
+            planValidUntil: null,
+          },
+          update: {},
+          select: { id: true },
+        })
 
     // Quitar membresías y accesos del espacio actual
     await tx.teamMember.deleteMany({ where: { userId, team: { sede: { empresaId: empresa.id } } } })
@@ -94,6 +104,9 @@ export async function POST() {
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })
   }
+
+  // El espacio personal siempre debe tener sede/membresía para que el dashboard resuelva RBAC.
+  await ensureDefaultSedeForEmpresa(result.personalEmpresaId, userId).catch(() => null)
 
   return NextResponse.json(
     {

@@ -2,12 +2,12 @@ import { prisma } from '@/lib/prisma'
 import type { Empresa, Sede } from '@prisma/client'
 import { AccessLevel, ModuleKey, SedeRole, UserRole } from '@prisma/client'
 import { isSuperAdminEmail } from '@/lib/super-admin'
-
-const PERSONAL_TRIAL_DAYS = 7
-
-function addTrialWindow(startedAt: Date) {
-  return new Date(startedAt.getTime() + PERSONAL_TRIAL_DAYS * 24 * 60 * 60 * 1000)
-}
+import {
+  buildPersonalNit,
+  findExistingPersonalEmpresa,
+  normalizeAccountEmail,
+  resolvePersonalTrialFields,
+} from '@/lib/trial-policy'
 
 function maxAccess(a: AccessLevel, b: AccessLevel): AccessLevel {
   const order: Record<AccessLevel, number> = {
@@ -59,37 +59,49 @@ export async function requireEmpresaIdForUser(userId: string): Promise<string> {
   if (!user?.id) throw new Error('USER_NOT_FOUND')
   if (user.empresaId) return user.empresaId
 
-  const normalizedEmail = (user.email || '').trim().toLowerCase()
-  const personalNit = `PERS-${user.id}`
-  const personalNombre = `Espacio personal${normalizedEmail ? ` (${normalizedEmail})` : ''}`
+  const normalizedEmail = normalizeAccountEmail(user.email)
 
-  const empresaId = await prisma.$transaction(async (tx) => {
-    const existing = await tx.empresa.findUnique({ where: { nit: personalNit }, select: { id: true } })
-    const empresa = existing
-      ? existing
-      : await tx.empresa.create({
-          data: {
-            planOwnerUserId: user.id,
-            nombre: personalNombre,
-            nit: personalNit,
-            email: normalizedEmail || null,
-            onboardingStatus: 'PENDING',
-            onboardingData: {},
-            dashboardConfig: {},
-            planTier: 'BASIC',
-            billingCycle: 'MONTHLY',
-            planValidUntil: null,
-            trialTier: 'INTERMEDIO',
-            trialStartedAt: new Date(),
-            trialValidUntil: addTrialWindow(new Date()),
-          },
-          select: { id: true },
-        })
+  // Si la persona ya tenía un espacio personal, se reutiliza: conserva su historial y
+  // no habilita un trial nuevo al reingresar.
+  const existingPersonal = await findExistingPersonalEmpresa({ userId: user.id, email: normalizedEmail })
 
-    await tx.user.update({ where: { id: user.id }, data: { empresaId: empresa.id }, select: { id: true } })
-    await tx.empresa.updateMany({ where: { id: empresa.id, planOwnerUserId: null }, data: { planOwnerUserId: user.id } })
-    return empresa.id
-  })
+  let empresaId: string
+
+  if (existingPersonal) {
+    empresaId = existingPersonal.id
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: user.id }, data: { empresaId }, select: { id: true } })
+      await tx.empresa.updateMany({
+        where: { id: empresaId, planOwnerUserId: null },
+        data: { planOwnerUserId: user.id },
+      })
+    })
+  } else {
+    const personalNombre = `Espacio personal${normalizedEmail ? ` (${normalizedEmail})` : ''}`
+    const trial = await resolvePersonalTrialFields({ userId: user.id, email: normalizedEmail })
+
+    empresaId = await prisma.$transaction(async (tx) => {
+      const empresa = await tx.empresa.create({
+        data: {
+          planOwnerUserId: user.id,
+          nombre: personalNombre,
+          nit: buildPersonalNit(user.id),
+          email: normalizedEmail || null,
+          onboardingStatus: 'PENDING',
+          onboardingData: {},
+          dashboardConfig: {},
+          planTier: 'BASIC',
+          billingCycle: 'MONTHLY',
+          planValidUntil: null,
+          ...trial,
+        },
+        select: { id: true },
+      })
+
+      await tx.user.update({ where: { id: user.id }, data: { empresaId: empresa.id }, select: { id: true } })
+      return empresa.id
+    })
+  }
 
   await ensureDefaultSedeForEmpresa(empresaId, userId)
 

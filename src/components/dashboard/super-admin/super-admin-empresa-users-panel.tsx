@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { KeyRound, LogIn, Plus, ShieldCheck, Trash2, UserRound } from 'lucide-react'
+import { AlertTriangle, Eye, KeyRound, LogIn, Plus, ShieldCheck, Trash2, UserRound } from 'lucide-react'
 import type { AccessLevel, ModuleKey } from '@prisma/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -78,6 +78,16 @@ type PermissionTarget = {
   hasSedeAccess: boolean
 }
 
+type AccountDeletionPreview = {
+  userId: string
+  email: string
+  empresa: { id: string; nombre: string; nit: string } | null
+  isPersonalWorkspace: boolean
+  companyUserCount: number
+  deleteCompany: boolean
+  reason: string
+}
+
 type Props = {
   empresaId: string
   empresaNombre: string
@@ -131,6 +141,10 @@ export default function SuperAdminEmpresaUsersPanel({ empresaId, empresaNombre }
   const [permissionLoadingId, setPermissionLoadingId] = useState<string | null>(null)
   const [previewingId, setPreviewingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<EmpresaUserRow | null>(null)
+  const [deletePreview, setDeletePreview] = useState<AccountDeletionPreview | null>(null)
+  const [deletePreviewError, setDeletePreviewError] = useState<string | null>(null)
+  const [deletePreviewLoading, setDeletePreviewLoading] = useState(false)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -284,6 +298,8 @@ export default function SuperAdminEmpresaUsersPanel({ empresaId, empresaNombre }
         toast({ title: json.error || 'No se pudo abrir el espacio del usuario', variant: 'destructive' })
         return
       }
+      // Sesión temporal real (impersonación). Se abre en la misma pestaña con el token de
+      // un solo uso; al salir, /api/auth/impersonation/return devuelve la sesión del Super Admin.
       window.location.href = json.accessUrl
     } catch {
       toast({ title: 'No se pudo abrir el espacio del usuario', variant: 'destructive' })
@@ -292,20 +308,69 @@ export default function SuperAdminEmpresaUsersPanel({ empresaId, empresaNombre }
     }
   }
 
-  async function deleteUser(user: EmpresaUserRow) {
-    if (!window.confirm(`¿Eliminar el usuario ${user.email}? Esta acción no se puede deshacer.`)) return
-    setDeletingId(user.id)
+  async function openDeleteDialog(user: EmpresaUserRow) {
+    setDeleteTarget(user)
+    setDeletePreview(null)
+    setDeletePreviewError(null)
+    setDeletePreviewLoading(true)
     try {
-      const res = await fetch(`/api/super-admin/users/${encodeURIComponent(user.id)}`, { method: 'DELETE' })
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
-      if (!res.ok || !json.ok) {
-        toast({ title: json.error || 'No se pudo eliminar el usuario', variant: 'destructive' })
+      const res = await fetch(`/api/super-admin/users/${encodeURIComponent(user.id)}`, { cache: 'no-store' })
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        error?: string
+        preview?: AccountDeletionPreview
+      }
+      if (!res.ok || !json.ok || !json.preview) {
+        setDeletePreviewError(json.error || 'No se pudo preparar el borrado de la cuenta.')
         return
       }
-      toast({ title: 'Usuario eliminado' })
+      setDeletePreview(json.preview)
+    } catch {
+      setDeletePreviewError('No se pudo preparar el borrado de la cuenta.')
+    } finally {
+      setDeletePreviewLoading(false)
+    }
+  }
+
+  function closeDeleteDialog() {
+    if (deletingId) return
+    setDeleteTarget(null)
+    setDeletePreview(null)
+    setDeletePreviewError(null)
+  }
+
+  async function confirmDeleteUser() {
+    if (!deleteTarget || deletingId) return
+    setDeletingId(deleteTarget.id)
+    try {
+      const res = await fetch(`/api/super-admin/users/${encodeURIComponent(deleteTarget.id)}`, { method: 'DELETE' })
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        error?: string
+        deleted?: {
+          company?: { nombre?: string } | null
+          rowsByTable?: Record<string, number>
+          reassigned?: { cotizaciones?: number; ordenes?: number }
+        }
+      }
+      if (!res.ok || !json.ok) {
+        toast({ title: json.error || 'No se pudo eliminar la cuenta', variant: 'destructive' })
+        return
+      }
+
+      const totalRows = Object.values(json.deleted?.rowsByTable ?? {}).reduce((sum, value) => sum + value, 0)
+      const companyName = json.deleted?.company?.nombre ?? null
+      toast({
+        title: 'Cuenta eliminada definitivamente',
+        description: companyName
+          ? `Se eliminó también la empresa “${companyName}” y ${totalRows} registro(s) asociados.`
+          : 'Se eliminó el usuario y todos sus datos asociados.',
+      })
+      setDeleteTarget(null)
+      setDeletePreview(null)
       await load()
     } catch {
-      toast({ title: 'No se pudo eliminar el usuario', variant: 'destructive' })
+      toast({ title: 'No se pudo eliminar la cuenta', variant: 'destructive' })
     } finally {
       setDeletingId(null)
     }
@@ -419,7 +484,18 @@ export default function SuperAdminEmpresaUsersPanel({ empresaId, empresaNombre }
                   onClick={() => void previewAsUser(user)}
                 >
                   <LogIn className="mr-1.5 h-3.5 w-3.5" />
-                  {previewingId === user.id ? 'Abriendo…' : 'Ver como'}
+                  {previewingId === user.id ? 'Abriendo…' : 'Ver como usuario'}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" asChild>
+                  <a
+                    href={`/dashboard/configuracion/super-admin/usuarios/preview/${encodeURIComponent(user.id)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Vista previa de permisos y rutas visibles de este usuario"
+                  >
+                    <Eye className="mr-1.5 h-3.5 w-3.5" />
+                    Vista previa
+                  </a>
                 </Button>
                 <Button
                   type="button"
@@ -427,7 +503,7 @@ export default function SuperAdminEmpresaUsersPanel({ empresaId, empresaNombre }
                   variant="ghost"
                   className="text-red-600 hover:text-red-700"
                   disabled={deletingId === user.id}
-                  onClick={() => void deleteUser(user)}
+                  onClick={() => void openDeleteDialog(user)}
                 >
                   <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                   {deletingId === user.id ? 'Eliminando…' : 'Eliminar'}
@@ -538,6 +614,62 @@ export default function SuperAdminEmpresaUsersPanel({ empresaId, empresaNombre }
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(nextOpen) => (!nextOpen ? closeDeleteDialog() : null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-red-700">Eliminar cuenta definitivamente</DialogTitle>
+            <DialogDescription>
+              Esta acción borra la cuenta y sus datos de forma permanente. No se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 text-sm">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <div className="font-medium text-slate-900">{deleteTarget?.email}</div>
+              <div className="text-xs text-slate-500">{deleteTarget?.name || 'Sin nombre'}</div>
+            </div>
+
+            {deletePreviewLoading ? <div className="text-slate-500">Calculando alcance del borrado…</div> : null}
+            {deletePreviewError ? <div className="text-red-600">{deletePreviewError}</div> : null}
+
+            {deletePreview ? (
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{deletePreview.reason}</span>
+                </div>
+                <ul className="list-disc space-y-1 pl-5 text-slate-600">
+                  <li>Se elimina el usuario junto con sus accesos, sesiones y notificaciones.</li>
+                  <li>Se eliminan tokens, invitaciones y datos personales asociados.</li>
+                  {deletePreview.deleteCompany ? (
+                    <li className="font-medium text-red-700">
+                      Se elimina la empresa {deletePreview.empresa?.nombre} ({deletePreview.empresa?.nit}) con todos sus
+                      registros: clientes, cotizaciones, órdenes, CRM, inventario, etc.
+                    </li>
+                  ) : (
+                    <li>La empresa se conserva: sus cotizaciones y órdenes se reasignan a un administrador.</li>
+                  )}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeDeleteDialog} disabled={Boolean(deletingId)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              className="bg-red-600 text-white hover:bg-red-700"
+              onClick={() => void confirmDeleteUser()}
+              disabled={Boolean(deletingId) || deletePreviewLoading || Boolean(deletePreviewError)}
+            >
+              {deletingId ? 'Eliminando…' : 'Eliminar definitivamente'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

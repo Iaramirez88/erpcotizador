@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
 import { resolvePaywallState } from '@/lib/plan-access'
+import { hasConsumedPersonalTrial } from '@/lib/trial-policy'
 
 export const runtime = 'nodejs'
 
@@ -47,6 +48,17 @@ export async function POST() {
   }
 
   if (empresa.trialStartedAt) {
+    return NextResponse.json({ ok: false, error: 'El trial ya fue usado' }, { status: 400 })
+  }
+
+  // El trial es por persona: si ya lo consumió en otro espacio personal (por ejemplo al
+  // salir y volver a entrar a una empresa) no se vuelve a otorgar.
+  const alreadyConsumed = await hasConsumedPersonalTrial({
+    userId: session.user.id,
+    email: session.user.email ?? null,
+    excludeEmpresaId: empresa.id,
+  })
+  if (alreadyConsumed) {
     return NextResponse.json({ ok: false, error: 'El trial ya fue usado' }, { status: 400 })
   }
 

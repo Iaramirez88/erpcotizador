@@ -285,7 +285,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'superAdmin.companies.fields.enableLithographyQuoteTools': 'Habilitar cotizadores de litografía',
     'superAdmin.companies.fields.enableLithographyQuoteToolsHelp': 'Muestra Cotizador Litografía y Cotizador Metraje para esta empresa, incluso si no quedó marcada con el sector Litografía en el onboarding.',
     'superAdmin.companies.fields.clearTrial': 'Eliminar modo prueba',
-    'superAdmin.companies.fields.clearTrialHelp': 'Limpia los 7 días de prueba para que solo quede el acceso que asignes manualmente.',
+    'superAdmin.companies.fields.clearTrialHelp': 'Limpia los 7 días hábiles de prueba para que solo quede el acceso que asignes manualmente.',
     'superAdmin.companies.fields.initialPlan': 'Plan inicial',
     'superAdmin.companies.fields.moduleOverridesHelp': 'La base sale del plan vigente de la empresa y luego puedes prender o apagar módulos puntuales con override.',
     'superAdmin.companies.fields.verticalOverridesHelp': 'Activa o apaga verticales para la empresa. Si queda en ON, se sincroniza para los usuarios de esa empresa y para los nuevos que ingresen después.',
@@ -2389,7 +2389,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'planPaywall.description.trialExpired':
       'Para seguir usando las funciones, elige un plan y realiza el pago.',
     'planPaywall.description.personalNoPlan':
-      'Puedes activar 7 días gratis del plan Intermedio o elegir un plan.',
+      'Puedes activar 7 días hábiles gratis del plan Intermedio o elegir un plan.',
     'planPaywall.description.default': 'Gestiona tu plan.',
     'planPaywall.companyCode.hint':
       '¿Tienes un código del espacio? Ingresa el código WS-... que aparece en la empresa para activar tu acceso.',
@@ -2400,9 +2400,41 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'planPaywall.error.loadPlan': 'No se pudo cargar el plan',
     'planPaywall.actions.continue': 'Continuar',
     'planPaywall.actions.viewPlans': 'Ver planes',
-    'planPaywall.actions.startTrial7': 'Activar prueba 7 días',
+    'planPaywall.actions.startTrial7': 'Activar prueba 7 días hábiles',
     'planPaywall.actions.choosePlan': 'Elegir plan',
     'planPaywall.actions.choosePlanAndPay': 'Elegir plan y pagar',
+
+    'retention.banner.trialEnded.title': 'Tu prueba gratuita terminó',
+    'retention.banner.trialEnded.description':
+      'Terminaron tus {days} días hábiles de prueba. Sin un plan activo, tu cuenta y sus datos se eliminarán el {date} ({inactivityDays} días después de tu último acceso).',
+    'retention.banner.licenseExpired.title': 'Tu licencia venció',
+    'retention.banner.licenseExpired.description':
+      'Tu licencia venció el {date}. La cuenta está suspendida y, si no renuevas ni vuelves a ingresar, la información se eliminará el {deletionDate}.',
+    'retention.banner.inactivity.title': 'Tu cuenta está por eliminarse',
+    'retention.banner.inactivity.description':
+      'No registramos ingresos desde el {date}. Tu cuenta y sus datos se eliminarán el {deletionDate}.',
+    'retention.banner.deletionDue.title': 'Tu cuenta se elimina hoy',
+    'retention.banner.deletionDue.description':
+      'Se cumplieron {inactivityDays} días sin acceso. Ingresa ahora o la cuenta y sus datos se eliminarán automáticamente.',
+    'retention.banner.actions.renew': 'Renovar mi plan',
+    'retention.banner.actions.enter': 'Entrar ahora',
+    'retention.banner.actions.policy': 'Ver política de retención',
+    'retention.banner.dismiss': 'Ocultar por hoy',
+    'retention.policy.title': 'Retención de datos y eliminación automática',
+    'retention.policy.description':
+      'Estas reglas aplican a todas las cuentas y siempre avisamos por correo registrado antes de eliminar información.',
+    'retention.policy.trial': 'Trial gratuito: {days} días hábiles, una sola vez por persona.',
+    'retention.policy.license':
+      'Licencia vencida: cuando vence tu plan enviamos un correo avisando que la cuenta queda suspendida y que la información se eliminará.',
+    'retention.policy.inactivity':
+      'Inactividad: si no ingresas en {days} días, la cuenta y sus datos se eliminan automáticamente.',
+    'retention.policy.warning':
+      'Aviso previo: {days} días antes de la eliminación enviamos el último correo de advertencia.',
+    'retention.policy.scope':
+      'Alcance: se elimina el espacio personal o la empresa cuando la cuenta es su único usuario; si la empresa tiene más usuarios, se conserva la información compartida.',
+    'retention.policy.footer':
+      'Para conservar tu cuenta solo debes ingresar a la plataforma o renovar tu plan antes de la fecha indicada.',
+    'retention.policy.lastUpdated': 'Última actualización: {date}',
 
     'dashboard.header.welcomeBack': '¡Bienvenido de nuevo, {name}!',
     'dashboard.header.welcomeBackGeneric': '¡Bienvenido de nuevo!',
@@ -2568,6 +2600,9 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'auth.register.creating': 'Creando…',
     'auth.register.haveAccount': '¿Ya tienes cuenta?',
     'auth.register.signIn': 'Inicia sesión',
+    'auth.register.retentionNotice':
+      'Tu prueba gratuita dura 7 días hábiles. Si no activas un plan, la cuenta y sus datos se eliminan automáticamente 60 días después de tu último acceso.',
+    'auth.register.retentionLink': 'Ver política de retención',
     'auth.register.tabs.individual': 'Registro plan individual',
     'auth.register.tabs.empresa': 'Registro con código de espacio',
     'auth.register.individualHelp': 'Crea una cuenta personal. Luego puedes configurar tu plan desde el panel.',
@@ -2906,7 +2941,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'superAdmin.companies.fields.enableLithographyQuoteTools': 'Enable lithography quote tools',
     'superAdmin.companies.fields.enableLithographyQuoteToolsHelp': 'Shows the Lithography and Metrage quote builders for this company even if it was not registered as a Lithography business during onboarding.',
     'superAdmin.companies.fields.clearTrial': 'Remove trial mode',
-    'superAdmin.companies.fields.clearTrialHelp': 'Clears the 7-day trial so only the manually assigned access remains.',
+    'superAdmin.companies.fields.clearTrialHelp': 'Clears the 7-business-day trial so only the manually assigned access remains.',
     'superAdmin.companies.fields.initialPlan': 'Initial plan',
     'superAdmin.companies.fields.moduleOverridesHelp': 'The base comes from the company current plan, then you can force individual modules on or off with overrides.',
     'superAdmin.companies.fields.verticalOverridesHelp': 'Turn company verticals on or off here. When a vertical is ON, it is synchronized for the company users and for new users who join later.',
@@ -5012,7 +5047,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'planPaywall.description.trialExpired':
       'To keep using the features, choose a plan and complete the payment.',
     'planPaywall.description.personalNoPlan':
-      'You can start 7 free days of the Intermediate plan or choose a plan.',
+      'You can start 7 free business days of the Intermediate plan or choose a plan.',
     'planPaywall.description.default': 'Manage your plan.',
     'planPaywall.companyCode.hint':
       'Do you have a workspace code? Enter the WS-... code shown for the company to activate your access.',
@@ -5023,9 +5058,41 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'planPaywall.error.loadPlan': 'The plan could not be loaded',
     'planPaywall.actions.continue': 'Continue',
     'planPaywall.actions.viewPlans': 'View plans',
-    'planPaywall.actions.startTrial7': 'Start 7-day trial',
+    'planPaywall.actions.startTrial7': 'Start 7-business-day trial',
     'planPaywall.actions.choosePlan': 'Choose plan',
     'planPaywall.actions.choosePlanAndPay': 'Choose plan and pay',
+
+    'retention.banner.trialEnded.title': 'Your free trial ended',
+    'retention.banner.trialEnded.description':
+      'Your {days} business-day trial is over. Without an active plan, your account and data will be deleted on {date} ({inactivityDays} days after your last sign-in).',
+    'retention.banner.licenseExpired.title': 'Your license expired',
+    'retention.banner.licenseExpired.description':
+      'Your license expired on {date}. The account is suspended and, if you do not renew or sign in again, the information will be deleted on {deletionDate}.',
+    'retention.banner.inactivity.title': 'Your account is about to be deleted',
+    'retention.banner.inactivity.description':
+      'We have not recorded sign-ins since {date}. Your account and data will be deleted on {deletionDate}.',
+    'retention.banner.deletionDue.title': 'Your account is deleted today',
+    'retention.banner.deletionDue.description':
+      '{inactivityDays} days without access have passed. Sign in now or the account and its data will be deleted automatically.',
+    'retention.banner.actions.renew': 'Renew my plan',
+    'retention.banner.actions.enter': 'Sign in now',
+    'retention.banner.actions.policy': 'View retention policy',
+    'retention.banner.dismiss': 'Hide for today',
+    'retention.policy.title': 'Data retention and automatic deletion',
+    'retention.policy.description':
+      'These rules apply to every account and we always email the registered address before deleting information.',
+    'retention.policy.trial': 'Free trial: {days} business days, once per person.',
+    'retention.policy.license':
+      'Expired license: when your plan expires we email you that the account is suspended and that the information will be deleted.',
+    'retention.policy.inactivity':
+      'Inactivity: if you do not sign in for {days} days, the account and its data are deleted automatically.',
+    'retention.policy.warning':
+      'Prior notice: {days} days before deletion we send the last warning email.',
+    'retention.policy.scope':
+      'Scope: the personal workspace, or the company when the account is its only user, is deleted; if the company has more users, shared information is kept.',
+    'retention.policy.footer':
+      'To keep your account, simply sign in or renew your plan before the stated date.',
+    'retention.policy.lastUpdated': 'Last updated: {date}',
 
     'dashboard.header.welcomeBack': 'Welcome back, {name}!',
     'dashboard.header.welcomeBackGeneric': 'Welcome back!',
@@ -5191,6 +5258,9 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'auth.register.creating': 'Creating…',
     'auth.register.haveAccount': 'Already have an account?',
     'auth.register.signIn': 'Sign in',
+    'auth.register.retentionNotice':
+      'Your free trial lasts 7 business days. If you do not activate a plan, the account and its data are deleted automatically 60 days after your last sign-in.',
+    'auth.register.retentionLink': 'View retention policy',
     'auth.register.tabs.individual': 'Individual plan sign up',
     'auth.register.tabs.empresa': 'Sign up with workspace code',
     'auth.register.individualHelp': 'Create a personal account. You can set up your plan later from the panel.',

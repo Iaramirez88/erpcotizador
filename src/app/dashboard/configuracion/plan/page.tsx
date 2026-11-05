@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PlanCapacityPanel } from '@/components/dashboard/plan-capacity-panel'
+import RetentionPolicyCard from '@/components/dashboard/retention-policy-card'
 import type { ModuleKey } from '@prisma/client'
 import { cn } from "@/lib/utils"
 import { formatCOP, type BillingCycle, type PlanInfo, type PlanTier } from "@/lib/plans"
@@ -664,6 +665,8 @@ export default function PlanPage() {
               </div>
             </div>
           </section>
+
+          <RetentionPolicyCard />
 
           {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
           {isLoading ? <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-600">Cargando planes...</div> : null}

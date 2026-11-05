@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowDown, ArrowUp, ArrowUpDown, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, Clock3, LoaderCircle, ShieldCheck, ShieldOff, Sparkles, Zap } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, Clock3, LoaderCircle, LogIn, ShieldCheck, ShieldOff, Sparkles, Zap } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -1447,8 +1447,23 @@ export default function SuperAdminEmpresasClient() {
       <Dialog open={detailOpen} onOpenChange={(v) => (!detailLoading ? setDetailOpen(v) : null)}>
         <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden border-slate-200 bg-white p-0 sm:max-w-5xl">
           <DialogHeader className="shrink-0 border-b border-slate-200 px-5 py-4">
-            <DialogTitle>{t('superAdmin.companies.detail.title')}</DialogTitle>
-            <DialogDescription>{t('superAdmin.companies.detail.subtitle')}</DialogDescription>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-1">
+                <DialogTitle>{t('superAdmin.companies.detail.title')}</DialogTitle>
+                <DialogDescription>{t('superAdmin.companies.detail.subtitle')}</DialogDescription>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant={detailTab === 'usuarios' ? 'default' : 'outline'}
+                onClick={() => setDetailTab('usuarios')}
+                disabled={detailLoading || !detail}
+                title="Entrar a la sesión real de un usuario de esta empresa"
+              >
+                <LogIn className="mr-1.5 h-4 w-4" />
+                Ver como usuario
+              </Button>
+            </div>
           </DialogHeader>
 
           <Tabs

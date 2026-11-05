@@ -86,7 +86,7 @@ export default function LoginPage() {
     try {
       // Intentar iniciar sesión con NextAuth
       const result = await signIn("credentials", {
-        email: formData.email,
+        email: formData.email.trim().toLowerCase(),
         password: formData.password,
         remember: rememberMe ? 'true' : 'false',
         callbackUrl,

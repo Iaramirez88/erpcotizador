@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
-const lastUpdated = '21 de julio de 2026'
+const lastUpdated = '4 de noviembre de 2026'
 
 export const metadata: Metadata = {
   title: 'Política de privacidad | Ordex',
@@ -38,8 +38,17 @@ const sections = [
     body: 'La información puede compartirse con proveedores tecnológicos necesarios para la prestación del servicio, como infraestructura, autenticación, mensajería, correo, almacenamiento o análisis, así como con la empresa usuaria propietaria del canal o formulario desde el que se originó la interacción. No vendemos datos personales.',
   },
   {
-    title: '7. Conservación de la información',
-    body: 'Los datos se conservan durante el tiempo necesario para cumplir las finalidades del servicio, atender requerimientos legales, resolver controversias, mantener respaldos razonables y sostener el historial operativo del sistema.',
+    id: 'conservacion',
+    title: '7. Conservación de la información y eliminación automática',
+    body: 'Conservamos la información mientras la cuenta esté activa y con un plan vigente. Cuando no hay un plan activo aplicamos estas reglas, y siempre avisamos al correo registrado antes de eliminar cualquier dato:',
+    bullets: [
+      'Prueba gratuita: 7 días hábiles desde la creación del espacio personal, una sola vez por persona. No se reinicia al crear un nuevo espacio de trabajo ni al reingresar.',
+      'Licencia vencida: cuando vence el plan contratado enviamos un correo al correo registrado avisando que la cuenta queda suspendida y que la información será eliminada si no se renueva.',
+      'Inactividad: si la cuenta no registra ingresos durante 60 días, se elimina automáticamente junto con la información asociada.',
+      'Aviso previo: 7 días antes de la eliminación enviamos un último correo de advertencia al correo registrado.',
+      'Alcance del borrado: se elimina la cuenta, el espacio personal y todos sus datos (cotizaciones, órdenes, clientes, CRM, archivos y configuración). En empresas con varios usuarios se elimina únicamente la cuenta inactiva y se conserva la información compartida de la empresa.',
+      'Para conservar la cuenta basta con ingresar a la plataforma o renovar el plan antes de la fecha indicada en el aviso.',
+    ],
   },
   {
     title: '8. Seguridad',
@@ -74,9 +83,20 @@ export default function PoliticaDePrivacidadPage() {
         <section className="px-6 py-8 sm:px-10 sm:py-10">
           <div className="space-y-8">
             {sections.map((section) => (
-              <section key={section.title} className="space-y-3">
+              <section
+                key={section.title}
+                id={'id' in section ? section.id : undefined}
+                className="scroll-mt-24 space-y-3"
+              >
                 <h2 className="text-xl font-semibold tracking-tight text-slate-950">{section.title}</h2>
                 <p className="text-sm leading-7 text-slate-700 sm:text-[15px]">{section.body}</p>
+                {'bullets' in section ? (
+                  <ul className="list-disc space-y-2 pl-5 text-sm leading-7 text-slate-700 sm:text-[15px]">
+                    {section.bullets.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                ) : null}
               </section>
             ))}
           </div>

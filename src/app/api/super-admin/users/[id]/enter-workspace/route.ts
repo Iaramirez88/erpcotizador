@@ -26,7 +26,9 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
     where: { id: targetUserId },
     select: {
       id: true,
+      email: true,
       empresaId: true,
+      emailVerified: true,
       empresa: { select: { id: true, nombre: true } },
     },
   })
@@ -34,6 +36,15 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
   if (!target?.id) return NextResponse.json({ ok: false, error: 'Usuario no encontrado' }, { status: 404 })
   if (!target.empresaId || !target.empresa?.id) {
     return NextResponse.json({ ok: false, error: 'El usuario no tiene espacio de trabajo asignado.' }, { status: 409 })
+  }
+  if (!target.emailVerified) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'El usuario aún no verificó su correo. Pídele que lo verifique (o verifícalo desde Usuarios) antes de entrar a su sesión.',
+      },
+      { status: 409 }
+    )
   }
 
   const token = await createImpersonationToken({

@@ -21,6 +21,8 @@ import { isSuperAdminEmail } from "@/lib/super-admin"
 import { isPlanOwnerForEmpresa } from "@/lib/plan-owner"
 import { getWebsiteServicesAccessForUser } from "@/lib/website-services"
 import DashboardDeferredWidgets from "@/components/dashboard/dashboard-deferred-widgets"
+import RetentionNoticeBanner, { type RetentionNoticeBannerProps } from '@/components/dashboard/retention-notice-banner'
+import { RETENTION_DISMISS_COOKIE, resolveAccountRetention, retentionDismissValue } from '@/lib/retention-policy'
 import DashboardPermissionBoundary from '@/components/dashboard/dashboard-permission-boundary'
 import { DashboardAccessProvider } from '@/components/dashboard/dashboard-access-context'
 import { buildAllowedDashboardHrefsForUser, buildAllowedDashboardPermissionKeysForUser, getAllowedModulesFromDashboardHrefs } from '@/lib/dashboard-access'
@@ -44,6 +46,8 @@ export default async function DashboardLayout({
 
   const cookieStore = await cookies()
   const externalDashboardScope = cookieStore.get(EXTERNAL_DASHBOARD_SCOPE_COOKIE)?.value ?? null
+  const retentionDismissedOn = cookieStore.get(RETENTION_DISMISS_COOKIE)?.value ?? null
+  const retentionDismissedToday = retentionDismissedOn === retentionDismissValue()
 
   const userId = await resolveUserIdFromSession(session)
   let allowedModules: string[] | null = null
@@ -57,13 +61,21 @@ export default async function DashboardLayout({
   let canAccessCrmChat = false
   let canAccessPayrollAdmin = false
   let hasPayrollPortal = false
+  let retentionNotice: RetentionNoticeBannerProps | null = null
   try {
     if (userId) {
       const [sede, layoutUser, websiteServicesAccess] = await Promise.all([
         getActiveSedeForUser(userId),
         prisma.user.findUnique({
           where: { id: userId },
-          select: { id: true, email: true, empresaId: true },
+          select: {
+            id: true,
+            email: true,
+            empresaId: true,
+            createdAt: true,
+            lastLoginAt: true,
+            empresa: { select: { planValidUntil: true, trialValidUntil: true } },
+          },
         }),
         getWebsiteServicesAccessForUser(userId),
       ])
@@ -131,6 +143,25 @@ export default async function DashboardLayout({
           : false
       )
       canManageBilling = isSystemSuperAdmin || isPlanOwner
+
+      // Aviso de retención: licencia vencida, trial terminado o inactividad cercana al borrado.
+      if (layoutUser) {
+        const retention = resolveAccountRetention({
+          createdAt: layoutUser.createdAt,
+          lastLoginAt: layoutUser.lastLoginAt,
+          isSuperAdmin: isSystemSuperAdmin,
+          planValidUntil: layoutUser.empresa?.planValidUntil ?? null,
+          trialValidUntil: layoutUser.empresa?.trialValidUntil ?? null,
+        })
+        retentionNotice = {
+          stage: retention.stage,
+          lastActivityAt: retention.lastActivityAt.toISOString(),
+          deletionAt: retention.deletionAt ? retention.deletionAt.toISOString() : null,
+          licenseExpiredAt: retention.licenseExpiredAt ? retention.licenseExpiredAt.toISOString() : null,
+          trialExpiredAt: retention.trialExpiredAt ? retention.trialExpiredAt.toISOString() : null,
+          canManageBilling,
+        }
+      }
     }
   } catch {
     allowedModules = null
@@ -181,6 +212,7 @@ export default async function DashboardLayout({
             <main className="erp-shell relative flex-1 overflow-y-auto bg-white px-1 pb-24 pt-0 dark:bg-[#08111f] sm:px-2 sm:pb-14 sm:pt-0 lg:px-2.5 lg:pb-14 lg:pt-0">
               <div className="erp-shell__content mx-auto flex w-full max-w-[1600px] flex-col gap-2.5 pt-1 sm:pt-2 lg:pt-2.5">
                 <RouteLoadingIndicator />
+                {retentionNotice && !retentionDismissedToday ? <RetentionNoticeBanner {...retentionNotice} /> : null}
                 <DashboardPermissionBoundary allowedHrefs={allowedNavHrefs}>
                   {children}
                 </DashboardPermissionBoundary>

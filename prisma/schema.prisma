@@ -115,6 +115,9 @@ model User {
   emailVerificationCodes EmailVerificationCode[]
   passwordResetTokens    PasswordResetToken[]
 
+  // Avisos de retención enviados (licencia vencida, trial terminado, aviso de eliminación)
+  accountRetentionNotices AccountRetentionNotice[] @relation("AccountRetentionNotices")
+
   // RBAC por sede / equipos
   sedeMemberships SedeMembership[]
   teamMemberships TeamMember[]
@@ -1061,6 +1064,42 @@ model BillingReminderLog {
   @@index([empresaId])
   @@map("billing_reminder_logs")
 }
+
+// ============================================
+// RETENCIÓN DE CUENTAS (AVISOS POR CORREO)
+// ============================================
+
+/**
+ * Bitácora de avisos de retención enviados al usuario.
+ *
+ * `dedupeKey` hace que cada aviso se envíe una sola vez por evento (licencia vencida, trial
+ * terminado, aviso previo a la eliminación), aunque el trabajo automático corra todos los días.
+ */
+model AccountRetentionNotice {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation("AccountRetentionNotices", fields: [userId], references: [id], onDelete: Cascade)
+
+  kind          AccountRetentionNoticeKind
+  channel       String                     @default("EMAIL")
+  // Fecha que define el evento: vencimiento de licencia/trial o fecha programada de borrado.
+  referenceDate DateTime
+  dedupeKey     String                     @unique
+  sentAt        DateTime                   @default(now())
+  metadata      Json                       @default("{}")
+
+  @@index([userId, kind])
+  @@map("account_retention_notices")
+}
+
+enum AccountRetentionNoticeKind {
+  TRIAL_ENDED
+  LICENSE_EXPIRED
+  INACTIVITY_WARNING
+  ACCOUNT_DELETED
+}
+
 
 // ============================================
 // LITOGRAFÍA - TARIFARIO GLOBAL (POR EMPRESA)

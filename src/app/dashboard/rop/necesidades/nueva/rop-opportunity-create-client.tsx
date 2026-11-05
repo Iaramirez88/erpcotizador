@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Loader2, Radar, Sparkles } from 'lucide-react'
+import { AlertTriangle, Loader2, Radar, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -85,11 +85,13 @@ export default function RopOpportunityCreateClient({ initialServiceCatalogId }: 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [catalog, setCatalog] = useState<ServiceCatalogItem[]>([])
+  const [catalogError, setCatalogError] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [created, setCreated] = useState<CreatedOpportunity | null>(null)
 
   useEffect(() => {
     void loadContext()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const categories = useMemo(() => {
@@ -97,7 +99,9 @@ export default function RopOpportunityCreateClient({ initialServiceCatalogId }: 
     for (const item of catalog) {
       map.set(item.subcategory.category.id, item.subcategory.category)
     }
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    // Se conserva el orden del catálogo (sortOrder de la API) para que la taxonomía
+    // base aparezca primero en el selector.
+    return Array.from(map.values())
   }, [catalog])
 
   const subcategories = useMemo(() => {
@@ -116,10 +120,13 @@ export default function RopOpportunityCreateClient({ initialServiceCatalogId }: 
       .sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [catalog, form.subcategoryId])
 
+  const catalogEmpty = !loading && categories.length === 0
+
   const selectedService = useMemo(() => services.find((item) => item.id === form.serviceCatalogId) ?? null, [services, form.serviceCatalogId])
 
   async function loadContext() {
     setLoading(true)
+    setCatalogError(null)
     try {
       const [catalogResponse, profileResponse] = await Promise.all([
         fetch('/api/rop/v1/catalog/services', { cache: 'no-store' }),
@@ -149,14 +156,35 @@ export default function RopOpportunityCreateClient({ initialServiceCatalogId }: 
         city: profileJson?.data?.location.city || current.city,
       }))
     } catch (error) {
-      toast({ title: 'Error', description: error instanceof Error ? error.message : 'No se pudo cargar el formulario.', variant: 'destructive' })
+      const message = error instanceof Error ? error.message : 'No se pudo cargar el formulario.'
+      setCatalogError(message)
+      toast({ title: 'Error', description: message, variant: 'destructive' })
     } finally {
       setLoading(false)
     }
   }
 
+  function validateForm() {
+    if (form.title.trim().length < 5) return 'El título debe tener al menos 5 caracteres.'
+    if (!form.categoryId) return 'Selecciona una categoría del catálogo ROP.'
+    if (!form.subcategoryId) return 'Selecciona una subcategoría.'
+    if (!form.serviceCatalogId) return 'Selecciona un servicio.'
+    if (form.countryCode.trim().length !== 2) return 'El país debe tener 2 letras, por ejemplo CO.'
+    if (form.expectedQuantity.trim() && Number.isNaN(Number(form.expectedQuantity))) {
+      return 'La cantidad esperada debe ser un número.'
+    }
+    return null
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+    const validationMessage = validateForm()
+    if (validationMessage) {
+      toast({ title: 'Falta información', description: validationMessage, variant: 'destructive' })
+      return
+    }
+
     setSaving(true)
     try {
       const response = await fetch('/api/rop/v1/opportunities', {
@@ -263,6 +291,29 @@ export default function RopOpportunityCreateClient({ initialServiceCatalogId }: 
           </CardHeader>
           <CardContent>
             <form className="grid gap-5" onSubmit={handleSubmit}>
+              {catalogEmpty ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                  <p className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" /> No hay catálogo ROP disponible
+                  </p>
+                  <p className="mt-2 leading-6">
+                    {catalogError
+                      ? `No se pudo cargar el catálogo: ${catalogError}`
+                      : 'El catálogo base aún no está cargado. Al reintentar se aprovisionan las categorías por defecto: Tecnología, Servicios profesionales, Suministros, Mantenimiento, Impresión, Manufactura, Logística y Servicios empresariales.'}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3 rounded-full bg-white"
+                    onClick={() => void loadContext()}
+                    disabled={loading}
+                  >
+                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Reintentar
+                  </Button>
+                </div>
+              ) : null}
+
               <div className="grid gap-2">
                 <Label>Título</Label>
                 <Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} placeholder="Ej. Producción de material POP para activación nacional" />
@@ -271,8 +322,8 @@ export default function RopOpportunityCreateClient({ initialServiceCatalogId }: 
               <div className="grid gap-5 md:grid-cols-3">
                 <div className="grid gap-2">
                   <Label>Categoría</Label>
-                  <Select value={form.categoryId} onValueChange={handleCategoryChange}>
-                    <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
+                  <Select value={form.categoryId} onValueChange={handleCategoryChange} disabled={catalogEmpty}>
+                    <SelectTrigger><SelectValue placeholder={catalogEmpty ? 'Sin catálogo' : 'Selecciona'} /></SelectTrigger>
                     <SelectContent>
                       {categories.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
                     </SelectContent>
@@ -280,8 +331,8 @@ export default function RopOpportunityCreateClient({ initialServiceCatalogId }: 
                 </div>
                 <div className="grid gap-2">
                   <Label>Subcategoría</Label>
-                  <Select value={form.subcategoryId} onValueChange={handleSubcategoryChange}>
-                    <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
+                  <Select value={form.subcategoryId} onValueChange={handleSubcategoryChange} disabled={catalogEmpty || !form.categoryId}>
+                    <SelectTrigger><SelectValue placeholder={catalogEmpty ? 'Sin catálogo' : 'Selecciona'} /></SelectTrigger>
                     <SelectContent>
                       {subcategories.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
                     </SelectContent>
@@ -289,8 +340,8 @@ export default function RopOpportunityCreateClient({ initialServiceCatalogId }: 
                 </div>
                 <div className="grid gap-2">
                   <Label>Servicio</Label>
-                  <Select value={form.serviceCatalogId} onValueChange={(value) => setForm((current) => ({ ...current, serviceCatalogId: value }))}>
-                    <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
+                  <Select value={form.serviceCatalogId} onValueChange={(value) => setForm((current) => ({ ...current, serviceCatalogId: value }))} disabled={catalogEmpty || !form.subcategoryId}>
+                    <SelectTrigger><SelectValue placeholder={catalogEmpty ? 'Sin catálogo' : 'Selecciona'} /></SelectTrigger>
                     <SelectContent>
                       {services.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
                     </SelectContent>
@@ -344,7 +395,7 @@ export default function RopOpportunityCreateClient({ initialServiceCatalogId }: 
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <Button type="submit" className="rounded-full px-5" disabled={saving}>
+                <Button type="submit" className="rounded-full px-5" disabled={saving || catalogEmpty}>
                   {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Publicar necesidad
                 </Button>

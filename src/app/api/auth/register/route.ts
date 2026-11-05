@@ -19,12 +19,7 @@ import { checkPlanLimit } from "@/lib/plan-limits"
 import { renderEmail, renderEmailCode } from "@/lib/email-template"
 import { Prisma } from "@prisma/client"
 import { provisionDefaultAdminAccessForNewUser, syncEnabledVerticalGrantsForUser } from "@/lib/company-preset-sync"
-
-const PERSONAL_TRIAL_DAYS = 7
-
-function addTrialWindow(startedAt: Date) {
-  return new Date(startedAt.getTime() + PERSONAL_TRIAL_DAYS * 24 * 60 * 60 * 1000)
-}
+import { buildPersonalNit, normalizeAccountEmail, resolvePersonalTrialFields } from "@/lib/trial-policy"
 
 function normalizeWorkspaceCode(code: string): string | null {
   const normalized = code.trim().toUpperCase()
@@ -32,38 +27,37 @@ function normalizeWorkspaceCode(code: string): string | null {
   return normalized
 }
 
-async function createPersonalEmpresa(args: { nombre: string; email: string }) {
-  // Empresa personal habilita paywall/trial (nit inicia con PERS-)
-  for (let attempt = 0; attempt < 12; attempt++) {
-    try {
-      const nit = `PERS-${randomDigits(10)}`
-      const now = new Date()
-      const created = await prisma.empresa.create({
-        data: {
-          nombre: args.nombre.trim() || 'Cuenta personal',
-          nit,
-          email: args.email,
-          workspaceCode: generateWorkspaceCode(),
-          registrationCodeHash: null,
-          onboardingStatus: 'PENDING',
-          onboardingData: {},
-          dashboardConfig: {},
-          trialTier: 'INTERMEDIO',
-          trialStartedAt: now,
-          trialValidUntil: addTrialWindow(now),
-        },
-        select: { id: true, nombre: true, registrationCodeHash: true },
-      })
-      return created
-    } catch (error: unknown) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        continue
-      }
-      throw error
-    }
-  }
+/**
+ * Crea el espacio personal del usuario recién registrado.
+ *
+ * El NIT se deriva del `userId` (`PERS-<userId>`) para que todo el sistema reconozca el
+ * espacio personal igual que en `requireEmpresaIdForUser()`, y el trial solo se otorga la
+ * primera vez por persona (`resolvePersonalTrialFields`).
+ */
+async function createPersonalEmpresaForUser(
+  tx: Prisma.TransactionClient,
+  args: { userId: string; nombre: string; email: string }
+) {
+  const trial = await resolvePersonalTrialFields({ userId: args.userId, email: args.email })
 
-  throw new Error('PERSONAL_EMPRESA_CREATE_FAILED')
+  return tx.empresa.create({
+    data: {
+      nombre: args.nombre.trim() || 'Cuenta personal',
+      nit: buildPersonalNit(args.userId),
+      email: args.email,
+      workspaceCode: generateWorkspaceCode(),
+      registrationCodeHash: null,
+      planOwnerUserId: args.userId,
+      planTier: 'BASIC',
+      billingCycle: 'MONTHLY',
+      planValidUntil: null,
+      onboardingStatus: 'PENDING',
+      onboardingData: {},
+      dashboardConfig: {},
+      ...trial,
+    },
+    select: { id: true, nombre: true, registrationCodeHash: true },
+  })
 }
 
 export async function POST(request: Request) {
@@ -92,16 +86,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: passwordError }, { status: 400 })
     }
 
-    const normalizedEmail = email.trim().toLowerCase()
+    const normalizedEmail = normalizeAccountEmail(email)
 
-    // Verificar si el email ya está registrado
+    // Verificar si el email ya está registrado. Un mismo correo es siempre la misma
+    // persona: se reutiliza la cuenta (y su historial) en lugar de crear una nueva.
     const existingUser = await prisma.user.findUnique({
-      where: { email: normalizedEmail }
+      where: { email: normalizedEmail },
+      select: { id: true, emailVerified: true },
     })
 
     if (existingUser) {
       return NextResponse.json(
-        { error: "Este email ya está registrado" },
+        {
+          error: existingUser.emailVerified
+            ? "Este correo ya tiene una cuenta. Inicia sesión con ese correo para recuperar tu historial (si olvidaste la contraseña, usa “Olvidé mi contraseña”)."
+            : "Este correo ya tiene una cuenta creada y pendiente de verificación. Ve a “Verificar cuenta” para activarla y conservar tu historial.",
+          code: 'EMAIL_ALREADY_REGISTERED',
+          canResendVerification: !existingUser.emailVerified,
+        },
         { status: 409 }
       )
     }
@@ -111,11 +113,13 @@ export async function POST(request: Request) {
     // Resolver empresa (entidad cabeza). Si no llega empresaId, creamos una cuenta personal.
     const rawEmpresaId = typeof empresaId === 'string' ? empresaId.trim() : ''
 
-    let derivedAccessCode = typeof accessCode === 'string' ? accessCode.trim() : ''
+    const derivedAccessCode = typeof accessCode === 'string' ? accessCode.trim() : ''
     const workspaceCode = rawEmpresaId ? normalizeWorkspaceCode(rawEmpresaId) : null
 
     const resolvedEmpresaId = workspaceCode ? '' : rawEmpresaId
 
+    // Solo se resuelve la empresa destino. Si no llega, el espacio personal se crea después
+    // del usuario para que su NIT sea `PERS-<userId>` (misma convención en todo el sistema).
     const empresa = workspaceCode
       ? await prisma.empresa.findUnique({
           where: { workspaceCode },
@@ -126,15 +130,17 @@ export async function POST(request: Request) {
           where: { id: resolvedEmpresaId },
           select: { id: true, nombre: true, registrationCodeHash: true },
         })
-      : await createPersonalEmpresa({ nombre: name, email: normalizedEmail })
+      : null
 
-    if (!empresa?.id) {
+    if ((workspaceCode || resolvedEmpresaId) && !empresa?.id) {
       return NextResponse.json({ error: 'Entidad no encontrada' }, { status: 400 })
     }
 
-    const userLimit = await checkPlanLimit(empresa.id, 'USUARIOS_MAX')
-    if (!userLimit.ok) {
-      return NextResponse.json(userLimit, { status: 402 })
+    if (empresa?.id) {
+      const userLimit = await checkPlanLimit(empresa.id, 'USUARIOS_MAX')
+      if (!userLimit.ok) {
+        return NextResponse.json(userLimit, { status: 402 })
+      }
     }
 
     if (resolvedEmpresaId && !workspaceCode && empresa?.registrationCodeHash) {
@@ -172,24 +178,47 @@ export async function POST(request: Request) {
     // Encriptar contraseña
     const hashedPassword = await bcrypt.hash(password, 12)
 
-    // Crear usuario (por defecto queda sin verificar)
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email: normalizedEmail,
-        password: hashedPassword,
-        role: isSuperAdminEmail(normalizedEmail) ? "ADMIN" : "USER",
-        empresaId: empresa.id,
+    // Crear usuario + espacio (empresa destino o personal) en una sola transacción: si algo
+    // falla no quedan empresas huérfanas ni trials fantasma.
+    const { user, empresaFinal, personalEmpresaCreated } = await prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          name,
+          email: normalizedEmail,
+          password: hashedPassword,
+          role: isSuperAdminEmail(normalizedEmail) ? "ADMIN" : "USER",
+          empresaId: empresa?.id ?? null,
+        },
+      })
+
+      const targetEmpresa = empresa?.id
+        ? empresa
+        : await createPersonalEmpresaForUser(tx, {
+            userId: createdUser.id,
+            nombre: name,
+            email: normalizedEmail,
+          })
+
+      if (createdUser.empresaId !== targetEmpresa.id) {
+        await tx.user.update({
+          where: { id: createdUser.id },
+          data: { empresaId: targetEmpresa.id },
+          select: { id: true },
+        })
+      }
+
+      // Si la empresa aún no tiene owner de planes, asignar al primer usuario que se registra.
+      await tx.empresa.updateMany({
+        where: { id: targetEmpresa.id, planOwnerUserId: null },
+        data: { planOwnerUserId: createdUser.id },
+      })
+
+      return {
+        user: { ...createdUser, empresaId: targetEmpresa.id },
+        empresaFinal: targetEmpresa,
+        personalEmpresaCreated: !empresa?.id,
       }
     })
-
-    // Si la empresa aún no tiene owner de planes, asignar al primer usuario que se registra.
-    await prisma.empresa.updateMany({
-      where: { id: empresa.id, planOwnerUserId: null },
-      data: { planOwnerUserId: user.id },
-    })
-
-    const empresaFinal = empresa
 
     // Asegurar sede/membresía inicial (para RBAC por sede)
     const defaultSede = await ensureDefaultSedeForEmpresa(empresaFinal.id, user.id)
@@ -296,8 +325,12 @@ export async function POST(request: Request) {
         )
       }
 
-      // En producción: si no se envía el correo, revertimos el registro para evitar cuentas bloqueadas.
+      // En producción: si no se envía el correo, revertimos el registro para evitar cuentas
+      // bloqueadas y tampoco dejamos la empresa personal (ni su trial) como residuo.
       await prisma.user.delete({ where: { id: user.id } })
+      if (personalEmpresaCreated) {
+        await prisma.empresa.delete({ where: { id: empresaFinal.id } }).catch(() => null)
+      }
       return NextResponse.json(
         { error: "No se pudo enviar el código de verificación. Intenta nuevamente." },
         { status: 500 }

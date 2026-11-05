@@ -24,6 +24,48 @@ const requestSchema = z.object({
   sourceRef: z.string().trim().max(180).nullable().optional(),
 })
 
+type ValidationIssue = { code: string; path: PropertyKey[]; message: string }
+
+const CATALOG_FIELDS = new Set(['categoryId', 'subcategoryId', 'serviceCatalogId'])
+
+const FIELD_LABELS: Record<string, string> = {
+  title: 'el título',
+  descriptionPublic: 'la descripción visible',
+  requirementsPrivate: 'los requisitos privados',
+  categoryId: 'la categoría',
+  subcategoryId: 'la subcategoría',
+  serviceCatalogId: 'el servicio',
+  location: 'la ubicación',
+  expectedQuantity: 'la cantidad esperada',
+  dueAt: 'la fecha objetivo',
+  visibilityLevel: 'la visibilidad',
+  sourceType: 'el origen',
+  sourceRef: 'la referencia de origen',
+}
+
+function buildValidationMessage(issues: readonly ValidationIssue[]) {
+  const first = issues[0]
+  if (!first) return 'Body inválido.'
+
+  const field = String(first.path[0] ?? '')
+  const label = FIELD_LABELS[field]
+
+  if (CATALOG_FIELDS.has(field)) {
+    return 'Debes seleccionar categoría, subcategoría y servicio del catálogo ROP antes de publicar.'
+  }
+
+  if (first.code === 'too_small') {
+    return label ? `Revisa ${label}: ${first.message}` : first.message
+  }
+
+  return label ? `El dato de ${label} no es válido: ${first.message}` : first.message
+}
+
+const KNOWN_DOMAIN_ERRORS: Record<string, string> = {
+  INVALID_OPPORTUNITY_SERVICE_RELATION:
+    'El servicio seleccionado ya no está disponible en el catálogo ROP. Recarga la página y vuelve a elegir categoría, subcategoría y servicio.',
+}
+
 async function resolveUserAccess() {
   const access = await requireRopAccess('CREATE')
   if (!access.ok) return { error: access.response }
@@ -42,7 +84,7 @@ export async function POST(request: NextRequest) {
         {
           error: {
             code: 'INVALID_BODY',
-            message: parsed.error.issues[0]?.message || 'Body inválido.',
+            message: buildValidationMessage(parsed.error.issues),
           },
           meta: { version: 'v1', timestamp: new Date().toISOString() },
         },
@@ -53,8 +95,10 @@ export async function POST(request: NextRequest) {
     const data = await createRopOpportunityForUser(context.userId, parsed.data)
     return NextResponse.json({ data, meta: { version: 'v1', timestamp: new Date().toISOString() }, error: null }, { status: 201 })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'No se pudo publicar la necesidad.'
-    const status = message.startsWith('INVALID_') ? 400 : 500
+    const rawMessage = error instanceof Error ? error.message : 'No se pudo publicar la necesidad.'
+    const knownMessage = KNOWN_DOMAIN_ERRORS[rawMessage]
+    const message = knownMessage ?? rawMessage
+    const status = rawMessage.startsWith('INVALID_') || Boolean(knownMessage) ? 400 : 500
 
     return NextResponse.json(
       {
