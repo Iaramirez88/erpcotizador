@@ -8,9 +8,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { CrmIntegrationsWebFormPurposeSection } from '@/components/crm/crm-integrations-web-form-purpose-section'
+import { CrmIntegrationsBookingSection } from '@/components/crm/crm-integrations-booking-section'
+import { CrmIntegrationsResponseEmailSection } from '@/components/crm/crm-integrations-response-email-section'
+import { getWebFormPurposeLabel, type WebFormPurposeFormState } from '@/lib/crm-web-form-purpose'
+import type { BookingSettingsFormState } from '@/lib/crm-booking-settings'
+import type { CrmResponseEmailFormState } from '@/lib/crm-response-email'
 
-type WebFormConfigSection = 'base' | 'styles' | 'fields' | 'variables' | 'size' | 'texts' | 'terms' | 'technical'
-type WebFormCustomFieldType = 'input' | 'textarea' | 'phone' | 'email' | 'select' | 'check' | 'file'
+type WebFormConfigSection = 'purpose' | 'booking' | 'base' | 'styles' | 'fields' | 'variables' | 'size' | 'texts' | 'terms' | 'email' | 'technical'
+
+type WebFormCustomFieldType = 'input' | 'textarea' | 'phone' | 'email' | 'number' | 'date' | 'url' | 'select' | 'radio' | 'check' | 'file'
 
 type WebFormCustomField = {
   id: string
@@ -85,7 +92,7 @@ type WebFormSectionsForm = {
   termsLinkUrl: string
   publicEmbedEnabled: boolean
   allowedDomains: string
-}
+} & WebFormPurposeFormState & BookingSettingsFormState & CrmResponseEmailFormState
 
 type WizardWebFormState = WebFormSectionsForm & {
   name: string
@@ -101,6 +108,7 @@ type WizardWebFormState = WebFormSectionsForm & {
 
 type Props<TForm extends WebFormSectionsForm, TWizardForm extends WizardWebFormState> = {
   kind: 'wizard' | 'builder'
+  mode?: 'form' | 'booking'
   section: WebFormConfigSection
   setSection: (section: WebFormConfigSection) => void
   form: TForm
@@ -129,6 +137,84 @@ export function CrmIntegrationsWebFormSections<TForm extends WebFormSectionsForm
 
   return (
     <Tabs value={props.section} onValueChange={(value) => props.setSection(value as WebFormConfigSection)} className="space-y-4">
+      {props.mode === 'booking' ? (
+        <div className="rounded-[24px] border border-sky-200 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,.14),transparent_40%),linear-gradient(135deg,#eff6ff,#ffffff)] p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-bold text-white">
+                {props.form.bookingBusinessHours.filter((day) => day.enabled).length}
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Agenda independiente del formulario</p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  Este canal agenda citas con calendario grande, cupos reales y sincronización en tiempo real con la agenda del CRM. No hereda campos ni finalidades del formulario web.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="inline-flex rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-semibold text-sky-700">Duración: {props.form.bookingDurationLabel || `${props.form.bookingDurationMinutes} min`}</span>
+                  <span className="inline-flex rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-semibold text-sky-700">Días activos: {props.form.bookingBusinessHours.filter((day) => day.enabled).length}</span>
+                  <span className="inline-flex rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-semibold text-sky-700">Cupos por horario: {props.form.bookingCapacityPerSlot}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => props.setSection('booking')}>
+                Configurar agenda
+              </Button>
+              <Button type="button" variant="outline" className="rounded-xl bg-white" onClick={() => props.setSection('email')}>
+                Correo de respuesta
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : (
+      <div className="rounded-[24px] border border-sky-200 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,.14),transparent_40%),linear-gradient(135deg,#eff6ff,#ffffff)] p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-bold text-white">
+              {props.form.webFormCustomFields.length}
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Campos personalizados</p>
+              <p className="mt-1 text-xs leading-5 text-slate-600">
+                Agrega cualquier campo extra (texto, número, fecha, selección, archivo y más) y se mostrará en este formulario sin importar la finalidad elegida.
+              </p>
+              <p className="mt-2 inline-flex rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-semibold text-sky-700">
+                Finalidad actual: {getWebFormPurposeLabel(props.form.webFormPurpose)}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => props.setSection('fields')}>
+              Abrir constructor de campos
+            </Button>
+            <Button type="button" variant="outline" className="rounded-xl bg-white" onClick={() => { props.addField('input'); props.setSection('fields') }}>
+              + Campo rápido
+            </Button>
+            {props.sectionOptions.some((item) => item.id === 'purpose') ? (
+              <Button type="button" variant="outline" className="rounded-xl bg-white" onClick={() => props.setSection('purpose')}>
+                Ver finalidad
+              </Button>
+            ) : null}
+          </div>
+        </div>
+        {props.form.webFormCustomFields.length ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {props.form.webFormCustomFields.map((field) => (
+              <button
+                key={field.id}
+                type="button"
+                onClick={() => props.setSection('fields')}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
+              >
+                {field.label || 'Campo sin nombre'}
+                {field.required ? ' *' : ''}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      )}
+
       <div className="overflow-x-auto pb-1">
         <TabsList className="inline-flex h-auto min-w-max flex-nowrap rounded-2xl border border-slate-200 bg-slate-50 p-1 md:flex-wrap">
           {props.sectionOptions.map((item) => (
@@ -138,6 +224,33 @@ export function CrmIntegrationsWebFormSections<TForm extends WebFormSectionsForm
           ))}
         </TabsList>
       </div>
+
+      <TabsContent value="purpose" className="space-y-4">
+        <CrmIntegrationsWebFormPurposeSection
+          form={props.form}
+          patchForm={(patch) => props.patchForm(patch as Partial<TForm>)}
+          onOpenFields={() => props.setSection('fields')}
+        />
+      </TabsContent>
+
+      <TabsContent value="booking" className="space-y-4">
+        <CrmIntegrationsBookingSection
+          form={props.form}
+          patchForm={(patch) => props.patchForm(patch as Partial<TForm>)}
+          notifyEmail={wizardForm?.bookingNotifyByEmail}
+          notifyWhatsApp={wizardForm?.bookingNotifyByWhatsApp}
+          onNotifyEmailChange={setWizardForm ? (checked) => setWizardForm((prev) => ({ ...prev, bookingNotifyByEmail: checked })) : undefined}
+          onNotifyWhatsAppChange={setWizardForm ? (checked) => setWizardForm((prev) => ({ ...prev, bookingNotifyByWhatsApp: checked })) : undefined}
+        />
+      </TabsContent>
+
+      <TabsContent value="email" className="space-y-4">
+        <CrmIntegrationsResponseEmailSection
+          form={props.form}
+          patchForm={(patch) => props.patchForm(patch as Partial<TForm>)}
+          mode={props.mode ?? 'form'}
+        />
+      </TabsContent>
 
       {isWizard && wizardForm && setWizardForm && props.makeDemoToken && props.channelStatusOptions && props.isOutgoingWebhookBridge ? (
         <TabsContent value="base" className="space-y-4">
@@ -298,8 +411,8 @@ export function CrmIntegrationsWebFormSections<TForm extends WebFormSectionsForm
         <div className="rounded-[24px] border border-slate-200 bg-white p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm font-semibold text-slate-900">Campos personalizados</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">Agrega campos extra tipo input, textarea, phone, email, select, check o file.</p>
+              <p className="text-sm font-semibold text-slate-900">Campos personalizados ({props.form.webFormCustomFields.length})</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Agrega campos extra tipo input, textarea, phone, email, número, fecha, URL, select, radio, check o file. Se muestran en cualquier finalidad del formulario.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {props.customFieldTypeOptions.map((item) => (
@@ -328,7 +441,7 @@ export function CrmIntegrationsWebFormSections<TForm extends WebFormSectionsForm
                   <div className="grid gap-2"><Label>Key interna</Label><Input value={field.key} onChange={(e) => props.updateField(field.id, { key: e.target.value })} className="h-11 rounded-xl" /></div>
                   <div className="grid gap-2">
                     <Label>Tipo</Label>
-                    <Select value={field.type} onValueChange={(value) => props.updateField(field.id, { type: value as WebFormCustomFieldType, options: value === 'select' ? (field.options.length ? field.options : ['Opción 1', 'Opción 2']) : [], fullWidth: value === 'textarea' || value === 'file' ? true : field.fullWidth })}>
+                    <Select value={field.type} onValueChange={(value) => props.updateField(field.id, { type: value as WebFormCustomFieldType, options: value === 'select' || value === 'radio' ? (field.options.length ? field.options : ['Opción 1', 'Opción 2']) : [], fullWidth: value === 'textarea' || value === 'file' ? true : field.fullWidth })}>
                       <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {props.customFieldTypeOptions.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
@@ -338,7 +451,13 @@ export function CrmIntegrationsWebFormSections<TForm extends WebFormSectionsForm
                   <div className="grid gap-2"><Label>Texto guía / placeholder</Label><Input value={field.placeholder} onChange={(e) => props.updateField(field.id, { placeholder: e.target.value })} className="h-11 rounded-xl" /></div>
                   <div className="grid gap-2 md:col-span-2"><Label>Ayuda</Label><Input value={field.helpText} onChange={(e) => props.updateField(field.id, { helpText: e.target.value })} className="h-11 rounded-xl" /></div>
                   <div className="grid gap-2"><Label>Valor por defecto</Label><Input value={field.defaultValue} onChange={(e) => props.updateField(field.id, { defaultValue: e.target.value })} className="h-11 rounded-xl" /></div>
-                  {field.type === 'select' ? <div className="grid gap-2"><Label>Opciones</Label><Input value={field.options.join(', ')} onChange={(e) => props.updateField(field.id, { options: e.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} className="h-11 rounded-xl" placeholder="Opción 1, Opción 2" /></div> : null}
+                  {field.type === 'select' || field.type === 'radio' ? (
+                    <div className="grid gap-2 md:col-span-2">
+                      <Label>Opciones</Label>
+                      <Input value={field.options.join(', ')} onChange={(e) => props.updateField(field.id, { options: e.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} className="h-11 rounded-xl" placeholder="Opción 1, Opción 2" />
+                      <p className="text-xs leading-5 text-slate-500">Separa cada opción con una coma. Se muestran como lista desplegable o radios según el tipo.</p>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="mt-4 grid gap-3 md:grid-cols-2">

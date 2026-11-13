@@ -3164,6 +3164,31 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           const detectedCity = pickString(normalized?.aiCity) || pickString(normalized?.ciudad)
                           const detectedRequest = pickString(normalized?.aiRequestSummary) || pickString(normalized?.messageText)
                           const detectedProduct = pickString(normalized?.aiProductOrService)
+                          const capturePurpose = pickString(normalized?.purpose)
+                          const capturePurposeLabel = capturePurpose === 'INCENTIVE'
+                            ? 'Entrega de regalo'
+                            : capturePurpose === 'THANK_YOU_REDIRECT'
+                              ? 'Thank you page'
+                              : capturePurpose === 'COUPON'
+                                ? 'Cupón de descuento'
+                                : capturePurpose === 'LEAD_CAPTURE'
+                                  ? 'Captura básica'
+                                  : capturePurpose
+                          const captureCoupon = asRecord(normalized?.coupon)
+                          const captureCouponCode = pickString(captureCoupon?.code)
+                          const captureCustomFields = Array.isArray(normalized?.customFields)
+                            ? normalized.customFields
+                                .map((item) => asRecord(item))
+                                .filter((item): item is Record<string, unknown> => Boolean(item && (pickString(item.label) || pickString(item.key))))
+                            : []
+                          const captureStartsAt = pickString(normalized?.startsAt)
+                          const captureEndsAt = pickString(normalized?.endsAt)
+                          const captureDurationMinutes = Number(normalized?.durationMinutes)
+                          const captureBookingLabel = captureStartsAt && !Number.isNaN(new Date(captureStartsAt).getTime())
+                            ? `${new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(captureStartsAt))}${captureEndsAt && !Number.isNaN(new Date(captureEndsAt).getTime()) ? ` - ${new Intl.DateTimeFormat('es-CO', { timeStyle: 'short' }).format(new Date(captureEndsAt))}` : ''}`
+                            : ''
+                          const captureResponseEmail = asRecord(normalized?.responseEmail)
+                          const captureResponseEmailStatus = pickString(captureResponseEmail?.status)
                           const autoCategory = pickString(normalized?.autoCategory)
                           const autoLeadStatus = pickString(normalized?.autoLeadStatusApplied) || pickString(normalized?.autoLeadStatus)
                           const autoOpportunityId = pickString(normalized?.autoOpportunityId)
@@ -3192,6 +3217,22 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                   {detectedCity ? <p><span className="font-medium text-slate-900">Ciudad:</span> {detectedCity}</p> : null}
                                   {detectedProduct ? <p><span className="font-medium text-slate-900">Producto/servicio:</span> {detectedProduct}</p> : null}
                                   {detectedRequest ? <p className="leading-5"><span className="font-medium text-slate-900">Solicitud:</span> {detectedRequest}</p> : null}
+                                </div>
+                              ) : null}
+                              {capturePurpose || captureCouponCode || captureCustomFields.length || captureBookingLabel ? (
+                                <div className="mt-3 grid gap-2 rounded-2xl border border-violet-200 bg-violet-50/70 p-3 text-xs text-violet-900">
+                                  <p className="font-semibold">Formulario y atribución</p>
+                                  {capturePurpose ? <p><span className="font-medium">Finalidad:</span> {capturePurposeLabel}</p> : null}
+                                  {captureBookingLabel ? <p><span className="font-medium">Cita:</span> {captureBookingLabel}</p> : null}
+                                  {Number.isFinite(captureDurationMinutes) && captureDurationMinutes > 0 ? <p><span className="font-medium">Duración:</span> {captureDurationMinutes} min</p> : null}
+                                  {captureCouponCode ? <p><span className="font-medium">Cupón:</span> {captureCouponCode}</p> : null}
+                                  {captureResponseEmailStatus ? <p><span className="font-medium">Correo de respuesta:</span> {captureResponseEmailStatus === 'SENT' ? 'enviado' : captureResponseEmailStatus === 'FAILED' ? 'falló' : captureResponseEmailStatus}</p> : null}
+                                  {captureCustomFields.map((field, index) => (
+                                    <p key={`${pickString(field.key) || index}`} className="leading-5">
+                                      <span className="font-medium">{pickString(field.label) || pickString(field.key) || `Campo ${index + 1}`}:</span>{' '}
+                                      {Array.isArray(field.value) ? field.value.map((item) => pickString(asRecord(item)?.name) || pickString(item)).filter(Boolean).join(', ') : pickString(field.value) || '—'}
+                                    </p>
+                                  ))}
                                 </div>
                               ) : null}
                               {autoCategory || autoLeadStatus || autoOpportunityId || autoTaskId ? (

@@ -1,4 +1,29 @@
-export type WebFormCustomFieldType = 'input' | 'textarea' | 'phone' | 'email' | 'select' | 'check' | 'file'
+export type WebFormCustomFieldType =
+  | 'input'
+  | 'textarea'
+  | 'phone'
+  | 'email'
+  | 'number'
+  | 'date'
+  | 'url'
+  | 'select'
+  | 'radio'
+  | 'check'
+  | 'file'
+
+export const WEB_FORM_CUSTOM_FIELD_TYPES: WebFormCustomFieldType[] = [
+  'input',
+  'textarea',
+  'phone',
+  'email',
+  'number',
+  'date',
+  'url',
+  'select',
+  'radio',
+  'check',
+  'file',
+]
 
 export type WebFormCustomField = {
   id: string
@@ -49,7 +74,7 @@ export function normalizeWebFormCustomFields(value: unknown): WebFormCustomField
     if (!item || typeof item !== 'object') return
     const row = item as Record<string, unknown>
     const type = normalizeString(row.type).toLowerCase() as WebFormCustomFieldType
-    if (!['input', 'textarea', 'phone', 'email', 'select', 'check', 'file'].includes(type)) return
+    if (!WEB_FORM_CUSTOM_FIELD_TYPES.includes(type)) return
 
     const label = normalizeString(row.label) || `Campo ${index + 1}`
     const options = Array.isArray(row.options)

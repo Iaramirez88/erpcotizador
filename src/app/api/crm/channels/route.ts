@@ -9,6 +9,7 @@ import {
   parseChannelConnectionStatus,
   parseChannelProvider,
 } from '@/lib/crm'
+import { getChannelArchiveState } from '@/lib/crm-channel-archive'
 import { isWhatsAppCloudChannelReadyForProduction } from '@/lib/crm-meta'
 import { maskTokenPreview } from '@/lib/crm-omnichannel'
 
@@ -28,6 +29,8 @@ export async function GET(request: Request) {
     const sedeId = normalizeString(searchParams.get('sedeId'))
     const provider = parseChannelProvider(searchParams.get('provider'))
     const status = parseChannelConnectionStatus(searchParams.get('status'))
+    const includeArchivedParam = normalizeString(searchParams.get('includeArchived')).toLowerCase()
+    const includeArchived = includeArchivedParam === '1' || includeArchivedParam === 'true'
 
     if (sedeId) {
       const denied = await assertCrmSedeAccess({ sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.READ })
@@ -49,12 +52,15 @@ export async function GET(request: Request) {
       },
     })
 
+    const data = rows.map((row) => ({
+      ...row,
+      verifyTokenPreview: maskTokenPreview(row.verifyToken),
+      archivedAt: getChannelArchiveState(row.settingsJson).archivedAt,
+    }))
+
     return NextResponse.json({
       success: true,
-      data: rows.map((row) => ({
-        ...row,
-        verifyTokenPreview: maskTokenPreview(row.verifyToken),
-      })),
+      data: includeArchived ? data : data.filter((row) => !row.archivedAt),
     })
   } catch (error) {
     console.error('Error listando canales CRM:', error)

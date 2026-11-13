@@ -41,6 +41,7 @@ export default async function PublicWebFormPage(props: PageProps) {
   return (
     <CrmPublicWebFormEmbed
       channelId={channel.id}
+      purposeSettings={settings.purpose}
       title={settings.formTitle || channel.name}
       description={settings.formDescription}
       submitLabel={settings.submitCtaLabel}

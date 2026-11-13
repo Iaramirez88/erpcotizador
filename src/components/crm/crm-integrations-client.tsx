@@ -85,6 +85,25 @@ import {
   type CrmBridgeKind,
   type CrmChannelProvider,
 } from '@/lib/crm-integration-assets'
+import { channelHasActivity, getChannelArchiveState, isChannelArchived } from '@/lib/crm-channel-archive'
+import {
+  getDefaultWebFormPurposeFormState,
+  getWebFormPurposeFormState,
+  getWebFormPurposeLabel,
+  pickWebFormPurposeFormState,
+  type WebFormPurposeFormState,
+} from '@/lib/crm-web-form-purpose'
+import {
+  getBookingSettingsFormState,
+  serializeBookingSettingsFormState,
+  type BookingSettingsFormState,
+} from '@/lib/crm-booking-settings'
+import {
+  getCrmResponseEmailFormState,
+  serializeCrmResponseEmailFormState,
+  type CrmResponseEmailFormState,
+} from '@/lib/crm-response-email'
+import { CrmIntegrationsWebFormPurposeSection } from '@/components/crm/crm-integrations-web-form-purpose-section'
 import {
   createWebFormEntityId,
   normalizeWebFormCustomFields,
@@ -95,6 +114,10 @@ import {
 } from '@/lib/crm-web-form-schema'
 
 type ChannelStatus = 'DRAFT' | 'TESTING' | 'ACTIVE' | 'DISABLED' | 'ERROR'
+
+type ChannelListTab = 'active' | 'disabled' | 'archived'
+
+type ChannelRemovalStep = 'confirm' | 'blocked' | 'deactivated'
 
 type WhatsAppConnectionMode = 'CRM_ONLY' | 'HYBRID_CRM_PHONE'
 
@@ -118,6 +141,7 @@ type ChannelConnection = {
   lastErrorMessage?: string | null
   updatedAt: string
   createdAt: string
+  archivedAt?: string | null
   _count?: { conversations: number; captures: number }
   outboundMessagingStats?: {
     config?: {
@@ -223,7 +247,7 @@ type ImplementationAssetCard = {
   disabled?: boolean
 }
 
-type WizardStep = 'template' | 'config' | 'review' | 'implementation'
+type WizardStep = 'template' | 'purpose' | 'config' | 'review' | 'implementation'
 type ChatbotPreviewMode = 'floating' | 'compact' | 'expanded'
 type ChatbotPreviewViewport = 'desktop' | 'mobile'
 type CrmWorkspaceView = 'operations' | 'chatbots' | 'google' | 'marketing' | 'addons' | 'metrics'
@@ -235,7 +259,7 @@ type LauncherPlacement = 'fixed' | 'absolute'
 type PanelShadowPreset = 'soft' | 'medium' | 'strong'
 type ChatbotBuilderSection = 'brand' | 'flow' | 'launcher' | 'copy'
 type ChatbotWizardSection = 'base' | 'brand' | 'launcher' | 'copy'
-type WebFormConfigSection = 'base' | 'styles' | 'fields' | 'variables' | 'size' | 'texts' | 'terms' | 'technical'
+type WebFormConfigSection = 'purpose' | 'booking' | 'base' | 'styles' | 'fields' | 'variables' | 'size' | 'texts' | 'terms' | 'email' | 'technical'
 
 type GoogleSheetsActionState = {
   loadingPreview: boolean
@@ -372,7 +396,7 @@ type WebFormBuilderState = Pick<ChannelFormState,
   | 'termsLabel'
   | 'termsLinkText'
   | 'termsLinkUrl'
->
+> & WebFormPurposeFormState & BookingSettingsFormState & CrmResponseEmailFormState
 
 type ChatbotBuilderState = Pick<ChannelFormState,
   'chatbotTitle'
@@ -447,24 +471,40 @@ type ChatbotBuilderState = Pick<ChannelFormState,
 type ChatbotFlowStageId = ChannelFormState['flowStages'][number]['id']
 
 const WEB_FORM_SECTION_OPTIONS: Array<{ id: WebFormConfigSection; label: string }> = [
+  { id: 'purpose', label: 'Finalidad' },
+  { id: 'fields', label: 'Campos personalizados' },
   { id: 'base', label: 'Base del canal' },
   { id: 'styles', label: 'Estilos' },
-  { id: 'fields', label: 'Campos' },
   { id: 'variables', label: 'Variables' },
   { id: 'size', label: 'Tamaño' },
   { id: 'texts', label: 'Textos' },
   { id: 'terms', label: 'Términos' },
+  { id: 'email', label: 'Correo de respuesta' },
+  { id: 'technical', label: 'Configuración técnica' },
+]
+
+const BOOKING_SECTION_OPTIONS: Array<{ id: WebFormConfigSection; label: string }> = [
+  { id: 'booking', label: 'Agenda y disponibilidad' },
+  { id: 'base', label: 'Base del canal' },
+  { id: 'styles', label: 'Estilos' },
+  { id: 'texts', label: 'Textos' },
+  { id: 'email', label: 'Correo de respuesta' },
+  { id: 'size', label: 'Tamaño' },
   { id: 'technical', label: 'Configuración técnica' },
 ]
 
 const WEB_FORM_CUSTOM_FIELD_TYPE_OPTIONS: Array<{ value: WebFormCustomFieldType; label: string }> = [
-  { value: 'input', label: 'Input' },
-  { value: 'textarea', label: 'Textarea' },
-  { value: 'phone', label: 'Phone' },
-  { value: 'email', label: 'Email' },
-  { value: 'select', label: 'Select' },
+  { value: 'input', label: 'Texto' },
+  { value: 'textarea', label: 'Texto largo' },
+  { value: 'phone', label: 'Teléfono' },
+  { value: 'email', label: 'Correo' },
+  { value: 'number', label: 'Número' },
+  { value: 'date', label: 'Fecha' },
+  { value: 'url', label: 'URL' },
+  { value: 'select', label: 'Desplegable' },
+  { value: 'radio', label: 'Opciones' },
   { value: 'check', label: 'Check' },
-  { value: 'file', label: 'File' },
+  { value: 'file', label: 'Archivo' },
 ]
 
 const CHATBOT_WIZARD_SECTION_OPTIONS: Array<{ id: ChatbotWizardSection; label: string }> = [
@@ -496,6 +536,8 @@ function getInitialChannelForm() {
     googleSheetsOpportunityStage: 'QUALIFIED',
     bookingNotifyByEmail: true,
     bookingNotifyByWhatsApp: true,
+    ...getBookingSettingsFormState(null),
+    ...getCrmResponseEmailFormState(null),
     outgoingWebhookUrl: '',
     externalAccountId: '',
     externalPageId: '',
@@ -597,6 +639,7 @@ function getInitialChannelForm() {
     productPlaceholder: '¿Qué producto necesitas?',
     messageLabel: 'Mensaje',
     messagePlaceholder: 'Cuéntanos qué necesitas y para cuándo.',
+    ...getDefaultWebFormPurposeFormState(),
     webFormCustomFields: [] as WebFormCustomField[],
     webFormVariables: [] as WebFormVariable[],
     termsEnabled: false,
@@ -622,7 +665,7 @@ type ChannelFormState = ReturnType<typeof getInitialChannelForm>
 const CHANNEL_STATUS_OPTIONS: ChannelStatus[] = ['DRAFT', 'TESTING', 'ACTIVE', 'DISABLED', 'ERROR']
 
 const TEMPLATE_PRESETS: TemplatePreset[] = [
-  { key: 'web-form', name: 'Formulario Web', provider: 'WEB_FORM', description: 'Captura leads desde un iframe profesional o desde formularios existentes en landings.', connectionModel: 'Iframe + script', readiness: 'Operativo hoy', focus: 'Captura de formularios y campañas' },
+  { key: 'web-form', name: 'Formulario Web', provider: 'WEB_FORM', description: 'Captura leads con finalidad configurable: captura básica, regalo por correo o WhatsApp, thank you page o cupón de descuento.', connectionModel: 'Iframe + script', readiness: 'Operativo hoy', focus: 'Captura de formularios, regalos y campañas' },
   { key: 'web-booking', name: 'Agenda Web', provider: 'WEB_FORM', bridgeKind: 'BOOKING', description: 'Agenda citas desde un iframe en la web y consúmelas directo en el CRM con confirmación automática.', connectionModel: 'Iframe + API', readiness: 'Operativo hoy', focus: 'Citas, seguimiento y notificación al usuario' },
   { key: 'web-chatbot', name: 'Chatbot Web', provider: 'WEB_CHATBOT', description: 'Chat embebible por iframe con hilo en tiempo real dentro del CRM.', connectionModel: 'Iframe publico', readiness: 'Operativo hoy', focus: 'Conversación, handoff y lead capture' },
   { key: 'whatsapp-cloud', name: 'WhatsApp Cloud', provider: 'WHATSAPP_CLOUD', description: 'Webhook listo para pruebas y conexión oficial.', connectionModel: 'Webhook nativo', readiness: 'Demo avanzada', focus: 'Inbox y mensajes inbound' },
@@ -1670,7 +1713,10 @@ function getInitialChatbotPreviewMode(builderState: Pick<ChatbotBuilderState, 'f
 function getWebFormCustomFieldPlaceholder(field: WebFormCustomField) {
   if (field.type === 'check') return field.defaultValue || 'Acepto esta opción'
   if (field.type === 'file') return field.defaultValue || 'Selecciona uno o más archivos'
-  if (field.type === 'select') return field.defaultValue || field.options[0] || 'Selecciona una opción'
+  if (field.type === 'select' || field.type === 'radio') return field.defaultValue || field.options[0] || 'Selecciona una opción'
+  if (field.type === 'number') return field.placeholder || '0'
+  if (field.type === 'date') return field.placeholder || 'dd/mm/aaaa'
+  if (field.type === 'url') return field.placeholder || 'https://'
   return field.placeholder || field.defaultValue || 'Campo personalizado'
 }
 
@@ -1713,6 +1759,15 @@ function renderWebFormCustomFieldPreview(field: WebFormCustomField, args: {
           <span>{getWebFormCustomFieldPlaceholder(field)}</span>
           <span className="text-xs text-slate-400">{field.options.length} opciones</span>
         </div>
+      ) : field.type === 'radio' ? (
+        <div className="grid gap-2 px-4 py-3" style={inputStyle}>
+          {(field.options.length ? field.options : ['Opción 1']).slice(0, 4).map((option) => (
+            <span key={option} className="flex items-center gap-2 text-sm">
+              <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-slate-300 bg-white" />
+              {option}
+            </span>
+          ))}
+        </div>
       ) : (
         <div className="px-4 py-3" style={inputStyle}>{getWebFormCustomFieldPlaceholder(field)}</div>
       )}
@@ -1731,6 +1786,8 @@ function renderWebFormPreview(builderState: WebFormBuilderState, options?: {
   const outerPaddingClassName = options?.outerPaddingClassName ?? 'p-5'
   const titleClassName = options?.titleClassName ?? 'text-xl'
   const messageMinHeight = options?.messageMinHeight ?? 120
+  const previewShowsEmail = builderState.showEmailField || (builderState.webFormPurpose === 'INCENTIVE' && builderState.incentiveDeliveryMode !== 'WHATSAPP')
+  const previewShowsPhone = builderState.showPhoneField || (builderState.webFormPurpose === 'INCENTIVE' && builderState.incentiveDeliveryMode !== 'EMAIL')
 
   return (
     <div className="overflow-hidden rounded-[24px] border border-sky-200 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(14,165,233,.16), transparent 34%), linear-gradient(180deg, ${builderState.pageBackgroundColor} 0%, ${builderState.backgroundColor} 100%)` }}>
@@ -1746,12 +1803,32 @@ function renderWebFormPreview(builderState: WebFormBuilderState, options?: {
           <div className="mt-5 grid" style={{ gap: `${normalizePixelValue(builderState.formFieldSpacing, '14')}px`, fontSize: `${normalizePixelValue(builderState.formFontSize, '14')}px` }}>
             {builderState.showNameField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.nameLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.namePlaceholder}</div></div> : null}
             <div className="grid gap-3 md:grid-cols-2">
-              {builderState.showEmailField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.emailLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.emailPlaceholder}</div></div> : null}
-              {builderState.showPhoneField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.phoneLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.phonePlaceholder}</div></div> : null}
+              {previewShowsEmail ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.emailLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.emailPlaceholder}</div></div> : null}
+              {previewShowsPhone ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.phoneLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.phonePlaceholder}</div></div> : null}
             </div>
             {(builderState.showCompanyField || builderState.showCityField) ? <div className="grid gap-3 md:grid-cols-2">{builderState.showCompanyField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.companyLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.companyPlaceholder}</div></div> : null}{builderState.showCityField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.cityLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.cityPlaceholder}</div></div> : null}</div> : null}
             {builderState.showProductField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.productLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.productPlaceholder}</div></div> : null}
             {builderState.showMessageField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.messageLabel}</p><div className="px-4 py-3" style={{ minHeight: messageMinHeight, borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.messagePlaceholder}</div></div> : null}
+            {builderState.webFormPurpose === 'INCENTIVE' ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-900">
+                <p className="font-semibold">{builderState.incentiveRewardLabel || 'Tu regalo'}</p>
+                <p className="mt-1 text-xs leading-5">
+                  {builderState.incentiveDeliveryMode === 'BOTH'
+                    ? 'El visitante elige si lo recibe por correo o por WhatsApp.'
+                    : builderState.incentiveDeliveryMode === 'WHATSAPP'
+                      ? 'Se entrega automáticamente por WhatsApp al enviar.'
+                      : 'Se entrega automáticamente por correo al enviar.'}
+                </p>
+              </div>
+            ) : null}
+            {(builderState.couponEnabled || builderState.webFormPurpose === 'COUPON') ? (
+              <div className="grid gap-2">
+                <p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.couponLabel || 'Cupón de descuento'}</p>
+                <div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>
+                  {builderState.couponCode || 'Código de cupón'}
+                </div>
+              </div>
+            ) : null}
             {builderState.webFormCustomFields.length ? (
               <div className="grid gap-3 md:grid-cols-2">
                 {builderState.webFormCustomFields.map((field) => renderWebFormCustomFieldPreview(field, {
@@ -2473,6 +2550,9 @@ function getWebFormBuilderState(settingsJson: Record<string, unknown> | null | u
     termsLabel: getSettingText(settingsJson, 'termsLabel', 'Acepto el tratamiento de datos personales.'),
     termsLinkText: getSettingText(settingsJson, 'termsLinkText', 'Leer términos'),
     termsLinkUrl: getSettingText(settingsJson, 'termsLinkUrl', ''),
+    ...getWebFormPurposeFormState(settingsJson),
+    ...getBookingSettingsFormState(settingsJson),
+    ...getCrmResponseEmailFormState(settingsJson),
   }
 }
 
@@ -2671,6 +2751,45 @@ function buildChatbotCanvasModel(stages: ChatbotFlowStage[]) {
   }
 }
 
+const CHANNEL_STATUS_META: Record<ChannelStatus, { es: string; en: string; className: string }> = {
+  DRAFT: { es: 'Borrador', en: 'Draft', className: 'border-slate-200 bg-white/85 text-slate-600' },
+  TESTING: { es: 'Pruebas', en: 'Testing', className: 'border-amber-200 bg-amber-50 text-amber-700' },
+  ACTIVE: { es: 'Activo', en: 'Active', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+  DISABLED: { es: 'Desactivado', en: 'Disabled', className: 'border-slate-300 bg-slate-100 text-slate-600' },
+  ERROR: { es: 'Error', en: 'Error', className: 'border-rose-200 bg-rose-50 text-rose-700' },
+}
+
+function channelIsArchived(channel: ChannelConnection | null | undefined) {
+  if (!channel) return false
+  return Boolean(channel.archivedAt) || isChannelArchived(channel.settingsJson)
+}
+
+function getChannelStatusMeta(channel: ChannelConnection, language: string) {
+  if (channelIsArchived(channel)) {
+    return {
+      label: language === 'en' ? 'Archived' : 'Archivado',
+      className: 'border-slate-300 bg-slate-100 text-slate-600',
+    }
+  }
+
+  const meta = CHANNEL_STATUS_META[channel.status]
+  return {
+    label: language === 'en' ? meta.en : meta.es,
+    className: meta.className,
+  }
+}
+
+function formatChannelArchiveDate(value: string | null | undefined, language: string) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString(language === 'en' ? 'en-US' : 'es-CO', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  })
+}
+
 export function CrmIntegrationsClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -2682,7 +2801,11 @@ export function CrmIntegrationsClient() {
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null)
   const [pendingWizardChannelId, setPendingWizardChannelId] = useState<string | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<ChannelConnection | null>(null)
+  const [removalStep, setRemovalStep] = useState<ChannelRemovalStep>('confirm')
+  const [removalError, setRemovalError] = useState<string | null>(null)
+  const [channelsTab, setChannelsTab] = useState<ChannelListTab>('active')
   const [channels, setChannels] = useState<ChannelConnection[]>([])
+  const [archivedChannels, setArchivedChannels] = useState<ChannelConnection[]>([])
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [wizardStep, setWizardStep] = useState<WizardStep>('template')
@@ -2740,10 +2863,16 @@ export function CrmIntegrationsClient() {
   const loadChannels = useCallback(async () => {
     setLoading(true)
     try {
-      const json = await requestJson<ChannelConnection[]>('/api/crm/channels')
+      const json = await requestJson<ChannelConnection[]>('/api/crm/channels?includeArchived=1')
       const rows = Array.isArray(json.data) ? json.data : []
-      setChannels(rows)
-      setSelectedChannelId((current) => current && rows.some((row) => row.id === current) ? current : rows[0]?.id ?? null)
+      const visibleRows = rows.filter((row) => !channelIsArchived(row))
+      const archivedRows = rows.filter((row) => channelIsArchived(row))
+      setChannels(visibleRows)
+      setArchivedChannels(archivedRows)
+      setSelectedChannelId((current) => {
+        if (current && rows.some((row) => row.id === current)) return current
+        return visibleRows[0]?.id ?? archivedRows[0]?.id ?? null
+      })
     } finally {
       setLoading(false)
     }
@@ -2960,12 +3089,15 @@ export function CrmIntegrationsClient() {
       termsLabel: getSettingText(settings, 'termsLabel', 'Acepto el tratamiento de datos personales.'),
       termsLinkText: getSettingText(settings, 'termsLinkText', 'Leer términos'),
       termsLinkUrl: getSettingText(settings, 'termsLinkUrl', ''),
+      ...getWebFormPurposeFormState(settings),
+      ...getBookingSettingsFormState(settings),
+      ...getCrmResponseEmailFormState(settings),
     }
     setCreateForm(nextForm)
     setWizardChatPreviewMode(getInitialChatbotPreviewMode(nextForm))
     setWizardChatPreviewViewport('desktop')
     setWizardChatbotSection('base')
-    setWizardWebFormSection('base')
+    setWizardWebFormSection(nextForm.bridgeKind === 'BOOKING' ? 'booking' : 'base')
     setWizardStep('config')
     setCreateOpen(true)
   }, [router])
@@ -3035,7 +3167,12 @@ export function CrmIntegrationsClient() {
     }
   }, [selectedChannelId, channels])
 
-  const selectedChannel = useMemo(() => channels.find((item) => item.id === selectedChannelId) ?? null, [channels, selectedChannelId])
+  const selectedChannel = useMemo(
+    () => channels.find((item) => item.id === selectedChannelId)
+      ?? archivedChannels.find((item) => item.id === selectedChannelId)
+      ?? null,
+    [channels, archivedChannels, selectedChannelId],
+  )
   const campaignOptionsForSelectedChannel = useMemo(() => {
     if (!selectedChannelId) return []
     return campaignOptions.filter((item) => item.channelId === selectedChannelId)
@@ -3104,6 +3241,7 @@ export function CrmIntegrationsClient() {
   const createPreset = useMemo(() => TEMPLATE_PRESETS.find((item) => item.key === createForm.templateKey) ?? TEMPLATE_PRESETS[0], [createForm.templateKey])
   const createIsChatbot = createForm.provider === 'WEB_CHATBOT'
   const createIsPublicWebForm = createForm.provider === 'WEB_FORM' && (createForm.bridgeKind === 'GENERIC' || createForm.bridgeKind === 'BOOKING')
+  const wizardSupportsPurpose = createForm.provider === 'WEB_FORM' && createForm.bridgeKind === 'GENERIC'
   const createIsBridge = createForm.provider === 'WEB_FORM' && !createIsPublicWebForm
   const createUsesWebhook = createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' || createForm.provider === 'FACEBOOK_PAGE' || createForm.provider === 'MESSENGER' || createForm.provider === 'INSTAGRAM_DM'
   const derivedChatbotCustomCss = useMemo(() => buildFriendlyChatbotCustomCss({ chatShellRadius: createForm.chatShellRadius, messageBubbleRadius: createForm.messageBubbleRadius, panelShadowPreset: createForm.panelShadowPreset }), [createForm.chatShellRadius, createForm.messageBubbleRadius, createForm.panelShadowPreset])
@@ -3229,6 +3367,9 @@ export function CrmIntegrationsClient() {
       termsLabel: createForm.termsLabel,
       termsLinkText: createForm.termsLinkText,
       termsLinkUrl: createForm.termsLinkUrl,
+      ...pickWebFormPurposeFormState(createForm),
+      ...serializeBookingSettingsFormState(createForm),
+      ...serializeCrmResponseEmailFormState(createForm),
       allowHumanHandoff: true,
     }
 
@@ -3725,7 +3866,14 @@ export function CrmIntegrationsClient() {
 
   useEffect(() => {
     setWebFormBuilderDraft(getWebFormBuilderState(selectedSettings))
-  }, [selectedChannelId, selectedSettings])
+    setWebFormBuilderSection(selectedIsBookingBridge ? 'booking' : 'fields')
+  }, [selectedChannelId, selectedSettings, selectedIsBookingBridge])
+
+  useEffect(() => {
+    if (wizardStep === 'purpose' && !wizardSupportsPurpose) {
+      setWizardStep('config')
+    }
+  }, [wizardSupportsPurpose, wizardStep])
 
   useEffect(() => {
     setGoogleSheetsActions(getInitialGoogleSheetsActionState())
@@ -3775,8 +3923,17 @@ export function CrmIntegrationsClient() {
       bridgeKind: preset.bridgeKind ?? 'GENERIC',
       testingToken: prev.testingToken || makeDemoToken(),
       publicEmbedEnabled: preset.provider === 'WEB_CHATBOT' || (preset.provider === 'WEB_FORM' && (!preset.bridgeKind || preset.bridgeKind === 'BOOKING')),
+      ...(preset.bridgeKind === 'BOOKING'
+        ? {
+            formTitle: 'Agenda tu cita',
+            formDescription: 'Elige el día y la hora que mejor te funcionen. La agenda se sincroniza en tiempo real y confirmamos por correo o WhatsApp.',
+            submitCtaLabel: 'Confirmar cita',
+            formSuccessMessage: 'Tu cita quedó registrada correctamente.',
+          }
+        : {}),
     }))
-    setWizardStep('config')
+    setWizardWebFormSection(preset.bridgeKind === 'BOOKING' ? 'booking' : 'base')
+    setWizardStep(preset.provider === 'WEB_FORM' && (!preset.bridgeKind || preset.bridgeKind === 'GENERIC') ? 'purpose' : 'config')
   }
 
   function openCreateWizard() {
@@ -4129,6 +4286,7 @@ export function CrmIntegrationsClient() {
         termsLabel: createForm.termsLabel,
         termsLinkText: createForm.termsLinkText,
         termsLinkUrl: createForm.termsLinkUrl,
+        ...pickWebFormPurposeFormState(createForm),
         allowHumanHandoff: true,
       }
       const settingsJson = createForm.provider === 'WEB_CHATBOT'
@@ -4186,12 +4344,52 @@ export function CrmIntegrationsClient() {
       })
       if (!json.success) {
         alert(json.error || 'No se pudo actualizar el canal.')
-        return
+        return false
       }
       await loadChannels()
+      return true
     } finally {
       setUpdatingChannelId(null)
     }
+  }
+
+  async function setChannelArchived(channelId: string, archived: boolean) {
+    setUpdatingChannelId(channelId)
+    try {
+      const json = await requestJson<ChannelConnection>(`/api/crm/channels/${channelId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived }),
+      })
+      if (!json.success) {
+        alert(json.error || (archived ? 'No se pudo archivar el canal.' : 'No se pudo restaurar el canal.'))
+        return false
+      }
+      if (archived) {
+        setChannelsTab('archived')
+        setSelectedChannelId((current) => (current === channelId ? null : current))
+      } else {
+        setChannelsTab('disabled')
+        setSelectedChannelId(channelId)
+      }
+      await loadChannels()
+      return true
+    } finally {
+      setUpdatingChannelId(null)
+    }
+  }
+
+  function openChannelRemoval(channel: ChannelConnection) {
+    setDeleteCandidate(channel)
+    setRemovalError(null)
+    setRemovalStep(channelHasActivity(channel._count) ? 'blocked' : 'confirm')
+  }
+
+  function closeChannelRemoval() {
+    if (deletingChannelId || updatingChannelId) return
+    setDeleteCandidate(null)
+    setRemovalError(null)
+    setRemovalStep('confirm')
   }
 
   async function deleteChannel(channelId: string) {
@@ -4199,14 +4397,34 @@ export function CrmIntegrationsClient() {
     try {
       const json = await requestJson(`/api/crm/channels/${channelId}`, { method: 'DELETE' })
       if (!json.success) {
-        alert(json.error || 'No se pudo eliminar el canal.')
+        setRemovalError(json.error || 'No se pudo eliminar el canal.')
+        setRemovalStep('blocked')
         return
       }
       setDeleteCandidate(null)
+      setRemovalError(null)
+      setRemovalStep('confirm')
       await loadChannels()
     } finally {
       setDeletingChannelId(null)
     }
+  }
+
+  async function deactivateRemovalCandidate() {
+    if (!deleteCandidate) return
+    const updated = await updateChannelStatus(deleteCandidate.id, 'DISABLED')
+    if (!updated) return
+    setRemovalError(null)
+    setRemovalStep('deactivated')
+  }
+
+  async function archiveRemovalCandidate() {
+    if (!deleteCandidate) return
+    const archived = await setChannelArchived(deleteCandidate.id, true)
+    if (!archived) return
+    setDeleteCandidate(null)
+    setRemovalError(null)
+    setRemovalStep('confirm')
   }
 
   function updateChatbotStage(stageId: ChatbotFlowStageId, patch: Partial<ChatbotFlowStage>) {
@@ -4394,7 +4612,7 @@ export function CrmIntegrationsClient() {
       placeholder: '',
       helpText: '',
       required: false,
-      options: type === 'select' ? ['Opción 1', 'Opción 2'] : [],
+      options: type === 'select' || type === 'radio' ? ['Opción 1', 'Opción 2'] : [],
       defaultValue: '',
       fullWidth: type === 'textarea' || type === 'file',
     }
@@ -4503,6 +4721,11 @@ export function CrmIntegrationsClient() {
     }))
   }
 
+  function openWebFormEditor(section?: WebFormConfigSection) {
+    setWebFormBuilderSection(section ?? (selectedIsBookingBridge ? 'booking' : 'fields'))
+    setWebFormBuilderModalOpen(true)
+  }
+
   function renderWebFormConfigurationSections(kind: 'wizard' | 'builder') {
     const isWizard = kind === 'wizard'
     const form = isWizard ? createForm : webFormBuilderDraft
@@ -4516,11 +4739,25 @@ export function CrmIntegrationsClient() {
     const updateVariable = isWizard ? updateWizardWebFormVariable : updateBuilderWebFormVariable
     const removeVariable = isWizard ? removeWizardWebFormVariable : removeBuilderWebFormVariable
 
-    const sectionOptions = isWizard ? WEB_FORM_SECTION_OPTIONS : WEB_FORM_SECTION_OPTIONS.filter((item) => item.id !== 'base')
+    const isBookingChannel = isWizard
+      ? createForm.provider === 'WEB_FORM' && createForm.bridgeKind === 'BOOKING'
+      : selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'BOOKING'
+    const supportsPurpose = !isBookingChannel && (isWizard
+      ? createForm.provider === 'WEB_FORM' && createForm.bridgeKind === 'GENERIC'
+      : selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'GENERIC')
+    const baseSectionOptions = isBookingChannel
+      ? BOOKING_SECTION_OPTIONS
+      : supportsPurpose
+        ? WEB_FORM_SECTION_OPTIONS
+        : WEB_FORM_SECTION_OPTIONS.filter((item) => item.id !== 'purpose')
+    const sectionOptions = isWizard
+      ? baseSectionOptions
+      : baseSectionOptions.filter((item) => item.id !== 'base')
 
     return (
       <CrmIntegrationsWebFormSections
         kind={kind}
+        mode={isBookingChannel ? 'booking' : 'form'}
         section={section}
         setSection={(value) => setSection(value as WebFormConfigSection)}
         form={form}
@@ -4628,6 +4865,8 @@ export function CrmIntegrationsClient() {
         formFontSize: normalizePixelValue(webFormBuilderDraft.formFontSize, '14'),
         webFormCustomFields: webFormBuilderDraft.webFormCustomFields,
         webFormVariables: webFormBuilderDraft.webFormVariables,
+        ...serializeBookingSettingsFormState(webFormBuilderDraft),
+        ...serializeCrmResponseEmailFormState(webFormBuilderDraft),
       }
 
       const json = await requestJson<ChannelConnection>(`/api/crm/channels/${selectedChannel.id}`, {
@@ -4752,6 +4991,58 @@ export function CrmIntegrationsClient() {
       setActiveAssetTab(selectedAssetTabs[0] || 'overview')
     }
   }, [activeAssetTab, selectedAssetTabs])
+
+  const activeListChannels = useMemo(() => channels.filter((item) => item.status !== 'DISABLED'), [channels])
+  const disabledListChannels = useMemo(() => channels.filter((item) => item.status === 'DISABLED'), [channels])
+  const selectedChannelStatusMeta = selectedChannel ? getChannelStatusMeta(selectedChannel, language) : null
+  const selectedChannelArchivedAt = selectedChannel ? selectedChannel.archivedAt ?? getChannelArchiveState(selectedChannel.settingsJson).archivedAt : null
+  const deleteCandidateArchived = deleteCandidate ? channelIsArchived(deleteCandidate) : false
+  const removalBusy = Boolean(deletingChannelId || updatingChannelId)
+
+  function renderChannelCard(channel: ChannelConnection) {
+    const isActive = channel.id === selectedChannelId
+    const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
+    const bridgeKind = getBridgeKind(settings)
+    const ChannelLogo = getChannelLogo(channel.provider, bridgeKind as CrmBridgeKind)
+    const logoWrapClass = getChannelLogoWrapClass(channel.provider, bridgeKind as CrmBridgeKind)
+    const statusMeta = getChannelStatusMeta(channel, language)
+    const archived = channelIsArchived(channel)
+    const archivedAt = channel.archivedAt ?? getChannelArchiveState(settings).archivedAt
+    const subtitle = [
+      getChannelProviderLabel(channel.provider, bridgeKind as CrmBridgeKind),
+      archived ? `${language === 'en' ? 'Archived' : 'Archivado'} ${formatChannelArchiveDate(archivedAt, language)}`.trim() : '',
+    ].filter(Boolean).join(' · ')
+
+    return (
+      <div
+        key={channel.id}
+        role="button"
+        tabIndex={0}
+        onClick={() => setSelectedChannelId(channel.id)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            setSelectedChannelId(channel.id)
+          }
+        }}
+        className={isActive ? `w-full cursor-pointer rounded-[26px] border p-4 text-left shadow-sm ring-2 ring-sky-300 ${channelTone(channel.provider, bridgeKind)}` : `w-full cursor-pointer rounded-[26px] border p-4 text-left shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md ${channelTone(channel.provider, bridgeKind)}`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${logoWrapClass}`}>
+              <ChannelLogo className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-base font-semibold text-slate-950">{channel.name}</p>
+              <p className="mt-0.5 truncate text-xs text-slate-500">{subtitle}</p>
+            </div>
+          </div>
+          <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusMeta.className}`}>{statusMeta.label}</span>
+        </div>
+      </div>
+    )
+  }
+
 
   return (
     <div className="space-y-4.5 pb-4">
@@ -4984,47 +5275,51 @@ export function CrmIntegrationsClient() {
             <CardTitle>{language === 'en' ? 'Configured channels' : 'Canales configurados'}</CardTitle>
             <CardDescription>{language === 'en' ? 'Select a channel to view assets, webhooks, and bridges ready to copy.' : 'Selecciona un canal para ver assets, webhooks y bridges listos para copiar.'}</CardDescription>
           </CardHeader>
-          <CardContent className="max-h-[72vh] space-y-2.5 overflow-y-auto p-3 md:p-4 xl:max-h-[calc(100vh-19rem)]">
+          <CardContent className="max-h-[72vh] overflow-y-auto p-3 md:p-4 xl:max-h-[calc(100vh-19rem)]">
             {loading ? <p className="text-sm text-muted-foreground">{language === 'en' ? 'Loading channels...' : 'Cargando canales...'}</p> : null}
-            {!loading && channels.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/80 p-5 text-sm text-slate-500">
-                {language === 'en' ? 'There are no channels yet. Create one from a template and the CRM will be ready for an immediate demo.' : 'Aún no hay canales. Crea uno desde plantilla y el CRM quedará listo para demo inmediata.'}
-              </div>
-            ) : null}
+            <Tabs value={channelsTab} onValueChange={(value) => setChannelsTab(value as ChannelListTab)} className="space-y-3">
+              <TabsList className="grid h-auto w-full grid-cols-3 rounded-[16px] border border-slate-200 bg-slate-50 p-1">
+                <TabsTrigger value="active" className="rounded-[12px] px-2 py-1.5 text-xs data-[state=active]:bg-white">
+                  {language === 'en' ? 'Channels' : 'Canales'}
+                  <span className="ml-1.5 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{activeListChannels.length}</span>
+                </TabsTrigger>
+                <TabsTrigger value="disabled" className="rounded-[12px] px-2 py-1.5 text-xs data-[state=active]:bg-white">
+                  {language === 'en' ? 'Disabled' : 'Desactivados'}
+                  <span className="ml-1.5 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{disabledListChannels.length}</span>
+                </TabsTrigger>
+                <TabsTrigger value="archived" className="rounded-[12px] px-2 py-1.5 text-xs data-[state=active]:bg-white">
+                  {language === 'en' ? 'Archived' : 'Archivados'}
+                  <span className="ml-1.5 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{archivedChannels.length}</span>
+                </TabsTrigger>
+              </TabsList>
 
-            {channels.map((channel) => {
-              const isActive = channel.id === selectedChannelId
-              const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
-              const bridgeKind = getBridgeKind(settings)
-              const ChannelLogo = getChannelLogo(channel.provider, bridgeKind as CrmBridgeKind)
-              const logoWrapClass = getChannelLogoWrapClass(channel.provider, bridgeKind as CrmBridgeKind)
-
-              return (
-                <div
-                  key={channel.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSelectedChannelId(channel.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      setSelectedChannelId(channel.id)
-                    }
-                  }}
-                  className={isActive ? `w-full cursor-pointer rounded-[26px] border p-4 text-left shadow-sm ring-2 ring-sky-300 ${channelTone(channel.provider, bridgeKind)}` : `w-full cursor-pointer rounded-[26px] border p-4 text-left shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md ${channelTone(channel.provider, bridgeKind)}`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${logoWrapClass}`}>
-                        <ChannelLogo className="h-5 w-5" />
-                      </div>
-                      <p className="truncate text-base font-semibold text-slate-950">{channel.name}</p>
-                    </div>
-                    <span className="shrink-0 rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{channel.status}</span>
+              <TabsContent value="active" className="mt-0 space-y-2.5">
+                {!loading && activeListChannels.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/80 p-5 text-sm text-slate-500">
+                    {language === 'en' ? 'There are no operating channels yet. Create one from a template and the CRM will be ready for an immediate demo.' : 'Aún no hay canales operativos. Crea uno desde plantilla y el CRM quedará listo para demo inmediata.'}
                   </div>
-                </div>
-              )
-            })}
+                ) : null}
+                {activeListChannels.map(renderChannelCard)}
+              </TabsContent>
+
+              <TabsContent value="disabled" className="mt-0 space-y-2.5">
+                {!loading && disabledListChannels.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/80 p-5 text-sm text-slate-500">
+                    {language === 'en' ? 'No channels are disabled right now.' : 'No hay canales desactivados por ahora.'}
+                  </div>
+                ) : null}
+                {disabledListChannels.map(renderChannelCard)}
+              </TabsContent>
+
+              <TabsContent value="archived" className="mt-0 space-y-2.5">
+                {!loading && archivedChannels.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/80 p-5 text-sm text-slate-500">
+                    {language === 'en' ? 'No archived channels. Archived channels keep their history but stay out of the operating list.' : 'No hay canales archivados. Un canal archivado conserva su histórico y sale del panel operativo.'}
+                  </div>
+                ) : null}
+                {archivedChannels.map(renderChannelCard)}
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 
@@ -5049,7 +5344,7 @@ export function CrmIntegrationsClient() {
                         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{providerSummary(selectedChannel.provider, selectedBridgeKind as CrmBridgeKind)}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-white/85 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{selectedChannel.status}</span>
+                        <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${selectedChannelStatusMeta?.className ?? 'border-slate-200 bg-white/85 text-slate-700'}`}>{selectedChannelStatusMeta?.label ?? selectedChannel.status}</span>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full bg-white/85 text-slate-600 hover:bg-white hover:text-slate-900">
@@ -5080,7 +5375,28 @@ export function CrmIntegrationsClient() {
                               </DropdownMenuItem>
                             ) : null}
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-rose-700 focus:text-rose-700" onSelect={() => setDeleteCandidate(selectedChannel)} disabled={deletingChannelId === selectedChannel.id}>
+                            {!channelIsArchived(selectedChannel) && selectedChannel.status !== 'DISABLED' ? (
+                              <DropdownMenuItem onSelect={() => void updateChannelStatus(selectedChannel.id, 'DISABLED')} disabled={updatingChannelId === selectedChannel.id}>
+                                {language === 'en' ? 'Deactivate channel' : 'Desactivar canal'}
+                              </DropdownMenuItem>
+                            ) : null}
+                            {!channelIsArchived(selectedChannel) && selectedChannel.status === 'DISABLED' ? (
+                              <>
+                                <DropdownMenuItem onSelect={() => void updateChannelStatus(selectedChannel.id, 'TESTING')} disabled={updatingChannelId === selectedChannel.id}>
+                                  {language === 'en' ? 'Reactivate in testing' : 'Reactivar en pruebas'}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => void setChannelArchived(selectedChannel.id, true)} disabled={updatingChannelId === selectedChannel.id}>
+                                  {language === 'en' ? 'Archive channel' : 'Archivar canal'}
+                                </DropdownMenuItem>
+                              </>
+                            ) : null}
+                            {channelIsArchived(selectedChannel) ? (
+                              <DropdownMenuItem onSelect={() => void setChannelArchived(selectedChannel.id, false)} disabled={updatingChannelId === selectedChannel.id}>
+                                {language === 'en' ? 'Restore channel' : 'Restaurar canal'}
+                              </DropdownMenuItem>
+                            ) : null}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-rose-700 focus:text-rose-700" onSelect={() => openChannelRemoval(selectedChannel)} disabled={deletingChannelId === selectedChannel.id || updatingChannelId === selectedChannel.id}>
                               {deletingChannelId === selectedChannel.id ? (language === 'en' ? 'Deleting...' : 'Eliminando...') : (language === 'en' ? 'Delete channel' : 'Eliminar canal')}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -5102,6 +5418,25 @@ export function CrmIntegrationsClient() {
                         <p className="mt-2 text-sm font-semibold text-slate-950">{formatDate(selectedChannel.lastWebhookAt, language)}</p>
                       </div>
                     </div>
+
+                    {channelIsArchived(selectedChannel) ? (
+                      <div className="mt-5 rounded-2xl border border-slate-300 bg-white/90 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">{language === 'en' ? 'Archived channel' : 'Canal archivado'}</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                          {language === 'en'
+                            ? `This channel was archived${selectedChannelArchivedAt ? ` on ${formatChannelArchiveDate(selectedChannelArchivedAt, language)}` : ''} and stays out of daily operation. Its history is preserved and you can restore it whenever you want.`
+                            : `Este canal se archivó${selectedChannelArchivedAt ? ` el ${formatChannelArchiveDate(selectedChannelArchivedAt, language)}` : ''} y queda fuera de la operación diaria. Su historial se conserva y puedes restaurarlo cuando quieras.`}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button className="rounded-xl" onClick={() => void setChannelArchived(selectedChannel.id, false)} disabled={updatingChannelId === selectedChannel.id}>
+                            {language === 'en' ? 'Restore channel' : 'Restaurar canal'}
+                          </Button>
+                          <Button className="rounded-xl" variant="outline" onClick={() => openChannelRemoval(selectedChannel)} disabled={deletingChannelId === selectedChannel.id || updatingChannelId === selectedChannel.id}>
+                            {language === 'en' ? 'Delete permanently' : 'Eliminar definitivamente'}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
 
                     {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? (
                       <div className="mt-5 rounded-2xl border border-emerald-200 bg-white/85 p-4">
@@ -5147,7 +5482,7 @@ export function CrmIntegrationsClient() {
                             <p className="mt-2 text-sm leading-6 text-slate-600">{selectedIsBookingBridge ? (language === 'en' ? 'This view loads the real channel iframe to validate day and time selection exactly as the end user will see it.' : 'Esta vista carga el iframe real del canal para validar la selección de día y hora tal como la verá el usuario final.') : (language === 'en' ? 'This preview is built from the current channel configuration and reflects how the embedded iframe will look.' : 'Este preview se construye con la configuración actual del canal y refleja cómo se verá el iframe embebido.')}</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            <Button className="rounded-xl" onClick={() => setWebFormBuilderModalOpen(true)}>
+                            <Button className="rounded-xl" onClick={() => openWebFormEditor()}>
                               {selectedIsBookingBridge ? (language === 'en' ? 'Edit booking flow' : 'Editar agenda') : (language === 'en' ? 'Edit builder' : 'Editar constructor')}
                             </Button>
                             <Button className="rounded-xl" variant="outline" onClick={() => void copyText('preview-web-form-url', selectedWebFormEmbedUrl)}>
@@ -5821,17 +6156,45 @@ export function CrmIntegrationsClient() {
                                   webFormBuilderDraft.showCityField && (language === 'en' ? 'City' : 'Ciudad'),
                                   webFormBuilderDraft.showProductField && (language === 'en' ? 'Product' : 'Producto'),
                                   webFormBuilderDraft.showMessageField && (language === 'en' ? 'Message' : 'Mensaje'),
+                                  ...(webFormBuilderDraft.webFormCustomFields.length ? [`${webFormBuilderDraft.webFormCustomFields.length} ${language === 'en' ? 'custom' : 'personalizados'}`] : []),
                                 ].filter(Boolean).join(' · ') || (language === 'en' ? 'No visible fields' : 'Sin campos visibles')}</p>
                               </div>
                               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Presentation' : 'Presentación'}</p>
                                 <p className="mt-2 font-medium text-slate-900">{normalizePixelValue(webFormBuilderDraft.formFontSize, '14')}px · {language === 'en' ? 'radius' : 'radio'} {normalizePixelValue(webFormBuilderDraft.formInputRadius, '16')}px · gap {normalizePixelValue(webFormBuilderDraft.formFieldSpacing, '14')}px</p>
                               </div>
+                              <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4 sm:col-span-2">
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">{language === 'en' ? 'Purpose' : 'Finalidad del formulario'}</p>
+                                <p className="mt-2 font-medium text-slate-900">{getWebFormPurposeLabel(webFormBuilderDraft.webFormPurpose)}</p>
+                                <p className="mt-1 text-xs leading-5 text-slate-600">
+                                  {webFormBuilderDraft.webFormPurpose === 'INCENTIVE'
+                                    ? `Entrega ${webFormBuilderDraft.incentiveRewardType === 'PDF' ? 'un PDF' : 'un link'} por ${webFormBuilderDraft.incentiveDeliveryMode === 'BOTH' ? 'correo o WhatsApp' : webFormBuilderDraft.incentiveDeliveryMode === 'WHATSAPP' ? 'WhatsApp' : 'correo'}.`
+                                    : webFormBuilderDraft.webFormPurpose === 'THANK_YOU_REDIRECT'
+                                      ? (webFormBuilderDraft.thankYouRedirectUrl || (language === 'en' ? 'Missing redirect URL.' : 'Falta la URL de redirección.'))
+                                      : webFormBuilderDraft.webFormPurpose === 'COUPON'
+                                        ? (webFormBuilderDraft.couponCode || (language === 'en' ? 'Missing coupon code.' : 'Falta el código del cupón.'))
+                                        : (language === 'en' ? 'Lead capture and commercial follow-up.' : 'Captura del lead y contacto comercial.')}
+                                </p>
+                                <p className="mt-1 text-xs leading-5 text-slate-600">
+                                  {(webFormBuilderDraft.couponEnabled || webFormBuilderDraft.webFormPurpose === 'COUPON')
+                                    ? `${language === 'en' ? 'Coupon' : 'Cupón'}: ${webFormBuilderDraft.couponCode || (language === 'en' ? 'not defined' : 'sin definir')}`
+                                    : (language === 'en' ? 'Coupon disabled.' : 'Cupón desactivado.')}
+                                </p>
+                              </div>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              <Button className="rounded-xl" onClick={() => setWebFormBuilderModalOpen(true)}>
+                              <Button className="rounded-xl" onClick={() => openWebFormEditor()}>
                                 {selectedIsBookingBridge ? (language === 'en' ? 'Open booking editor' : 'Abrir editor de la agenda') : (language === 'en' ? 'Open form editor' : 'Abrir editor del formulario')}
                               </Button>
+                              {selectedIsBookingBridge ? (
+                                <Button variant="outline" className="rounded-xl border-sky-200 bg-white text-sky-800 hover:bg-sky-50" onClick={() => openWebFormEditor('email')}>
+                                  {language === 'en' ? 'Response email' : 'Correo de respuesta'}
+                                </Button>
+                              ) : (
+                                <Button variant="outline" className="rounded-xl border-sky-200 bg-white text-sky-800 hover:bg-sky-50" onClick={() => openWebFormEditor('fields')}>
+                                  {language === 'en' ? `Custom fields (${webFormBuilderDraft.webFormCustomFields.length})` : `Campos personalizados (${webFormBuilderDraft.webFormCustomFields.length})`}
+                                </Button>
+                              )}
                               <Button variant="outline" className="rounded-xl" onClick={() => void copyText('form-builder-url', selectedWebFormEmbedUrl || snippets.webFormEmbedUrl)}>
                                 {copiedKey === 'form-builder-url' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy public URL' : 'Copiar URL pública')}
                               </Button>
@@ -6274,7 +6637,7 @@ export function CrmIntegrationsClient() {
         onRevert={() => setWebFormBuilderDraft(getWebFormBuilderState(selectedSettings))}
         onClose={() => setWebFormBuilderModalOpen(false)}
         onSave={() => void saveSelectedWebFormBuilder()}
-        previewContent={renderWebFormPreview(webFormBuilderDraft, { maxWidthClassName: 'max-w-2xl', outerPaddingClassName: 'p-4', titleClassName: 'text-lg', messageMinHeight: 112 })}
+        previewContent={selectedIsBookingBridge ? renderBookingPreviewLegend() : renderWebFormPreview(webFormBuilderDraft, { maxWidthClassName: 'max-w-2xl', outerPaddingClassName: 'p-4', titleClassName: 'text-lg', messageMinHeight: 112 })}
       >
         {renderWebFormConfigurationSections('builder')}
       </CrmIntegrationsWebFormBuilderModal>
@@ -6291,9 +6654,10 @@ export function CrmIntegrationsClient() {
                 <div className="flex min-w-max gap-2 sm:min-w-0 sm:flex-wrap">
                 {[
                   { id: 'template', label: '1. Plantilla' },
-                  { id: 'config', label: '2. Configuración' },
-                  { id: 'review', label: '3. Revisión' },
-                  { id: 'implementation', label: '4. Implementación' },
+                  ...(wizardSupportsPurpose ? [{ id: 'purpose', label: '2. Finalidad' }] : []),
+                  { id: 'config', label: wizardSupportsPurpose ? '3. Configuración' : '2. Configuración' },
+                  { id: 'review', label: wizardSupportsPurpose ? '4. Revisión' : '3. Revisión' },
+                  { id: 'implementation', label: wizardSupportsPurpose ? '5. Implementación' : '4. Implementación' },
                 ].map((step) => (
                   <button
                     key={step.id}
@@ -6443,10 +6807,11 @@ export function CrmIntegrationsClient() {
                           ))}
                         </div>
                         <div className="mt-4">
-                          {renderWebFormPreview(createForm, { maxWidthClassName: wizardChatPreviewViewport === 'mobile' ? 'max-w-[340px]' : 'max-w-xl', outerPaddingClassName: 'p-4', titleClassName: 'text-lg', messageMinHeight: 112 })}
+                          {createForm.bridgeKind === 'BOOKING' ? renderBookingPreviewLegend() : renderWebFormPreview(createForm, { maxWidthClassName: wizardChatPreviewViewport === 'mobile' ? 'max-w-[340px]' : 'max-w-xl', outerPaddingClassName: 'p-4', titleClassName: 'text-lg', messageMinHeight: 112 })}
                         </div>
-                        <div className="mt-3 grid gap-2 text-[11px] text-slate-600 sm:grid-cols-3">
+                        <div className="mt-3 grid gap-2 text-[11px] text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
                           <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2"><p className="font-semibold text-slate-900">Campos activos</p><p className="mt-1">{[createForm.showNameField && 'Nombre', createForm.showEmailField && 'Correo', createForm.showPhoneField && 'Teléfono', createForm.showCompanyField && 'Empresa', createForm.showCityField && 'Ciudad', createForm.showProductField && 'Producto', createForm.showMessageField && 'Mensaje', createForm.webFormCustomFields.length ? `${createForm.webFormCustomFields.length} personalizados` : ''].filter(Boolean).join(' · ')}</p></div>
+                          <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2"><p className="font-semibold text-slate-900">Finalidad</p><p className="mt-1">{getWebFormPurposeLabel(createForm.webFormPurpose)}</p></div>
                           <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2"><p className="font-semibold text-slate-900">Tipografía</p><p className="mt-1">{normalizePixelValue(createForm.formFontSize, '14')}px · {createForm.fontFamily}</p></div>
                           <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2"><p className="font-semibold text-slate-900">Forma</p><p className="mt-1">Radio {normalizePixelValue(createForm.formInputRadius, '16')}px · Gap {normalizePixelValue(createForm.formFieldSpacing, '14')}px{createForm.termsEnabled ? ' · términos activos' : ''}</p></div>
                         </div>
@@ -6468,7 +6833,33 @@ export function CrmIntegrationsClient() {
               </div>
 
               <div className="mt-5 flex-1 overflow-y-auto pr-1">
-                {wizardStep === 'config' ? (
+                {wizardStep === 'purpose' ? (
+                  <div className="space-y-4">
+                    {wizardSupportsPurpose ? (
+                      <>
+                        <div className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Paso 2 · Finalidad</p>
+                          <h3 className="mt-2 text-xl font-semibold text-slate-950">Elige qué recibe el visitante al enviar el formulario</h3>
+                          <p className="mt-1 text-sm leading-6 text-slate-600">
+                            Puedes entregar un PDF o link por correo o WhatsApp, redirigir a una thank you page, entregar un cupón o simplemente capturar el lead. Después podrás crear todos los campos personalizados que necesites.
+                          </p>
+                        </div>
+                        <CrmIntegrationsWebFormPurposeSection
+                          form={createForm}
+                          patchForm={(patch) => setCreateForm((current) => ({ ...current, ...patch }))}
+                          onOpenFields={() => {
+                            setWizardStep('config')
+                            setWizardWebFormSection('fields')
+                          }}
+                        />
+                      </>
+                    ) : (
+                      <div className="rounded-[26px] border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm leading-6 text-slate-500">
+                        Esta plantilla no usa el formulario público de captura, así que no requiere finalidad. Continúa a la configuración para ajustar sus credenciales y conexión.
+                      </div>
+                    )}
+                  </div>
+                ) : wizardStep === 'config' ? (
                 <div className="grid gap-4 md:grid-cols-2">
                 {editingChannelId && selectedChannel?.id === editingChannelId ? (
                   <div className="md:col-span-2 rounded-[24px] border border-sky-200 bg-sky-50/70 p-4">
@@ -6485,7 +6876,27 @@ export function CrmIntegrationsClient() {
                           {copiedKey === 'wizard-selected-endpoint' ? 'Copiado' : 'Copiar endpoint'}
                         </Button>
                         {selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>Ver iframe</Link></Button> : null}
-                        <Button variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => setDeleteCandidate(selectedChannel)} disabled={deletingChannelId === selectedChannel.id}>
+                        {!channelIsArchived(selectedChannel) && selectedChannel.status !== 'DISABLED' ? (
+                          <Button variant="outline" className="rounded-xl" onClick={() => void updateChannelStatus(selectedChannel.id, 'DISABLED')} disabled={updatingChannelId === selectedChannel.id}>
+                            Desactivar canal
+                          </Button>
+                        ) : null}
+                        {!channelIsArchived(selectedChannel) && selectedChannel.status === 'DISABLED' ? (
+                          <>
+                            <Button variant="outline" className="rounded-xl" onClick={() => void updateChannelStatus(selectedChannel.id, 'TESTING')} disabled={updatingChannelId === selectedChannel.id}>
+                              Reactivar en pruebas
+                            </Button>
+                            <Button variant="outline" className="rounded-xl" onClick={() => void setChannelArchived(selectedChannel.id, true)} disabled={updatingChannelId === selectedChannel.id}>
+                              Archivar canal
+                            </Button>
+                          </>
+                        ) : null}
+                        {channelIsArchived(selectedChannel) ? (
+                          <Button variant="outline" className="rounded-xl" onClick={() => void setChannelArchived(selectedChannel.id, false)} disabled={updatingChannelId === selectedChannel.id}>
+                            Restaurar canal
+                          </Button>
+                        ) : null}
+                        <Button variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => openChannelRemoval(selectedChannel)} disabled={deletingChannelId === selectedChannel.id || updatingChannelId === selectedChannel.id}>
                           {deletingChannelId === selectedChannel.id ? 'Eliminando...' : 'Eliminar canal'}
                         </Button>
                       </div>
@@ -6998,7 +7409,23 @@ export function CrmIntegrationsClient() {
               </div>
 
               <DialogFooter className="mt-5 border-t border-slate-100 pt-5">
-                <Button variant="outline" className="rounded-xl" onClick={() => setWizardStep(wizardStep === 'implementation' ? 'review' : wizardStep === 'review' ? 'config' : 'template')} disabled={saving}>Atrás</Button>
+                <Button
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => setWizardStep(
+                    wizardStep === 'implementation'
+                      ? 'review'
+                      : wizardStep === 'review'
+                        ? 'config'
+                        : wizardStep === 'config' && wizardSupportsPurpose
+                          ? 'purpose'
+                          : 'template'
+                  )}
+                  disabled={saving}
+                >
+                  Atrás
+                </Button>
+                {wizardStep === 'purpose' ? <Button variant="outline" className="rounded-xl" onClick={() => setWizardStep('config')} disabled={saving}>Continuar a configuración</Button> : null}
                 {wizardStep === 'config' ? <Button variant="outline" className="rounded-xl" onClick={() => setWizardStep('review')} disabled={saving}>Revisar canal</Button> : null}
                 {wizardStep === 'review' ? <Button variant="outline" className="rounded-xl" onClick={() => setWizardStep('implementation')} disabled={saving}>Ver implementación</Button> : null}
                 <Button variant="outline" className="rounded-xl" onClick={() => setCreateOpen(false)} disabled={saving}>Cancelar</Button>
@@ -7087,32 +7514,99 @@ export function CrmIntegrationsClient() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(deleteCandidate)} onOpenChange={(open) => { if (!open && !deletingChannelId) setDeleteCandidate(null) }}>
+      <Dialog open={Boolean(deleteCandidate)} onOpenChange={(open) => { if (!open) closeChannelRemoval() }}>
         <DialogContent className="max-w-lg rounded-[30px] border-rose-200 bg-white p-0 shadow-[0_28px_80px_-42px_rgba(244,63,94,0.35)]">
           <div className="rounded-t-[30px] bg-[radial-gradient(circle_at_top_left,rgba(251,113,133,.18),transparent_40%),linear-gradient(180deg,#fff1f2,#ffffff)] p-6">
             <DialogHeader>
-              <DialogTitle>Eliminar canal configurado</DialogTitle>
-              <DialogDescription>Esta acción solo funciona si el canal aún no tiene conversaciones ni capturas asociadas.</DialogDescription>
+              <DialogTitle>
+                {removalStep === 'blocked'
+                  ? 'Este canal no se puede eliminar'
+                  : removalStep === 'deactivated'
+                    ? 'Canal desactivado'
+                    : 'Eliminar canal configurado'}
+              </DialogTitle>
+              <DialogDescription>
+                {removalStep === 'blocked'
+                  ? 'El canal ya tiene actividad registrada. Para conservar el histórico comercial puedes desactivarlo o archivarlo.'
+                  : removalStep === 'deactivated'
+                    ? 'El canal quedó fuera de operación. Si ya no lo vas a usar, archívalo para que salga del panel de canales configurados.'
+                    : 'Esta acción solo funciona si el canal aún no tiene conversaciones ni capturas asociadas.'}
+              </DialogDescription>
             </DialogHeader>
           </div>
           <div className="space-y-4 p-6 pt-4">
-            <div className="rounded-[24px] border border-rose-200 bg-rose-50/70 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700">Canal seleccionado</p>
+            <div className={`rounded-[24px] border p-4 ${removalStep === 'deactivated' ? 'border-emerald-200 bg-emerald-50/70' : removalStep === 'blocked' ? 'border-amber-200 bg-amber-50/70' : 'border-rose-200 bg-rose-50/70'}`}>
+              <p className={`text-xs font-semibold uppercase tracking-[0.16em] ${removalStep === 'deactivated' ? 'text-emerald-700' : removalStep === 'blocked' ? 'text-amber-700' : 'text-rose-700'}`}>Canal seleccionado</p>
               <p className="mt-2 text-lg font-semibold text-slate-950">{deleteCandidate?.name}</p>
               <p className="mt-1 text-sm text-slate-600">{deleteCandidate ? getChannelProviderLabel(deleteCandidate.provider, getBridgeKind((deleteCandidate.settingsJson as Record<string, unknown> | null | undefined) ?? null)) : ''}</p>
-              <p className="mt-3 text-sm leading-6 text-slate-600">Si ya hubo actividad, el backend bloqueará la eliminación para proteger el histórico comercial.</p>
+              {removalStep === 'blocked' ? (
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  Actividad detectada: <strong>{deleteCandidate?._count?.conversations ?? 0}</strong> conversaciones y <strong>{deleteCandidate?._count?.captures ?? 0}</strong> capturas. Desactivar detiene la operación sin perder nada; archivar además lo oculta del panel.
+                </p>
+              ) : null}
+              {removalStep === 'deactivated' ? (
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  Archivar conserva conversaciones, capturas y configuración, pero el canal deja de aparecer entre los canales operativos y desactivados.
+                </p>
+              ) : null}
             </div>
-            <DialogFooter className="border-t border-slate-100 pt-4">
-              <Button variant="outline" className="rounded-xl" onClick={() => setDeleteCandidate(null)} disabled={Boolean(deletingChannelId)}>
-                Cancelar
+            {removalError ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{removalError}</div>
+            ) : null}
+            <DialogFooter className="flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row">
+              <Button variant="outline" className="rounded-xl" onClick={closeChannelRemoval} disabled={removalBusy}>
+                {removalStep === 'deactivated' ? 'Más tarde' : 'Cancelar'}
               </Button>
-              <Button
-                className="rounded-xl bg-rose-600 text-white hover:bg-rose-700"
-                onClick={() => deleteCandidate ? void deleteChannel(deleteCandidate.id) : undefined}
-                disabled={Boolean(deletingChannelId)}
-              >
-                {deletingChannelId ? 'Eliminando...' : 'Confirmar eliminación'}
-              </Button>
+              {removalStep === 'confirm' ? (
+                <Button
+                  className="rounded-xl bg-rose-600 text-white hover:bg-rose-700"
+                  onClick={() => deleteCandidate ? void deleteChannel(deleteCandidate.id) : undefined}
+                  disabled={removalBusy}
+                >
+                  {deletingChannelId ? 'Eliminando...' : 'Confirmar eliminación'}
+                </Button>
+              ) : null}
+              {removalStep === 'blocked' ? (
+                <>
+                  {deleteCandidateArchived ? (
+                    <Button
+                      variant="outline"
+                      className="rounded-xl border-slate-300"
+                      onClick={() => deleteCandidate ? void setChannelArchived(deleteCandidate.id, false).then((ok) => { if (ok) { setDeleteCandidate(null); setRemovalStep('confirm') } }) : undefined}
+                      disabled={removalBusy}
+                    >
+                      {updatingChannelId ? 'Restaurando...' : 'Restaurar canal'}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="rounded-xl border-slate-300"
+                      onClick={() => void archiveRemovalCandidate()}
+                      disabled={removalBusy}
+                    >
+                      {updatingChannelId ? 'Archivando...' : 'Archivar canal'}
+                    </Button>
+                  )}
+                  {deleteCandidate?.status !== 'DISABLED' ? (
+                    <Button
+                      className="rounded-xl bg-amber-500 text-white hover:bg-amber-600"
+                      onClick={() => void deactivateRemovalCandidate()}
+                      disabled={removalBusy}
+                    >
+                      {updatingChannelId ? 'Desactivando...' : 'Desactivar canal'}
+                    </Button>
+                  ) : null}
+                </>
+              ) : null}
+              {removalStep === 'deactivated' ? (
+                <Button
+                  className="rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+                  onClick={() => void archiveRemovalCandidate()}
+                  disabled={removalBusy}
+                >
+                  {updatingChannelId ? 'Archivando...' : 'Archivar canal'}
+                </Button>
+              ) : null}
             </DialogFooter>
           </div>
         </DialogContent>

@@ -177,6 +177,38 @@ El endpoint acepta, entre otros:
 - utmContent
 - utmTerm
 
+### 6.3.1 Finalidades del formulario web
+
+Cada canal de formulario web se crea con una finalidad explicita que define que recibe el visitante despues de enviar:
+
+1. `LEAD_CAPTURE`: captura basica y contacto comercial.
+2. `INCENTIVE`: entrega automatica de un PDF o link de acceso por correo o WhatsApp (el visitante puede elegir si el canal esta en modo `BOTH`).
+3. `THANK_YOU_REDIRECT`: redirige a una URL de agradecimiento despues del envio.
+4. `COUPON`: entrega un codigo de descuento y deja el lead etiquetado para filtrar la campana.
+
+Configuracion almacenada en `settingsJson` del canal:
+
+- `webFormPurpose`
+- `incentiveRewardType`, `incentiveRewardUrl`, `incentiveRewardLabel`, `incentiveDeliveryMode`
+- `incentiveEmailSubject`, `incentiveEmailMessage`, `incentiveWhatsAppMessage`, `incentiveWhatsAppSupport`
+- `thankYouRedirectUrl`, `thankYouRedirectDelay`, `thankYouRedirectMessage`
+- `couponEnabled`, `couponCode`, `couponLabel`, `couponQueryParam`, `couponMessage`, `couponRedirectUrl`
+
+El cuerpo del formulario puede enviar ademas:
+
+- `purpose`
+- `rewardDelivery` (`EMAIL` o `WHATSAPP`)
+- `couponCode`
+- `customFields`: arreglo de `{ key, label, type, value }` con todos los campos personalizados.
+- `variables`: arreglo de variables ocultas resueltas por query param.
+
+Cada captura guarda `purpose`, `customFields`, `variables`, `coupon` y `reward` en `normalizedDataJson`, y el lead recibe estas etiquetas:
+
+- `formulario:{purpose}` en minusculas.
+- `cupon:{codigo}` cuando aplica un cupon.
+
+La respuesta del endpoint incluye `purpose`, `coupon`, `reward` (con `status` `SENT`, `FAILED` o `UNAVAILABLE`) y `redirect` para que el formulario publico muestre el entregable o ejecute la redireccion.
+
 ### 6.4 Endpoint real
 
 - POST /api/crm/captures/web-form
@@ -199,6 +231,90 @@ Despues de enviar el formulario, revisa:
 2. Que aparezca una conversacion nueva.
 3. Que el lead quede asociado a la empresa y sede del canal.
 4. Que el ultimo webhook o captura quede registrado.
+
+### 6.6 Correo de respuesta configurable
+
+Aplica a los canales de Formulario Web y de Agenda Web. El correo que recibe el visitante despues de enviar el formulario o de agendar se puede personalizar en la pestana **Correo de respuesta** del asistente de configuracion.
+
+Se guarda en `settingsJson`:
+
+- `responseEmailEnabled`
+- `responseEmailFromName`, `responseEmailReplyTo`
+- `responseEmailSubject`, `responseEmailPreheader`, `responseEmailTitle`, `responseEmailIntro`, `responseEmailBody`, `responseEmailFooter`
+- `responseEmailCtaLabel`, `responseEmailCtaUrl`
+- `responseEmailAccentColor`, `responseEmailBackgroundColor`, `responseEmailCardColor`, `responseEmailTextColor`
+- `responseEmailLogoUrl`, `responseEmailBrandName`, `responseEmailShowBrand`
+
+Variables disponibles en asunto, titulo, introduccion, cuerpo y pie:
+
+- `{{nombre}}`, `{{email}}`, `{{telefono}}`
+- `{{fecha}}`, `{{hora}}`, `{{servicio}}`
+- `{{canal}}`, `{{cupon}}`, `{{enlace}}`
+
+Comportamiento:
+
+1. En formularios con finalidad `INCENTIVE` y entrega por correo, el diseno configurado se aplica al correo del regalo (el enlace del boton es el entregable).
+2. En formularios sin regalo por correo se envia una confirmacion al visitante cuando `responseEmailEnabled` esta activo y dejo correo.
+3. En Agenda Web se usa para la confirmacion de la cita; respeta los interruptores `bookingNotifyByEmail` y `bookingNotifyByWhatsApp`.
+4. El resultado de la entrega queda en `normalizedDataJson.responseEmail` (`SENT` o `FAILED`) sin bloquear la captura.
+
+### 6.7 Agenda Web independiente del formulario web
+
+La Agenda Web es un canal propio, aunque tecnicamente use `provider = WEB_FORM` con `bridgeKind = BOOKING`. No hereda finalidades, campos personalizados ni terminos del formulario:
+
+- Su asistente abre en la pestana **Agenda y disponibilidad**.
+- No muestra el paso de finalidad ni el constructor de campos.
+- Publica el calendario en `/booking/{channelId}`.
+
+Configuracion propia en `settingsJson`:
+
+- `bookingDurationMinutes`, `bookingSlotIntervalMinutes`, `bookingBufferMinutes`
+- `bookingCapacityPerSlot`, `bookingMinNoticeMinutes`, `bookingMaxAdvanceDays`
+- `bookingTimezoneLabel`, `bookingDurationLabel`
+- `bookingBusinessHours`: arreglo de 7 dias `{ day, enabled, start, end }`
+- `bookingBlockedDates`: fechas `AAAA-MM-DD`
+- `bookingNotifyByEmail`, `bookingNotifyByWhatsApp`
+
+#### Disponibilidad en tiempo real
+
+El calendario publico consulta:
+
+- `GET /api/crm/booking/availability?channelId={id}&from=AAAA-MM-DD&days=45`
+
+La API valida canal, estado, `publicEmbedEnabled` y dominios permitidos, y calcula los cupos contra la agenda real:
+
+1. Lee tareas del CRM con `dueAt` en el rango y estado `OPEN` o `DONE`.
+2. Las tareas `CANCELED` liberan el cupo.
+3. Las tareas sin hora (00:00) se consideran de dia completo y no bloquean horarios.
+4. Cada cita ocupa su duracion (`Duración:` en la descripcion) mas el margen configurado.
+5. Un cupo queda disponible solo si hay capacidad, esta dentro del horario del dia, no esta bloqueado y cumple la anticipacion minima.
+
+El visitante ve un calendario grande desde hoy con estados: con cupos, ultimos cupos, sin cupos y cerrado. Al elegir dia se cargan los horarios disponibles, ocupados y demasiado proximos.
+
+#### Registro de la cita
+
+- `POST /api/crm/captures/booking`
+
+Agrega a la validacion del servidor:
+
+- Horario dentro de la grilla y del horario del dia.
+- Anticipacion minima y ventana maxima.
+- Capacidad disponible (revalida dentro de la transaccion y responde `409` si el cupo se tomo).
+- Guarda `endsAt`, `durationMinutes` y `timezoneLabel` en `normalizedDataJson`.
+- La tarea creada incluye `Horario` y `Duración` en la descripcion, lo que permite calcular futuras disponibilidades.
+
+La respuesta incluye `startsAt`, `endsAt`, `durationMinutes`, `timezoneLabel`, `notifications` y `calendarSyncs`.
+
+### 6.8 Vistas y filtros del calendario interno
+
+El modulo de agenda del CRM permite personalizar el espacio de trabajo:
+
+1. Vistas de calendario: dia (por horas), semana, mes y trimestre.
+2. Formatos: calendario (Event-Based), tarjetas tipo kanban (Task-Based) y lista cronologica de agenda.
+3. Rango de fechas con campos Desde/Hasta y atajos: Hoy, 7 dias, Este mes, Trimestre y 6 meses.
+4. Filtro por estado: abiertas y cerradas (completadas o canceladas), con contadores y leyenda.
+5. Busqueda por titulo, prospecto, cliente o responsable.
+6. Indicadores de abiertas totales, vencidas, de hoy y del filtro actual.
 
 ## 7. Chatbot Web
 

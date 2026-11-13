@@ -209,6 +209,13 @@ export function buildBookingEmbedUrl(baseUrl: string, channelId: string) {
 export function buildWebFormIframeSnippet(args: WebFormIframeArgs) {
   const height = (args.height || '840').replace(/[^0-9]/g, '') || '840'
   const src = buildWebFormEmbedUrl(args.baseUrl, args.channelId)
+  const origin = (() => {
+    try {
+      return new URL(src).origin
+    } catch {
+      return ''
+    }
+  })()
 
   return `<iframe
   src="${src}"
@@ -216,7 +223,23 @@ export function buildWebFormIframeSnippet(args: WebFormIframeArgs) {
   loading="lazy"
   style="width:100%;min-height:${height}px;border:0;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.16);background:#ffffff;"
   referrerpolicy="strict-origin-when-cross-origin"
-></iframe>`
+></iframe>
+<script>
+(function () {
+  var formOrigin = ${JSON.stringify(origin)};
+  window.addEventListener('message', function (event) {
+    if (!event || !event.data || event.data.type !== 'crm-web-form:redirect' || !event.data.url) return;
+    if (formOrigin && event.origin !== formOrigin) return;
+    try {
+      var target = new URL(event.data.url, window.location.href);
+      if (target.protocol !== 'https:' && target.protocol !== 'http:') return;
+      window.location.assign(target.toString());
+    } catch (error) {
+      /* URL inválida: se ignora el redirect */
+    }
+  });
+})();
+</script>`
 }
 
 export function buildBookingIframeSnippet(args: BookingIframeArgs) {

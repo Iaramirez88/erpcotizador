@@ -1,13 +1,15 @@
 "use client"
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { WebsiteTurnstile } from '@/components/website-builder/website-turnstile'
+import type { WebFormPurposeConfig } from '@/lib/crm-web-form-purpose'
 import type { WebFormCustomField, WebFormVariable } from '@/lib/crm-web-form-schema'
 import { sanitizeWebsiteLinkHref } from '@/lib/website-embed'
 
 type PublicWebFormEmbedProps = {
   channelId: string
+  purposeSettings: WebFormPurposeConfig
   title: string
   description: string
   submitLabel: string
@@ -59,6 +61,44 @@ type PublicWebFormEmbedProps = {
 
 type CustomFieldValue = string | boolean | Array<{ name: string; size: number; type: string }>
 
+type SubmissionResult = {
+  coupon: { code: string; label: string; message: string } | null
+  reward: {
+    type: string
+    label: string
+    url: string
+    delivery: string
+    status: string
+    message: string
+    supportUrl: string | null
+  } | null
+  redirect: { url: string; delaySeconds: number; message: string } | null
+}
+
+function normalizeCoupon(value: string) {
+  return value.toUpperCase().replace(/[^A-Z0-9_-]+/g, '').slice(0, 40)
+}
+
+function openRedirect(url: string) {
+  if (typeof window === 'undefined' || !url) return
+
+  try {
+    if (window.top && window.top !== window.self) {
+      window.top.location.assign(url)
+      return
+    }
+  } catch {
+    // El iframe es cross-origin: se intenta avisar al padre y se navega dentro del iframe.
+  }
+
+  try {
+    window.parent?.postMessage({ type: 'crm-web-form:redirect', url }, '*')
+  } catch {
+    // Sin acceso al padre: se usa la navegación local como respaldo.
+  }
+  window.location.assign(url)
+}
+
 type FormState = {
   nombre: string
   email: string
@@ -92,6 +132,39 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
   const [formStartedAt, setFormStartedAt] = useState(() => Date.now())
   const [turnstileToken, setTurnstileToken] = useState('')
   const [challengeVersion, setChallengeVersion] = useState(0)
+  const [result, setResult] = useState<SubmissionResult | null>(null)
+  const [couponCode, setCouponCode] = useState(() => normalizeCoupon(props.purposeSettings.coupon.code))
+  const [rewardDelivery, setRewardDelivery] = useState<'EMAIL' | 'WHATSAPP'>(() => (
+    props.purposeSettings.incentive.deliveryMode === 'WHATSAPP' ? 'WHATSAPP' : 'EMAIL'
+  ))
+
+  const purpose = props.purposeSettings.purpose
+  const incentive = props.purposeSettings.incentive
+  const couponSettings = props.purposeSettings.coupon
+  const incentiveActive = purpose === 'INCENTIVE'
+  const couponActive = couponSettings.enabled
+  const requiresEmailDelivery = incentiveActive && (incentive.deliveryMode === 'EMAIL' || incentive.deliveryMode === 'BOTH')
+  const requiresWhatsAppDelivery = incentiveActive && (incentive.deliveryMode === 'WHATSAPP' || incentive.deliveryMode === 'BOTH')
+  const showEmailField = props.showEmailField || requiresEmailDelivery
+  const showPhoneField = props.showPhoneField || requiresWhatsAppDelivery
+  const successHeadline = result?.reward
+    ? incentive.thankYouMessage.replace('{destino}', result.reward.delivery === 'WHATSAPP' ? 'tu WhatsApp' : 'tu correo')
+    : props.successMessage
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !couponActive) return
+    const params = new URLSearchParams(window.location.search)
+    const paramName = couponSettings.queryParam || 'cupon'
+    const fromQuery = normalizeCoupon(params.get(paramName) || params.get('coupon') || params.get('coupon_code') || '')
+    if (fromQuery) setCouponCode(fromQuery)
+  }, [couponActive, couponSettings.queryParam])
+
+  useEffect(() => {
+    if (!result?.redirect?.url) return
+    const redirectUrl = result.redirect.url
+    const timer = window.setTimeout(() => openRedirect(redirectUrl), Math.max(0, result.redirect.delaySeconds) * 1000)
+    return () => window.clearTimeout(timer)
+  }, [result])
 
   const shellStyle = useMemo(() => ({
     background: `radial-gradient(circle at top, rgba(59,130,246,.12), transparent 34%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.backgroundColor} 100%)`,
@@ -168,6 +241,14 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
       setErrorMessage('Incluye al menos nombre, correo o teléfono para capturar el lead.')
       return
     }
+    if (incentiveActive && rewardDelivery === 'EMAIL' && !formState.email.trim()) {
+      setErrorMessage('Déjanos tu correo electrónico para enviarte el regalo.')
+      return
+    }
+    if (incentiveActive && rewardDelivery === 'WHATSAPP' && !formState.telefono.trim()) {
+      setErrorMessage('Déjanos tu número de WhatsApp para enviarte el regalo.')
+      return
+    }
 
     const customFieldError = validateCustomFields()
     if (customFieldError) {
@@ -182,6 +263,7 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
     setSubmitting(true)
     setErrorMessage('')
     setSuccess(false)
+    setResult(null)
 
     try {
       const parentReferrer = document.referrer || ''
@@ -191,6 +273,9 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           channelId: props.channelId,
+          purpose,
+          rewardDelivery: incentiveActive ? rewardDelivery : '',
+          couponCode: couponActive ? normalizeCoupon(couponCode) : '',
           ...formState,
           customFields: props.customFields.map((field) => ({
             id: field.id,
@@ -224,11 +309,21 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
             })),
             variables: hiddenVariables,
             termsAccepted,
+            purpose,
+            couponCode: couponActive ? normalizeCoupon(couponCode) : '',
+            rewardDelivery: incentiveActive ? rewardDelivery : '',
           },
         }),
       })
 
-      const json = await response.json().catch(() => ({})) as { error?: string }
+      const json = await response.json().catch(() => ({})) as {
+        error?: string
+        data?: {
+          coupon?: SubmissionResult['coupon']
+          reward?: SubmissionResult['reward']
+          redirect?: SubmissionResult['redirect']
+        }
+      }
       if (!response.ok) {
         throw new Error(json.error || 'No se pudo enviar el formulario')
       }
@@ -240,6 +335,11 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
       setFormStartedAt(Date.now())
       setTurnstileToken('')
       setChallengeVersion((current) => current + 1)
+      setResult({
+        coupon: json.data?.coupon ?? null,
+        reward: json.data?.reward ?? null,
+        redirect: json.data?.redirect ?? null,
+      })
       setSuccess(true)
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'No se pudo enviar el formulario')
@@ -269,13 +369,13 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
             ) : null}
 
             <div style={{ display: 'grid', gap: fieldGap, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-              {props.showEmailField ? (
+              {showEmailField ? (
                 <label style={{ display: 'grid', gap: 8, color: props.labelColor, fontWeight: 600 }}>
                   <span>{props.emailLabel}</span>
                   <input type="email" maxLength={320} value={formState.email} onChange={(event) => setFormState((current) => ({ ...current, email: event.target.value }))} placeholder={props.emailPlaceholder} style={inputStyle} />
                 </label>
               ) : null}
-              {props.showPhoneField ? (
+              {showPhoneField ? (
                 <label style={{ display: 'grid', gap: 8, color: props.labelColor, fontWeight: 600 }}>
                   <span>{props.phoneLabel}</span>
                   <input maxLength={40} value={formState.telefono} onChange={(event) => setFormState((current) => ({ ...current, telefono: event.target.value }))} placeholder={props.phonePlaceholder} style={inputStyle} />
@@ -335,6 +435,20 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
                           <option value="">Selecciona una opción</option>
                           {field.options.map((option) => <option key={option} value={option}>{option}</option>)}
                         </select>
+                      ) : field.type === 'radio' ? (
+                        <span style={{ ...inputStyle, display: 'grid', gap: 8 }}>
+                          {(field.options.length ? field.options : ['Opción 1']).map((option) => (
+                            <label key={option} style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500, color: props.inputTextColor }}>
+                              <input
+                                type="radio"
+                                name={`field-${field.key}`}
+                                checked={String(value ?? '') === option}
+                                onChange={() => setCustomFieldValues((current) => ({ ...current, [field.key]: option }))}
+                              />
+                              {option}
+                            </label>
+                          ))}
+                        </span>
                       ) : field.type === 'check' ? (
                         <span style={{ ...inputStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
                           <input type="checkbox" checked={Boolean(value)} onChange={(event) => setCustomFieldValues((current) => ({ ...current, [field.key]: event.target.checked }))} />
@@ -346,13 +460,53 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
                           {Array.isArray(value) && value.length ? <span style={{ color: '#475569', fontSize: 12 }}>{value.map((file) => file.name).join(', ')}</span> : null}
                         </span>
                       ) : (
-                        <input type={field.type === 'email' ? 'email' : field.type === 'phone' ? 'tel' : 'text'} value={String(value ?? '')} onChange={(event) => setCustomFieldValues((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} style={inputStyle} />
+                        <input
+                          type={field.type === 'email' ? 'email' : field.type === 'phone' ? 'tel' : field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'url' ? 'url' : 'text'}
+                          value={String(value ?? '')}
+                          onChange={(event) => setCustomFieldValues((current) => ({ ...current, [field.key]: event.target.value }))}
+                          placeholder={field.placeholder}
+                          style={inputStyle}
+                        />
                       )}
                       {field.helpText ? <span style={{ color: '#64748b', fontWeight: 500, fontSize: 12, lineHeight: 1.5 }}>{field.helpText}</span> : null}
                     </label>
                   )
                 })}
               </div>
+            ) : null}
+
+            {incentiveActive ? (
+              <div style={{ display: 'grid', gap: 10, border: '1px solid rgba(148,163,184,.32)', borderRadius: 18, padding: '12px 14px', backgroundColor: 'rgba(255,255,255,.85)' }}>
+                <span style={{ color: '#0f172a', fontWeight: 700 }}>{incentive.rewardLabel || 'Tu regalo'}</span>
+                <span style={{ color: '#475569', fontWeight: 500, fontSize: 12, lineHeight: 1.5 }}>
+                  {incentive.deliveryMode === 'BOTH'
+                    ? '¿Dónde quieres recibirlo?'
+                    : incentive.deliveryMode === 'WHATSAPP'
+                      ? 'Te lo enviaremos por WhatsApp cuando envíes el formulario.'
+                      : 'Te lo enviaremos por correo cuando envíes el formulario.'}
+                </span>
+                {incentive.deliveryMode === 'BOTH' ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                    {[
+                      { value: 'EMAIL' as const, label: 'Correo electrónico' },
+                      { value: 'WHATSAPP' as const, label: 'WhatsApp' },
+                    ].map((option) => (
+                      <label key={option.value} style={{ display: 'flex', alignItems: 'center', gap: 8, color: props.labelColor, fontWeight: 600 }}>
+                        <input type="radio" name="rewardDelivery" checked={rewardDelivery === option.value} onChange={() => setRewardDelivery(option.value)} />
+                        {option.label}
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {couponActive ? (
+              <label style={{ display: 'grid', gap: 8, color: props.labelColor, fontWeight: 600 }}>
+                <span>{couponSettings.label || 'Cupón de descuento'}</span>
+                <input maxLength={40} value={couponCode} onChange={(event) => setCouponCode(normalizeCoupon(event.target.value))} placeholder="Código de cupón" style={inputStyle} />
+                {couponSettings.message ? <span style={{ color: '#64748b', fontWeight: 500, fontSize: 12, lineHeight: 1.5 }}>{couponSettings.message}</span> : null}
+              </label>
             ) : null}
 
             {props.termsEnabled ? (
@@ -379,7 +533,63 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
             {turnstileSiteKey ? <WebsiteTurnstile key={challengeVersion} siteKey={turnstileSiteKey} onTokenChange={setTurnstileToken} /> : null}
 
             {errorMessage ? <div style={{ borderRadius: 18, border: '1px solid #fecaca', backgroundColor: '#fff1f2', color: '#991b1b', padding: '12px 14px', lineHeight: 1.5 }}>{errorMessage}</div> : null}
-            {success ? <div style={{ borderRadius: 18, border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', color: '#166534', padding: '12px 14px', lineHeight: 1.5 }}>{props.successMessage}</div> : null}
+            {success ? (
+              <div style={{ display: 'grid', gap: 12, borderRadius: 18, border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', color: '#166534', padding: '14px' }}>
+                <p style={{ margin: 0, fontWeight: 700, lineHeight: 1.5 }}>{successHeadline}</p>
+
+                {result?.coupon ? (
+                  <div style={{ display: 'grid', gap: 6, borderRadius: 14, border: '1px dashed #86efac', backgroundColor: '#ffffff', padding: '12px' }}>
+                    <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em', color: '#15803d', fontWeight: 700 }}>{result.coupon.label}</span>
+                    <span style={{ fontSize: 24, fontWeight: 800, letterSpacing: '.12em', color: '#14532d' }}>{result.coupon.code}</span>
+                    {result.coupon.message ? <span style={{ color: '#166534', fontSize: 12, lineHeight: 1.5 }}>{result.coupon.message}</span> : null}
+                    <button
+                      type="button"
+                      onClick={() => { void navigator.clipboard.writeText(result.coupon?.code ?? '').catch(() => {}) }}
+                      style={{ justifySelf: 'start', border: '1px solid #86efac', borderRadius: 999, backgroundColor: '#ffffff', color: '#15803d', fontWeight: 700, padding: '6px 12px', cursor: 'pointer' }}
+                    >
+                      Copiar cupón
+                    </button>
+                  </div>
+                ) : null}
+
+                {result?.reward ? (
+                  <div style={{ display: 'grid', gap: 8, borderRadius: 14, border: '1px solid #bbf7d0', backgroundColor: '#ffffff', padding: '12px' }}>
+                    <span style={{ fontWeight: 700 }}>{result.reward.status === 'SENT' ? 'Regalo enviado' : 'Tu regalo está listo'}</span>
+                    <span style={{ color: '#166534', fontSize: 13, lineHeight: 1.5 }}>{result.reward.message}</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      <a
+                        href={result.reward.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        download={result.reward.type === 'PDF' ? true : undefined}
+                        style={{ display: 'inline-flex', alignItems: 'center', borderRadius: `${props.inputRadius}px`, background: `linear-gradient(135deg, ${props.ctaColor}, ${props.accentColor})`, color: props.ctaTextColor, fontWeight: 700, padding: '10px 14px', textDecoration: 'none' }}
+                      >
+                        {result.reward.label || 'Descargar regalo'}
+                      </a>
+                      {result.reward.supportUrl ? (
+                        <a
+                          href={result.reward.supportUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ display: 'inline-flex', alignItems: 'center', borderRadius: `${props.inputRadius}px`, border: '1px solid #86efac', backgroundColor: '#ffffff', color: '#15803d', fontWeight: 700, padding: '10px 14px', textDecoration: 'none' }}
+                        >
+                          Reclamar por WhatsApp
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                {result?.redirect ? (
+                  <div style={{ display: 'grid', gap: 8, borderRadius: 14, border: '1px solid #bbf7d0', backgroundColor: '#ffffff', padding: '12px' }}>
+                    <span style={{ color: '#166534', fontSize: 13, lineHeight: 1.5 }}>{result.redirect.message || 'Te estamos redirigiendo...'}</span>
+                    <a href={result.redirect.url} target="_top" rel="noreferrer" style={{ color: props.accentColor, fontWeight: 700 }}>
+                      Continuar ahora
+                    </a>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <button type="submit" disabled={submitting} style={{ border: 0, borderRadius: `${props.inputRadius}px`, background: `linear-gradient(135deg, ${props.ctaColor}, ${props.accentColor})`, color: props.ctaTextColor, fontWeight: 800, padding: '14px 18px', cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.82 : 1 }}>
               {submitting ? 'Enviando...' : props.submitLabel}

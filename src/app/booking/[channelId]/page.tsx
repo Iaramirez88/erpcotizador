@@ -38,12 +38,18 @@ export default async function PublicBookingPage(props: PageProps) {
     notFound()
   }
 
+  const rawSettings = channel.settingsJson && typeof channel.settingsJson === 'object' && !Array.isArray(channel.settingsJson)
+    ? channel.settingsJson as Record<string, unknown>
+    : {}
+  const customTitle = typeof rawSettings.formTitle === 'string' ? rawSettings.formTitle.trim() : ''
+  const customDescription = typeof rawSettings.formDescription === 'string' ? rawSettings.formDescription.trim() : ''
+
   return (
     <CrmPublicBookingEmbed
       channelId={channel.id}
-      title={settings.formTitle || channel.name}
-      description={settings.formDescription || 'Agenda una cita y el CRM la registrará automáticamente.'}
-      submitLabel={settings.submitCtaLabel || 'Agendar cita'}
+      title={customTitle || channel.name}
+      description={customDescription || 'Elige el día y la hora que mejor te funcionen. La agenda se sincroniza con el CRM en tiempo real.'}
+      submitLabel={settings.submitCtaLabel || 'Confirmar cita'}
       successMessage={settings.successMessage || 'Tu cita fue registrada correctamente.'}
       accentColor={settings.accentColor}
       pageBackgroundColor={settings.pageBackgroundColor}
@@ -74,6 +80,17 @@ export default async function PublicBookingPage(props: PageProps) {
       showPhoneField={settings.showPhoneField}
       showServiceField={settings.showProductField}
       showMessageField={settings.showMessageField}
+      durationMinutes={settings.booking.durationMinutes}
+      durationLabel={settings.booking.durationLabel}
+      slotIntervalMinutes={settings.booking.slotIntervalMinutes}
+      capacityPerSlot={settings.booking.capacityPerSlot}
+      minNoticeMinutes={settings.booking.minNoticeMinutes}
+      maxAdvanceDays={settings.booking.maxAdvanceDays}
+      timezoneLabel={settings.booking.timezoneLabel}
+      businessHours={settings.booking.businessHours}
+      blockedDates={settings.booking.blockedDates}
+      notifyEmail={settings.bookingNotifyByEmail && settings.responseEmailEnabled}
+      notifyWhatsApp={settings.bookingNotifyByWhatsApp}
     />
   )
 }

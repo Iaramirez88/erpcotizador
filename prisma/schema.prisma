@@ -79,6 +79,9 @@ model User {
   crmTaskAssignments CrmTaskAssignment[] @relation("CrmTaskAssignmentUser")
   crmTaskHistoriesActed CrmTaskHistory[] @relation("CrmTaskHistoryActor")
   crmGanttPlansCreated CrmGanttPlan[] @relation("CrmGanttPlanCreatedBy")
+  crmAgendaCalendarsCreated CrmAgendaCalendar[] @relation("CrmAgendaCalendarCreatedBy")
+  crmAgendaCalendarsOwned CrmAgendaCalendar[] @relation("CrmAgendaCalendarOwner")
+  crmAgendaCalendarMemberships CrmAgendaCalendarMember[]
   crmGanttPlanMemberships CrmGanttPlanMember[]
   crmGanttItemAssignments CrmGanttItemAssignment[]
   crmGanttComments CrmGanttItemComment[]
@@ -852,6 +855,8 @@ model Empresa {
   crmTaskWorkspaceProjects CrmTaskWorkspaceProject[]
   crmTaskAssignments CrmTaskAssignment[]
   crmTaskHistories CrmTaskHistory[]
+  crmAgendaCalendars CrmAgendaCalendar[]
+  crmAgendaCalendarMembers CrmAgendaCalendarMember[]
   crmGanttPlans CrmGanttPlan[]
   crmGanttPlanMembers CrmGanttPlanMember[]
   crmChannelConnections CrmChannelConnection[]
@@ -3150,6 +3155,9 @@ model CrmTask {
   projectId String?
   project   CrmTaskWorkspaceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
+  calendarId String?
+  calendar   CrmAgendaCalendar? @relation(fields: [calendarId], references: [id], onDelete: SetNull)
+
   title       String
   description String? @db.Text
   colorHex    String?
@@ -3198,6 +3206,7 @@ model CrmTask {
   @@index([assignedToUserId, status, dueAt])
   @@index([workspaceId, status, dueAt])
   @@index([projectId, status, dueAt])
+  @@index([calendarId, dueAt])
   @@index([parentTaskId, status, dueAt])
   @@index([empresaId, startAt, dueAt])
   @@index([leadId])
@@ -3534,6 +3543,61 @@ model CrmTaskHistory {
   @@index([taskId, createdAt])
   @@index([actorUserId, createdAt])
   @@map("crm_task_history")
+}
+
+model CrmAgendaCalendar {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String? @db.Text
+  colorHex    String  @default("#0ea5e9")
+  // TASKS | PROSPECT_MEETINGS | PROJECTS | GENERAL | CUSTOM
+  kind        String  @default("GENERAL")
+  // TEAM | PRIVATE
+  visibility  String  @default("TEAM")
+
+  ownerUserId String?
+  ownerUser   User? @relation("CrmAgendaCalendarOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User @relation("CrmAgendaCalendarCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  archivedAt DateTime?
+
+  tasks   CrmTask[]
+  members CrmAgendaCalendarMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, archivedAt, createdAt])
+  @@index([ownerUserId, createdAt])
+  @@map("crm_agenda_calendars")
+}
+
+model CrmAgendaCalendarMember {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  calendarId String
+  calendar   CrmAgendaCalendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // OWNER | EDITOR | VIEWER
+  role String @default("VIEWER")
+
+  createdAt DateTime @default(now())
+
+  @@unique([calendarId, userId])
+  @@index([userId, createdAt])
+  @@map("crm_agenda_calendar_members")
 }
 
 model CrmChannelConnection {

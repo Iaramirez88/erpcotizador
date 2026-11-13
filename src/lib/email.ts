@@ -10,6 +10,19 @@ type SendEmailArgs = {
   to: string | string[]
   subject: string
   html: string
+  fromName?: string
+  replyTo?: string
+}
+
+function resolveFromAddress(fromName?: string) {
+  const baseFrom = process.env.EMAIL_FROM || 'Ordex <onboarding@resend.dev>'
+  const name = (fromName || '').trim()
+  if (!name) return baseFrom
+
+  const match = /<([^>]+)>/.exec(baseFrom)
+  if (match) return `${name} <${match[1]}>`
+  if (/^[^\s@]+@[^\s@]+$/.test(baseFrom)) return `${name} <${baseFrom}>`
+  return baseFrom
 }
 
 export async function sendEmail(args: SendEmailArgs) {
@@ -22,13 +35,14 @@ export async function sendEmail(args: SendEmailArgs) {
     }
   }
 
-  const from = process.env.EMAIL_FROM || 'Ordex <onboarding@resend.dev>'
+  const from = resolveFromAddress(args.fromName)
 
   const { data, error } = await resend.emails.send({
     from,
     to: args.to,
     subject: args.subject,
     html: args.html,
+    ...(args.replyTo ? { reply_to: args.replyTo } : {}),
   })
 
   if (error) {

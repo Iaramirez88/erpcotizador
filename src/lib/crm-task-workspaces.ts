@@ -173,6 +173,7 @@ export const crmTaskInclude = {
     },
   },
   assignedTo: { select: { id: true, name: true, email: true } },
+  calendar: { select: { id: true, name: true, colorHex: true, kind: true } },
   assignments: {
     include: {
       user: { select: { id: true, name: true, email: true, role: true } },

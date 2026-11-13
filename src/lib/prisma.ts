@@ -74,6 +74,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasCrmTaskWorkspaceMemberDelegate = typeof (prismaClient as any)?.crmTaskWorkspaceMember?.findMany === 'function'
   const hasCrmTaskAssignmentDelegate = typeof (prismaClient as any)?.crmTaskAssignment?.findMany === 'function'
   const hasCrmTaskHistoryDelegate = typeof (prismaClient as any)?.crmTaskHistory?.findMany === 'function'
+  const hasCrmAgendaCalendarDelegate = typeof (prismaClient as unknown as { crmAgendaCalendar?: { findMany?: unknown } }).crmAgendaCalendar?.findMany === 'function'
   const hasCrmGanttPlanMemberDelegate = typeof (prismaClient as any)?.crmGanttPlanMember?.findMany === 'function'
   const hasCrmGanttItemCommentDelegate = typeof (prismaClient as any)?.crmGanttItemComment?.findMany === 'function'
   const hasCrmChannelConnectionDelegate = typeof (prismaClient as any)?.crmChannelConnection?.findMany === 'function'
@@ -167,6 +168,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasCrmTaskWorkspaceMemberDelegate ||
     !hasCrmTaskAssignmentDelegate ||
     !hasCrmTaskHistoryDelegate ||
+    !hasCrmAgendaCalendarDelegate ||
     !hasCrmGanttPlanMemberDelegate ||
     !hasCrmGanttItemCommentDelegate ||
     !hasCrmChannelConnectionDelegate ||

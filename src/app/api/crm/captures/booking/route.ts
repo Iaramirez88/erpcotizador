@@ -8,6 +8,16 @@ import { dispatchCrmTaskCalendarBridges } from '@/lib/crm-calendar-bridges'
 import { createInboundArtifacts, getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
 import { extractHostFromUrl, getPublicWebFormSettings, getReferrerHost, getRequestHost, isPublicWebFormDomainAllowed } from '@/lib/crm-public-web-form'
 import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
+import { formatBookingDuration, getBookingSettings } from '@/lib/crm-booking-settings'
+import {
+  countBookingOverlaps,
+  findBookingSlot,
+  resolveBookingAppointmentDuration,
+  toBookingDateKey,
+  type BookingAppointment,
+} from '@/lib/crm-booking-availability'
+import { getCrmResponseEmailSettings, renderCrmResponseEmail } from '@/lib/crm-response-email'
+
 
 export const runtime = 'nodejs'
 
@@ -28,15 +38,23 @@ function formatBookingDate(value: Date) {
   }).format(value)
 }
 
+function formatBookingTime(value: Date) {
+  return new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit' }).format(value)
+}
+
 function buildBookingSummary(args: {
   contactName: string
   startsAt: Date
+  endsAt: Date
+  durationMinutes: number
   service: string
   message: string
 }) {
   const lines = [
     `Cita agendada para ${args.contactName || 'prospecto'}`,
     `Fecha: ${formatBookingDate(args.startsAt)}`,
+    `Horario: ${formatBookingTime(args.startsAt)} - ${formatBookingTime(args.endsAt)}`,
+    `Duración: ${formatBookingDuration(args.durationMinutes)}`,
     args.service ? `Servicio: ${args.service}` : '',
     args.message ? `Notas: ${args.message}` : '',
   ].filter(Boolean)
@@ -47,11 +65,30 @@ async function sendBookingEmail(args: {
   to: string
   contactName: string
   startsAt: Date
+  durationMinutes: number
   service: string
   channelName: string
+  settingsJson: unknown
 }) : Promise<DispatchResult> {
   const formattedDate = formatBookingDate(args.startsAt)
-  const html = renderEmail({
+  const emailSettings = getCrmResponseEmailSettings(args.settingsJson)
+  const durationLabel = formatBookingDuration(args.durationMinutes)
+  const timeLabel = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit' }).format(args.startsAt)
+
+  const rendered = renderCrmResponseEmail({
+    settings: emailSettings,
+    variables: {
+      nombre: args.contactName,
+      email: args.to,
+      fecha: formattedDate,
+      hora: timeLabel,
+      servicio: args.service,
+      canal: args.channelName,
+      enlace: emailSettings.ctaUrl,
+    },
+  })
+
+  const fallbackHtml = renderEmail({
     title: 'Confirmación de cita',
     preheader: `Tu cita quedó registrada para ${formattedDate}`,
     intro: `Hola ${args.contactName || 'cliente'},`,
@@ -59,6 +96,7 @@ async function sendBookingEmail(args: {
       '<p>Tu cita fue registrada correctamente en nuestro CRM.</p>',
       `<p><strong>Canal:</strong> ${escapeHtml(args.channelName)}</p>`,
       `<p><strong>Fecha:</strong> ${escapeHtml(formattedDate)}</p>`,
+      `<p><strong>Duración:</strong> ${escapeHtml(durationLabel)}</p>`,
       args.service ? `<p><strong>Servicio:</strong> ${escapeHtml(args.service)}</p>` : '',
     ].filter(Boolean).join(''),
     footerNote: 'Si necesitas reprogramar, responde este correo o contáctanos por WhatsApp.',
@@ -66,8 +104,10 @@ async function sendBookingEmail(args: {
 
   const response = await sendEmail({
     to: args.to,
-    subject: `Confirmación de cita · ${formattedDate}`,
-    html,
+    subject: emailSettings.enabled ? rendered.subject : `Confirmación de cita · ${formattedDate}`,
+    html: emailSettings.enabled ? rendered.html : fallbackHtml,
+    fromName: emailSettings.fromName,
+    replyTo: emailSettings.replyTo || undefined,
   })
 
   if (!response.ok) {
@@ -75,6 +115,7 @@ async function sendBookingEmail(args: {
   }
 
   return { channel: 'EMAIL', ok: true, message: 'Correo de confirmación enviado.' }
+
 }
 
 async function sendBookingWhatsApp(args: {
@@ -83,6 +124,7 @@ async function sendBookingWhatsApp(args: {
   to: string
   contactName: string
   startsAt: Date
+  durationMinutes?: number
   service: string
 }) : Promise<DispatchResult> {
   const channels = await prisma.crmChannelConnection.findMany({
@@ -108,6 +150,7 @@ async function sendBookingWhatsApp(args: {
       bodyText: [
         `Hola ${args.contactName || 'cliente'}, tu cita quedó registrada.`,
         `Fecha: ${formatBookingDate(args.startsAt)}`,
+        args.durationMinutes ? `Duración: ${formatBookingDuration(args.durationMinutes)}` : '',
         args.service ? `Servicio: ${args.service}` : '',
       ].filter(Boolean).join('\n'),
     })
@@ -254,16 +297,107 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Token inválido para agenda web' }, { status: 403 })
     }
 
+    const bookingSettings = getBookingSettings(channel.settingsJson)
+    const slotDateKey = toBookingDateKey(startsAt)
+    const slotTime = `${`${startsAt.getHours()}`.padStart(2, '0')}:${`${startsAt.getMinutes()}`.padStart(2, '0')}`
+    const slot = findBookingSlot({ settings: bookingSettings, dateKey: slotDateKey, time: slotTime })
+
+    if (!slot) {
+      return NextResponse.json({
+        error: 'La fecha y hora seleccionadas están fuera del horario disponible para agendar.',
+      }, { status: 409 })
+    }
+
+    const now = Date.now()
+    if (slot.startsAt.getTime() < now + (bookingSettings.minNoticeMinutes * 60_000)) {
+      return NextResponse.json({
+        error: `Necesitamos al menos ${formatBookingDuration(bookingSettings.minNoticeMinutes)} de anticipación para agendar.`,
+      }, { status: 409 })
+    }
+    if (slot.startsAt.getTime() > now + (bookingSettings.maxAdvanceDays * 24 * 60 * 60_000)) {
+      return NextResponse.json({
+        error: `Solo puedes agendar hasta ${bookingSettings.maxAdvanceDays} días hacia adelante.`,
+      }, { status: 409 })
+    }
+
+    startsAt.setTime(slot.startsAt.getTime())
+    const endsAt = slot.endsAt
+
+    const dayStart = new Date(startsAt)
+    dayStart.setHours(0, 0, 0, 0)
+    const dayEnd = new Date(dayStart)
+    dayEnd.setDate(dayEnd.getDate() + 1)
+
+    const dayTasks = await prisma.crmTask.findMany({
+      where: {
+        empresaId: channel.empresaId,
+        dueAt: { gte: dayStart, lt: dayEnd },
+        status: { in: ['OPEN', 'DONE'] },
+        archivedAt: null,
+        ...(channel.sedeId ? { OR: [{ sedeId: channel.sedeId }, { sedeId: null }] } : {}),
+      },
+      select: { id: true, dueAt: true, description: true },
+    })
+
+    const appointments: BookingAppointment[] = dayTasks
+      .filter((task) => task.dueAt && !(task.dueAt.getHours() === 0 && task.dueAt.getMinutes() === 0 && task.dueAt.getSeconds() === 0))
+      .map((task) => ({
+        startsAt: task.dueAt as Date,
+        durationMinutes: resolveBookingAppointmentDuration(task.description, bookingSettings.durationMinutes),
+      }))
+
+    const bookedInSlot = countBookingOverlaps({
+      appointments,
+      slotStart: startsAt,
+      slotEnd: endsAt,
+      bufferMinutes: bookingSettings.bufferMinutes,
+    })
+
+    if (bookedInSlot >= bookingSettings.capacityPerSlot) {
+      return NextResponse.json({
+        error: 'Ese horario ya está ocupado. Elige otra hora disponible en el calendario.',
+      }, { status: 409 })
+    }
+
     const eventAt = new Date()
     const messageText = buildBookingSummary({
       contactName: nombre,
       startsAt,
+      endsAt,
+      durationMinutes: bookingSettings.durationMinutes,
       service,
       message: baseMessage,
     })
     const externalThreadId = ['booking', channel.id, email || phone || nombre, startsAt.toISOString()].join(':')
 
     const artifacts = await prisma.$transaction(async (tx) => {
+      const conflictingTasks = await tx.crmTask.findMany({
+        where: {
+          empresaId: channel.empresaId,
+          dueAt: { gte: dayStart, lt: dayEnd },
+          status: { in: ['OPEN', 'DONE'] },
+          archivedAt: null,
+          ...(channel.sedeId ? { OR: [{ sedeId: channel.sedeId }, { sedeId: null }] } : {}),
+        },
+        select: { id: true, dueAt: true, description: true },
+      })
+
+      const conflicts = countBookingOverlaps({
+        appointments: conflictingTasks
+          .filter((task) => task.dueAt && !(task.dueAt.getHours() === 0 && task.dueAt.getMinutes() === 0))
+          .map((task) => ({
+            startsAt: task.dueAt as Date,
+            durationMinutes: resolveBookingAppointmentDuration(task.description, bookingSettings.durationMinutes),
+          })),
+        slotStart: startsAt,
+        slotEnd: endsAt,
+        bufferMinutes: bookingSettings.bufferMinutes,
+      })
+
+      if (conflicts >= bookingSettings.capacityPerSlot) {
+        throw new Error('BOOKING_SLOT_FULL')
+      }
+
       const created = await createInboundArtifacts({
         client: tx,
         empresaId: channel.empresaId,
@@ -300,6 +434,9 @@ export async function POST(request: Request) {
           phone,
           service,
           startsAt: startsAt.toISOString(),
+          endsAt: endsAt.toISOString(),
+          durationMinutes: bookingSettings.durationMinutes,
+          timezoneLabel: bookingSettings.timezoneLabel,
           message: baseMessage,
           landingPageUrl,
           referrerUrl,
@@ -336,13 +473,15 @@ export async function POST(request: Request) {
 
     const settings = parseJsonObject(channel.settingsJson)
     const notificationResults: DispatchResult[] = []
-    if (getBooleanSetting(settings, 'bookingNotifyByEmail', true) && email) {
+    if (getBooleanSetting(settings, 'bookingNotifyByEmail', true) && email && getCrmResponseEmailSettings(channel.settingsJson).enabled) {
       notificationResults.push(await sendBookingEmail({
         to: email,
         contactName: nombre,
         startsAt,
+        durationMinutes: bookingSettings.durationMinutes,
         service,
         channelName: channel.name,
+        settingsJson: channel.settingsJson,
       }))
     }
 
@@ -354,6 +493,7 @@ export async function POST(request: Request) {
         to: normalizedRecipient,
         contactName: nombre,
         startsAt,
+        durationMinutes: bookingSettings.durationMinutes,
         service,
       }))
     }
@@ -406,12 +546,21 @@ export async function POST(request: Request) {
         messageId: artifacts.message.id,
         captureId: artifacts.capture.id,
         taskId: artifacts.task.id,
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        durationMinutes: bookingSettings.durationMinutes,
+        timezoneLabel: bookingSettings.timezoneLabel,
         notifications: notificationResults,
         calendarSyncs,
         testing: channel.status === 'TESTING',
       },
     }, { status: 201 })
   } catch (error) {
+    if (error instanceof Error && error.message === 'BOOKING_SLOT_FULL') {
+      return NextResponse.json({
+        error: 'Ese horario acaba de ser tomado. Elige otra hora disponible.',
+      }, { status: 409 })
+    }
     console.error('Error capturando agenda web CRM:', error)
     return NextResponse.json({ error: 'Error capturando agenda web CRM' }, { status: 500 })
   }

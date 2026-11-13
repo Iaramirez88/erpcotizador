@@ -607,6 +607,15 @@ export async function ensureConversation(args: EnsureConversationArgs): Promise<
   return { conversation, dedupe: null }
 }
 
+function mergeLeadTags(current: string[] | null | undefined, incoming: string[] | null | undefined) {
+  const merged = new Set<string>()
+  for (const tag of [...(current ?? []), ...(incoming ?? [])]) {
+    const normalized = normalizeString(tag).slice(0, 60)
+    if (normalized) merged.add(normalized)
+  }
+  return Array.from(merged).slice(0, 40)
+}
+
 export async function upsertLeadFromInbound(args: {
   client: TxClient
   empresaId: string
@@ -620,6 +629,7 @@ export async function upsertLeadFromInbound(args: {
   document?: string | null
   ciudad?: string | null
   notes?: string | null
+  tags?: string[] | null
   source: CrmLeadSource
   eventAt?: Date
 }): Promise<UpsertLeadFromInboundResult> {
@@ -655,6 +665,7 @@ export async function upsertLeadFromInbound(args: {
         documento: existing.lead.documento || document || null,
         ciudad: existing.lead.ciudad || ciudad || null,
         notes: existing.lead.notes || notes || null,
+        tags: { set: mergeLeadTags(existing.lead.tags, args.tags) },
         ownerUserId: existing.lead.ownerUserId ?? args.ownerUserId ?? null,
         lastActivityAt: eventAt,
       },
@@ -677,6 +688,7 @@ export async function upsertLeadFromInbound(args: {
       celular: phone || null,
       ciudad: ciudad || null,
       notes: notes || null,
+      tags: mergeLeadTags([], args.tags),
       ownerUserId: args.ownerUserId ?? null,
       createdById: args.createdById,
       lastActivityAt: eventAt,
@@ -748,6 +760,7 @@ export async function createInboundArtifacts(args: {
   document?: string | null
   ciudad?: string | null
   messageText?: string | null
+  tags?: string[] | null
   messageOrigin?: CrmMessageOrigin
   externalThreadId?: string | null
   providerMessageId?: string | null
@@ -790,6 +803,7 @@ export async function createInboundArtifacts(args: {
     document: args.document,
     ciudad: args.ciudad,
     notes: args.messageText,
+    tags: args.tags,
     source: args.source,
     eventAt,
   })

@@ -10,6 +10,7 @@ import {
   parseChannelProvider,
 } from '@/lib/crm'
 import { buildOutboundMessagingUsageMeters, getOutboundMessagingLimitConfig, getOutboundMessagingUsageSnapshot, hasOutboundMessagingLimits } from '@/lib/crm-channel-limits'
+import { channelHasActivity, getChannelArchiveState, withChannelArchiveState } from '@/lib/crm-channel-archive'
 import { isWhatsAppCloudChannelReadyForProduction } from '@/lib/crm-meta'
 import { maskTokenPreview } from '@/lib/crm-omnichannel'
 
@@ -56,6 +57,7 @@ export async function GET(_request: Request, context: RouteContext) {
       data: {
         ...row,
         verifyTokenPreview: maskTokenPreview(row.verifyToken),
+        archivedAt: getChannelArchiveState(row.settingsJson).archivedAt,
         outboundMessagingStats: {
           config: outboundMessagingLimitConfig,
           usage: outboundMessagingUsage,
@@ -132,6 +134,25 @@ export async function PATCH(request: Request, context: RouteContext) {
       patch.settingsJson = body.settingsJson as Prisma.InputJsonValue
     }
 
+    const archivedFlag = typeof body?.archived === 'boolean' ? body.archived : null
+    const currentArchive = getChannelArchiveState(current.settingsJson)
+    const baseSettingsJson = (patch.settingsJson as Prisma.InputJsonValue | undefined) ?? current.settingsJson
+
+    if (archivedFlag === true) {
+      // Archivar siempre deja el canal fuera de operación y conserva su histórico.
+      patch.settingsJson = withChannelArchiveState(baseSettingsJson, {
+        archivedAt: new Date(),
+        archivedById: access.userId,
+      }) as Prisma.InputJsonValue
+      patch.status = 'DISABLED'
+    } else if (archivedFlag === false) {
+      // Restaurar solo quita el archivo: el canal sigue desactivado hasta que se reactive.
+      patch.settingsJson = withChannelArchiveState(baseSettingsJson, { archivedAt: null }) as Prisma.InputJsonValue
+    } else if (body?.settingsJson !== undefined && currentArchive.archivedAt) {
+      // Una edición normal de settingsJson no debe perder el estado de archivo.
+      patch.settingsJson = withChannelArchiveState(baseSettingsJson, currentArchive) as Prisma.InputJsonValue
+    }
+
     const nextProvider = (patch.provider as typeof current.provider | undefined) ?? current.provider
     const nextStatus = (patch.status as typeof current.status | undefined) ?? current.status
     const nextSettingsJson = (patch.settingsJson as Prisma.InputJsonValue | undefined) ?? current.settingsJson
@@ -162,6 +183,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       data: {
         ...updated,
         verifyTokenPreview: maskTokenPreview(updated.verifyToken),
+        archivedAt: getChannelArchiveState(updated.settingsJson).archivedAt,
       },
     })
   } catch (error) {
@@ -199,8 +221,23 @@ export async function DELETE(_request: Request, context: RouteContext) {
       if (denied) return denied
     }
 
-    if ((current._count.conversations ?? 0) > 0 || (current._count.captures ?? 0) > 0) {
-      return NextResponse.json({ error: 'Este canal ya tiene actividad. Desactívalo en lugar de eliminarlo.' }, { status: 409 })
+    if (channelHasActivity(current._count)) {
+      const conversations = current._count.conversations ?? 0
+      const captures = current._count.captures ?? 0
+
+      return NextResponse.json(
+        {
+          error: 'Este canal ya tiene actividad. Desactívalo o archívalo en lugar de eliminarlo.',
+          code: 'CHANNEL_HAS_ACTIVITY',
+          data: {
+            conversations,
+            captures,
+            canDeactivate: true,
+            canArchive: true,
+          },
+        },
+        { status: 409 },
+      )
     }
 
     await prisma.crmChannelConnection.delete({ where: { id } })

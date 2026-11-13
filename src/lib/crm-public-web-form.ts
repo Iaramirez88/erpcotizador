@@ -1,4 +1,7 @@
 import { headers } from 'next/headers'
+import { getWebFormPurposeConfig, type WebFormPurposeConfig } from '@/lib/crm-web-form-purpose'
+import { getBookingSettings, type BookingSettings } from '@/lib/crm-booking-settings'
+import { getCrmResponseEmailSettings } from '@/lib/crm-response-email'
 import {
   normalizeWebFormCustomFields,
   normalizeWebFormVariables,
@@ -7,6 +10,12 @@ import {
 } from '@/lib/crm-web-form-schema'
 
 export type PublicWebFormSettings = {
+  purpose: WebFormPurposeConfig
+  booking: BookingSettings
+  bookingNotifyByEmail: boolean
+  bookingNotifyByWhatsApp: boolean
+  responseEmailEnabled: boolean
+
   publicEmbedEnabled: boolean
   allowedDomains: string[]
   iframeHeight: string
@@ -95,6 +104,11 @@ export function getPublicWebFormSettings(settingsJson: unknown): PublicWebFormSe
     .filter(Boolean)
 
   return {
+    purpose: getWebFormPurposeConfig(settings),
+    booking: getBookingSettings(settings),
+    bookingNotifyByEmail: getBooleanSetting(settings, 'bookingNotifyByEmail', true),
+    bookingNotifyByWhatsApp: getBooleanSetting(settings, 'bookingNotifyByWhatsApp', true),
+    responseEmailEnabled: getCrmResponseEmailSettings(settings).enabled,
     publicEmbedEnabled: getBooleanSetting(settings, 'publicEmbedEnabled', true),
     allowedDomains,
     iframeHeight: getPixelSetting(settings, 'iframeHeight', '840'),

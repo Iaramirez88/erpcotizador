@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server'
-import { ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { appendAiWorkspaceHistory } from '@/lib/ai-workspace-history'
 import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 import {
@@ -23,6 +21,7 @@ import {
   normalizeUserIdList,
 } from '@/lib/crm-task-workspaces'
 import { dispatchCrmTaskCalendarBridges } from '@/lib/crm-calendar-bridges'
+import { canCreateInAgendaCalendar, getAccessibleAgendaCalendar, getAccessibleAgendaCalendarIds } from '@/lib/crm-agenda-calendars'
 import { notifyTaskUsers } from '@/lib/crm-task-notifications'
 import { assertTaskCapabilitySedeAccess, requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
 
@@ -133,6 +132,17 @@ export async function GET(request: Request) {
 
     const andFilters: Array<Record<string, unknown>> = []
 
+    const accessibleCalendarIds = await getAccessibleAgendaCalendarIds(prisma, {
+      empresaId: access.empresaId,
+      userId: access.userId,
+    })
+    andFilters.push({
+      OR: [
+        { calendarId: null },
+        { calendarId: { in: accessibleCalendarIds.length ? accessibleCalendarIds : ['__none__'] } },
+      ],
+    })
+
     if (accessibleWorkspaceIds) {
       andFilters.push({
         OR: [
@@ -237,6 +247,7 @@ export async function POST(request: Request) {
     const clienteId = normalizeString(body?.clienteId)
     const workspaceId = normalizeString(body?.workspaceId)
     const projectId = normalizeString(body?.projectId)
+    const calendarId = normalizeString(body?.calendarId)
     const assignedToUserId = normalizeString(body?.assignedToUserId)
     const assignedToUserIds = normalizeUserIdList(body?.assignedToUserIds)
     const explicitSedeId = normalizeString(body?.sedeId)
@@ -309,6 +320,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'clienteId inválido' }, { status: 400 })
     }
 
+    const calendar = calendarId
+      ? await getAccessibleAgendaCalendar(prisma, {
+          calendarId,
+          empresaId: access.empresaId,
+          userId: access.userId,
+        })
+      : null
+    if (calendarId && !calendar) {
+      return NextResponse.json({ error: 'calendarId inválido' }, { status: 400 })
+    }
+    if (calendar && !canCreateInAgendaCalendar(calendar, access.userId)) {
+      return NextResponse.json({ error: 'No tienes permisos para crear tareas en este calendario.' }, { status: 403 })
+    }
+
     const normalizedAssigneeIds = Array.from(new Set([access.userId, ...(assignedToUserId ? [assignedToUserId] : []), ...assignedToUserIds]))
     if (normalizedAssigneeIds.length) {
       const users = await prisma.user.findMany({
@@ -346,6 +371,7 @@ export async function POST(request: Request) {
           sedeId: finalSedeId || null,
           workspaceId: workspaceId || null,
           projectId: projectId || null,
+          calendarId: calendar?.id ?? null,
           title,
           description: description || null,
           colorHex,
@@ -380,6 +406,7 @@ export async function POST(request: Request) {
         message: workspace ? `Tarea creada en el espacio ${workspace.name}.` : 'Tarea creada.',
         metadata: {
           workspaceId: workspace?.id ?? null,
+          calendarId: calendar?.id ?? null,
           assignedToUserIds: normalizedAssigneeIds,
           attachmentsCount: attachmentsJson.length,
           customFieldsCount: customFieldsJson.length,
