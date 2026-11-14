@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { escapeHtml, renderEmail } from '@/lib/email-template'
-import { createInboundArtifacts, getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
+import { createInboundArtifacts, getConnectionToken, parseJsonObject, type InboundArtifactsResult } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
 import { fetchGoogleSheetsRows } from '@/lib/crm-google-sheets'
 import { getMetaMessagingDispatchConfig, sendMetaMediaMessage, sendMetaTextMessage } from '@/lib/crm-meta'
@@ -115,7 +115,7 @@ type ChatbotRuntimeChannel = {
   createdBy: { id: string }
 }
 
-type ChatbotRuntimeArtifacts = Awaited<ReturnType<typeof createInboundArtifacts>>
+type ChatbotRuntimeArtifacts = InboundArtifactsResult
 
 type ChatbotAutomationExecutionArgs = {
   tx?: Prisma.TransactionClient

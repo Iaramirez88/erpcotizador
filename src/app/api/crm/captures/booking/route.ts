@@ -31,6 +31,10 @@ function getBooleanSetting(settings: Record<string, unknown>, key: string, fallb
   return typeof settings[key] === 'boolean' ? settings[key] as boolean : fallback
 }
 
+function getCaptureConversationSetting(settings: Record<string, unknown>) {
+  return getBooleanSetting(parseJsonObject(settings.capture), 'createConversation', false)
+}
+
 function formatBookingDate(value: Date) {
   return new Intl.DateTimeFormat('es-CO', {
     dateStyle: 'full',
@@ -403,12 +407,13 @@ export async function POST(request: Request) {
         empresaId: channel.empresaId,
         sedeId: channel.sedeId,
         createdById: channel.createdBy.id,
-        ownerUserId: channel.createdBy.id,
         channelConnectionId: channel.id,
+        createConversation: getCaptureConversationSetting(parseJsonObject(channel.settingsJson)),
         source: 'WEB',
         captureType: 'WEB_FORM',
         activityType: 'MEETING',
         messageType: 'EVENT',
+        extraScoreEvents: ['MEETING_BOOKED'],
         eventAt,
         nombre,
         email,
@@ -458,7 +463,7 @@ export async function POST(request: Request) {
           priority: 'HIGH',
           dueAt: startsAt,
           leadId: created.lead.id,
-          assignedToUserId: created.conversation.assignedToUserId || created.lead.ownerUserId || channel.createdBy.id,
+          assignedToUserId: created.conversation?.assignedToUserId || created.lead.ownerUserId || channel.createdBy.id,
           createdById: channel.createdBy.id,
         },
       })
@@ -542,8 +547,8 @@ export async function POST(request: Request) {
       success: true,
       data: {
         leadId: artifacts.lead.id,
-        conversationId: artifacts.conversation.id,
-        messageId: artifacts.message.id,
+        conversationId: artifacts.conversation?.id ?? null,
+        messageId: artifacts.message?.id ?? null,
         captureId: artifacts.capture.id,
         taskId: artifacts.task.id,
         startsAt: startsAt.toISOString(),

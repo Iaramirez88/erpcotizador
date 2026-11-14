@@ -1,9 +1,16 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel, CrmLeadSource, CrmLeadStatus } from '@prisma/client'
+import { CrmLeadSource, CrmLeadStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess, requireCapabilityAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 import { syncCrmLeadFollowUpTaskById } from '@/lib/crm-follow-up'
+import { canAccessCrmRecord, resolveCrmRequestScope } from '@/lib/crm-scope'
+import { loadLeadTimeline } from '@/lib/crm-timeline'
+import {
+  CrmLifecycleError,
+  applyLeadLifecycleTransition,
+  parseCrmLifecycleStatus,
+} from '@/lib/crm-lifecycle'
 
 async function assertLeadCapabilityAccess(args: {
   sedeId: string
@@ -156,6 +163,11 @@ export async function GET(_: Request, context: RouteContext) {
     const result = await ensureLeadAccess({ leadId: id, empresaId: access.empresaId, action: 'READ' })
     if ('response' in result) return result.response
 
+    const scope = await resolveCrmRequestScope(access, { subdomain: 'LEADS', action: 'READ' })
+    if (!canAccessCrmRecord(scope, 'lead', result.lead)) {
+      return NextResponse.json({ error: 'Sin acceso a este lead' }, { status: 403 })
+    }
+
     const latestConversation = result.lead.conversations[0]
     const origin = getCrmOriginMeta({
       provider: latestConversation?.channelConnection.provider,
@@ -163,7 +175,102 @@ export async function GET(_: Request, context: RouteContext) {
       source: result.lead.source,
     })
 
-    return NextResponse.json({ success: true, data: { ...result.lead, originKey: origin.key, originLabel: origin.label } })
+    const [detail, timeline] = await Promise.all([
+      prisma.crmLead.findUnique({
+        where: { id },
+        select: {
+          contact: {
+            select: {
+              id: true,
+              nombre: true,
+              apellido: true,
+              email: true,
+              telefono: true,
+              celular: true,
+              empresaNombre: true,
+              documento: true,
+              ciudad: true,
+              status: true,
+              consents: { select: { channel: true, status: true, source: true, grantedAt: true, revokedAt: true } },
+            },
+          },
+          captures: {
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+            select: {
+              id: true,
+              captureType: true,
+              formName: true,
+              campaignName: true,
+              serviceInterest: true,
+              resourceLabel: true,
+              isFirstTouch: true,
+              scoreDelta: true,
+              createdAt: true,
+              channelConnection: { select: { name: true, provider: true } },
+            },
+          },
+          scoreEvents: {
+            orderBy: { occurredAt: 'desc' },
+            take: 20,
+            select: { id: true, eventType: true, points: true, dedupeKey: true, occurredAt: true },
+          },
+          opportunities: {
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+            select: { id: true, title: true, stage: true, expectedValue: true, createdAt: true, wonAt: true, lostAt: true },
+          },
+          tasks: {
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+            select: { id: true, title: true, status: true, dueAt: true, completedAt: true },
+          },
+          conversations: {
+            orderBy: { lastMessageAt: 'desc' },
+            take: 10,
+            select: {
+              id: true,
+              status: true,
+              firstInboundAt: true,
+              lastMessageAt: true,
+              directionLastMessage: true,
+              channelConnection: { select: { name: true, provider: true } },
+            },
+          },
+          sequenceEnrollments: {
+            orderBy: { startedAt: 'desc' },
+            take: 5,
+            select: {
+              id: true,
+              status: true,
+              currentStepOrder: true,
+              nextRunAt: true,
+              stoppedReason: true,
+              sequence: { select: { id: true, name: true, status: true } },
+            },
+          },
+        },
+      }),
+      loadLeadTimeline({
+        client: prisma,
+        empresaId: access.empresaId,
+        leadId: id,
+        contactId: result.lead.contactId,
+        limit: 60,
+      }),
+    ])
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...result.lead,
+        originKey: origin.key,
+        originLabel: origin.label,
+        detail,
+        timeline,
+        scope: scope.level,
+      },
+    })
   } catch (error) {
     console.error('Error al obtener lead CRM:', error)
     return NextResponse.json({ error: 'Error al obtener lead CRM' }, { status: 500 })
@@ -185,7 +292,42 @@ export async function PATCH(request: Request, context: RouteContext) {
     const result = await ensureLeadAccess({ leadId: id, empresaId: access.empresaId, action: 'UPDATE' })
     if ('response' in result) return result.response
 
+    const scope = await resolveCrmRequestScope(access, { subdomain: 'LEADS', action: 'UPDATE' })
+    if (!canAccessCrmRecord(scope, 'lead', result.lead)) {
+      return NextResponse.json({ error: 'Sin acceso a este lead' }, { status: 403 })
+    }
+
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
+    const hasLifecycleStatus = Object.prototype.hasOwnProperty.call(body ?? {}, 'lifecycleStatus')
+    const requestedLifecycle = hasLifecycleStatus ? parseCrmLifecycleStatus(body?.lifecycleStatus) : null
+
+    if (hasLifecycleStatus && !requestedLifecycle) {
+      return NextResponse.json({ error: 'lifecycleStatus inválido' }, { status: 400 })
+    }
+
+    if (requestedLifecycle) {
+      try {
+        const transitioned = await applyLeadLifecycleTransition({
+          client: prisma,
+          empresaId: access.empresaId,
+          leadId: id,
+          nextStatus: requestedLifecycle,
+          actorUserId: access.userId,
+          reason: normalizeString(body?.discardReason ?? body?.reason) || null,
+        })
+
+        return NextResponse.json({ success: true, data: transitioned })
+      } catch (error) {
+        if (error instanceof CrmLifecycleError) {
+          return NextResponse.json(
+            { error: error.message, code: error.code },
+            { status: error.code === 'lead-not-found' ? 404 : 409 }
+          )
+        }
+        throw error
+      }
+    }
+
     const nextSedeId = normalizeString(body?.sedeId)
     const nextOwnerUserId = normalizeString(body?.ownerUserId)
     const nombre = normalizeString(body?.nombre)
@@ -242,6 +384,9 @@ export async function PATCH(request: Request, context: RouteContext) {
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'ciudad') ? { ciudad: normalizeString(body?.ciudad) || null } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'notes') ? { notes: normalizeString(body?.notes) || null } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'tags') ? { tags: parseTags(body?.tags) } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'serviceInterest')
+            ? { serviceInterest: normalizeString(body?.serviceInterest) || null }
+            : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeId') ? { sedeId: nextSedeId || null } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'ownerUserId') ? { ownerUserId: nextOwnerUserId || null } : {}),
         },

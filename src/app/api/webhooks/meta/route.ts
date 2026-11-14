@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { Prisma, type CrmChannelConnection, type CrmChannelProvider, type CrmMessageStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { createConversationMessageEvent, createInboundArtifacts, getConnectionToken, parseJsonObject, parseMaybeDate } from '@/lib/crm-omnichannel'
+import { createConversationMessageEvent, createInboundArtifacts, getConnectionToken, parseJsonObject, parseMaybeDate, type InboundArtifactsResult } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
 import { enrichWebhookInboundEventsWithAttachments } from '@/lib/crm-webhook-media'
 import { getWebhookInboundMapping, normalizeWebhookInboundPayload } from '@/lib/crm-webhook-normalizer'
@@ -338,7 +338,7 @@ async function processNativeMetaLeadgenForChannel(channel: MetaChannelRecord, bo
     .at(-1) ?? new Date()
 
   const results = await prisma.$transaction(async (tx) => {
-    const processed = [] as Array<Awaited<ReturnType<typeof createInboundArtifacts>>>
+    const processed = [] as InboundArtifactsResult[]
 
     for (const { change, record } of leadRecords) {
       const nombre = getLeadFieldValue(record, ['full_name', 'nombre', 'name']) || [getLeadFieldValue(record, ['first_name', 'nombre']), getLeadFieldValue(record, ['last_name', 'apellido'])].filter(Boolean).join(' ')

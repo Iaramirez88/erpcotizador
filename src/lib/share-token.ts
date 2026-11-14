@@ -157,3 +157,56 @@ export function verifyDailyCallInviteToken(token: string, secret: string): { con
 
   return { conversationId: payload.conversationId, callType: payload.callType }
 }
+
+
+type CrmFileSharePayload = {
+  empresaId: string
+  filePath: string
+  disposition: 'inline' | 'attachment'
+  exp: number
+}
+
+export function createCrmFileShareToken(params: {
+  empresaId: string
+  filePath: string
+  disposition: 'inline' | 'attachment'
+  ttlSeconds: number
+  secret: string
+}) {
+  const payload: CrmFileSharePayload = {
+    empresaId: params.empresaId,
+    filePath: params.filePath,
+    disposition: params.disposition,
+    exp: Math.floor(Date.now() / 1000) + params.ttlSeconds,
+  }
+
+  const payloadB64 = base64UrlEncode(JSON.stringify(payload))
+  const sig = sign(params.secret, payloadB64)
+  return `${payloadB64}.${sig}`
+}
+
+export function verifyCrmFileShareToken(token: string, secret: string): { empresaId: string; filePath: string; disposition: 'inline' | 'attachment' } | null {
+  const parts = token.split('.')
+  if (parts.length !== 2) return null
+
+  const [payloadB64, sig] = parts
+  const expected = sign(secret, payloadB64)
+
+  const a = Buffer.from(sig)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return null
+  if (!crypto.timingSafeEqual(a, b)) return null
+
+  let payload: CrmFileSharePayload
+  try {
+    payload = JSON.parse(base64UrlDecode(payloadB64).toString('utf8')) as CrmFileSharePayload
+  } catch {
+    return null
+  }
+
+  if (!payload?.empresaId || !payload?.filePath) return null
+  if (payload.disposition !== 'inline' && payload.disposition !== 'attachment') return null
+  if (typeof payload.exp !== 'number' || Math.floor(Date.now() / 1000) > payload.exp) return null
+
+  return { empresaId: payload.empresaId, filePath: payload.filePath, disposition: payload.disposition }
+}

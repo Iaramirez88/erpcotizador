@@ -98,6 +98,9 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
 
+      # Secreto para crons internos (Bearer $CRON_SECRET), p. ej. /api/cron/crm-sequences
+      CRON_SECRET: ${CRON_SECRET:-}
+
       BOLD_IDENTITY_KEY: ${BOLD_IDENTITY_KEY:-}
       BOLD_WEBHOOK_SECRET: ${BOLD_WEBHOOK_SECRET:-}
       BOLD_VERIFY_WEBHOOK: ${BOLD_VERIFY_WEBHOOK:-true}

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { Prisma, type CrmMessageStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { createConversationMessageEvent, createInboundArtifacts, getConnectionToken } from '@/lib/crm-omnichannel'
+import { createConversationMessageEvent, createInboundArtifacts, getConnectionToken, type InboundArtifactsResult } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
 import { enrichWebhookInboundEventsWithAttachments } from '@/lib/crm-webhook-media'
 import { getWebhookInboundMapping, normalizeWebhookInboundPayload } from '@/lib/crm-webhook-normalizer'
@@ -189,7 +189,7 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const inboundAutomationQueue: Array<{
-      artifacts: Awaited<ReturnType<typeof createInboundArtifacts>>
+      artifacts: InboundArtifactsResult
       event: (typeof events)[number]
     }> = []
 
@@ -211,67 +211,68 @@ export async function POST(request: Request, context: RouteContext) {
       }
 
       for (const event of events) {
-        const artifacts = event.eventDirection === 'OUTBOUND'
-          ? await createConversationMessageEvent({
-              client: tx,
-              empresaId: channel.empresaId,
-              sedeId: channel.sedeId,
-              createdById: channel.createdBy.id,
-              ownerUserId: channel.createdBy.id,
-              activityType: mapping.activityType,
-              channelConnectionId: channel.id,
-              direction: 'OUTBOUND',
-              messageType: event.messageType,
-              eventAt: event.eventAt,
-              nombre: event.nombre,
-              email: event.email,
-              phone: event.phone,
-              messageText: event.messageText,
-              messageOrigin: event.messageOrigin,
-              externalThreadId: event.externalThreadId,
-              providerMessageId: event.providerMessageId,
-              sourceLabel: mapping.sourceLabel,
-              sourceCampaign: event.sourceCampaign,
-              sourceMedium: event.sourceMedium,
-              sourceContent: event.sourceContent,
-              rawPayloadJson: event.rawPayloadJson,
-            }).then((result) => ({ lead: null, conversation: result.conversation, message: result.message, capture: null }))
-          : await createInboundArtifacts({
-              client: tx,
-              empresaId: channel.empresaId,
-              sedeId: channel.sedeId,
-              createdById: channel.createdBy.id,
-              ownerUserId: channel.createdBy.id,
-              channelConnectionId: channel.id,
-              source: mapping.source,
-              captureType: mapping.captureType,
-              activityType: mapping.activityType,
-              messageType: event.messageType,
-              eventAt: event.eventAt,
-              nombre: event.nombre,
-              empresaNombre: event.empresaNombre,
-              email: event.email,
-              phone: event.phone,
-              ciudad: event.ciudad,
-              messageText: event.messageText,
-              messageOrigin: event.messageOrigin,
-              externalThreadId: event.externalThreadId,
-              providerMessageId: event.providerMessageId,
-              providerLeadId: event.providerLeadId,
-              sourceLabel: mapping.sourceLabel,
-              sourceCampaign: event.sourceCampaign,
-              sourceMedium: event.sourceMedium,
-              sourceContent: event.sourceContent,
-              rawPayloadJson: event.rawPayloadJson,
-              normalizedDataJson: event.normalizedDataJson,
-              attachmentsJson: event.attachmentsJson,
-            })
-
-        if (event.eventDirection === 'INBOUND' && event.messageOrigin === 'CUSTOMER') {
-          inboundAutomationQueue.push({
-            artifacts: artifacts as Awaited<ReturnType<typeof createInboundArtifacts>>,
-            event,
+        if (event.eventDirection === 'OUTBOUND') {
+          const outbound = await createConversationMessageEvent({
+            client: tx,
+            empresaId: channel.empresaId,
+            sedeId: channel.sedeId,
+            createdById: channel.createdBy.id,
+            ownerUserId: channel.createdBy.id,
+            activityType: mapping.activityType,
+            channelConnectionId: channel.id,
+            direction: 'OUTBOUND',
+            messageType: event.messageType,
+            eventAt: event.eventAt,
+            nombre: event.nombre,
+            email: event.email,
+            phone: event.phone,
+            messageText: event.messageText,
+            messageOrigin: event.messageOrigin,
+            externalThreadId: event.externalThreadId,
+            providerMessageId: event.providerMessageId,
+            sourceLabel: mapping.sourceLabel,
+            sourceCampaign: event.sourceCampaign,
+            sourceMedium: event.sourceMedium,
+            sourceContent: event.sourceContent,
+            rawPayloadJson: event.rawPayloadJson,
           })
+          processed.push({ lead: null, conversation: outbound.conversation, message: outbound.message, capture: null })
+          continue
+        }
+
+        const artifacts = await createInboundArtifacts({
+          client: tx,
+          empresaId: channel.empresaId,
+          sedeId: channel.sedeId,
+          createdById: channel.createdBy.id,
+          ownerUserId: channel.createdBy.id,
+          channelConnectionId: channel.id,
+          source: mapping.source,
+          captureType: mapping.captureType,
+          activityType: mapping.activityType,
+          messageType: event.messageType,
+          eventAt: event.eventAt,
+          nombre: event.nombre,
+          empresaNombre: event.empresaNombre,
+          email: event.email,
+          phone: event.phone,
+          ciudad: event.ciudad,
+          messageText: event.messageText,
+          messageOrigin: event.messageOrigin,
+          externalThreadId: event.externalThreadId,
+          providerMessageId: event.providerMessageId,
+          providerLeadId: event.providerLeadId,
+          sourceLabel: mapping.sourceLabel,
+          sourceCampaign: event.sourceCampaign,
+          sourceMedium: event.sourceMedium,
+          sourceContent: event.sourceContent,
+          rawPayloadJson: event.rawPayloadJson,
+          normalizedDataJson: event.normalizedDataJson,
+          attachmentsJson: event.attachmentsJson,
+        })
+
+        if (event.messageOrigin === 'CUSTOMER') {
+          inboundAutomationQueue.push({ artifacts, event })
         }
 
         processed.push(artifacts)

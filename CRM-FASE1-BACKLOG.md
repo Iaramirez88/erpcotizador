@@ -86,3 +86,15 @@ Esto deja una base operativa. La fase no esta cerrada: falta volverla gobernable
 - Ningun inbound nuevo queda sin responsable ni sin estado visible.
 - Captacion no compite con pipeline y cada vista muestra solo lo suyo.
 - El equipo comercial opera su trabajo diario desde Frente comercial e Inbox omnicanal sin depender de seguimiento manual disperso.
+
+## Actualización 2026-11-13
+
+Los bloques de captación declarados aquí quedan cubiertos por la refactorización FASE 3–7:
+
+- `CRM-F1-BE-001/002` → dedupe con traza (`crm-contact-identity.ts`, `dedupeStrategy`, `normalizedDataJson.dedupe`).
+- `CRM-F1-BE-003` → reglas de asignación por prioridad, fuente, formulario, campaña, servicio, sede, ciudad, banda y score mínimo.
+- `CRM-F1-BE-004` → máquina de estados de `lifecycleStatus` con auditoría (`eventKey = status:…`).
+- `CRM-F1-FE-002/004/005` → bandeja de leads con puntuación, origen consultable, “sin responsable” y acceso a la ficha.
+
+Verificación: `npm run test:crm-captacion` y `CRM-CAPTACION-LEADS-ARQUITECTURA.md` §23.
+

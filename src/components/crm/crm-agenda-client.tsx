@@ -20,6 +20,7 @@ import {
   PanelRightOpen,
   PhoneCall,
   Plus,
+  SlidersHorizontal,
   Users,
 } from 'lucide-react'
 import { CrmNegotiationsPageHeader } from '@/components/crm/crm-negotiations-page-header'
@@ -42,7 +43,7 @@ const TASK_AUTO_REFRESH_MS = 15_000
 
 type TaskStatus = 'OPEN' | 'DONE' | 'CANCELED'
 type TaskPriority = 'LOW' | 'NORMAL' | 'HIGH'
-type AgendaViewMode = 'month' | 'week' | 'day' | 'quarter'
+type AgendaViewMode = 'month' | 'week' | 'day' | 'quarter' | 'semester' | 'year'
 type AgendaLayoutMode = 'calendar' | 'cards' | 'events'
 type AgendaStatusFilter = 'ALL' | 'OPEN' | 'CLOSED'
 
@@ -51,6 +52,8 @@ const AGENDA_VIEW_OPTIONS: Array<{ value: AgendaViewMode; label: string }> = [
   { value: 'week', label: 'Semana' },
   { value: 'month', label: 'Mes' },
   { value: 'quarter', label: 'Trimestre' },
+  { value: 'semester', label: 'Semestre' },
+  { value: 'year', label: 'Anual' },
 ]
 
 const AGENDA_LAYOUT_OPTIONS: Array<{ value: AgendaLayoutMode; label: string; hint: string }> = [
@@ -60,9 +63,9 @@ const AGENDA_LAYOUT_OPTIONS: Array<{ value: AgendaLayoutMode; label: string; hin
 ]
 
 const AGENDA_STATUS_OPTIONS: Array<{ value: AgendaStatusFilter; label: string }> = [
-  { value: 'ALL', label: 'Todas' },
   { value: 'OPEN', label: 'Abiertas' },
   { value: 'CLOSED', label: 'Cerradas' },
+  { value: 'ALL', label: 'Todas' },
 ]
 
 type AgendaPanelSection = 'calendars' | 'new' | 'leads' | 'clients' | 'day' | 'history'
@@ -505,6 +508,7 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
   const [panelOpen, setPanelOpen] = useState(true)
   const [splitPercent, setSplitPercent] = useState(66)
   const [splitDragging, setSplitDragging] = useState(false)
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false)
   const [openSections, setOpenSections] = useState<Record<AgendaPanelSection, boolean>>({
     calendars: false,
     new: false,
@@ -525,6 +529,7 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
     memberUserIds: [],
   })
   const splitContainerRef = useRef<HTMLDivElement | null>(null)
+  const filterPanelRef = useRef<HTMLDivElement | null>(null)
   const didInitialLoadRef = useRef(false)
   const [taskForm, setTaskForm] = useState<TaskFormState>({
     title: '',
@@ -674,6 +679,26 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
     }
   }, [splitDragging])
 
+  useEffect(() => {
+    if (!filterPanelOpen) return
+
+    function handlePointerDown(event: PointerEvent) {
+      if (filterPanelRef.current?.contains(event.target as Node)) return
+      setFilterPanelOpen(false)
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setFilterPanelOpen(false)
+    }
+
+    window.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [filterPanelOpen])
+
   const calendarFilter = useMemo(() => {
     if (!calendars.length) return { active: false, ids: new Set<string>() }
     const ids = selectedCalendarIds.length ? selectedCalendarIds : calendars.map((calendar) => calendar.id)
@@ -765,10 +790,15 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
     })
   }, [selectedDayTasks])
 
-  const quarterGrid = useMemo(() => {
-    const quarterStartMonth = Math.floor(visibleMonth.getMonth() / 3) * 3
-    return Array.from({ length: 3 }, (_, index) => {
-      const monthDate = new Date(visibleMonth.getFullYear(), quarterStartMonth + index, 1)
+  const monthsGrid = useMemo(() => {
+    const monthsToShow = agendaView === 'year' ? 12 : agendaView === 'semester' ? 6 : 3
+    const firstMonth = agendaView === 'year'
+      ? 0
+      : agendaView === 'semester'
+        ? Math.floor(visibleMonth.getMonth() / 6) * 6
+        : Math.floor(visibleMonth.getMonth() / 3) * 3
+    return Array.from({ length: monthsToShow }, (_, index) => {
+      const monthDate = new Date(visibleMonth.getFullYear(), firstMonth + index, 1)
       const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate()
       const dayKeys = Array.from({ length: daysInMonth }, (_, dayIndex) => toDateKey(new Date(monthDate.getFullYear(), monthDate.getMonth(), dayIndex + 1)))
       const monthTasks = filteredTasks.filter((task) => task.dueAt && dayKeys.includes(task.dueAt.slice(0, 10)))
@@ -779,7 +809,31 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
         closedCount: monthTasks.filter((task) => task.status !== 'OPEN').length,
       }
     })
-  }, [filteredTasks, visibleMonth])
+  }, [agendaView, filteredTasks, visibleMonth])
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0
+    if (agendaLayout !== 'calendar') count += 1
+    if (agendaView !== 'month') count += 1
+    if (statusFilter !== 'ALL') count += 1
+    if (selectedCalendarIds.length > 0) count += 1
+    if (searchFilter.trim()) count += 1
+    return count
+  }, [agendaLayout, agendaView, searchFilter, selectedCalendarIds, statusFilter])
+
+  function resetAgendaFilters() {
+    const now = new Date()
+    setAgendaLayout('calendar')
+    setAgendaView('month')
+    setStatusFilter('ALL')
+    setSearchFilter('')
+    setSelectedCalendarIds([])
+    setVisibleMonth(new Date(now.getFullYear(), now.getMonth(), 1))
+    applyRangePreset(
+      toDateKey(new Date(now.getFullYear(), now.getMonth(), 1)),
+      toDateKey(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+    )
+  }
 
   function applyRangePreset(from: string, to: string) {
     setRangeFrom(from)
@@ -802,6 +856,17 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
     if (view === 'month') {
       const start = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1)
       applyRangePreset(toDateKey(start), toDateKey(new Date(start.getFullYear(), start.getMonth() + 1, 0)))
+      return
+    }
+    if (view === 'semester') {
+      const semesterStartMonth = Math.floor(visibleMonth.getMonth() / 6) * 6
+      const start = new Date(visibleMonth.getFullYear(), semesterStartMonth, 1)
+      applyRangePreset(toDateKey(start), toDateKey(new Date(start.getFullYear(), semesterStartMonth + 6, 0)))
+      return
+    }
+    if (view === 'year') {
+      const start = new Date(visibleMonth.getFullYear(), 0, 1)
+      applyRangePreset(toDateKey(start), toDateKey(new Date(start.getFullYear(), 12, 0)))
       return
     }
     const quarterStartMonth = Math.floor(visibleMonth.getMonth() / 3) * 3
@@ -827,6 +892,20 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
       const nextMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + direction, 1)
       setVisibleMonth(nextMonth)
       applyRangePreset(toDateKey(nextMonth), toDateKey(new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0)))
+      return
+    }
+    if (agendaView === 'semester') {
+      const nextMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + (direction * 6), 1)
+      setVisibleMonth(nextMonth)
+      const semesterStartMonth = Math.floor(nextMonth.getMonth() / 6) * 6
+      const start = new Date(nextMonth.getFullYear(), semesterStartMonth, 1)
+      applyRangePreset(toDateKey(start), toDateKey(new Date(start.getFullYear(), semesterStartMonth + 6, 0)))
+      return
+    }
+    if (agendaView === 'year') {
+      const nextYear = new Date(visibleMonth.getFullYear() + direction, 0, 1)
+      setVisibleMonth(nextYear)
+      applyRangePreset(toDateKey(nextYear), toDateKey(new Date(nextYear.getFullYear(), 12, 0)))
       return
     }
     const nextMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + (direction * 3), 1)
@@ -1205,10 +1284,15 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
     )
   }
 
-  function renderQuarterView() {
+  function renderMonthsView() {
+    const columnsClass = agendaView === 'year'
+      ? 'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+      : agendaView === 'semester'
+        ? 'md:grid-cols-2 xl:grid-cols-3'
+        : 'lg:grid-cols-3'
     return (
-      <div className="grid gap-3 lg:grid-cols-3">
-        {quarterGrid.map((month) => {
+      <div className={`grid gap-3 ${columnsClass}`}>
+        {monthsGrid.map((month) => {
           const daysInMonth = new Date(month.monthDate.getFullYear(), month.monthDate.getMonth() + 1, 0).getDate()
           const firstWeekday = (new Date(month.monthDate.getFullYear(), month.monthDate.getMonth(), 1).getDay() + 6) % 7
           return (
@@ -1395,8 +1479,8 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
     if (agendaLayout === 'events') return renderEventsView()
     if (agendaView === 'day') return renderDayView()
     if (agendaView === 'week') return renderWeekView()
-    if (agendaView === 'quarter') return renderQuarterView()
-    return renderMonthView()
+    if (agendaView === 'month') return renderMonthView()
+    return renderMonthsView()
   }
 
   function getAgendaPeriodLabel() {
@@ -1414,6 +1498,11 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
       const quarterStartMonth = Math.floor(visibleMonth.getMonth() / 3) * 3
       return `${formatMonth(new Date(visibleMonth.getFullYear(), quarterStartMonth, 1))} · Q${Math.floor(visibleMonth.getMonth() / 3) + 1}`
     }
+    if (agendaView === 'semester') {
+      const semesterStartMonth = Math.floor(visibleMonth.getMonth() / 6) * 6
+      return `${formatMonth(new Date(visibleMonth.getFullYear(), semesterStartMonth, 1))} · S${semesterStartMonth / 6 + 1}`
+    }
+    if (agendaView === 'year') return `Año ${visibleMonth.getFullYear()}`
     return formatMonth(visibleMonth)
   }
 
@@ -1478,7 +1567,7 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
           <CardHeader className="border-b border-slate-100 pb-5">
             <CardInfoHeader
               title={<CardTitle className="text-xl capitalize">{getAgendaPeriodLabel()}</CardTitle>}
-              description="Crea reuniones, agendamientos o citas, filtra por calendario y ajusta el ancho de la vista arrastrando el separador."
+              description="Crea reuniones, agendamientos o citas, busca y aplica filtros de formato, fecha, reuniones y calendario."
               tone="action"
               actions={
                 <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1509,152 +1598,204 @@ export function CrmAgendaClient({ canAccessAnyChat }: Props) {
             />
           </CardHeader>
           <CardContent className="space-y-4 p-4 md:p-5">
-            <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-2.5 py-2">
-              <span className="inline-flex items-center gap-1 pr-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                <CalendarClock className="h-3.5 w-3.5" /> Calendarios
-              </span>
-              <button
-                type="button"
-                onClick={() => setSelectedCalendarIds([])}
-                className={selectedCalendarIds.length === 0
-                  ? 'rounded-full bg-slate-950 px-2.5 py-1 text-[11px] font-semibold text-white'
-                  : 'rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300'}
-              >
-                Todos
-              </button>
-              {calendars.map((calendar) => {
-                const active = selectedCalendarIds.length === 0 || selectedCalendarIds.includes(calendar.id)
-                return (
-                  <button
-                    key={calendar.id}
-                    type="button"
-                    onClick={() => toggleCalendarFilter(calendar.id)}
-                    title={`${getCalendarKindLabel(calendar.kind)} · ${calendar.visibility === 'PRIVATE' ? 'Privado' : 'Equipo'}`}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${active ? 'border-slate-300 text-slate-900' : 'border-slate-200 text-slate-400'}`}
-                    style={{ backgroundColor: active ? hexToSoftBackground(calendar.colorHex) : 'transparent' }}
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                value={searchFilter}
+                onChange={(event) => setSearchFilter(event.target.value)}
+                placeholder="Buscar por título, prospecto, cliente o responsable..."
+                className="h-9 min-w-0 flex-1 rounded-xl bg-white sm:max-w-sm"
+              />
+              <div ref={filterPanelRef} className="relative">
+                <Button
+                  variant="outline"
+                  onClick={() => setFilterPanelOpen((current) => !current)}
+                  aria-expanded={filterPanelOpen}
+                  aria-haspopup="dialog"
+                  className="h-9 rounded-xl border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
+                >
+                  <SlidersHorizontal className="mr-1.5 h-4 w-4 text-slate-500" />
+                  Filtros y vista
+                  {activeFilterCount > 0 ? (
+                    <span className="ml-1.5 rounded-full bg-slate-950 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">{activeFilterCount}</span>
+                  ) : null}
+                  <ChevronDown className={`ml-1.5 h-3.5 w-3.5 text-slate-400 transition-transform ${filterPanelOpen ? 'rotate-180' : ''}`} />
+                </Button>
+
+                {filterPanelOpen ? (
+                  <div
+                    role="dialog"
+                    aria-label="Filtros y vista del calendario"
+                    className="absolute right-0 top-full z-40 mt-2 w-[min(94vw,26rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_30px_70px_-32px_rgba(15,23,42,0.5)]"
                   >
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: calendar.colorHex }} />
-                    {calendar.name}
-                  </button>
-                )
-              })}
-              <button
-                type="button"
-                onClick={openCreateCalendarDialog}
-                className="ml-auto inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-sky-300 hover:text-sky-700"
-              >
-                <Plus className="h-3 w-3" /> Calendario
-              </button>
+                    <div className="flex items-start justify-between gap-2 border-b border-slate-100 px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900">Filtros y vista</p>
+                        <p className="text-[11px] text-slate-500">Formato, tipo de fecha, rango, reuniones y calendarios.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={resetAgendaFilters}
+                        className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-rose-200 hover:text-rose-700"
+                      >
+                        Limpiar
+                      </button>
+                    </div>
+
+                    <div className="max-h-[68vh] space-y-3.5 overflow-y-auto px-3 py-3">
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Tipo de calendario</p>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {AGENDA_LAYOUT_OPTIONS.map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              title={option.hint}
+                              aria-pressed={agendaLayout === option.value}
+                              onClick={() => setAgendaLayout(option.value)}
+                              className={agendaLayout === option.value
+                                ? 'rounded-xl bg-slate-950 px-2 py-1.5 text-[11px] font-semibold text-white'
+                                : 'rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-slate-300'}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Tipo de fecha</p>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {AGENDA_VIEW_OPTIONS.map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              aria-pressed={agendaView === option.value}
+                              onClick={() => changeAgendaView(option.value)}
+                              className={agendaView === option.value
+                                ? 'rounded-xl border border-sky-300 bg-sky-50 px-2 py-1.5 text-[11px] font-semibold text-sky-700'
+                                : 'rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-slate-300'}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-slate-500">Ajusta el periodo visible y el rango de fechas.</p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Rango</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="grid gap-1">
+                            <Label className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Desde</Label>
+                            <Input type="date" value={rangeFrom} onChange={(event) => setRangeFrom(event.target.value)} className="h-9 rounded-xl bg-white" />
+                          </div>
+                          <div className="grid gap-1">
+                            <Label className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Hasta</Label>
+                            <Input type="date" value={rangeTo} onChange={(event) => setRangeTo(event.target.value)} className="h-9 rounded-xl bg-white" />
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => applyRangePreset(toDateKey(new Date()), toDateKey(new Date()))}
+                            className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300"
+                          >
+                            Hoy
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { const preset = rangePreset(7); applyRangePreset(preset.from, preset.to) }}
+                            className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300"
+                          >
+                            7 días
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { const preset = rangePreset(180); applyRangePreset(preset.from, preset.to) }}
+                            className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300"
+                          >
+                            6 meses
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Reuniones</p>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {AGENDA_STATUS_OPTIONS.map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              aria-pressed={statusFilter === option.value}
+                              onClick={() => setStatusFilter(option.value)}
+                              className={statusFilter === option.value
+                                ? 'rounded-xl bg-slate-950 px-2 py-1.5 text-[11px] font-semibold text-white'
+                                : 'rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-slate-300'}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Calendarios</p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCalendarIds([])}
+                            className={selectedCalendarIds.length === 0
+                              ? 'rounded-full bg-slate-950 px-2.5 py-1 text-[11px] font-semibold text-white'
+                              : 'rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300'}
+                          >
+                            Todos
+                          </button>
+                          {calendars.map((calendar) => {
+                            const active = selectedCalendarIds.length === 0 || selectedCalendarIds.includes(calendar.id)
+                            return (
+                              <button
+                                key={calendar.id}
+                                type="button"
+                                onClick={() => toggleCalendarFilter(calendar.id)}
+                                title={`${getCalendarKindLabel(calendar.kind)} · ${calendar.visibility === 'PRIVATE' ? 'Privado' : 'Equipo'}`}
+                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${active ? 'border-slate-300 text-slate-900' : 'border-slate-200 text-slate-400'}`}
+                                style={{ backgroundColor: active ? hexToSoftBackground(calendar.colorHex) : 'transparent' }}
+                              >
+                                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: calendar.colorHex }} />
+                                {calendar.name}
+                              </button>
+                            )
+                          })}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFilterPanelOpen(false)
+                              openCreateCalendarDialog()
+                            }}
+                            className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-sky-300 hover:text-sky-700"
+                          >
+                            <Plus className="h-3 w-3" /> Nuevo calendario
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-3 py-2">
+                      <span className="text-[11px] font-semibold text-slate-500">{filteredTasks.length} registros en el filtro</span>
+                      <Button className="h-8 rounded-lg px-3 text-xs" onClick={() => setFilterPanelOpen(false)}>Listo</Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
-            <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-              <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold">
-                <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-emerald-700">{openTasks} abiertas en total</span>
-                <span className="rounded-full border border-amber-200 bg-white px-3 py-1 text-amber-700">{overdueTasks} vencidas</span>
-                <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-sky-700">{scheduledToday} hoy</span>
-                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">{filteredTasks.length} en el filtro</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {AGENDA_LAYOUT_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    title={option.hint}
-                    onClick={() => setAgendaLayout(option.value)}
-                    className={agendaLayout === option.value
-                      ? 'rounded-xl bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white'
-                      : 'rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-                <span className="mx-1 hidden h-5 w-px bg-slate-200 sm:block" />
-                {agendaLayout === 'calendar' ? AGENDA_VIEW_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => changeAgendaView(option.value)}
-                    className={agendaView === option.value
-                      ? 'rounded-xl border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700'
-                      : 'rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600'}
-                  >
-                    {option.label}
-                  </button>
-                )) : null}
-              </div>
-
-              <div className="grid gap-2 md:grid-cols-[132px_132px_minmax(0,1fr)] md:items-end">
-                <div className="grid gap-1">
-                  <Label className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Desde</Label>
-                  <Input type="date" value={rangeFrom} onChange={(event) => setRangeFrom(event.target.value)} className="h-9 rounded-xl bg-white" />
-                </div>
-                <div className="grid gap-1">
-                  <Label className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Hasta</Label>
-                  <Input type="date" value={rangeTo} onChange={(event) => setRangeTo(event.target.value)} className="h-9 rounded-xl bg-white" />
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Button variant="outline" className="h-9 rounded-xl px-3 text-[11px]" onClick={() => applyRangePreset(toDateKey(new Date()), toDateKey(new Date()))}>Hoy</Button>
-                  <Button variant="outline" className="h-9 rounded-xl px-3 text-[11px]" onClick={() => { const preset = rangePreset(7); applyRangePreset(preset.from, preset.to) }}>7 días</Button>
-                  <Button
-                    variant="outline"
-                    className="h-9 rounded-xl px-3 text-[11px]"
-                    onClick={() => {
-                      const now = new Date()
-                      const start = new Date(now.getFullYear(), now.getMonth(), 1)
-                      applyRangePreset(toDateKey(start), toDateKey(new Date(start.getFullYear(), start.getMonth() + 1, 0)))
-                    }}
-                  >
-                    Este mes
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-9 rounded-xl px-3 text-[11px]"
-                    onClick={() => {
-                      const now = new Date()
-                      const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3
-                      const start = new Date(now.getFullYear(), quarterStartMonth, 1)
-                      applyRangePreset(toDateKey(start), toDateKey(new Date(start.getFullYear(), quarterStartMonth + 3, 0)))
-                    }}
-                  >
-                    Trimestre
-                  </Button>
-                  <Button variant="outline" className="h-9 rounded-xl px-3 text-[11px]" onClick={() => { const preset = rangePreset(180); applyRangePreset(preset.from, preset.to) }}>6 meses</Button>
-                  <span className="mx-1 hidden h-5 w-px bg-slate-200 sm:block" />
-                  <Button variant="outline" className="h-9 rounded-xl px-3 text-[11px]" onClick={() => shiftAgendaPeriod(-1)}>‹ Anterior</Button>
-                  <Button variant="outline" className="h-9 rounded-xl px-3 text-[11px]" onClick={() => shiftAgendaPeriod(1)}>Siguiente ›</Button>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {AGENDA_STATUS_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setStatusFilter(option.value)}
-                      className={statusFilter === option.value
-                        ? 'rounded-full bg-slate-950 px-3 py-1 text-[11px] font-semibold text-white'
-                        : 'rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600'}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-                <Input
-                  value={searchFilter}
-                  onChange={(event) => setSearchFilter(event.target.value)}
-                  placeholder="Buscar por título, prospecto, cliente o responsable..."
-                  className="h-9 w-full rounded-xl bg-white md:ml-auto md:max-w-sm"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-2 text-[11px] font-semibold text-slate-500">
-                <span>{filteredTasks.length} registros · {openInRange} abiertas · {closedInRange} cerradas · rango {rangeFrom} a {rangeTo}</span>
-                <span className="flex items-center gap-3">
-                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />Abierta</span>
-                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-sky-500" />Cerrada</span>
-                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-400" />Cancelada</span>
-                </span>
-              </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-2 text-[11px] font-semibold text-slate-500">
+              <span>{filteredTasks.length} en el filtro · {openInRange} abiertas · {closedInRange} cerradas · {openTasks} abiertas en total · {overdueTasks} vencidas · {scheduledToday} hoy</span>
+              <span className="flex flex-wrap items-center gap-3">
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">Rango {rangeFrom} → {rangeTo}</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />Abierta</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-sky-500" />Cerrada</span>
+                <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-400" />Cancelada</span>
+              </span>
             </div>
 
             {renderAgendaView()}

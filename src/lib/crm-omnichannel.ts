@@ -1,9 +1,28 @@
-import { AccessLevel, ModuleKey, Prisma, type CrmActivityType, type CrmConversation, type CrmLead, type CrmLeadCaptureType, type CrmLeadSource, type CrmMessageType, type SedeRole } from '@prisma/client'
-import { prisma } from '@/lib/prisma'
+import { AccessLevel, ModuleKey, Prisma, type CrmActivityType, type CrmConversation, type CrmLead, type CrmLeadCapture, type CrmLeadCaptureType, type CrmLeadSource, type CrmMessage, type CrmMessageType, type CrmScoreEventType, type SedeRole } from '@prisma/client'
 import { normalizeString } from '@/lib/crm'
+import {
+  buildDedupeTrace,
+  buildPhoneWhereClauses,
+  normalizePhoneForMatching,
+  normalizePhoneForStorage,
+  type ContactRecord,
+  type CrmDbClient,
+  type DedupeTrace,
+} from '@/lib/crm-contact-identity'
+import {
+  ensureLeadCaptureIdentity,
+  recordLeadCaptureEvent,
+  type LeadOriginFields,
+} from '@/lib/crm-lead-capture'
+import { applyCaptureScoreEvents, applyScoreEvent } from '@/lib/crm-scoring'
+import { applyAssignmentRules } from '@/lib/crm-assignment'
+
+// Re-export de compatibilidad: estos helpers vivían en este módulo.
+export { findMatchingLead, logInboundCapture, upsertLeadFromInbound } from '@/lib/crm-lead-capture'
+export type { DedupeTrace, LeadMatchResult, UpsertLeadFromInboundResult } from '@/lib/crm-lead-capture'
 
 type JsonObject = Record<string, unknown>
-type TxClient = Prisma.TransactionClient | typeof prisma
+type TxClient = CrmDbClient
 
 type EnsureConversationArgs = {
   client: TxClient
@@ -11,6 +30,7 @@ type EnsureConversationArgs = {
   sedeId?: string | null
   channelConnectionId: string
   leadId?: string | null
+  contactId?: string | null
   clienteId?: string | null
   opportunityId?: string | null
   assignedToUserId?: string | null
@@ -25,27 +45,11 @@ type EnsureConversationArgs = {
   eventAt?: Date
 }
 
-type DedupeTrace = {
-  matchedRecordId: string
-  strategy: string
-  matchedFields: string[]
-  confidence: 'strong' | 'medium'
-}
-
-type LeadMatchResult = {
-  lead: CrmLead | null
-  dedupe: DedupeTrace | null
-}
-
-type UpsertLeadFromInboundResult = {
-  lead: CrmLead
-  dedupe: DedupeTrace | null
-}
-
 type EnsureConversationResult = {
   conversation: CrmConversation
   dedupe: DedupeTrace | null
 }
+
 
 export type CrmMessageOrigin = 'CUSTOMER' | 'PHONE_APP' | 'CRM_AGENT' | 'BOT' | 'SYSTEM'
 
@@ -79,50 +83,6 @@ export function parseMaybeDate(value: unknown): Date {
   if (!raw) return new Date()
   const date = new Date(raw)
   return Number.isNaN(date.getTime()) ? new Date() : date
-}
-
-function normalizePhoneForMatching(value: string | null | undefined) {
-  const raw = normalizeString(value)
-  if (!raw) return ''
-  return raw.replace(/[^\d]+/g, '')
-}
-
-function normalizePhoneForStorage(value: string | null | undefined) {
-  const digits = normalizePhoneForMatching(value)
-  if (!digits) return ''
-  return digits.startsWith('57') ? `+${digits}` : digits
-}
-
-function normalizeLooseTextForMatching(value: string | null | undefined) {
-  const raw = normalizeString(value)
-  if (!raw) return ''
-  return raw
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-}
-
-function getEmailDomain(value: string | null | undefined) {
-  const email = normalizeString(value).toLowerCase()
-  if (!email) return ''
-  const atIndex = email.lastIndexOf('@')
-  if (atIndex <= 0 || atIndex === email.length - 1) return ''
-  return email.slice(atIndex + 1)
-}
-
-function buildDedupeTrace(args: {
-  matchedRecordId: string
-  strategy: string
-  matchedFields: string[]
-  confidence: 'strong' | 'medium'
-}): DedupeTrace {
-  return {
-    matchedRecordId: args.matchedRecordId,
-    strategy: args.strategy,
-    matchedFields: Array.from(new Set(args.matchedFields.filter(Boolean))),
-    confidence: args.confidence,
-  }
 }
 
 const ACCESS_LEVEL_ORDER: Record<AccessLevel, number> = {
@@ -207,27 +167,6 @@ export async function canAssignCrmConversationToUser(args: {
 
   if (!user) return false
   return hasCrmConversationWriteAccess(user, args.sedeId)
-}
-
-function buildPhoneWhereClauses(field: 'telefono' | 'celular' | 'contactPhone', rawPhone: string | null | undefined) {
-  const normalized = normalizePhoneForMatching(rawPhone)
-  if (!normalized) return []
-
-  const compact = normalizePhoneForStorage(rawPhone)
-  const last10 = normalized.slice(-10)
-  const last8 = normalized.slice(-8)
-  const variants = Array.from(new Set([compact, normalized].filter(Boolean)))
-  const clauses: Array<Record<string, unknown>> = variants.map((value) => ({ [field]: value }))
-
-  if (last10 && last10 !== normalized) {
-    clauses.push({ [field]: { endsWith: last10 } })
-  }
-
-  if (last8 && last8 !== last10 && last8 !== normalized) {
-    clauses.push({ [field]: { endsWith: last8 } })
-  }
-
-  return clauses
 }
 
 function getNextInboundConversationStatus(args: {
@@ -333,164 +272,6 @@ async function resolveInboundAssigneeUserId(args: {
   return ranked[0]?.id || null
 }
 
-export async function findMatchingLead(args: {
-  client: TxClient
-  empresaId: string
-  nombre?: string | null
-  empresaNombre?: string | null
-  email?: string | null
-  phone?: string | null
-  document?: string | null
-  eventAt?: Date
-}): Promise<LeadMatchResult> {
-  const nombre = normalizeString(args.nombre)
-  const empresaNombre = normalizeString(args.empresaNombre)
-  const email = normalizeString(args.email).toLowerCase()
-  const phone = normalizePhoneForStorage(args.phone)
-  const document = normalizeString(args.document)
-
-  if (document) {
-    const byDocument = await args.client.crmLead.findFirst({
-      where: { empresaId: args.empresaId, documento: document },
-      orderBy: { createdAt: 'desc' },
-    })
-    if (byDocument) {
-      return {
-        lead: byDocument,
-        dedupe: buildDedupeTrace({
-          matchedRecordId: byDocument.id,
-          strategy: 'document_exact',
-          matchedFields: ['documento'],
-          confidence: 'strong',
-        }),
-      }
-    }
-  }
-
-  if (email) {
-    const byEmail = await args.client.crmLead.findFirst({
-      where: { empresaId: args.empresaId, email },
-      orderBy: { createdAt: 'desc' },
-    })
-    if (byEmail) {
-      return {
-        lead: byEmail,
-        dedupe: buildDedupeTrace({
-          matchedRecordId: byEmail.id,
-          strategy: 'email_exact',
-          matchedFields: ['email'],
-          confidence: 'strong',
-        }),
-      }
-    }
-  }
-
-  if (phone) {
-    const byPhone = await args.client.crmLead.findFirst({
-      where: {
-        empresaId: args.empresaId,
-        OR: [
-          ...buildPhoneWhereClauses('telefono', phone),
-          ...buildPhoneWhereClauses('celular', phone),
-        ],
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-    if (byPhone) {
-      return {
-        lead: byPhone,
-        dedupe: buildDedupeTrace({
-          matchedRecordId: byPhone.id,
-          strategy: 'phone_exact_or_suffix',
-          matchedFields: ['telefono', 'celular'],
-          confidence: 'strong',
-        }),
-      }
-    }
-  }
-
-  const normalizedNombre = normalizeLooseTextForMatching(nombre)
-  const normalizedEmpresaNombre = normalizeLooseTextForMatching(empresaNombre)
-  const emailDomain = getEmailDomain(email)
-  if (normalizedNombre) {
-    const recentThreshold = new Date((args.eventAt ?? new Date()).getTime() - (45 * 24 * 60 * 60 * 1000))
-    const weakSignals: Prisma.CrmLeadWhereInput[] = []
-
-    if (empresaNombre) {
-      weakSignals.push({
-        empresaNombre: {
-          equals: empresaNombre,
-          mode: 'insensitive',
-        },
-      })
-    }
-
-    if (emailDomain) {
-      weakSignals.push({
-        email: {
-          endsWith: `@${emailDomain}`,
-          mode: 'insensitive',
-        },
-      })
-    }
-
-    if (weakSignals.length) {
-      const candidates = await args.client.crmLead.findMany({
-        where: {
-          empresaId: args.empresaId,
-          AND: [
-            {
-              OR: [
-                { lastActivityAt: { gte: recentThreshold } },
-                { createdAt: { gte: recentThreshold } },
-              ],
-            },
-            { OR: weakSignals },
-          ],
-        },
-        orderBy: [{ lastActivityAt: 'desc' }, { createdAt: 'desc' }],
-        take: 12,
-      })
-
-      const byRecentHeuristic = candidates.find((candidate) => {
-        if (normalizeLooseTextForMatching(candidate.nombre) !== normalizedNombre) return false
-
-        const companyMatches = normalizedEmpresaNombre
-          && normalizeLooseTextForMatching(candidate.empresaNombre) === normalizedEmpresaNombre
-        const emailDomainMatches = emailDomain && getEmailDomain(candidate.email) === emailDomain
-
-        return Boolean(companyMatches || emailDomainMatches)
-      })
-
-      if (byRecentHeuristic) {
-        const matchedFields = ['nombre']
-        const normalizedCandidateEmpresa = normalizeLooseTextForMatching(byRecentHeuristic.empresaNombre)
-        const candidateEmailDomain = getEmailDomain(byRecentHeuristic.email)
-
-        if (normalizedEmpresaNombre && normalizedCandidateEmpresa === normalizedEmpresaNombre) {
-          matchedFields.push('empresaNombre')
-        }
-
-        if (emailDomain && candidateEmailDomain === emailDomain) {
-          matchedFields.push('emailDomain')
-        }
-
-        return {
-          lead: byRecentHeuristic,
-          dedupe: buildDedupeTrace({
-            matchedRecordId: byRecentHeuristic.id,
-            strategy: 'recent_name_plus_secondary_signal',
-            matchedFields,
-            confidence: 'medium',
-          }),
-        }
-      }
-    }
-  }
-
-  return { lead: null, dedupe: null }
-}
-
 export async function ensureConversation(args: EnsureConversationArgs): Promise<EnsureConversationResult> {
   const eventAt = args.eventAt ?? new Date()
   const contactPhone = normalizePhoneForStorage(args.contactPhone)
@@ -548,6 +329,7 @@ export async function ensureConversation(args: EnsureConversationArgs): Promise<
       where: { id: existing.id },
       data: {
         leadId: args.leadId ?? existing.leadId,
+        contactId: args.contactId ?? existing.contactId,
         clienteId: args.clienteId ?? existing.clienteId,
         opportunityId: args.opportunityId ?? existing.opportunityId,
         assignedToUserId: nextAssignedToUserId,
@@ -585,6 +367,7 @@ export async function ensureConversation(args: EnsureConversationArgs): Promise<
       sedeId: args.sedeId ?? null,
       channelConnectionId: args.channelConnectionId,
       leadId: args.leadId ?? null,
+      contactId: args.contactId ?? null,
       clienteId: args.clienteId ?? null,
       opportunityId: args.opportunityId ?? null,
       assignedToUserId: args.assignedToUserId ?? null,
@@ -607,141 +390,7 @@ export async function ensureConversation(args: EnsureConversationArgs): Promise<
   return { conversation, dedupe: null }
 }
 
-function mergeLeadTags(current: string[] | null | undefined, incoming: string[] | null | undefined) {
-  const merged = new Set<string>()
-  for (const tag of [...(current ?? []), ...(incoming ?? [])]) {
-    const normalized = normalizeString(tag).slice(0, 60)
-    if (normalized) merged.add(normalized)
-  }
-  return Array.from(merged).slice(0, 40)
-}
-
-export async function upsertLeadFromInbound(args: {
-  client: TxClient
-  empresaId: string
-  sedeId?: string | null
-  createdById: string
-  ownerUserId?: string | null
-  nombre?: string | null
-  empresaNombre?: string | null
-  email?: string | null
-  phone?: string | null
-  document?: string | null
-  ciudad?: string | null
-  notes?: string | null
-  tags?: string[] | null
-  source: CrmLeadSource
-  eventAt?: Date
-}): Promise<UpsertLeadFromInboundResult> {
-  const eventAt = args.eventAt ?? new Date()
-  const existing = await findMatchingLead({
-    client: args.client,
-    empresaId: args.empresaId,
-    nombre: args.nombre,
-    empresaNombre: args.empresaNombre,
-    email: args.email,
-    phone: args.phone,
-    document: args.document,
-    eventAt,
-  })
-
-  const nombre = normalizeString(args.nombre) || normalizeString(args.phone) || normalizeString(args.email) || 'Lead sin nombre'
-  const empresaNombre = normalizeString(args.empresaNombre)
-  const email = normalizeString(args.email).toLowerCase()
-  const phone = normalizePhoneForStorage(args.phone)
-  const document = normalizeString(args.document)
-  const ciudad = normalizeString(args.ciudad)
-  const notes = normalizeString(args.notes)
-
-  if (existing.lead) {
-    const lead = await args.client.crmLead.update({
-      where: { id: existing.lead.id },
-      data: {
-        sedeId: existing.lead.sedeId ?? args.sedeId ?? null,
-        empresaNombre: existing.lead.empresaNombre || empresaNombre || null,
-        email: existing.lead.email || email || null,
-        telefono: existing.lead.telefono || phone || null,
-        celular: existing.lead.celular || phone || null,
-        documento: existing.lead.documento || document || null,
-        ciudad: existing.lead.ciudad || ciudad || null,
-        notes: existing.lead.notes || notes || null,
-        tags: { set: mergeLeadTags(existing.lead.tags, args.tags) },
-        ownerUserId: existing.lead.ownerUserId ?? args.ownerUserId ?? null,
-        lastActivityAt: eventAt,
-      },
-    })
-
-    return { lead, dedupe: existing.dedupe }
-  }
-
-  const lead = await args.client.crmLead.create({
-    data: {
-      empresaId: args.empresaId,
-      sedeId: args.sedeId ?? null,
-      source: args.source,
-      status: 'NEW',
-      nombre,
-      empresaNombre: empresaNombre || null,
-      documento: document || null,
-      email: email || null,
-      telefono: phone || null,
-      celular: phone || null,
-      ciudad: ciudad || null,
-      notes: notes || null,
-      tags: mergeLeadTags([], args.tags),
-      ownerUserId: args.ownerUserId ?? null,
-      createdById: args.createdById,
-      lastActivityAt: eventAt,
-    },
-  })
-
-  return { lead, dedupe: null }
-}
-
-export async function logInboundCapture(args: {
-  client: TxClient
-  empresaId: string
-  sedeId?: string | null
-  channelConnectionId: string
-  leadId?: string | null
-  conversationId?: string | null
-  captureType: CrmLeadCaptureType
-  rawPayloadJson: Prisma.InputJsonValue
-  normalizedDataJson: Prisma.InputJsonValue
-  utmSource?: string | null
-  utmMedium?: string | null
-  utmCampaign?: string | null
-  utmContent?: string | null
-  utmTerm?: string | null
-  gclid?: string | null
-  landingPageUrl?: string | null
-  referrerUrl?: string | null
-  providerLeadId?: string | null
-}) {
-  return args.client.crmLeadCapture.create({
-    data: {
-      empresaId: args.empresaId,
-      sedeId: args.sedeId ?? null,
-      channelConnectionId: args.channelConnectionId,
-      leadId: args.leadId ?? null,
-      conversationId: args.conversationId ?? null,
-      captureType: args.captureType,
-      rawPayloadJson: args.rawPayloadJson,
-      normalizedDataJson: args.normalizedDataJson,
-      utmSource: normalizeString(args.utmSource) || null,
-      utmMedium: normalizeString(args.utmMedium) || null,
-      utmCampaign: normalizeString(args.utmCampaign) || null,
-      utmContent: normalizeString(args.utmContent) || null,
-      utmTerm: normalizeString(args.utmTerm) || null,
-      gclid: normalizeString(args.gclid) || null,
-      landingPageUrl: normalizeString(args.landingPageUrl) || null,
-      referrerUrl: normalizeString(args.referrerUrl) || null,
-      providerLeadId: normalizeString(args.providerLeadId) || null,
-    },
-  })
-}
-
-export async function createInboundArtifacts(args: {
+export type InboundArtifactsArgs = {
   client: TxClient
   empresaId: string
   sedeId?: string | null
@@ -754,6 +403,7 @@ export async function createInboundArtifacts(args: {
   messageType?: CrmMessageType
   eventAt?: Date
   nombre?: string | null
+  apellido?: string | null
   empresaNombre?: string | null
   email?: string | null
   phone?: string | null
@@ -766,9 +416,17 @@ export async function createInboundArtifacts(args: {
   providerMessageId?: string | null
   providerLeadId?: string | null
   sourceLabel?: string | null
+  sourceKey?: string | null
   sourceCampaign?: string | null
   sourceMedium?: string | null
   sourceContent?: string | null
+  formId?: string | null
+  formName?: string | null
+  campaignId?: string | null
+  campaignName?: string | null
+  serviceInterest?: string | null
+  resourceLabel?: string | null
+  consentJson?: Prisma.InputJsonValue | null
   utmSource?: string | null
   utmMedium?: string | null
   utmCampaign?: string | null
@@ -780,23 +438,77 @@ export async function createInboundArtifacts(args: {
   rawPayloadJson: Prisma.InputJsonValue
   normalizedDataJson: Prisma.InputJsonValue
   attachmentsJson?: Prisma.InputJsonValue
-}) {
-  const eventAt = args.eventAt ?? new Date()
-  const assignedToUserId = await resolveInboundAssigneeUserId({
-    client: args.client,
-    empresaId: args.empresaId,
-    sedeId: args.sedeId ?? null,
-    channelConnectionId: args.channelConnectionId,
-    preferredUserId: args.ownerUserId ?? null,
-  })
+  /** `false` registra la captura sin abrir conversación (formularios, agenda). */
+  createConversation?: boolean
+  /** `settingsJson.purpose` del formulario; alimenta scoring y secuencias. */
+  formPurpose?: string | null
+  /** Eventos de score explícitos (p. ej. `MEETING_BOOKED`). */
+  extraScoreEvents?: CrmScoreEventType[] | null
+}
 
-  const leadResult = await upsertLeadFromInbound({
+export type InboundArtifactsResult = {
+  lead: CrmLead
+  contact: ContactRecord
+  conversation: CrmConversation
+  message: CrmMessage
+  capture: CrmLeadCapture
+  isFirstTouch: boolean
+}
+
+export type InboundArtifactsResultWithoutConversation = {
+  lead: CrmLead
+  contact: ContactRecord
+  conversation: null
+  message: null
+  capture: CrmLeadCapture
+  isFirstTouch: boolean
+}
+
+export function createInboundArtifacts(
+  args: InboundArtifactsArgs & { createConversation: false },
+): Promise<InboundArtifactsResultWithoutConversation>
+export function createInboundArtifacts(
+  args: InboundArtifactsArgs & { createConversation?: true },
+): Promise<InboundArtifactsResult>
+export function createInboundArtifacts(
+  args: InboundArtifactsArgs & { createConversation: boolean },
+): Promise<InboundArtifactsResult | InboundArtifactsResultWithoutConversation>
+export async function createInboundArtifacts(
+  args: InboundArtifactsArgs,
+): Promise<InboundArtifactsResult | InboundArtifactsResultWithoutConversation> {
+  const eventAt = args.eventAt ?? new Date()
+  const createConversation = args.createConversation !== false
+  // En captación sin conversación el responsable lo deciden las reglas de
+  // asignación, no el reparto por carga de la bandeja.
+  const assignedToUserId = createConversation
+    ? await resolveInboundAssigneeUserId({
+        client: args.client,
+        empresaId: args.empresaId,
+        sedeId: args.sedeId ?? null,
+        channelConnectionId: args.channelConnectionId,
+        preferredUserId: args.ownerUserId ?? null,
+      })
+    : null
+
+  const origin: LeadOriginFields = {
+    sourceKey: args.sourceKey ?? null,
+    sourceLabel: args.sourceLabel ?? null,
+    serviceInterest: args.serviceInterest ?? null,
+    campaignId: args.campaignId ?? null,
+    campaignName: args.campaignName ?? args.sourceCampaign ?? null,
+    formId: args.formId ?? null,
+    formName: args.formName ?? null,
+    resourceLabel: args.resourceLabel ?? null,
+  }
+
+  const identity = await ensureLeadCaptureIdentity({
     client: args.client,
     empresaId: args.empresaId,
     sedeId: args.sedeId ?? null,
     createdById: args.createdById,
-    ownerUserId: assignedToUserId,
+    ownerUserId: assignedToUserId ?? args.ownerUserId ?? null,
     nombre: args.nombre,
+    apellido: args.apellido,
     empresaNombre: args.empresaNombre,
     email: args.email,
     phone: args.phone,
@@ -805,80 +517,75 @@ export async function createInboundArtifacts(args: {
     notes: args.messageText,
     tags: args.tags,
     source: args.source,
+    origin,
     eventAt,
   })
-  const lead = leadResult.lead
+  const lead = identity.lead
+  const contact = identity.contact
 
-  const conversationResult = await ensureConversation({
-    client: args.client,
-    empresaId: args.empresaId,
-    sedeId: args.sedeId ?? null,
-    channelConnectionId: args.channelConnectionId,
-    leadId: lead.id,
-    assignedToUserId: assignedToUserId ?? lead.ownerUserId ?? null,
-    contactDisplayName: args.nombre,
-    contactPhone: args.phone,
-    contactEmail: args.email,
-    externalThreadId: args.externalThreadId,
-    source: args.sourceLabel,
-    sourceCampaign: args.sourceCampaign,
-    sourceMedium: args.sourceMedium,
-    sourceContent: args.sourceContent,
-    eventAt,
-  })
-  const conversation = conversationResult.conversation
+  let conversation: CrmConversation | null = null
+  let conversationDedupe: DedupeTrace | null = null
+  let message: CrmMessage | null = null
 
-  const normalizedCaptureData: Prisma.InputJsonValue = {
-    ...parseJsonObject(args.normalizedDataJson),
-    dedupe: {
-      lead: leadResult.dedupe,
-      conversation: conversationResult.dedupe,
-    },
+  if (createConversation) {
+    const conversationResult = await ensureConversation({
+      client: args.client,
+      empresaId: args.empresaId,
+      sedeId: args.sedeId ?? null,
+      channelConnectionId: args.channelConnectionId,
+      leadId: lead.id,
+      contactId: contact.id,
+      assignedToUserId: assignedToUserId ?? lead.ownerUserId ?? null,
+      contactDisplayName: args.nombre,
+      contactPhone: args.phone,
+      contactEmail: args.email,
+      externalThreadId: args.externalThreadId,
+      source: args.sourceLabel,
+      sourceCampaign: args.sourceCampaign,
+      sourceMedium: args.sourceMedium,
+      sourceContent: args.sourceContent,
+      eventAt,
+    })
+    conversation = conversationResult.conversation
+    conversationDedupe = conversationResult.dedupe
+
+    message = await args.client.crmMessage.create({
+      data: {
+        empresaId: args.empresaId,
+        sedeId: args.sedeId ?? null,
+        conversationId: conversation.id,
+        providerMessageId: normalizeString(args.providerMessageId) || null,
+        direction: 'INBOUND',
+        messageType: args.messageType ?? 'TEXT',
+        status: 'RECEIVED',
+        bodyText: normalizeString(args.messageText) || null,
+        payloadJson: {
+          ...parseJsonObject(args.rawPayloadJson),
+          messageOrigin: args.messageOrigin ?? 'CUSTOMER',
+          ingestionSource: 'WEBHOOK',
+        },
+        attachmentsJson: Array.isArray(args.attachmentsJson) ? args.attachmentsJson : [],
+        occurredAt: eventAt,
+      },
+    })
   }
 
-  const message = await args.client.crmMessage.create({
-    data: {
-      empresaId: args.empresaId,
-      sedeId: args.sedeId ?? null,
-      conversationId: conversation.id,
-      providerMessageId: normalizeString(args.providerMessageId) || null,
-      direction: 'INBOUND',
-      messageType: args.messageType ?? 'TEXT',
-      status: 'RECEIVED',
-      bodyText: normalizeString(args.messageText) || null,
-      payloadJson: {
-        ...parseJsonObject(args.rawPayloadJson),
-        messageOrigin: args.messageOrigin ?? 'CUSTOMER',
-        ingestionSource: 'WEBHOOK',
-      },
-      attachmentsJson: Array.isArray(args.attachmentsJson) ? args.attachmentsJson : [],
-      occurredAt: eventAt,
-    },
-  })
-
-  await args.client.crmActivity.create({
-    data: {
-      empresaId: args.empresaId,
-      sedeId: args.sedeId ?? null,
-      type: args.activityType ?? 'OTHER',
-      summary: `Ingreso desde ${normalizeString(args.sourceLabel) || 'canal CRM'}`,
-      details: normalizeString(args.messageText) || null,
-      leadId: lead.id,
-      occurredAt: eventAt,
-      createdById: args.createdById,
-    },
-  })
-
-  const capture = await logInboundCapture({
+  const { capture } = await recordLeadCaptureEvent({
     client: args.client,
     empresaId: args.empresaId,
     sedeId: args.sedeId ?? null,
+    createdById: args.createdById,
     channelConnectionId: args.channelConnectionId,
     leadId: lead.id,
-    conversationId: conversation.id,
+    contactId: contact.id,
+    conversationId: conversation?.id ?? null,
     captureType: args.captureType,
+    activityType: args.activityType,
+    eventAt,
+    messageText: args.messageText,
+    sourceLabel: args.sourceLabel,
     rawPayloadJson: args.rawPayloadJson,
-    normalizedDataJson: normalizedCaptureData,
+    normalizedDataJson: args.normalizedDataJson,
     utmSource: args.utmSource,
     utmMedium: args.utmMedium,
     utmCampaign: args.utmCampaign,
@@ -888,29 +595,105 @@ export async function createInboundArtifacts(args: {
     landingPageUrl: args.landingPageUrl,
     referrerUrl: args.referrerUrl,
     providerLeadId: args.providerLeadId,
+    origin,
+    email: args.email,
+    isFirstTouch: identity.isFirstTouch,
+    dedupeStrategy: identity.leadDedupe?.strategy ?? identity.contactDedupe?.strategy ?? null,
+    dedupe: {
+      lead: identity.leadDedupe,
+      contact: identity.contactDedupe,
+      conversation: conversationDedupe,
+    },
+    consentJson: args.consentJson ?? null,
   })
 
-  const notificationUserId = conversation.assignedToUserId || assignedToUserId || lead.ownerUserId || args.createdById
-  if (notificationUserId) {
-    const contactLabel = normalizeString(args.nombre) || conversation.contactDisplayName || lead.nombre || 'prospecto'
-    const messagePreview = normalizeString(args.messageText)
-    await args.client.notification.create({
-      data: {
-        type: 'INFO',
-        title: `Nuevo mensaje de ${contactLabel}`,
-        body: messagePreview
-          ? `${normalizeString(args.sourceLabel) || 'Canal CRM'} · ${messagePreview.slice(0, 220)}`
-          : `${normalizeString(args.sourceLabel) || 'Canal CRM'} registró un nuevo inbound.`,
+  const scoreResults = await applyCaptureScoreEvents({
+    client: args.client,
+    empresaId: args.empresaId,
+    leadId: lead.id,
+    contactId: contact.id,
+    captureId: capture.id,
+    captureType: args.captureType,
+    formPurpose: args.formPurpose ?? null,
+    resourceLabel: args.resourceLabel ?? null,
+    serviceInterest: args.serviceInterest ?? null,
+    messageText: args.messageText,
+    occurredAt: eventAt,
+    createdById: args.createdById,
+  })
+
+  for (const eventType of args.extraScoreEvents ?? []) {
+    scoreResults.push(
+      await applyScoreEvent({
+        client: args.client,
         empresaId: args.empresaId,
+        leadId: lead.id,
+        eventType,
+        contactId: contact.id,
+        captureId: capture.id,
+        sourceId: capture.id,
+        occurredAt: eventAt,
+        createdById: args.createdById,
+      })
+    )
+  }
+
+  // Solo se aplican reglas de asignación cuando el flujo no trae responsable
+  // explícito (captación sin conversación). El inbound conversacional conserva
+  // el reparto por carga de la bandeja.
+  if (!assignedToUserId && !normalizeString(args.ownerUserId)) {
+    await applyAssignmentRules({
+      client: args.client,
+      empresaId: args.empresaId,
+      leadId: lead.id,
+      actorUserId: args.createdById,
+      context: {
+        source: args.source,
+        formId: args.formId ?? origin.formId,
+        campaignName: args.campaignName ?? origin.campaignName,
+        serviceInterest: args.serviceInterest ?? origin.serviceInterest,
         sedeId: args.sedeId ?? null,
-        userId: notificationUserId,
-        actionUrl: '/dashboard/crm',
-        actionLabel: 'Abrir CRM',
+        city: args.ciudad ?? null,
+        score: lead.score,
+        scoreBand: lead.scoreBand,
       },
     })
   }
 
-  return { lead, conversation, message, capture }
+  if (conversation) {
+    const notificationUserId = conversation.assignedToUserId || assignedToUserId || lead.ownerUserId || args.createdById
+    if (notificationUserId) {
+      const contactLabel = normalizeString(args.nombre) || conversation.contactDisplayName || lead.nombre || 'prospecto'
+      const messagePreview = normalizeString(args.messageText)
+      await args.client.notification.create({
+        data: {
+          type: 'INFO',
+          title: `Nuevo mensaje de ${contactLabel}`,
+          body: messagePreview
+            ? `${normalizeString(args.sourceLabel) || 'Canal CRM'} · ${messagePreview.slice(0, 220)}`
+            : `${normalizeString(args.sourceLabel) || 'Canal CRM'} registró un nuevo inbound.`,
+          empresaId: args.empresaId,
+          sedeId: args.sedeId ?? null,
+          userId: notificationUserId,
+          actionUrl: '/dashboard/crm',
+          actionLabel: 'Abrir CRM',
+        },
+      })
+    }
+  }
+
+  if (!conversation || !message) {
+    return { lead, contact, conversation: null, message: null, capture, isFirstTouch: identity.isFirstTouch }
+  }
+
+  return {
+    lead,
+    contact,
+    conversation,
+    message,
+    capture,
+    isFirstTouch: identity.isFirstTouch,
+  }
 }
 
 export async function createConversationMessageEvent(args: {

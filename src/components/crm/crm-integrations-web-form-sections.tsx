@@ -1,6 +1,6 @@
 "use client"
 
-import type { Dispatch, SetStateAction } from 'react'
+import { useState, type Dispatch, type SetStateAction } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,6 +12,7 @@ import { CrmIntegrationsWebFormPurposeSection } from '@/components/crm/crm-integ
 import { CrmIntegrationsBookingSection } from '@/components/crm/crm-integrations-booking-section'
 import { CrmIntegrationsResponseEmailSection } from '@/components/crm/crm-integrations-response-email-section'
 import { getWebFormPurposeLabel, type WebFormPurposeFormState } from '@/lib/crm-web-form-purpose'
+import { parseWebFormOptionList, resolveWebFormOptionsDraftValue, serializeWebFormOptionList } from '@/lib/crm-web-form-options'
 import type { BookingSettingsFormState } from '@/lib/crm-booking-settings'
 import type { CrmResponseEmailFormState } from '@/lib/crm-response-email'
 
@@ -128,6 +129,38 @@ type Props<TForm extends WebFormSectionsForm, TWizardForm extends WizardWebFormS
   makeDemoToken?: () => string
   channelStatusOptions?: string[]
   isOutgoingWebhookBridge?: (kind: string) => boolean
+}
+
+type WebFormOptionsInputProps = {
+  fieldId: string
+  options: string[]
+  onOptionsChange: (options: string[]) => void
+  placeholder?: string
+}
+
+/**
+ * Editor de opciones para campos select/radio.
+ * Mantiene un borrador de texto libre para no destruir comas ni espacios
+ * mientras el usuario escribe; las opciones parseadas se propagan al formulario.
+ */
+function WebFormOptionsInput(props: WebFormOptionsInputProps) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const value = resolveWebFormOptionsDraftValue(draft, props.options)
+
+  return (
+    <Input
+      value={value}
+      onChange={(event) => {
+        const nextDraft = event.target.value
+        setDraft(nextDraft)
+        props.onOptionsChange(parseWebFormOptionList(nextDraft))
+      }}
+      onBlur={() => setDraft((current) => (current === null ? null : serializeWebFormOptionList(parseWebFormOptionList(current))))}
+      className="h-11 rounded-xl"
+      placeholder={props.placeholder}
+      data-field-id={props.fieldId}
+    />
+  )
 }
 
 export function CrmIntegrationsWebFormSections<TForm extends WebFormSectionsForm, TWizardForm extends WizardWebFormState>(props: Props<TForm, TWizardForm>) {
@@ -454,7 +487,12 @@ export function CrmIntegrationsWebFormSections<TForm extends WebFormSectionsForm
                   {field.type === 'select' || field.type === 'radio' ? (
                     <div className="grid gap-2 md:col-span-2">
                       <Label>Opciones</Label>
-                      <Input value={field.options.join(', ')} onChange={(e) => props.updateField(field.id, { options: e.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} className="h-11 rounded-xl" placeholder="Opción 1, Opción 2" />
+                      <WebFormOptionsInput
+                        fieldId={field.id}
+                        options={field.options}
+                        onOptionsChange={(options) => props.updateField(field.id, { options })}
+                        placeholder="Opción 1, Opción 2"
+                      />
                       <p className="text-xs leading-5 text-slate-500">Separa cada opción con una coma. Se muestran como lista desplegable o radios según el tipo.</p>
                     </div>
                   ) : null}

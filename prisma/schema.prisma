@@ -66,10 +66,12 @@ model User {
   workOrderEvents WorkOrderEvent[] @relation("WorkOrderEventCreatedBy")
   crmLeadsOwned CrmLead[] @relation("CrmLeadOwner")
   crmLeadsCreated CrmLead[] @relation("CrmLeadCreatedBy")
+  crmLeadsAssignedBy CrmLead[] @relation("CrmLeadAssignedBy")
   crmOpportunitiesAssigned CrmOpportunity[] @relation("CrmOpportunityAssignedTo")
   crmOpportunitiesCreated CrmOpportunity[] @relation("CrmOpportunityCreatedBy")
   crmActivitiesCreated CrmActivity[] @relation("CrmActivityCreatedBy")
   crmContactsCreated CrmContact[] @relation("CrmContactCreatedBy")
+  crmContactsOwned CrmContact[] @relation("CrmContactOwner")
   crmTasksAssigned CrmTask[] @relation("CrmTaskAssignedTo")
   crmTasksCreated CrmTask[] @relation("CrmTaskCreatedBy")
   crmTaskWorkspacesCreated CrmTaskWorkspace[] @relation("CrmTaskWorkspaceCreatedBy")
@@ -863,6 +865,15 @@ model Empresa {
   crmConversations     CrmConversation[]
   crmMessages          CrmMessage[]
   crmLeadCaptures      CrmLeadCapture[]
+  crmScoringSettings   CrmScoringSettings?
+  crmScoringRules      CrmScoringRule[]
+  crmLeadScoreEvents   CrmLeadScoreEvent[]
+  crmAssignmentRules   CrmAssignmentRule[]
+  crmContactConsents   CrmContactConsent[]
+  crmPipelines         CrmPipeline[]
+  crmSequences         CrmSequence[]
+  crmSequenceEnrollments CrmSequenceEnrollment[]
+  crmSequenceSends     CrmSequenceSend[]
   crmMarketingConnections CrmMarketingConnection[]
   crmAdCampaignDailyMetrics CrmAdCampaignDailyMetric[]
   crmAdEntityDailyMetrics CrmAdEntityDailyMetric[]
@@ -2809,6 +2820,36 @@ enum CrmLeadSource {
   LLAMADA
   IMPORT
   OTRO
+  GOOGLE_ADS
+  META_ADS
+  LANDING_PAGE
+  API
+  EVENTO
+  ORGANICO
+}
+
+/// Ciclo de vida del registro de captación (independiente del status histórico del embudo).
+enum CrmLeadLifecycleStatus {
+  NEW
+  PENDING_REVIEW
+  NURTURING
+  QUALIFIED
+  SALES_ASSIGNED
+  CONVERTED
+  DISCARDED
+  DO_NOT_CONTACT
+}
+
+enum CrmLeadScoreBand {
+  COLD
+  WARM
+  HOT
+}
+
+enum CrmContactStatus {
+  ACTIVE
+  INACTIVE
+  DO_NOT_CONTACT
 }
 
 enum CrmOpportunityStage {
@@ -2943,6 +2984,56 @@ enum CrmLeadCaptureType {
   MANUAL_IMPORT
 }
 
+/// Hechos de negocio que alimentan la puntuación del lead.
+enum CrmScoreEventType {
+  DOCUMENT_DOWNLOAD
+  EMAIL_OPEN
+  LINK_CLICK
+  SERVICE_PAGE_VISIT
+  INFO_REQUEST
+  QUOTE_REQUEST
+  MEETING_BOOKED
+  MANUAL_ADJUSTMENT
+}
+
+enum CrmContactChannel {
+  EMAIL
+  WHATSAPP
+  SMS
+  CALL
+}
+
+enum CrmConsentStatus {
+  UNKNOWN
+  GRANTED
+  REVOKED
+}
+
+enum CrmSequenceStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum CrmSequenceStepKind {
+  EMAIL
+  WHATSAPP
+  TASK
+  WAIT
+  WEBHOOK
+}
+
+enum CrmEnrollmentStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  STOPPED_OPT_OUT
+  STOPPED_CONVERTED
+  STOPPED_REPLY
+  CANCELLED
+}
+
 model CrmLead {
   id String @id @default(cuid())
 
@@ -2966,6 +3057,35 @@ model CrmLead {
   tags          String[] @default([])
   notes         String?  @db.Text
 
+  // Identidad y ciclo de vida de captación (captación de leads)
+  contactId String?
+  contact   CrmContact? @relation("CrmLeadContact", fields: [contactId], references: [id], onDelete: SetNull)
+
+  lifecycleStatus CrmLeadLifecycleStatus @default(NEW)
+
+  assignedAt           DateTime?
+  assignedByUserId     String?
+  assignedByUser       User?     @relation("CrmLeadAssignedBy", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+  nurtureStartedAt     DateTime?
+  discardedAt          DateTime?
+  discardReason        String?   @db.Text
+  noContactRequestedAt DateTime?
+
+  score          Int              @default(0)
+  scoreBand      CrmLeadScoreBand @default(COLD)
+  scoreUpdatedAt DateTime?
+
+  // Origen consultable (denormalizado desde CrmLeadCapture)
+  serviceInterest String?
+  sourceKey       String?
+  sourceLabel     String?
+  campaignName    String?
+  formId          String?
+  formName        String?
+
+  firstTouchAt  DateTime?
+  lastCaptureAt DateTime?
+
   ownerUserId String?
   ownerUser   User?   @relation("CrmLeadOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
 
@@ -2979,11 +3099,13 @@ model CrmLead {
   lastActivityAt DateTime?
 
   opportunities CrmOpportunity[]
-  contacts      CrmContact[]
+  contacts      CrmContact[] @relation("CrmContactLeadLegacy")
   activities    CrmActivity[]
   tasks         CrmTask[]
   conversations CrmConversation[]
   captures      CrmLeadCapture[]
+  scoreEvents   CrmLeadScoreEvent[]
+  sequenceEnrollments CrmSequenceEnrollment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2992,6 +3114,16 @@ model CrmLead {
   @@index([empresaId, sedeId, status])
   @@index([ownerUserId])
   @@index([convertedClienteId])
+  @@index([empresaId, lifecycleStatus, createdAt])
+  @@index([empresaId, ownerUserId, lifecycleStatus])
+  @@index([empresaId, contactId, createdAt])
+  @@index([empresaId, scoreBand, score])
+  @@index([empresaId, formId, createdAt])
+  @@index([empresaId, campaignName, createdAt])
+  @@index([empresaId, serviceInterest, createdAt])
+  @@index([empresaId, lastCaptureAt])
+  @@index([empresaId, email])
+  @@index([empresaId, telefono])
   @@map("crm_leads")
 }
 
@@ -3024,31 +3156,70 @@ model CrmContact {
   sede   Sede?   @relation(fields: [sedeId], references: [id], onDelete: SetNull)
 
   leadId String?
-  lead   CrmLead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  lead   CrmLead? @relation("CrmContactLeadLegacy", fields: [leadId], references: [id], onDelete: SetNull)
 
   clienteId String?
   cliente   Cliente? @relation("CrmContactCliente", fields: [clienteId], references: [id], onDelete: SetNull)
 
   nombre   String
+  apellido String?
   email    String?
   telefono String?
   celular  String?
   cargo    String?
   notes    String? @db.Text
 
+  // Identidad comercial (captación de leads)
+  empresaNombre String?
+  documento     String?
+  ciudad        String?
+  departamento  String?
+  pais          String?
+  sitioWeb      String?
+  tags          String[] @default([])
+
+  status      CrmContactStatus @default(ACTIVE)
+  sourceKey   String?
+  sourceLabel String?
+
+  ownerUserId String?
+  ownerUser   User?   @relation("CrmContactOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  emailNormalized   String?
+  phoneNormalized   String?
+  lastInteractionAt DateTime?
+
+  mergedIntoId String?
+  mergedInto   CrmContact?  @relation("CrmContactMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom   CrmContact[] @relation("CrmContactMerge")
+
   isPrimary Boolean @default(false)
 
   createdById String
   createdBy   User   @relation("CrmContactCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
+  leads         CrmLead[] @relation("CrmLeadContact")
+  captures      CrmLeadCapture[]
+  conversations CrmConversation[]
+  opportunities CrmOpportunity[]
+  activities    CrmActivity[]
+  consents      CrmContactConsent[]
+  sequenceEnrollments CrmSequenceEnrollment[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([empresaId, emailNormalized])
   @@index([empresaId, createdAt])
   @@index([leadId])
   @@index([clienteId])
   @@index([leadId, isPrimary])
   @@index([clienteId, isPrimary])
+  @@index([empresaId, phoneNormalized])
+  @@index([empresaId, status, lastInteractionAt])
+  @@index([empresaId, ownerUserId, updatedAt])
+  @@index([empresaId, nombre])
+  @@index([empresaId, documento])
   @@map("crm_contacts")
 }
 
@@ -3067,6 +3238,12 @@ model CrmOpportunity {
 
   leadId String?
   lead   CrmLead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  contactId String?
+  contact   CrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  pipelineId String?
+  pipeline   CrmPipeline? @relation(fields: [pipelineId], references: [id], onDelete: SetNull)
 
   clienteId String?
   cliente   Cliente? @relation("CrmOpportunityCliente", fields: [clienteId], references: [id], onDelete: SetNull)
@@ -3097,6 +3274,8 @@ model CrmOpportunity {
 
   @@index([empresaId, stage, createdAt])
   @@index([empresaId, sedeId, stage])
+  @@index([empresaId, pipelineId, stage])
+  @@index([empresaId, contactId, createdAt])
   @@index([assignedToUserId])
   @@index([leadId])
   @@index([clienteId])
@@ -3125,7 +3304,14 @@ model CrmActivity {
   clienteId String?
   cliente   Cliente? @relation("CrmActivityCliente", fields: [clienteId], references: [id], onDelete: SetNull)
 
+  contactId String?
+  contact   CrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
   occurredAt DateTime @default(now())
+
+  /// Clave de idempotencia del historial: `capture:<id>`, `score:<eventId>`, `assign:<leadId>:<ts>`.
+  eventKey     String?
+  metadataJson Json    @default("{}")
 
   createdById String
   createdBy   User   @relation("CrmActivityCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -3137,6 +3323,8 @@ model CrmActivity {
   @@index([leadId, occurredAt])
   @@index([opportunityId, occurredAt])
   @@index([clienteId, occurredAt])
+  @@index([empresaId, contactId, occurredAt])
+  @@unique([empresaId, eventKey])
   @@map("crm_activities")
 }
 
@@ -3926,6 +4114,9 @@ model CrmConversation {
   leadId String?
   lead   CrmLead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
+  contactId String?
+  contact   CrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
   clienteId String?
   cliente   Cliente? @relation("CrmConversationCliente", fields: [clienteId], references: [id], onDelete: SetNull)
 
@@ -3960,6 +4151,7 @@ model CrmConversation {
 
   @@index([empresaId, status, lastMessageAt])
   @@index([channelConnectionId, status, lastMessageAt])
+  @@index([empresaId, contactId, lastMessageAt])
   @@index([leadId, lastMessageAt])
   @@index([clienteId, lastMessageAt])
   @@index([opportunityId, lastMessageAt])
@@ -4017,6 +4209,9 @@ model CrmLeadCapture {
   leadId String?
   lead   CrmLead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
+  contactId String?
+  contact   CrmContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
   conversationId String?
   conversation   CrmConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
 
@@ -4024,6 +4219,20 @@ model CrmLeadCapture {
   captureType        CrmLeadCaptureType
   rawPayloadJson     Json @default("{}")
   normalizedDataJson Json @default("{}")
+
+  // Origen consultable (formulario, campaña, servicio, recurso entregado)
+  formId          String?
+  formName        String?
+  campaignId      String?
+  campaignName    String?
+  serviceInterest String?
+  resourceLabel   String?
+
+  isFirstTouch    Boolean @default(false)
+  scoreDelta      Int     @default(0)
+  dedupeStrategy  String?
+  consentJson     Json    @default("{}")
+  emailNormalized String?
 
   utmSource   String?
   utmMedium   String?
@@ -4043,7 +4252,265 @@ model CrmLeadCapture {
   @@index([leadId, createdAt])
   @@index([conversationId, createdAt])
   @@index([empresaId, gclid])
+  @@index([empresaId, contactId, createdAt])
+  @@index([empresaId, formId, createdAt])
+  @@index([empresaId, campaignName, createdAt])
+  @@index([empresaId, serviceInterest, createdAt])
+  @@index([empresaId, emailNormalized, createdAt])
   @@map("crm_lead_captures")
+}
+
+model CrmScoringSettings {
+  id String @id @default(cuid())
+
+  empresaId String @unique
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  warmThreshold Int     @default(20)
+  hotThreshold  Int     @default(50)
+  active        Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("crm_scoring_settings")
+}
+
+model CrmScoringRule {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  eventType         CrmScoreEventType
+  points            Int     @default(0)
+  active            Boolean @default(true)
+  oncePerLead       Boolean @default(true)
+  dedupeWindowHours Int     @default(0)
+  maxPerLead        Int?
+  notes             String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, eventType])
+  @@index([empresaId, active])
+  @@map("crm_scoring_rules")
+}
+
+/// Evento de puntuación aplicado. `dedupeKey` es único por lead para no sumar dos veces el mismo hecho.
+model CrmLeadScoreEvent {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  leadId String
+  lead   CrmLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  contactId String?
+  captureId String?
+
+  eventType CrmScoreEventType
+  points    Int
+  dedupeKey String
+
+  metadataJson Json @default("{}")
+  occurredAt   DateTime @default(now())
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@unique([leadId, dedupeKey])
+  @@index([empresaId, occurredAt])
+  @@index([leadId, occurredAt])
+  @@map("crm_lead_score_events")
+}
+
+model CrmAssignmentRule {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  name     String
+  priority Int     @default(100)
+  active   Boolean @default(true)
+
+  /// { sources, formIds, campaignNames, services, sedes, cities, scoreBands, minScore }
+  matchJson Json @default("{}")
+
+  assigneeUserId String?
+  teamId         String?
+  stopOnMatch    Boolean @default(true)
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([empresaId, active, priority])
+  @@map("crm_assignment_rules")
+}
+
+model CrmContactConsent {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  contactId String
+  contact   CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  channel CrmContactChannel
+  status  CrmConsentStatus @default(UNKNOWN)
+
+  source      String?
+  grantedAt   DateTime?
+  revokedAt   DateTime?
+  evidenceJson Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([contactId, channel])
+  @@index([empresaId, channel, status])
+  @@map("crm_contact_consents")
+}
+
+model CrmPipeline {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String? @db.Text
+  isDefault   Boolean @default(false)
+  active      Boolean @default(true)
+
+  /// Etapas propias del embudo: { stages: [{ key, label, color, sortOrder }] }
+  stagesJson Json @default("{}")
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  opportunities CrmOpportunity[]
+
+  @@unique([empresaId, name])
+  @@index([empresaId, isDefault])
+  @@map("crm_pipelines")
+}
+
+model CrmSequence {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String? @db.Text
+  status      CrmSequenceStatus @default(DRAFT)
+
+  /// { sources, formIds, services, scoreBands, campaignNames }
+  triggerJson Json @default("{}")
+
+  stopOnOpportunity Boolean @default(true)
+  stopOnReply       Boolean @default(true)
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  steps       CrmSequenceStep[]
+  enrollments CrmSequenceEnrollment[]
+
+  @@index([empresaId, status])
+  @@map("crm_sequences")
+}
+
+model CrmSequenceStep {
+  id String @id @default(cuid())
+
+  sequenceId String
+  sequence   CrmSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+
+  order      Int
+  kind       CrmSequenceStepKind
+  delayDays  Int                    @default(0)
+  subject    String?
+  bodyHtml   String?                @db.Text
+  templateKey String?
+  taskTitle  String?
+  metadataJson Json                 @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sends CrmSequenceSend[]
+
+  @@unique([sequenceId, order])
+  @@map("crm_sequence_steps")
+}
+
+model CrmSequenceEnrollment {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  sequenceId String
+  sequence   CrmSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+
+  contactId String
+  contact   CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  leadId String?
+  lead   CrmLead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  status           CrmEnrollmentStatus @default(ACTIVE)
+  currentStepOrder Int                 @default(0)
+  nextRunAt        DateTime?
+  startedAt        DateTime            @default(now())
+  completedAt      DateTime?
+  stoppedReason    String?             @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sends CrmSequenceSend[]
+
+  @@unique([sequenceId, contactId])
+  @@index([empresaId, status, nextRunAt])
+  @@index([contactId, status])
+  @@index([leadId, status])
+  @@map("crm_sequence_enrollments")
+}
+
+model CrmSequenceSend {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  enrollmentId String
+  enrollment   CrmSequenceEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  stepId String
+  step   CrmSequenceStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  channel           String
+  status            String
+  recipient         String
+  providerMessageId String?
+  errorMessage      String? @db.Text
+
+  sentAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@unique([enrollmentId, stepId])
+  @@index([empresaId, sentAt])
+  @@map("crm_sequence_sends")
 }
 
 model InternalChatThread {

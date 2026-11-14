@@ -263,6 +263,64 @@ Notas:
 - No dejes `ADMIN_API_KEY` hardcodeada en scripts versionados ni en screenshots operativos.
 - Si Cloudflare queda con proxy activo, el endpoint sigue funcionando igual siempre que el dominio resuelva correctamente y el header llegue intacto.
 
+### Cron de secuencias CRM (cada 15 min)
+
+La captación de leads usa secuencias de nutrición que se ejecutan por HTTP. El endpoint es [src/app/api/cron/crm-sequences/route.ts](src/app/api/cron/crm-sequences/route.ts) y acepta `GET` o `POST`:
+
+- `dryRun=1` (por defecto) → solo calcula, no envía nada.
+- `dryRun=0` → ejecuta un paso por enrolamiento vencido.
+- `limit=N` → máximo de enrolamientos por empresa (1–100, por defecto 25).
+- `empresaId=<id>` → limita la corrida a una empresa (opcional; sin él recorre todas).
+
+Variables necesarias en `.env` del VPS:
+
+- `CRON_SECRET` → `openssl rand -hex 32`
+- `RESEND_API_KEY` y `EMAIL_FROM` → sin ellos los pasos `EMAIL` quedan `FAILED` con el motivo del proveedor
+- `APP_URL` apuntando al dominio público real
+
+`docker-compose.prod.yml` ya inyecta `CRON_SECRET` al contenedor `app`. Aplica el cambio:
+
+- `docker compose -f docker-compose.prod.yml up -d app`
+
+Prueba manual en seco (no envía nada):
+
+- `curl -fsS "https://tu-dominio.com/api/cron/crm-sequences?dryRun=1&limit=25" -H "Authorization: Bearer TU_CRON_SECRET"`
+
+Ejecución real:
+
+- `curl -fsS "https://tu-dominio.com/api/cron/crm-sequences?dryRun=0&limit=25" -H "Authorization: Bearer TU_CRON_SECRET"`
+
+Respuesta esperada: `success: true` con `totals` (`processed`, `sent`, `failed`, `skipped`, `completed`, `stopped`) y un `runs[]` por empresa.
+
+Instalar el cron en el servidor (`crontab -e`), cada 15 minutos:
+
+- `*/15 * * * * /usr/bin/curl -fsS "https://tu-dominio.com/api/cron/crm-sequences?dryRun=0&limit=25" -H "Authorization: Bearer TU_CRON_SECRET" >> /var/log/sgdigital-crm-sequences.log 2>&1`
+
+Verificación operativa:
+
+- `crontab -l`
+- `tail -n 50 /var/log/sgdigital-crm-sequences.log`
+- `docker compose -f docker-compose.prod.yml logs --tail=100 app`
+- En la app: `/dashboard/crm/secuencias` muestra cada secuencia y sus pasos; `/dashboard/crm/leads` muestra el historial con las actividades `sequence:…`.
+
+Notas:
+
+- Si `CRON_SECRET` falta en el contenedor, el endpoint solo responde a un Super Admin autenticado (401 para el cron).
+- Cada corrida ejecuta **un** paso por enrolamiento y reprograma el siguiente; es seguro correrlo con frecuencia.
+- Un contacto `DO_NOT_CONTACT`, con consentimiento `REVOKED` o ya convertido en oportunidad detiene el enrolamiento automáticamente.
+
+### Backfill de contactos CRM (una sola vez tras migrar)
+
+Las migraciones M1–M9 se aplican solas al recrear el stack (servicio `migrate`). Después conviene enlazar los leads históricos con su contacto canónico:
+
+- Seco: `docker compose -f docker-compose.prod.yml exec -T app npm run backfill:crm-contacts -- --dry-run`
+- Real: `docker compose -f docker-compose.prod.yml exec -T app npm run backfill:crm-contacts`
+- Por empresa: añade `-- --empresa=<empresaId> --batch=200`
+- Parcial para probar: añade `--limit=50`
+
+El script es idempotente, no borra nada y reporta cuántos contactos creó/reutilizó y cuántos hijos enlazó.
+
+
 ### Fallback si Prisma se bloquea por drift histórico
 
 Si `npx prisma migrate deploy` falla porque existen migraciones antiguas modificadas o drift heredado, no hagas reset del schema. Aplica primero el SQL idempotente del snapshot:

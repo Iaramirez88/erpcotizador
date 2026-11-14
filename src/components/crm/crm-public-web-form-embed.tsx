@@ -557,15 +557,6 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
                     <span style={{ fontWeight: 700 }}>{result.reward.status === 'SENT' ? 'Regalo enviado' : 'Tu regalo está listo'}</span>
                     <span style={{ color: '#166534', fontSize: 13, lineHeight: 1.5 }}>{result.reward.message}</span>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      <a
-                        href={result.reward.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        download={result.reward.type === 'PDF' ? true : undefined}
-                        style={{ display: 'inline-flex', alignItems: 'center', borderRadius: `${props.inputRadius}px`, background: `linear-gradient(135deg, ${props.ctaColor}, ${props.accentColor})`, color: props.ctaTextColor, fontWeight: 700, padding: '10px 14px', textDecoration: 'none' }}
-                      >
-                        {result.reward.label || 'Descargar regalo'}
-                      </a>
                       {result.reward.supportUrl ? (
                         <a
                           href={result.reward.supportUrl}

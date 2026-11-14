@@ -454,3 +454,18 @@ Actualizar este documento cada vez que ocurra uno de estos hitos:
 - se abra una línea nueva que afecte revenue, automatización o integración CRM-ERP
 
 La intención no es usar este archivo como lista infinita de ideas, sino como **mapa de madurez comercial del CRM**.
+
+## Actualización 2026-11-13 — captación de leads (FASE 3–7)
+
+El CRM ya opera el loop de captación de punta a punta:
+
+- **Contacto canónico + lead + captura** sin abrir conversación en formularios, agenda e importaciones (FASE 3).
+- **Bandeja de leads** con vistas, filtros, paginación, panel de detalle e historial unificado; directorio de contactos con fusión y consentimientos (FASE 4).
+- **Scoring configurable** por evento (idempotente) y **asignación por reglas** con reparto por carga de equipo (FASE 5).
+- **Secuencias de nutrición** con paradas por opt-out/conversión y ejecución programada vía cron (FASE 6).
+- **Pipelines múltiples** a nivel de API/modelo; falta el selector visual en el dashboard (FASE 7, parcial).
+
+Detalle técnico y validaciones: `CRM-CAPTACION-LEADS-ARQUITECTURA.md` §23.3–§23.7.
+Pruebas: `npm run test:crm-captacion`.
+
+

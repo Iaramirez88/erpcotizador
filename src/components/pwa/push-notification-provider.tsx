@@ -15,6 +15,7 @@ import {
   syncExistingSubscription,
 } from '@/lib/push-notification-client'
 import { normalizeBrowserPushSubscription } from '@/lib/push-subscription'
+import { isPublicEmbedPath } from '@/lib/public-embed-paths'
 
 export function PushNotificationProvider() {
   const [supported, setSupported] = useState(false)
@@ -28,6 +29,7 @@ export function PushNotificationProvider() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (isPublicEmbedPath(window.location.pathname)) return
     if (!isPushSupported()) return
 
     setSupported(true)

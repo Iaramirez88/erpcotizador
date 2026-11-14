@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from 'next/navigation'
 import { dispatchNotificationReceivedEvent } from '@/lib/notification-browser-events';
+import { isPublicEmbedPath } from '@/lib/public-embed-paths'
 import { syncAppBadge } from '@/lib/app-badge'
 import type { RealtimeNotificationPayload } from '@/lib/notification-realtime';
 import { isPermissionSyncActionUrl } from '@/lib/rbac-permission-sync'
@@ -24,7 +25,7 @@ export function NotificationToastBridge() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.EventSource === 'undefined') return
-    if (window.location.pathname.startsWith('/chatbot/')) return
+    if (isPublicEmbedPath(window.location.pathname)) return
 
     const stream = new window.EventSource('/api/notificaciones/stream')
 

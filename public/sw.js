@@ -56,6 +56,7 @@ function isPublicEmbedPath(pathname) {
   return pathname.startsWith('/chatbot/')
     || pathname.startsWith('/form/')
     || pathname.startsWith('/booking/')
+    || pathname.startsWith('/sites/')
 }
 
 async function networkFirstNavigation(request) {

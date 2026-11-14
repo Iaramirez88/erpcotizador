@@ -1,4 +1,4 @@
-import { AccessLevel, Prisma, ModuleKey } from '@prisma/client'
+import { AccessLevel, Prisma } from '@prisma/client'
 import { NextResponse } from 'next/server'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess, normalizeString } from '@/lib/crm'
@@ -85,8 +85,8 @@ export async function POST(request: Request, context: RouteContext) {
           empresaId: access.empresaId,
           sedeId: channel.sedeId,
           createdById: access.userId,
-          ownerUserId: access.userId,
           channelConnectionId: channel.id,
+          createConversation: false,
           source: 'IMPORT',
           captureType: 'MANUAL_IMPORT',
           activityType: 'NOTE',
@@ -155,13 +155,6 @@ export async function POST(request: Request, context: RouteContext) {
             })
             opportunityId = createdOpportunity.id
             summary.opportunitiesCreated += 1
-
-            if (!artifacts.conversation.opportunityId) {
-              await tx.crmConversation.update({
-                where: { id: artifacts.conversation.id },
-                data: { opportunityId: createdOpportunity.id },
-              })
-            }
           } else {
             opportunityId = existing.id
           }
@@ -171,7 +164,6 @@ export async function POST(request: Request, context: RouteContext) {
         summary.items.push({
           rowNumber: row.rowNumber,
           leadId: artifacts.lead.id,
-          conversationId: artifacts.conversation.id,
           opportunityId,
           status: 'imported',
         })

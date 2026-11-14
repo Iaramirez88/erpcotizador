@@ -67,6 +67,7 @@ export function CrmIntegrationsWebFormPurposeSection(props: Props) {
             <p className="text-sm font-semibold text-slate-900">Regalo por reciprocidad</p>
             <p className="mt-1 text-xs leading-5 text-slate-600">Configura el PDF o link y el canal por el que se entregará automáticamente.</p>
           </div>
+          <div className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-xs leading-5 text-slate-600">El regalo se entrega automáticamente por correo o WhatsApp después de enviar el formulario. No se muestra un botón de descarga dentro del formulario; el texto del botón se usa en el correo de entrega.</div>
 
           {!form.incentiveRewardUrl.trim() ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">
@@ -99,11 +100,12 @@ export function CrmIntegrationsWebFormPurposeSection(props: Props) {
             <div className="grid gap-2 md:col-span-2">
               <Label>URL del PDF o link de acceso</Label>
               <Input value={form.incentiveRewardUrl} onChange={(e) => patchForm({ incentiveRewardUrl: e.target.value })} className="h-11 rounded-xl bg-white" placeholder="https://tu-dominio.com/recursos/guia.pdf" />
-              <p className="text-xs leading-5 text-slate-500">Acepta URLs absolutas o rutas relativas de este mismo dominio, por ejemplo /recursos/guia.pdf.</p>
+              <p className="text-xs leading-5 text-slate-500">Acepta URLs absolutas o rutas relativas, por ejemplo /recursos/guia.pdf. Si usas un archivo de tu Drive, se entrega a través de un enlace público firmado.</p>
             </div>
             <div className="grid gap-2">
-              <Label>Texto del botón del regalo</Label>
+              <Label>Texto del botón en el correo</Label>
               <Input value={form.incentiveRewardLabel} onChange={(e) => patchForm({ incentiveRewardLabel: e.target.value })} className="h-11 rounded-xl bg-white" />
+              <p className="text-xs leading-5 text-slate-500">Se usa como texto del botón en el correo de entrega (y en el mensaje de reclamo por WhatsApp).</p>
             </div>
             <div className="grid gap-2">
               <Label>WhatsApp de soporte (opcional)</Label>

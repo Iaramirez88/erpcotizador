@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { createInboundArtifacts, getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
+import { getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
+import { recordLeadCapture } from '@/lib/crm-lead-capture'
 import { normalizeString } from '@/lib/crm'
 import { extractHostFromUrl, getPublicWebFormSettings, getReferrerHost, getRequestHost, isPublicWebFormDomainAllowed } from '@/lib/crm-public-web-form'
 import { normalizeWebFormCouponCode } from '@/lib/crm-web-form-purpose'
+import { buildPublicCrmFileRewardUrl } from '@/lib/crm-public-file-link'
+import { getRequestBaseUrl } from '@/lib/app-url'
 import { dispatchWebFormReward, resolveWebFormRewardDelivery } from '@/lib/crm-web-form-reward'
 import { sendEmail } from '@/lib/email'
 import { getCrmResponseEmailSettings, renderCrmResponseEmail } from '@/lib/crm-response-email'
@@ -191,7 +194,17 @@ export async function POST(request: Request) {
     }
 
     const purposeConfig = publicSettings.purpose
-    const rewardUrl = resolvePublicDestination(purposeConfig.incentive.rewardUrl, request.url)
+    const rewardUrlBase = resolvePublicDestination(purposeConfig.incentive.rewardUrl, request.url)
+    const rewardShareSecret = process.env.SHARE_TOKEN_SECRET || process.env.NEXTAUTH_SECRET
+    const rewardUrl = rewardUrlBase && rewardShareSecret
+      ? buildPublicCrmFileRewardUrl({
+          rewardUrl: rewardUrlBase,
+          empresaId: channel.empresaId,
+          rewardType: purposeConfig.incentive.rewardType,
+          secret: rewardShareSecret,
+          baseUrl: getRequestBaseUrl(request),
+        })
+      : rewardUrlBase
     const rewardAvailable = purposeConfig.purpose === 'INCENTIVE' && Boolean(rewardUrl)
     const rewardDelivery = resolveWebFormRewardDelivery(purposeConfig.incentive.deliveryMode, body.rewardDelivery)
     const couponCode = normalizeWebFormCouponCode(body.couponCode || payload.couponCode)
@@ -251,17 +264,16 @@ export async function POST(request: Request) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const artifacts = await createInboundArtifacts({
+      const artifacts = await recordLeadCapture({
         client: tx,
         empresaId: channel.empresaId,
         sedeId: channel.sedeId,
         createdById: channel.createdBy.id,
-        ownerUserId: channel.createdBy.id,
         channelConnectionId: channel.id,
         source: 'WEB',
         captureType: 'WEB_FORM',
         activityType: 'NOTE',
-        messageType: 'FORM_SUBMISSION',
+        formPurpose: purposeConfig.purpose,
         eventAt,
         nombre,
         empresaNombre,
@@ -271,10 +283,15 @@ export async function POST(request: Request) {
         ciudad,
         messageText,
         tags: leadTags,
-        sourceLabel: 'Formulario web',
-        sourceCampaign: utmCampaign || (coupon ? `cupon-${coupon.code.toLowerCase()}` : null),
-        sourceMedium: utmMedium || 'web-form',
-        sourceContent: utmContent || (coupon ? coupon.code : null),
+        origin: {
+          sourceKey: 'WEB_FORM',
+          sourceLabel: 'Formulario web',
+          serviceInterest: product || null,
+          campaignName: utmCampaign || (coupon ? `cupon-${coupon.code.toLowerCase()}` : null),
+          formId: channel.id,
+          formName: channel.name,
+          resourceLabel: rewardAvailable ? purposeConfig.incentive.rewardLabel : null,
+        },
         utmSource,
         utmMedium,
         utmCampaign,
@@ -284,7 +301,12 @@ export async function POST(request: Request) {
         landingPageUrl,
         referrerUrl,
         rawPayloadJson: safeRawPayload as Prisma.InputJsonValue,
-        normalizedDataJson: normalizedDataPayload,
+        normalizedDataJson: normalizedDataPayload as Prisma.InputJsonValue,
+        consentJson: {
+          termsAccepted: Boolean(body.termsAccepted ?? payload.termsAccepted),
+          capturedAt: eventAt.toISOString(),
+          landingPageUrl,
+        },
       })
 
       await tx.crmChannelConnection.update({
@@ -294,6 +316,13 @@ export async function POST(request: Request) {
 
       return artifacts
     })
+
+    // La traza de deduplicación la escribe el motor de captura; si más adelante
+    // se amplía `normalizedDataJson` (regalo/correo), hay que conservarla.
+    const captureDedupeTrace = (() => {
+      const stored = parseJsonObject(result.capture.normalizedDataJson)
+      return stored.dedupe ? { dedupe: stored.dedupe } : {}
+    })()
 
     let rewardResult: {
       type: string
@@ -349,6 +378,7 @@ export async function POST(request: Request) {
           data: {
             normalizedDataJson: {
               ...normalizedDataPayload,
+              ...captureDedupeTrace,
               rewardDelivery: {
                 delivery: dispatch.delivery,
                 status: dispatch.status,
@@ -399,6 +429,7 @@ export async function POST(request: Request) {
           data: {
             normalizedDataJson: {
               ...normalizedDataPayload,
+              ...captureDedupeTrace,
               ...(rewardResult
                 ? {
                     rewardDelivery: {
@@ -421,8 +452,9 @@ export async function POST(request: Request) {
       success: true,
       data: {
         leadId: result.lead.id,
-        conversationId: result.conversation.id,
-        messageId: result.message.id,
+        contactId: result.contact.id,
+        conversationId: null,
+        messageId: null,
         captureId: result.capture.id,
         testing: channel.status === 'TESTING',
         purpose: purposeConfig.purpose,

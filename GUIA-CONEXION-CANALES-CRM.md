@@ -307,14 +307,17 @@ La respuesta incluye `startsAt`, `endsAt`, `durationMinutes`, `timezoneLabel`, `
 
 ### 6.8 Vistas y filtros del calendario interno
 
-El modulo de agenda del CRM permite personalizar el espacio de trabajo:
+El modulo de agenda del CRM concentra la configuracion de la vista en un unico boton **Filtros y vista** (con contador de filtros activos), ubicado junto al buscador. El panel agrupa:
 
-1. Vistas de calendario: dia (por horas), semana, mes y trimestre.
-2. Formatos: calendario (Event-Based), tarjetas tipo kanban (Task-Based) y lista cronologica de agenda.
-3. Rango de fechas con campos Desde/Hasta y atajos: Hoy, 7 dias, Este mes, Trimestre y 6 meses.
-4. Filtro por estado: abiertas y cerradas (completadas o canceladas), con contadores y leyenda.
-5. Busqueda por titulo, prospecto, cliente o responsable.
-6. Indicadores de abiertas totales, vencidas, de hoy y del filtro actual.
+1. **Tipo de calendario**: calendario (Event-Based), tarjetas tipo kanban (Task-Based) y agenda (lista cronologica).
+2. **Tipo de fecha**: dia (por horas), semana, mes, trimestre, semestre y anual. Cada opcion ajusta el periodo visible y el rango de fechas.
+3. **Rango**: campos Desde/Hasta y atajos Hoy, 7 dias y 6 meses.
+4. **Reuniones**: abiertas, cerradas (completadas o canceladas) o todas.
+5. **Calendarios**: seleccion multiple por calendario y accion **Nuevo calendario** dentro del mismo panel.
+6. Accion **Limpiar** para restablecer formato, fecha, rango, estado, busqueda y calendarios.
+
+Debajo del calendario se mantiene una linea compacta de resumen con registros del filtro, abiertas, cerradas, abiertas totales, vencidas, de hoy, rango activo y leyenda de estados. La busqueda por titulo, prospecto, cliente o responsable queda siempre visible como primer control de la barra.
+
 
 ## 7. Chatbot Web
 

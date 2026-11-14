@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation'
+import { CrmLeadsInboxClient } from '@/components/crm/crm-leads-inbox-client'
 
 export default function CrmLeadsPage() {
-  redirect('/dashboard/crm/negociaciones/pipeline')
+  return <CrmLeadsInboxClient />
 }
