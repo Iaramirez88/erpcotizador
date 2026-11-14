@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
+import { attachCaptureConversation, getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
 import { recordLeadCapture } from '@/lib/crm-lead-capture'
 import { normalizeString } from '@/lib/crm'
 import { extractHostFromUrl, getPublicWebFormSettings, getReferrerHost, getRequestHost, isPublicWebFormDomainAllowed } from '@/lib/crm-public-web-form'
@@ -120,6 +120,14 @@ export async function POST(request: Request) {
     }
 
     if (isLikelyAutomatedSubmission(body)) {
+      // Nunca se descarta en silencio: el envío no se registra, así que queda
+      // rastro en el log para poder diagnosticar falsos positivos.
+      const startedAt = Number(body.formStartedAt)
+      console.warn('Envío de formulario web descartado por heurística anti-bot', {
+        channelId,
+        honeypotFilled: Boolean(String(body.website ?? '').trim()),
+        elapsedMs: Number.isFinite(startedAt) && startedAt > 0 ? Date.now() - startedAt : null,
+      })
       return NextResponse.json({ success: true }, { status: 201 })
     }
 
@@ -317,6 +325,46 @@ export async function POST(request: Request) {
       return artifacts
     })
 
+    // La conversación se abre fuera de la transacción de captura: si el inbox
+    // falla, el lead y la captura ya están guardados y el envío no se pierde.
+    // Los envíos vuelven al inbox omnicanal cuando el canal lo tiene activado
+    // (`createSubmissionConversation`, activo por defecto).
+    let submissionConversation: Awaited<ReturnType<typeof attachCaptureConversation>> | null = null
+    if (purposeConfig.createSubmissionConversation) {
+      try {
+        submissionConversation = await attachCaptureConversation({
+          client: prisma,
+          empresaId: channel.empresaId,
+          sedeId: channel.sedeId,
+          createdById: channel.createdBy.id,
+          channelConnectionId: channel.id,
+          leadId: result.lead.id,
+          contactId: result.contact.id,
+          nombre,
+          email,
+          phone,
+          messageText,
+          messageType: 'FORM_SUBMISSION',
+          sourceLabel: 'Formulario web',
+          source: 'WEB_FORM',
+          sourceCampaign: utmCampaign || (coupon ? `cupon-${coupon.code.toLowerCase()}` : null),
+          sourceMedium: utmMedium || 'web-form',
+          sourceContent: utmContent || (coupon ? coupon.code : null),
+          assignedToUserId: result.lead.ownerUserId ?? null,
+          eventAt,
+          rawPayloadJson: safeRawPayload as Prisma.InputJsonValue,
+        })
+
+        await prisma.crmLeadCapture.update({
+          where: { id: result.capture.id },
+          data: { conversationId: submissionConversation.conversation.id },
+        })
+      } catch (conversationError) {
+        console.error('No se pudo abrir la conversación del formulario web:', conversationError)
+        submissionConversation = null
+      }
+    }
+
     // La traza de deduplicación la escribe el motor de captura; si más adelante
     // se amplía `normalizedDataJson` (regalo/correo), hay que conservarla.
     const captureDedupeTrace = (() => {
@@ -332,6 +380,7 @@ export async function POST(request: Request) {
       status: string
       message: string
       supportUrl: string | null
+      attachment: 'ATTACHED' | 'LINK_ONLY' | 'NOT_APPLICABLE'
     } | null = null
 
     if (rewardAvailable) {
@@ -344,6 +393,7 @@ export async function POST(request: Request) {
         toPhone: phone,
         rewardType: purposeConfig.incentive.rewardType,
         rewardUrl,
+        attachmentSourceUrl: rewardUrlBase || null,
         rewardLabel: purposeConfig.incentive.rewardLabel,
         emailSubject: purposeConfig.incentive.emailSubject,
         emailMessage: purposeConfig.incentive.emailMessage,
@@ -370,6 +420,7 @@ export async function POST(request: Request) {
         status: dispatch.status,
         message: dispatch.message,
         supportUrl: dispatch.supportUrl,
+        attachment: dispatch.attachment,
       }
 
       try {
@@ -436,6 +487,7 @@ export async function POST(request: Request) {
                       delivery: rewardResult.delivery,
                       status: rewardResult.status,
                       message: rewardResult.message,
+                      attachment: rewardResult.attachment,
                     },
                   }
                 : {}),
@@ -453,8 +505,8 @@ export async function POST(request: Request) {
       data: {
         leadId: result.lead.id,
         contactId: result.contact.id,
-        conversationId: null,
-        messageId: null,
+        conversationId: submissionConversation?.conversation.id ?? null,
+        messageId: submissionConversation?.message.id ?? null,
         captureId: result.capture.id,
         testing: channel.status === 'TESTING',
         purpose: purposeConfig.purpose,

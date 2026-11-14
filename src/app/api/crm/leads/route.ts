@@ -183,10 +183,10 @@ export async function GET(request: Request) {
         : sortKey === 'createdAt'
           ? [{ createdAt: sortDir }]
           : sortKey === 'lastCaptureAt'
-            ? [{ lastCaptureAt: sortDir }, { createdAt: 'desc' }]
+            ? [{ lastCaptureAt: { sort: sortDir, nulls: 'last' } }, { createdAt: 'desc' }]
             : sortKey === 'nombre'
               ? [{ nombre: sortDir }]
-              : [{ lastActivityAt: sortDir }, { createdAt: 'desc' }]
+              : [{ lastActivityAt: { sort: sortDir, nulls: 'last' } }, { createdAt: 'desc' }]
 
     const [total, rows, grouped, unassignedCount] = await Promise.all([
       prisma.crmLead.count({ where }),

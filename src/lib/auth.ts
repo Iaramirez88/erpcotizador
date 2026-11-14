@@ -56,7 +56,6 @@ function sanitizeJwtToken(token: JWT) {
 
   for (const key of Object.keys(token)) {
     if (!allowed.has(key)) {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete (token as Record<string, unknown>)[key]
     }
   }
@@ -66,7 +65,6 @@ function sanitizeJwtToken(token: JWT) {
   for (const key of Object.keys(token)) {
     const value = (token as Record<string, unknown>)[key]
     if (typeof value === "string" && value.length > 1024) {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete (token as Record<string, unknown>)[key]
     }
   }
@@ -76,7 +74,6 @@ function sanitizeJwtToken(token: JWT) {
 
 export const authOptions: NextAuthConfig = {
   // Adapter de Prisma para guardar sesiones en la BD
-  // @ts-expect-error - PrismaAdapter es compatible pero los tipos difieren
   adapter: PrismaAdapter(prisma),
   
   // Providers de autenticación
@@ -212,7 +209,6 @@ export const authOptions: NextAuthConfig = {
         if (typeof user.email === 'string') token.email = user.email
         // No guardar imagen/avatar en JWT cookie (puede ser muy grande).
         // El callback `session` ya refresca `session.user.image` desde BD.
-        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
         delete (token as Record<string, unknown>).picture
 
         const remember = Boolean((user as unknown as { remember?: boolean }).remember)

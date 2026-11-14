@@ -696,6 +696,124 @@ export async function createInboundArtifacts(
   }
 }
 
+export type CaptureConversationArgs = {
+  client: TxClient
+  empresaId: string
+  sedeId?: string | null
+  createdById: string
+  channelConnectionId: string
+  leadId: string
+  contactId?: string | null
+  nombre?: string | null
+  email?: string | null
+  phone?: string | null
+  messageText?: string | null
+  messageType?: CrmMessageType
+  sourceLabel?: string | null
+  source?: string | null
+  sourceCampaign?: string | null
+  sourceMedium?: string | null
+  sourceContent?: string | null
+  assignedToUserId?: string | null
+  eventAt?: Date
+  rawPayloadJson: Prisma.InputJsonValue
+}
+
+export type CaptureConversationResult = {
+  conversation: CrmConversation
+  message: CrmMessage
+  dedupe: DedupeTrace | null
+}
+
+/**
+ * Abre (o reutiliza) la conversación del inbox omnicanal para una captura que
+ * ya fue registrada sin conversación (`recordLeadCapture`).
+ *
+ * Se usa cuando el formulario web tiene activo `createSubmissionConversation`,
+ * de modo que cada envío vuelva a verse en Conversaciones sin duplicar el
+ * contacto, el lead ni la captura.
+ */
+export async function attachCaptureConversation(
+  args: CaptureConversationArgs,
+): Promise<CaptureConversationResult> {
+  const eventAt = args.eventAt ?? new Date()
+  const assignedToUserId = await resolveInboundAssigneeUserId({
+    client: args.client,
+    empresaId: args.empresaId,
+    sedeId: args.sedeId ?? null,
+    channelConnectionId: args.channelConnectionId,
+    preferredUserId: args.assignedToUserId ?? null,
+  })
+
+  const { conversation, dedupe } = await ensureConversation({
+    client: args.client,
+    empresaId: args.empresaId,
+    sedeId: args.sedeId ?? null,
+    channelConnectionId: args.channelConnectionId,
+    leadId: args.leadId,
+    contactId: args.contactId ?? null,
+    assignedToUserId,
+    contactDisplayName: args.nombre ?? null,
+    contactPhone: args.phone ?? null,
+    contactEmail: args.email ?? null,
+    source: args.source ?? 'WEB_FORM',
+    sourceCampaign: args.sourceCampaign ?? null,
+    sourceMedium: args.sourceMedium ?? null,
+    sourceContent: args.sourceContent ?? null,
+    eventAt,
+  })
+
+  const message = await args.client.crmMessage.create({
+    data: {
+      empresaId: args.empresaId,
+      sedeId: args.sedeId ?? null,
+      conversationId: conversation.id,
+      direction: 'INBOUND',
+      messageType: args.messageType ?? 'FORM_SUBMISSION',
+      status: 'RECEIVED',
+      bodyText: normalizeString(args.messageText) || null,
+      payloadJson: {
+        ...parseJsonObject(args.rawPayloadJson),
+        messageOrigin: 'CUSTOMER',
+        ingestionSource: 'WEB_FORM',
+      },
+      attachmentsJson: [],
+      occurredAt: eventAt,
+    },
+  })
+
+  // Si el lead seguía sin responsable, se hereda el de la conversación para que
+  // el asesor lo vea también en la vista de Leads (alcances OWN/ASSIGNED/TEAM).
+  if (assignedToUserId) {
+    await args.client.crmLead.updateMany({
+      where: { id: args.leadId, ownerUserId: null },
+      data: { ownerUserId: assignedToUserId, assignedAt: eventAt },
+    })
+  }
+
+  const notificationUserId = conversation.assignedToUserId || assignedToUserId || args.createdById
+  if (notificationUserId) {
+    const contactLabel = normalizeString(args.nombre) || conversation.contactDisplayName || 'prospecto'
+    const messagePreview = normalizeString(args.messageText)
+    await args.client.notification.create({
+      data: {
+        type: 'INFO',
+        title: `Nuevo envío de ${contactLabel}`,
+        body: messagePreview
+          ? `${normalizeString(args.sourceLabel) || 'Formulario web'} · ${messagePreview.slice(0, 220)}`
+          : `${normalizeString(args.sourceLabel) || 'Formulario web'} registró un nuevo envío.`,
+        empresaId: args.empresaId,
+        sedeId: args.sedeId ?? null,
+        userId: notificationUserId,
+        actionUrl: '/dashboard/crm/conversations',
+        actionLabel: 'Abrir conversaciones',
+      },
+    })
+  }
+
+  return { conversation, message, dedupe }
+}
+
 export async function createConversationMessageEvent(args: {
   client: TxClient
   empresaId: string

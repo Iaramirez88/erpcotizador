@@ -174,6 +174,22 @@ export function CrmIntegrationsWebFormPurposeSection(props: Props) {
         </div>
       ) : null}
 
+      <div className="space-y-4 rounded-[24px] border border-sky-200 bg-sky-50/40 p-4">
+        <div className="flex flex-col gap-3 rounded-2xl border border-sky-200 bg-white px-4 py-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Mostrar cada envío en Conversaciones</p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Abre (o reutiliza) la conversación del contacto en el inbox omnicanal con un mensaje de envío de formulario.
+              Recomendado: así el asesor ve el envío igual que un mensaje entrante. Si lo desactivas, el envío solo queda como lead y captura.
+            </p>
+          </div>
+          <Switch
+            checked={form.createSubmissionConversation}
+            onCheckedChange={(checked) => patchForm({ createSubmissionConversation: checked })}
+          />
+        </div>
+      </div>
+
       <div className="space-y-4 rounded-[24px] border border-amber-200 bg-amber-50/40 p-4">
         <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-white px-4 py-3 md:flex-row md:items-center md:justify-between">
           <div>

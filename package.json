@@ -32,6 +32,7 @@
     "test:dashboard-access-rbac": "tsx scripts/test-dashboard-access-rbac.ts",
     "test:account-lifecycle": "tsx scripts/test-account-lifecycle.ts",
     "test:crm-captacion": "tsx scripts/test-crm-captacion.ts",
+    "test:crm-web-form-reciprocity": "tsx scripts/test-crm-web-form-reciprocity.ts",
     "decision-engine:snapshot": "tsx scripts/capture-decision-engine-snapshot.ts",
     "decision-engine:schedule-snapshots": "tsx scripts/schedule-decision-engine-snapshots.ts",
     "decision-engine:apply-snapshot-schema": "prisma db execute --file ./scripts/sql/20260804_decision_engine_snapshots.sql --schema ./prisma/schema.prisma",
@@ -80,7 +81,7 @@
     "html-to-image": "^1.11.13",
     "ioredis": "^5.11.1",
     "lucide-react": "^0.561.0",
-    "next": "16.2.1",
+    "next": "16.4.6",
     "next-auth": "^5.0.0-beta.30",
     "papaparse": "^5.5.3",
     "pg": "^8.16.3",
@@ -99,7 +100,35 @@
     "zustand": "^5.0.9"
   },
   "overrides": {
-    "qs": "6.15.0"
+    "qs": "6.15.0",
+    "uuid": "11.1.1",
+    "happy-dom": "21.0.4",
+    "@tiptap/core": "3.34.0",
+    "@tiptap/pm": "3.34.0",
+    "@tiptap/react": "3.34.0",
+    "@tiptap/html": "3.34.0",
+    "@tiptap/extension-blockquote": "3.34.0",
+    "@tiptap/extension-bold": "3.34.0",
+    "@tiptap/extension-bubble-menu": "3.34.0",
+    "@tiptap/extension-code": "3.34.0",
+    "@tiptap/extension-code-block": "3.34.0",
+    "@tiptap/extension-document": "3.34.0",
+    "@tiptap/extension-floating-menu": "3.34.0",
+    "@tiptap/extension-hard-break": "3.34.0",
+    "@tiptap/extension-heading": "3.34.0",
+    "@tiptap/extension-horizontal-rule": "3.34.0",
+    "@tiptap/extension-italic": "3.34.0",
+    "@tiptap/extension-link": "3.34.0",
+    "@tiptap/extension-list": "3.34.0",
+    "@tiptap/extension-paragraph": "3.34.0",
+    "@tiptap/extension-strike": "3.34.0",
+    "@tiptap/extension-text": "3.34.0",
+    "@tiptap/extension-text-align": "3.34.0",
+    "@tiptap/extension-underline": "3.34.0",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "11.0.8"
+    },
+    "eslint-plugin-react-hooks": "7.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

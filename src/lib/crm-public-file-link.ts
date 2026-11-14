@@ -50,7 +50,9 @@ export function buildPublicCrmFileRewardUrl(args: {
   }
 
   const filePath = segments.join('/')
-  const disposition = args.rewardType === 'PDF' ? 'inline' : 'attachment'
+  // El enlace del regalo se comparte por correo o WhatsApp: siempre debe
+  // descargar el archivo, no abrirlo embebido en el dominio.
+  const disposition = 'attachment'
   const token = createCrmFileShareToken({
     empresaId: args.empresaId,
     filePath,

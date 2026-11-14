@@ -6,12 +6,19 @@ export function getResendClient() {
   return new Resend(apiKey)
 }
 
+export type SendEmailAttachment = {
+  filename: string
+  content: Buffer | string
+  contentType?: string
+}
+
 type SendEmailArgs = {
   to: string | string[]
   subject: string
   html: string
   fromName?: string
   replyTo?: string
+  attachments?: SendEmailAttachment[]
 }
 
 function resolveFromAddress(fromName?: string) {
@@ -43,6 +50,15 @@ export async function sendEmail(args: SendEmailArgs) {
     subject: args.subject,
     html: args.html,
     ...(args.replyTo ? { reply_to: args.replyTo } : {}),
+    ...(args.attachments?.length
+      ? {
+          attachments: args.attachments.map((attachment) => ({
+            filename: attachment.filename,
+            content: attachment.content,
+            content_type: attachment.contentType,
+          })),
+        }
+      : {}),
   })
 
   if (error) {

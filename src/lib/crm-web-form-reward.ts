@@ -3,6 +3,7 @@ import { sendEmail } from '@/lib/email'
 import { escapeHtml, renderEmail } from '@/lib/email-template'
 import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppMediaMessage, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
 import type { WebFormRewardDeliveryMode, WebFormRewardType } from '@/lib/crm-web-form-purpose'
+import { loadRewardPdfAttachment, type RewardAttachment } from '@/lib/crm-reward-file'
 import {
   renderCrmResponseEmail,
   resolveCrmResponseEmailText,
@@ -13,11 +14,19 @@ import {
 
 export type WebFormRewardDispatchStatus = 'SENT' | 'FAILED' | 'UNAVAILABLE'
 
+/**
+ * `ATTACHED`: el PDF viajó adjunto en el correo.
+ * `LINK_ONLY`: no se pudo adjuntar y se envió el enlace firmado de descarga.
+ * `NOT_APPLICABLE`: el regalo es un link o se entregó por WhatsApp.
+ */
+export type WebFormRewardAttachmentStatus = 'ATTACHED' | 'LINK_ONLY' | 'NOT_APPLICABLE'
+
 export type WebFormRewardDispatchResult = {
   delivery: 'EMAIL' | 'WHATSAPP'
   status: WebFormRewardDispatchStatus
   message: string
   supportUrl: string | null
+  attachment: WebFormRewardAttachmentStatus
 }
 
 export function resolveWebFormRewardDelivery(mode: WebFormRewardDeliveryMode, requested: unknown): 'EMAIL' | 'WHATSAPP' {
@@ -33,9 +42,13 @@ export function buildWhatsAppSupportUrl(rawNumber: string, message: string) {
 }
 
 async function dispatchRewardByEmail(args: {
+  empresaId: string
   toEmail: string
   contactName: string
+  rewardType: WebFormRewardType
   rewardUrl: string
+  /** URL original del archivo (sin firmar) para leerlo y adjuntarlo. */
+  attachmentSourceUrl?: string | null
   rewardLabel: string
   emailSubject: string
   emailMessage: string
@@ -44,8 +57,34 @@ async function dispatchRewardByEmail(args: {
 }): Promise<WebFormRewardDispatchResult> {
   const to = args.toEmail.trim().toLowerCase()
   if (!to) {
-    return { delivery: 'EMAIL', status: 'UNAVAILABLE', message: 'El visitante no dejó correo electrónico.', supportUrl: null }
+    return {
+      delivery: 'EMAIL',
+      status: 'UNAVAILABLE',
+      message: 'El visitante no dejó correo electrónico.',
+      supportUrl: null,
+      attachment: 'NOT_APPLICABLE',
+    }
   }
+
+  // El regalo llegaba como enlace al dominio y el visitante tenía que abrirlo
+  // en el navegador. Si es un PDF, se adjunta al correo para que lo descargue
+  // directo desde su bandeja; el enlace queda como respaldo.
+  const attachmentResult: { attachment: RewardAttachment | null; reason?: string } = args.rewardType === 'PDF'
+    ? await loadRewardPdfAttachment({
+        rewardUrl: args.attachmentSourceUrl || args.rewardUrl,
+        empresaId: args.empresaId,
+        rewardLabel: args.rewardLabel,
+      }).then((result) => (result.ok ? { attachment: result.attachment } : { attachment: null, reason: result.reason }))
+    : { attachment: null }
+
+  const attachment = attachmentResult.attachment
+  if (args.rewardType === 'PDF' && !attachment && attachmentResult.reason) {
+    console.warn('No se pudo adjuntar el PDF del regalo; se enviará el enlace de descarga:', attachmentResult.reason)
+  }
+
+  const attachmentNote = attachment
+    ? 'Tu archivo va adjunto a este correo. Si no lo encuentras, usa el botón de descarga.'
+    : ''
 
   const variables: CrmResponseEmailVariables = {
     nombre: args.contactName,
@@ -61,7 +100,7 @@ async function dispatchRewardByEmail(args: {
           subject: args.emailSubject,
           title: args.responseEmail.title || args.rewardLabel,
           intro: args.emailMessage || args.responseEmail.intro,
-          bodyText: args.responseEmail.bodyText,
+          bodyText: [args.responseEmail.bodyText, attachmentNote].filter(Boolean).join('\n'),
           ctaLabel: args.rewardLabel,
           ctaUrl: args.rewardUrl,
         },
@@ -75,6 +114,7 @@ async function dispatchRewardByEmail(args: {
     intro: `Hola ${args.contactName || 'cliente'},`,
     bodyHtml: [
       `<p>${escapeHtml(args.emailMessage)}</p>`,
+      attachmentNote ? `<p>${escapeHtml(attachmentNote)}</p>` : '',
       `<p><strong>${escapeHtml(args.rewardLabel)}</strong><br /><a href="${escapeHtml(args.rewardUrl)}">${escapeHtml(args.rewardUrl)}</a></p>`,
     ].join(''),
     cta: { label: args.rewardLabel, href: args.rewardUrl },
@@ -87,12 +127,19 @@ async function dispatchRewardByEmail(args: {
     html,
     fromName: args.responseEmail?.fromName,
     replyTo: args.responseEmail?.replyTo || undefined,
+    ...(attachment ? { attachments: [attachment] } : {}),
   })
   if (!response.ok) {
-    return { delivery: 'EMAIL', status: 'FAILED', message: response.error, supportUrl: null }
+    return { delivery: 'EMAIL', status: 'FAILED', message: response.error, supportUrl: null, attachment: 'NOT_APPLICABLE' }
   }
 
-  return { delivery: 'EMAIL', status: 'SENT', message: `Regalo enviado a ${to}.`, supportUrl: null }
+  return {
+    delivery: 'EMAIL',
+    status: 'SENT',
+    message: attachment ? `Regalo enviado a ${to} con el PDF adjunto.` : `Regalo enviado a ${to} con enlace de descarga.`,
+    supportUrl: null,
+    attachment: attachment ? 'ATTACHED' : args.rewardType === 'PDF' ? 'LINK_ONLY' : 'NOT_APPLICABLE',
+  }
 }
 
 async function dispatchRewardByWhatsApp(args: {
@@ -112,7 +159,13 @@ async function dispatchRewardByWhatsApp(args: {
   )
 
   if (!to) {
-    return { delivery: 'WHATSAPP', status: 'UNAVAILABLE', message: 'El visitante no dejó un número de WhatsApp.', supportUrl }
+    return {
+      delivery: 'WHATSAPP',
+      status: 'UNAVAILABLE',
+      message: 'El visitante no dejó un número de WhatsApp.',
+      supportUrl,
+      attachment: 'NOT_APPLICABLE',
+    }
   }
 
   const channels = await prisma.crmChannelConnection.findMany({
@@ -132,6 +185,7 @@ async function dispatchRewardByWhatsApp(args: {
       status: 'UNAVAILABLE',
       message: 'No hay un canal de WhatsApp Cloud activo para entregar el regalo.',
       supportUrl,
+      attachment: 'NOT_APPLICABLE',
     }
   }
 
@@ -158,13 +212,20 @@ async function dispatchRewardByWhatsApp(args: {
       })
     }
 
-    return { delivery: 'WHATSAPP', status: 'SENT', message: 'Regalo enviado por WhatsApp.', supportUrl }
+    return {
+      delivery: 'WHATSAPP',
+      status: 'SENT',
+      message: 'Regalo enviado por WhatsApp.',
+      supportUrl,
+      attachment: 'NOT_APPLICABLE',
+    }
   } catch (error) {
     return {
       delivery: 'WHATSAPP',
       status: 'FAILED',
       message: error instanceof Error ? error.message : 'No se pudo enviar el regalo por WhatsApp.',
       supportUrl,
+      attachment: 'NOT_APPLICABLE',
     }
   }
 }
@@ -178,6 +239,8 @@ export async function dispatchWebFormReward(args: {
   toPhone: string
   rewardType: WebFormRewardType
   rewardUrl: string
+  /** URL original del archivo (sin firmar) para leerlo y adjuntarlo. */
+  attachmentSourceUrl?: string | null
   rewardLabel: string
   emailSubject: string
   emailMessage: string
@@ -191,9 +254,12 @@ export async function dispatchWebFormReward(args: {
   }
 
   return dispatchRewardByEmail({
+    empresaId: args.empresaId,
     toEmail: args.toEmail,
     contactName: args.contactName,
+    rewardType: args.rewardType,
     rewardUrl: args.rewardUrl,
+    attachmentSourceUrl: args.attachmentSourceUrl,
     rewardLabel: args.rewardLabel,
     emailSubject: args.emailSubject,
     emailMessage: args.emailMessage,

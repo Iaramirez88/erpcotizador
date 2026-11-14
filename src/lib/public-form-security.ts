@@ -229,7 +229,9 @@ export function isLikelyAutomatedSubmission(body: Record<string, unknown>) {
   const startedAt = Number(body.formStartedAt)
   if (!Number.isFinite(startedAt) || startedAt <= 0) return false
   const elapsedMs = Date.now() - startedAt
-  return elapsedMs < 1500 || elapsedMs > 24 * 60 * 60 * 1000
+  // Solo se descarta el envío "instantáneo" (bots). Un formulario abierto
+  // durante horas o días es un envío legítimo y no debe perderse.
+  return elapsedMs >= 0 && elapsedMs < 1500
 }
 
 export function boundedFormString(value: unknown, maxLength: number) {

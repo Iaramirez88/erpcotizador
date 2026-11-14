@@ -1121,6 +1121,15 @@ Cada fase termina con: `npm run typecheck`, `npm run lint` sobre archivos tocado
 
 **Salida:** un formulario crea contacto + lead + captura + actividad, **sin** conversación ni mensaje. WhatsApp/Instagram/Messenger/correo siguen creando conversaciones.
 
+> **Nota (nov-2026):** la separación se mantiene en el motor
+> (`recordLeadCapture` siempre crea la captura sin conversación), pero el envío
+> de formularios web vuelve al inbox omnicanal cuando el canal tiene
+> `createSubmissionConversation` activo (por defecto **sí**). Se implementa con
+> `attachCaptureConversation()` (`src/lib/crm-omnichannel.ts`), que reutiliza
+> `ensureConversation()` + un mensaje `FORM_SUBMISSION` y vincula la captura
+> (`crm_lead_captures.conversationId`). El interruptor vive en la sección
+> "Finalidad del formulario" de CRM → Automatización → Formulario Web.
+
 ### FASE 4 — Módulo de Leads (bandeja y ficha)
 
 **Archivos afectados**

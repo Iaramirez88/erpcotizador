@@ -32,6 +32,12 @@ export type WebFormPurposeFormState = {
   couponQueryParam: string
   couponMessage: string
   couponRedirectUrl: string
+  /**
+   * Cada envío abre (o reutiliza) una conversación en el inbox omnicanal con un
+   * mensaje `FORM_SUBMISSION`. Activado por defecto para que los envíos se vean
+   * en Conversaciones, como ocurría antes de separar captación de conversación.
+   */
+  createSubmissionConversation: boolean
 }
 
 export type WebFormIncentiveConfig = {
@@ -66,6 +72,8 @@ export type WebFormPurposeConfig = {
   incentive: WebFormIncentiveConfig
   redirect: WebFormRedirectConfig
   coupon: WebFormCouponConfig
+  /** Ver `WebFormPurposeFormState.createSubmissionConversation`. */
+  createSubmissionConversation: boolean
 }
 
 export const WEB_FORM_PURPOSE_OPTIONS: WebFormPurposeOption[] = [
@@ -175,6 +183,7 @@ export function getDefaultWebFormPurposeFormState(): WebFormPurposeFormState {
     couponQueryParam: 'cupon',
     couponMessage: 'Guarda este cupón y úsalo en tu próxima compra.',
     couponRedirectUrl: '',
+    createSubmissionConversation: true,
   }
 }
 
@@ -204,6 +213,7 @@ export function getWebFormPurposeFormState(settingsJson: unknown): WebFormPurpos
     couponQueryParam: readString(settings, 'couponQueryParam', defaults.couponQueryParam),
     couponMessage: readString(settings, 'couponMessage', defaults.couponMessage),
     couponRedirectUrl: readString(settings, 'couponRedirectUrl', defaults.couponRedirectUrl),
+    createSubmissionConversation: readBoolean(settings, 'createSubmissionConversation', defaults.createSubmissionConversation),
   }
 }
 
@@ -237,6 +247,7 @@ export function getWebFormPurposeConfig(settingsJson: unknown): WebFormPurposeCo
       message: formState.couponMessage,
       redirectUrl: formState.couponRedirectUrl,
     },
+    createSubmissionConversation: formState.createSubmissionConversation,
   }
 }
 
@@ -264,6 +275,7 @@ export function pickWebFormPurposeFormState(source: Partial<WebFormPurposeFormSt
     couponQueryParam: input.couponQueryParam ?? defaults.couponQueryParam,
     couponMessage: input.couponMessage ?? defaults.couponMessage,
     couponRedirectUrl: input.couponRedirectUrl ?? defaults.couponRedirectUrl,
+    createSubmissionConversation: input.createSubmissionConversation ?? defaults.createSubmissionConversation,
   }
 }
 
