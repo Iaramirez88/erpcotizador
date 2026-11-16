@@ -406,11 +406,27 @@ export function CrmFilesManagerClient({ currentUserId, canViewAllFiles, activeSe
 
   async function handleCopyPublicLink(item: CrmFileItem) {
     if (!item.url) return
+    try {
+      const response = await fetch(`/api/crm/files/public-link?path=${encodeURIComponent(item.path)}`)
+      const json = (await response.json().catch(() => ({}))) as { success?: boolean; data?: { url?: string }; error?: string }
+      if (!json.success || !json.data?.url) {
+        setFeedback(json.error || 'No se pudo generar el enlace público.')
+        return
+      }
+      await navigator.clipboard.writeText(json.data.url)
+      setFeedback('Enlace público copiado. Cualquier persona puede abrirlo sin iniciar sesión.')
+    } catch {
+      setFeedback('No se pudo generar el enlace público.')
+    }
+  }
+
+  async function handleCopyRawFileUrl(item: CrmFileItem) {
+    if (!item.url) return
     const resolvedUrl = item.url.startsWith('http://') || item.url.startsWith('https://')
       ? item.url
       : `${window.location.origin}${item.url}`
     await navigator.clipboard.writeText(resolvedUrl)
-    setFeedback('Enlace público copiado. Pégalo en la URL del regalo del formulario para que el PDF se adjunte al correo y WhatsApp comparta un enlace público.')
+    setFeedback('URL del archivo copiada. Úsala en la URL del regalo del formulario para que el PDF se adjunte al correo.')
   }
 
   function handleDownload(item: CrmFileItem) {
@@ -459,6 +475,10 @@ export function CrmFilesManagerClient({ currentUserId, canViewAllFiles, activeSe
               <DropdownMenuItem onClick={() => void handleCopyPublicLink(item)}>
                 <Copy className="mr-2 h-4 w-4" />
                 Copiar enlace público
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void handleCopyRawFileUrl(item)}>
+                <Copy className="mr-2 h-4 w-4" />
+                Copiar URL del archivo
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => void handleCopyDeepLink(item)}>
                 <Copy className="mr-2 h-4 w-4" />

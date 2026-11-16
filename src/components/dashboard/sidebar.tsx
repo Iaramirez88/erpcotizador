@@ -6,7 +6,7 @@
 "use client"
 
 import Link from "next/link"
-import { Lock, Building2, Home, Briefcase, Store, Boxes, Landmark, BarChart3, Sparkles, Package, Shield, ChefHat, Bot, Funnel, Settings, ReceiptText, LayoutGrid, LifeBuoy } from "lucide-react"
+import { Lock, Building2, Home, Briefcase, Store, Boxes, Landmark, BarChart3, Sparkles, Package, Shield, ChefHat, Bot, Funnel, Settings, ReceiptText, LayoutGrid, LifeBuoy, Workflow } from "lucide-react"
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react"
 import { usePathname, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -81,6 +81,7 @@ const NAV_DESCRIPTION_KEYS: Record<string, string> = {
   '/dashboard/crm/chatbot': 'nav.desc.crmChatbot',
   '/dashboard/crm/archivos': 'nav.desc.crmDrive',
   '/dashboard/crm/integraciones': 'nav.desc.crmAutomation',
+  '/dashboard/crm/workflows': 'nav.desc.workflows',
   '/dashboard/crm/auditoria-ia': 'nav.desc.crmAiAudit',
   '/dashboard/crm/leads': 'nav.desc.crmLeads',
   '/dashboard/crm/oportunidades': 'nav.desc.crmOpportunities',
@@ -536,6 +537,11 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     name: t('nav.crmAutomation'),
     href: "/dashboard/crm/integraciones",
     icon: <Bot className="h-5 w-5" />,
+  },
+  {
+    name: t('nav.workflows'),
+    href: "/dashboard/crm/workflows",
+    icon: <Workflow className="h-5 w-5" />,
   },
   {
     name: t('nav.crmAiAudit'),

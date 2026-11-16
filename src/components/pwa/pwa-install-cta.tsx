@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Download, Share2, Smartphone, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { usePathname } from 'next/navigation'
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>
@@ -81,8 +82,12 @@ export function PwaInstallCta() {
     }
   }, [])
 
+  const pathname = usePathname()
   const isIos = useMemo(() => detectIOS(), [])
-  const canShow = isEligibleDevice && !isInstalled && !dismissed
+  // Los embeds públicos (formulario, chatbot y agenda) son para visitantes finales:
+  // ahí no debe aparecer el aviso de instalación de Ordex, solo el contenido del embed.
+  const isPublicEmbedPage = /^\/(form|chatbot|booking)\//.test(pathname || '')
+  const canShow = isEligibleDevice && !isInstalled && !dismissed && !isPublicEmbedPage
   const isNativeInstallSupported = Boolean(installPromptEvent)
 
   async function handleInstall() {

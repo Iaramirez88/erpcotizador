@@ -68,6 +68,7 @@ export const RBAC_V2_CAPABILITY_CATALOG: RbacV2CapabilityDefinition[] = [
   { domain: 'CAPTACION', subdomain: 'SCORING', actions: ['READ', 'UPDATE', 'CONFIGURE', 'EXECUTE'], recommendedScopes: ['SEDE', 'EMPRESA'] },
   { domain: 'CAPTACION', subdomain: 'ASSIGNMENT_RULES', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'CONFIGURE', 'EXECUTE'], recommendedScopes: ['SEDE', 'EMPRESA'] },
   { domain: 'CAPTACION', subdomain: 'SEQUENCES', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'CONFIGURE', 'EXECUTE'], recommendedScopes: ['SEDE', 'EMPRESA'] },
+  { domain: 'CAPTACION', subdomain: 'WORKFLOWS', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'], recommendedScopes: ['SEDE', 'EMPRESA'] },
   { domain: 'CAPTACION', subdomain: 'PIPELINES', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'CONFIGURE'], recommendedScopes: ['SEDE', 'EMPRESA'] },
 
   { domain: 'VENTAS', subdomain: 'QUOTER', actions: ['READ', 'CREATE', 'UPDATE', 'CONFIGURE'], recommendedScopes: ['OWN', 'SEDE', 'EMPRESA'] },
@@ -113,7 +114,7 @@ export const RBAC_V2_CAPABILITY_CATALOG: RbacV2CapabilityDefinition[] = [
 export const LEGACY_MODULE_TO_RBAC_V2: LegacyModuleMapping[] = [
   { moduleKey: 'DASHBOARD', targets: [{ domain: 'CORE', subdomains: ['DASHBOARD', 'PRODUCT_MAP', 'TEMPLATES'] }] },
   { moduleKey: 'CONFIG', targets: [{ domain: 'CORE', subdomains: ['COMPANY', 'USERS', 'ROLES', 'PLANS', 'WEB_SERVICES'] }] },
-  { moduleKey: 'CRM', targets: [{ domain: 'CAPTACION', subdomains: ['INBOX', 'CHANNELS', 'LEADS', 'OPPORTUNITIES', 'CONTACTS', 'ACTIVITIES', 'AGENDA', 'COMMERCIAL_TASKS', 'SCORING', 'ASSIGNMENT_RULES', 'SEQUENCES', 'PIPELINES'] }, { domain: 'OPERACIONES', subdomains: ['PROJECTS', 'FILES', 'TASK_WORKSPACES'] }, { domain: 'IA', subdomains: ['COMMERCIAL_AI'] }] },
+  { moduleKey: 'CRM', targets: [{ domain: 'CAPTACION', subdomains: ['INBOX', 'CHANNELS', 'LEADS', 'OPPORTUNITIES', 'CONTACTS', 'ACTIVITIES', 'AGENDA', 'COMMERCIAL_TASKS', 'SCORING', 'ASSIGNMENT_RULES', 'SEQUENCES', 'PIPELINES', 'WORKFLOWS'] }, { domain: 'OPERACIONES', subdomains: ['PROJECTS', 'FILES', 'TASK_WORKSPACES'] }, { domain: 'IA', subdomains: ['COMMERCIAL_AI'] }] },
   { moduleKey: 'COTIZADOR', targets: [{ domain: 'VENTAS', subdomains: ['QUOTER'] }, { domain: 'OPERACIONES', subdomains: ['WORK_ORDERS'] }, { domain: 'IA', subdomains: ['OPERATIONAL_AI', 'CREATIVE_AI'] }, { domain: 'VERTICALES', subdomains: ['DOTACIONES'] }] },
   { moduleKey: 'COTIZACIONES', targets: [{ domain: 'VENTAS', subdomains: ['QUOTES'] }] },
   { moduleKey: 'REMISIONES', targets: [{ domain: 'VENTAS', subdomains: ['DELIVERY_NOTES'] }] },

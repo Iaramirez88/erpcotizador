@@ -69,6 +69,7 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/crm/chatbot', label: 'Chatbot', labelKey: 'nav.crmChatbot', section: 'Captación', layer: 'Captación', domain: 'Automatización conversacional', moduleKey: 'CRM' },
   { href: '/dashboard/crm/archivos', label: 'DRIVE', labelKey: 'nav.crmDrive', section: 'Captación', layer: 'Captación', domain: 'Drive comercial', moduleKey: 'CRM' },
   { href: '/dashboard/crm/integraciones', label: 'Automatización', labelKey: 'nav.crmAutomation', section: 'Captación', layer: 'Captación', domain: 'Automatización', moduleKey: 'CRM' },
+  { href: '/dashboard/crm/workflows', label: 'Workflows', labelKey: 'nav.workflows', section: 'Captación', layer: 'Captación', domain: 'Automatización', moduleKey: 'CRM' },
   { href: '/dashboard/crm/leads', label: 'Leads', labelKey: 'nav.crmLeads', section: 'Captación', layer: 'Captación', domain: 'Leads', moduleKey: 'CRM' },
   { href: '/dashboard/crm/contactos', label: 'Contactos', labelKey: 'nav.crmContacts', section: 'Captación', layer: 'Captación', domain: 'Directorio comercial', moduleKey: 'CRM' },
   { href: '/dashboard/crm/scoring', label: 'Puntuación', labelKey: 'nav.crmScoring', section: 'Captación', layer: 'Captación', domain: 'Lead scoring', moduleKey: 'CRM' },

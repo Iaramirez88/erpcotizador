@@ -805,7 +805,7 @@ export async function attachCaptureConversation(
         empresaId: args.empresaId,
         sedeId: args.sedeId ?? null,
         userId: notificationUserId,
-        actionUrl: '/dashboard/crm/conversations',
+        actionUrl: '/dashboard/chat',
         actionLabel: 'Abrir conversaciones',
       },
     })

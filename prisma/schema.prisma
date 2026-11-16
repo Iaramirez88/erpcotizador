@@ -874,6 +874,9 @@ model Empresa {
   crmSequences         CrmSequence[]
   crmSequenceEnrollments CrmSequenceEnrollment[]
   crmSequenceSends     CrmSequenceSend[]
+  workflows            Workflow[]
+  workflowRuns         WorkflowRun[]
+  workflowRunSteps     WorkflowRunStep[]
   crmMarketingConnections CrmMarketingConnection[]
   crmAdCampaignDailyMetrics CrmAdCampaignDailyMetric[]
   crmAdEntityDailyMetrics CrmAdEntityDailyMetric[]
@@ -3024,6 +3027,35 @@ enum CrmSequenceStepKind {
   WEBHOOK
 }
 
+enum WorkflowStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum WorkflowTriggerKind {
+  WEBHOOK
+  CRON
+  MANUAL
+  EVENT
+}
+
+enum WorkflowRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum WorkflowNodeKind {
+  TRIGGER
+  HTTP_REQUEST
+  CONDITION
+  DELAY
+  NOTE
+  ACTION
+}
+
 enum CrmEnrollmentStatus {
   ACTIVE
   PAUSED
@@ -4511,6 +4543,87 @@ model CrmSequenceSend {
   @@unique([enrollmentId, stepId])
   @@index([empresaId, sentAt])
   @@map("crm_sequence_sends")
+}
+
+model Workflow {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?         @db.Text
+  status      WorkflowStatus  @default(DRAFT)
+
+  /// { kind, cronExpression, eventName }
+  triggerJson Json @default("{}")
+  /// { nodes, edges, variables }
+  definitionJson Json @default("{}")
+
+  /// Token público para el webhook entrante.
+  webhookToken String @unique @default(cuid())
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastRunAt   DateTime?
+
+  runs WorkflowRun[]
+
+  @@index([empresaId, status])
+  @@map("workflows")
+}
+
+model WorkflowRun {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  workflowId String
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  status      WorkflowRunStatus  @default(RUNNING)
+  triggerKind WorkflowTriggerKind
+
+  triggerPayloadJson Json @default("{}")
+  outputJson         Json?
+  errorMessage       String? @db.Text
+
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+
+  steps WorkflowRunStep[]
+
+  @@index([empresaId, startedAt])
+  @@index([workflowId, startedAt])
+  @@map("workflow_runs")
+}
+
+model WorkflowRunStep {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  runId String
+  run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  nodeId   String
+  nodeKind WorkflowNodeKind
+  status   String @default("SUCCEEDED")
+
+  inputJson    Json?
+  outputJson   Json?
+  errorMessage String? @db.Text
+  durationMs   Int     @default(0)
+
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+
+  @@index([runId])
+  @@index([empresaId, startedAt])
+  @@map("workflow_run_steps")
 }
 
 model InternalChatThread {

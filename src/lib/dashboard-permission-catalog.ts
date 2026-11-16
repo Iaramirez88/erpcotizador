@@ -99,7 +99,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     moduleKey: ModuleKey.CRM,
     section: 'Captación',
     label: 'Prospectos y clientes',
-    hrefs: ['/dashboard/crm/conversations'],
+    hrefs: ['/dashboard/chat'],
     capabilities: [{ domain: 'CAPTACION', subdomain: 'INBOX' }],
   },
   {
@@ -133,6 +133,14 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     label: 'Automatización',
     hrefs: ['/dashboard/crm/integraciones'],
     capabilities: [{ domain: 'CAPTACION', subdomain: 'CHANNELS' }],
+  },
+  {
+    key: 'CAPTACION.WORKFLOWS',
+    moduleKey: ModuleKey.CRM,
+    section: 'Captación',
+    label: 'Workflows',
+    hrefs: ['/dashboard/crm/workflows'],
+    capabilities: [{ domain: 'CAPTACION', subdomain: 'WORKFLOWS' }],
   },
   {
     key: 'CAPTACION.LEADS',

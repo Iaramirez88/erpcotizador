@@ -130,7 +130,7 @@ export function CrmIntegrationsWebFormPurposeSection(props: Props) {
             <div className="grid gap-2 md:col-span-2">
               <Label>URL del PDF o link de acceso</Label>
               <Input value={form.incentiveRewardUrl} onChange={(e) => patchForm({ incentiveRewardUrl: e.target.value })} className="h-11 rounded-xl bg-white" placeholder="https://tu-dominio.com/recursos/guia.pdf" />
-              <p className="text-xs leading-5 text-slate-500">Para que el PDF se adjunte al correo y WhatsApp envíe un enlace público, pega aquí la URL del archivo de tu Drive (botón “Copiar enlace público”, empieza por /uploads/crm-files/). También aceptas URLs absolutas o rutas relativas de descarga directa.</p>
+              <p className="text-xs leading-5 text-slate-500">Pega aquí la URL del archivo de tu Drive (botón “Copiar URL del archivo”, empieza por /uploads/crm-files/). Así el PDF se adjunta al correo y por WhatsApp se envía un enlace público firmado.</p>
             </div>
             <div className="grid gap-2">
               <Label>Texto del botón en el correo</Label>

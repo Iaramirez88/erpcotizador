@@ -1,5 +1,9 @@
-import { CrmConversationsClient } from '@/components/crm/crm-conversations-client'
+import { redirect } from 'next/navigation'
 
-export default function CrmConversationsPage() {
-  return <CrmConversationsClient />
+/**
+ * Ruta heredada del inbox omnicanal. Se redirige a "Conversaciones" unificadas
+ * (/dashboard/chat) para no competir con la bandeja de Leads.
+ */
+export default function CrmConversationsLegacyPage() {
+  redirect('/dashboard/chat')
 }
