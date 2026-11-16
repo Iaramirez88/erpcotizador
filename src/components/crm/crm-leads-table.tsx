@@ -201,6 +201,9 @@ export function CrmLeadsTable({
               >
                 {LIFECYCLE_LABELS[lead.lifecycleStatus]}
               </span>
+              <span className="inline-flex rounded-full border bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                {lead.originLabel || lead.sourceLabel || lead.source || '—'}
+              </span>
               <span className="text-[11px] text-slate-500">
                 {lead.ownerUser ? lead.ownerUser.name || lead.ownerUser.email : 'Sin responsable'}
               </span>

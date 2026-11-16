@@ -126,13 +126,38 @@ function ensureWebPushConfiguration() {
   return config
 }
 
+function resolveAppBaseUrl(): string {
+  const envUrl =
+    process.env.APP_URL ||
+    process.env.NEXTAUTH_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_BASE_URL
+
+  if (typeof envUrl === 'string' && envUrl.trim()) {
+    const normalized = envUrl.trim().replace(/\/+$/, '')
+    try {
+      const url = new URL(normalized)
+      if (!['localhost', '127.0.0.1', '0.0.0.0'].includes(url.hostname)) return normalized
+    } catch {
+      // Se ignora; se mantiene la URL relativa.
+    }
+  }
+
+  return ''
+}
+
 function buildWebPushMessage(payload: RealtimeNotificationPayload) {
+  const baseUrl = resolveAppBaseUrl()
+  const openPath = buildNotificationOpenPath(payload)
+
   return JSON.stringify({
     id: payload.id,
     type: payload.type,
     title: payload.title,
     body: payload.body,
-    actionUrl: buildNotificationOpenPath(payload),
+    // En producción se envía la URL absoluta (APP_URL) para que el clic en la
+    // notificación no dependa del origen desde el que se registró el service worker.
+    actionUrl: baseUrl ? `${baseUrl}${openPath}` : openPath,
     actionLabel: payload.actionLabel,
     tag: payload.id ? `notification-${payload.id}` : `notification-${payload.userId}`,
     unreadCount: payload.unreadCount ?? 0,

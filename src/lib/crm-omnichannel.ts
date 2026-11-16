@@ -675,8 +675,8 @@ export async function createInboundArtifacts(
           empresaId: args.empresaId,
           sedeId: args.sedeId ?? null,
           userId: notificationUserId,
-          actionUrl: '/dashboard/crm',
-          actionLabel: 'Abrir CRM',
+          actionUrl: '/dashboard/crm/leads',
+          actionLabel: 'Abrir bandeja de leads',
         },
       })
     }
@@ -996,7 +996,7 @@ export async function createConversationMessageEvent(args: {
           empresaId: args.empresaId,
           sedeId: args.sedeId ?? null,
           userId: notificationUserId,
-          actionUrl: '/dashboard/crm',
+          actionUrl: '/dashboard/chat',
           actionLabel: 'Revisar conversación',
         },
       })

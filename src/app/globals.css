@@ -131,6 +131,12 @@ body {
   transition: background-color 160ms ease, color 160ms ease;
 }
 
+/* Embeds públicos del chatbot web: el body debe ser transparente para que el
+   iframe deje ver el fondo del sitio host. */
+body:has(.sgd-chatbot-page) {
+  background: transparent;
+}
+
 html {
   overflow-x: hidden;
 }

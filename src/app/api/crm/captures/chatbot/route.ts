@@ -837,8 +837,8 @@ export async function processChatbotInboundAutomation(args: ChatbotAutomationExe
               empresaId: args.channel.empresaId,
               sedeId: args.channel.sedeId,
               userId,
-              actionUrl: '/dashboard/crm',
-              actionLabel: 'Abrir CRM',
+              actionUrl: '/dashboard/crm/leads',
+              actionLabel: 'Abrir bandeja de leads',
             })),
           })
         }

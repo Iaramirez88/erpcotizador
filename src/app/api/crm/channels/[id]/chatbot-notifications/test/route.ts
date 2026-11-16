@@ -116,8 +116,8 @@ export async function POST(request: Request, context: RouteContext) {
       notificationBodyText: bodyText,
       companyName,
       internalNotificationBody: `Prueba manual ejecutada para ${actionLabel}. Canales: ${selectedChannels.join(', ')}`,
-      internalNotificationActionUrl: '/dashboard/crm',
-      internalNotificationActionLabel: 'Abrir CRM',
+      internalNotificationActionUrl: '/dashboard/crm/leads',
+      internalNotificationActionLabel: 'Abrir bandeja de leads',
     })
 
     return NextResponse.json({

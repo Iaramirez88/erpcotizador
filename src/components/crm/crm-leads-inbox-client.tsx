@@ -1,16 +1,18 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, RefreshCw } from 'lucide-react'
+import { LayoutGrid, List, Plus, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
+import { cn } from '@/lib/utils'
 import {
   CrmLeadsFilters,
   EMPTY_LEADS_FILTERS,
   type CrmLeadsFilterState,
 } from '@/components/crm/crm-leads-filters'
 import { CrmLeadsTable, type CrmLeadsSortKey } from '@/components/crm/crm-leads-table'
+import { CrmLeadsCards } from '@/components/crm/crm-leads-cards'
 import { CrmLeadsViewsTabs } from '@/components/crm/crm-leads-views-tabs'
 import { CrmNegotiationsTabs } from '@/components/crm/crm-negotiations-tabs'
 import { CrmLeadDetailPanel } from '@/components/crm/crm-lead-detail-panel'
@@ -60,6 +62,7 @@ export function CrmLeadsInboxClient() {
   const [showNewLead, setShowNewLead] = useState(false)
   const [creating, setCreating] = useState(false)
   const [newLead, setNewLead] = useState(EMPTY_NEW_LEAD)
+  const [viewMode, setViewMode] = useState<'list' | 'cards'>('list')
 
   const query = useMemo(() => {
     const params = new URLSearchParams()
@@ -176,6 +179,28 @@ export function CrmLeadsInboxClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center overflow-hidden rounded-lg border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={cn(
+                'flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium transition',
+                viewMode === 'list' ? 'bg-slate-100 text-slate-900' : 'bg-white text-slate-500 hover:text-slate-700'
+              )}
+            >
+              <List className="h-3.5 w-3.5" /> Lista
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('cards')}
+              className={cn(
+                'flex items-center gap-1 border-l border-slate-200 px-2.5 py-1.5 text-[11px] font-medium transition',
+                viewMode === 'cards' ? 'bg-slate-100 text-slate-900' : 'bg-white text-slate-500 hover:text-slate-700'
+              )}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" /> Cartas
+            </button>
+          </div>
           <Button size="sm" variant="outline" onClick={() => void loadLeads()} disabled={loading}>
             <RefreshCw className={loading ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} /> Actualizar
           </Button>
@@ -272,19 +297,28 @@ export function CrmLeadsInboxClient() {
 
       <div className="flex flex-col gap-3 xl:flex-row">
         <div className="min-w-0 flex-1 space-y-3">
-          <CrmLeadsTable
-            leads={leads}
-            loading={loading}
-            selectedId={selectedId}
-            sortKey={sortKey}
-            sortDir={sortDir}
-            onSelect={(lead) => setSelectedId(lead.id)}
-            onSortChange={changeSort}
-            onAssign={(lead) => setSelectedId(lead.id)}
-            onStatus={(lead) => setSelectedId(lead.id)}
-            onConvert={(lead) => setSelectedId(lead.id)}
-            onDoNotContact={(lead) => setSelectedId(lead.id)}
-          />
+          {viewMode === 'cards' ? (
+            <CrmLeadsCards
+              leads={leads}
+              loading={loading}
+              selectedId={selectedId}
+              onSelect={(lead) => setSelectedId(lead.id)}
+            />
+          ) : (
+            <CrmLeadsTable
+              leads={leads}
+              loading={loading}
+              selectedId={selectedId}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSelect={(lead) => setSelectedId(lead.id)}
+              onSortChange={changeSort}
+              onAssign={(lead) => setSelectedId(lead.id)}
+              onStatus={(lead) => setSelectedId(lead.id)}
+              onConvert={(lead) => setSelectedId(lead.id)}
+              onDoNotContact={(lead) => setSelectedId(lead.id)}
+            />
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
             <span>

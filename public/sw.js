@@ -27,7 +27,14 @@ function normalizeNavigationUrl(value) {
   if (typeof value !== 'string' || !value.trim()) return '/dashboard/notificaciones'
 
   try {
-    const url = new URL(value, self.location.origin)
+    const trimmed = value.trim()
+    const url = new URL(trimmed, self.location.origin)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '/dashboard/notificaciones'
+
+    // Si el servidor envía una URL absoluta (APP_URL en producción), se abre tal cual,
+    // sin depender del origen desde el que se registró el service worker.
+    if (/^https?:\/\//i.test(trimmed)) return url.toString()
+
     if (url.origin !== self.location.origin) return '/dashboard/notificaciones'
     return `${url.pathname}${url.search}${url.hash}`
   } catch {
