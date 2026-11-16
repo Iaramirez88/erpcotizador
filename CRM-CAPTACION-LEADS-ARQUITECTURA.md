@@ -920,6 +920,7 @@ Reglas de validación (backend, `POST /api/crm/leads/[id]/status`):
 - `src/app/dashboard/crm/contactos/page.tsx` *(nuevo)*: directorio de contactos (fase 3).
 - `src/components/crm/sidebar`/`src/lib/product-architecture.ts`: registrar `nav.crmContacts` en la sección "Captación" y ajustar la etiqueta de `nav.crmLeads` a "Leads" (hoy dice "Captación").
 - `src/lib/i18n/messages.ts`: nuevas claves en **ambos** bloques (es/en) para vistas, filtros, estados, acciones y errores. Validar con `npm run i18n:check`.
+- **Acceso directo desde el pipeline (2026-11)**: `CrmNegotiationsTabs` (`src/components/crm/crm-negotiations-tabs.tsx`) muestra las pestañas Pipeline | Calendario | Actividades y, alineado a la derecha, el botón **“Bandeja de leads”** → `/dashboard/crm/leads`. Como esa barra se renderiza en Pipeline, Calendario, Actividades y en la propia bandeja, el acceso queda visible en todo el flujo comercial sin depender del menú lateral. También se agregó el botón en el encabezado del pipeline (`crm-dashboard-client.tsx`) y en el hero del CRM.
 
 ### 12.2 Composición de componentes (evitar monolitos)
 

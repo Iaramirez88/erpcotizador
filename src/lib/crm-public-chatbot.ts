@@ -285,7 +285,7 @@ export function getPublicChatbotSettings(settingsJson: unknown): PublicChatbotSe
     chatbotPrompt: typeof settings.chatbotPrompt === 'string' && settings.chatbotPrompt.trim() ? settings.chatbotPrompt.trim() : 'Cuéntanos tu proyecto y te contactamos.',
     assistantName: typeof settings.assistantName === 'string' && settings.assistantName.trim() ? settings.assistantName.trim() : 'Asesor virtual SGDigital',
     accentColor: typeof settings.accentColor === 'string' && settings.accentColor.trim() ? settings.accentColor.trim() : '#1d4ed8',
-    pageBackgroundColor: typeof settings.pageBackgroundColor === 'string' && settings.pageBackgroundColor.trim() ? settings.pageBackgroundColor.trim() : '#eef5ff',
+    pageBackgroundColor: typeof settings.pageBackgroundColor === 'string' && settings.pageBackgroundColor.trim() ? settings.pageBackgroundColor.trim() : 'transparent',
     backgroundColor: typeof settings.backgroundColor === 'string' && settings.backgroundColor.trim() ? settings.backgroundColor.trim() : '#f8fbff',
     fontFamily: typeof settings.fontFamily === 'string' && settings.fontFamily.trim() ? settings.fontFamily.trim() : 'ui-sans-serif, system-ui, sans-serif',
     headerBadgeLabel: typeof settings.headerBadgeLabel === 'string' && settings.headerBadgeLabel.trim() ? settings.headerBadgeLabel.trim() : 'Chatbot CRM',

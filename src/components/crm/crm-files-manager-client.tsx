@@ -401,7 +401,16 @@ export function CrmFilesManagerClient({ currentUserId, canViewAllFiles, activeSe
     url.searchParams.set('path', item.directoryPath)
     url.searchParams.set('preview', item.path)
     await navigator.clipboard.writeText(url.toString())
-    setFeedback('Enlace copiado. Abrirá la carpeta y la previsualización del archivo.')
+    setFeedback('Enlace interno copiado. Abrirá la carpeta y la previsualización del archivo.')
+  }
+
+  async function handleCopyPublicLink(item: CrmFileItem) {
+    if (!item.url) return
+    const resolvedUrl = item.url.startsWith('http://') || item.url.startsWith('https://')
+      ? item.url
+      : `${window.location.origin}${item.url}`
+    await navigator.clipboard.writeText(resolvedUrl)
+    setFeedback('Enlace público copiado. Pégalo en la URL del regalo del formulario para que el PDF se adjunte al correo y WhatsApp comparta un enlace público.')
   }
 
   function handleDownload(item: CrmFileItem) {
@@ -446,10 +455,16 @@ export function CrmFilesManagerClient({ currentUserId, canViewAllFiles, activeSe
             Ver
           </DropdownMenuItem>
           {item.url ? (
-            <DropdownMenuItem onClick={() => void handleCopyDeepLink(item)}>
-              <Copy className="mr-2 h-4 w-4" />
-              Copiar enlace
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuItem onClick={() => void handleCopyPublicLink(item)}>
+                <Copy className="mr-2 h-4 w-4" />
+                Copiar enlace público
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void handleCopyDeepLink(item)}>
+                <Copy className="mr-2 h-4 w-4" />
+                Copiar enlace interno
+              </DropdownMenuItem>
+            </>
           ) : null}
           <DropdownMenuItem onClick={() => openShareDialog(item)}>
             <Share2 className="mr-2 h-4 w-4" />
@@ -729,7 +744,7 @@ export function CrmFilesManagerClient({ currentUserId, canViewAllFiles, activeSe
                       <div className="flex items-center gap-2">
                         <span className="hidden text-sm text-slate-500 md:inline">{formatBytes(item.sizeBytes)}</span>
                         <Button variant="outline" className="rounded-xl" onClick={() => openPreview(item)}>Ver</Button>
-                        {item.url ? <Button variant="outline" className="rounded-xl" onClick={() => void handleCopyDeepLink(item)}>Copiar enlace</Button> : null}
+                        {item.url ? <Button variant="outline" className="rounded-xl" onClick={() => void handleCopyPublicLink(item)}>Copiar enlace público</Button> : null}
                       </div>
                     </div>
                   )
@@ -924,7 +939,7 @@ export function CrmFilesManagerClient({ currentUserId, canViewAllFiles, activeSe
             {selectedItem?.url ? <Button variant="outline" onClick={() => handleDownload(selectedItem)}><Download className="mr-2 h-4 w-4" />Descargar</Button> : null}
             {selectedItem ? <Button variant="outline" onClick={() => { setPreviewDialogOpen(false); openMoveDialog(selectedItem) }}><FolderInput className="mr-2 h-4 w-4" />Mover</Button> : null}
             {selectedItem ? <Button variant="outline" className="text-rose-700 hover:text-rose-700" onClick={() => void handleDelete(selectedItem)}><Trash2 className="mr-2 h-4 w-4" />Borrar</Button> : null}
-            {selectedItem?.url ? <Button variant="outline" onClick={() => void handleCopyDeepLink(selectedItem)}><Copy className="mr-2 h-4 w-4" />Copiar enlace</Button> : null}
+            {selectedItem?.url ? <Button variant="outline" onClick={() => void handleCopyPublicLink(selectedItem)}><Copy className="mr-2 h-4 w-4" />Copiar enlace público</Button> : null}
             {selectedItem?.url ? <Button variant="outline" onClick={() => window.open(selectedItem.url!, '_blank', 'noopener,noreferrer')}>Abrir original</Button> : null}
             <Button onClick={() => setPreviewDialogOpen(false)}>Cerrar</Button>
           </DialogFooter>

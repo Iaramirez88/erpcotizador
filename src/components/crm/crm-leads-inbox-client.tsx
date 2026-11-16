@@ -12,6 +12,7 @@ import {
 } from '@/components/crm/crm-leads-filters'
 import { CrmLeadsTable, type CrmLeadsSortKey } from '@/components/crm/crm-leads-table'
 import { CrmLeadsViewsTabs } from '@/components/crm/crm-leads-views-tabs'
+import { CrmNegotiationsTabs } from '@/components/crm/crm-negotiations-tabs'
 import { CrmLeadDetailPanel } from '@/components/crm/crm-lead-detail-panel'
 import type {
   CrmLeadFacets,
@@ -183,6 +184,8 @@ export function CrmLeadsInboxClient() {
           </Button>
         </div>
       </div>
+
+      <CrmNegotiationsTabs />
 
       {error ? (
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>

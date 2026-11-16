@@ -712,6 +712,10 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const configSignature = useMemo(() => buildConfigSignature(props), [props])
 
   const accentStyle = useMemo(() => ({ ['--chat-accent' as string]: props.accentColor, ['--chat-background' as string]: props.backgroundColor, ['--chat-page-background' as string]: props.pageBackgroundColor, fontFamily: props.fontFamily }), [props.accentColor, props.backgroundColor, props.pageBackgroundColor, props.fontFamily])
+  const pageBackgroundStyle = useMemo(() => {
+    if (!props.pageBackgroundColor || props.pageBackgroundColor.trim() === 'transparent') return 'transparent'
+    return `radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 30%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.pageBackgroundColor} 45%, ${props.backgroundColor} 100%)`
+  }, [props.pageBackgroundColor, props.backgroundColor])
   const launcherMetrics = useMemo(() => getLauncherMetrics(props.launcherSize), [props.launcherSize])
   const launcherOffsetX = useMemo(() => Number.parseInt(normalizeEmbedPixel(props.launcherOffsetX, '60'), 10), [props.launcherOffsetX])
   const launcherOffsetY = useMemo(() => Number.parseInt(normalizeEmbedPixel(props.launcherOffsetY, '60'), 10), [props.launcherOffsetY])
@@ -1343,7 +1347,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }, [connectionState, floatingLauncherActive, launcherMetrics.buttonHeight, messages.length, panelOpen, preChatCompleted, props.channelId, sending, syncing])
 
   return (
-    <div ref={rootRef} className="sgd-chatbot-page p-3 text-slate-950" style={{ ...accentStyle, minHeight: floatingLauncherActive && !panelOpen ? `${launcherOffsetY + 84}px` : '100vh', background: floatingLauncherActive && !panelOpen ? 'transparent' : `radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 30%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.pageBackgroundColor} 45%, ${props.backgroundColor} 100%)`, position: 'relative' }}>
+    <div ref={rootRef} className="sgd-chatbot-page p-3 text-slate-950" style={{ ...accentStyle, minHeight: floatingLauncherActive && !panelOpen ? `${launcherOffsetY + 84}px` : '100vh', background: floatingLauncherActive && !panelOpen ? 'transparent' : pageBackgroundStyle, position: 'relative' }}>
       {props.customCss.trim() ? <style>{props.customCss}</style> : null}
       {floatingLauncherActive && !panelOpen ? (
         <div style={{ minHeight: `${launcherOffsetY + 84}px`, position: 'relative' }}>

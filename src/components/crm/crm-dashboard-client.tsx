@@ -2039,6 +2039,9 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                     <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por lead, oportunidad o cliente..." className="h-10 rounded-xl border-slate-200 bg-white/90 pr-4 shadow-sm" />
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <Button asChild variant="outline" className="h-9 rounded-xl border-sky-200 bg-sky-50/80 px-4 text-sky-800 hover:bg-sky-100">
+                      <Link href="/dashboard/crm/leads">Bandeja de leads</Link>
+                    </Button>
                     <Button asChild variant="outline" className="h-9 rounded-xl border-emerald-200 bg-emerald-50/80 px-4 text-emerald-800 hover:bg-emerald-100">
                       <Link href="/dashboard/crm/chatbot">Panel chatbot</Link>
                     </Button>
@@ -2112,6 +2115,9 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
               <TabsTrigger value="tasks" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">Seguimiento</TabsTrigger>
             </TabsList>
           <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" className="rounded-xl border-sky-200 bg-sky-50/80 text-sky-800 hover:bg-sky-100">
+              <Link href="/dashboard/crm/leads">Bandeja de leads</Link>
+            </Button>
             <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
               <Link href="/dashboard/crm/negociaciones/calendario">Calendario</Link>
             </Button>

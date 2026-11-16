@@ -14,6 +14,30 @@ import {
   type WebFormPurposeFormState,
 } from '@/lib/crm-web-form-purpose'
 
+function looksLikeLoginRequiredUrl(value: string) {
+  const raw = value.trim().toLowerCase()
+  if (!raw) return false
+
+  let host = ''
+  let path = raw
+  try {
+    const url = new URL(raw)
+    host = url.host
+    path = url.pathname
+  } catch {
+    // Ruta relativa: se evalúa el path directamente.
+  }
+
+  return (
+    path.startsWith('/dashboard') ||
+    host.includes('drive.google.com') ||
+    host.includes('docs.google.com') ||
+    host.includes('onedrive.live.com') ||
+    host.includes('1drv.ms') ||
+    host.includes('sharepoint.com')
+  )
+}
+
 type Props = {
   form: WebFormPurposeFormState
   patchForm: (patch: Partial<WebFormPurposeFormState>) => void
@@ -75,6 +99,12 @@ export function CrmIntegrationsWebFormPurposeSection(props: Props) {
             </div>
           ) : null}
 
+          {form.incentiveRewardUrl.trim() && looksLikeLoginRequiredUrl(form.incentiveRewardUrl) ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">
+              Esta URL exige iniciar sesión y el prospecto no podrá abrirla. Sube el PDF al Drive del CRM y usa el botón “Copiar enlace público” del archivo (la URL empieza por /uploads/crm-files/). Así el PDF se adjunta al correo y por WhatsApp se comparte un enlace público.
+            </div>
+          ) : null}
+
           <div className="grid gap-3 md:grid-cols-2">
             <div className="grid gap-2">
               <Label>Tipo de regalo</Label>
@@ -100,7 +130,7 @@ export function CrmIntegrationsWebFormPurposeSection(props: Props) {
             <div className="grid gap-2 md:col-span-2">
               <Label>URL del PDF o link de acceso</Label>
               <Input value={form.incentiveRewardUrl} onChange={(e) => patchForm({ incentiveRewardUrl: e.target.value })} className="h-11 rounded-xl bg-white" placeholder="https://tu-dominio.com/recursos/guia.pdf" />
-              <p className="text-xs leading-5 text-slate-500">Acepta URLs absolutas o rutas relativas, por ejemplo /recursos/guia.pdf. Si usas un archivo de tu Drive, se entrega a través de un enlace público firmado.</p>
+              <p className="text-xs leading-5 text-slate-500">Para que el PDF se adjunte al correo y WhatsApp envíe un enlace público, pega aquí la URL del archivo de tu Drive (botón “Copiar enlace público”, empieza por /uploads/crm-files/). También aceptas URLs absolutas o rutas relativas de descarga directa.</p>
             </div>
             <div className="grid gap-2">
               <Label>Texto del botón en el correo</Label>

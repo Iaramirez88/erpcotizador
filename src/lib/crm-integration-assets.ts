@@ -69,6 +69,7 @@ type ChatbotIframeArgs = {
   panelZIndex?: string
   chatShellRadius?: string
   backgroundColor?: string
+  pageBackgroundColor?: string
 }
 
 type ChatbotEmbedMode = 'iframe' | 'widget'
@@ -431,7 +432,7 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   const src = buildChatbotEmbedUrl(args.baseUrl, args.channelId, widgetMode ? 'widget' : 'iframe')
   const iframeId = `sgd-chatbot-iframe-${args.channelId}`
   const shellRadius = `${(args.chatShellRadius || '30').replace(/[^0-9]/g, '') || '30'}px`
-  const iframeBackground = widgetMode ? 'transparent' : (args.backgroundColor || '#ffffff')
+  const iframeBackground = widgetMode ? 'transparent' : (args.pageBackgroundColor || 'transparent')
   const launcherPosition = args.launcherPosition === 'left' ? 'left' : args.launcherPosition === 'center' ? 'center' : 'right'
   const launcherPlacement = args.launcherPlacement === 'absolute' ? 'absolute' : 'fixed'
   const hostAnchorStyle = launcherPosition === 'left'

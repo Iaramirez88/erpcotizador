@@ -475,7 +475,7 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
               </div>
             ) : null}
 
-            {incentiveActive ? (
+            {incentiveActive && !success ? (
               <div style={{ display: 'grid', gap: 10, border: '1px solid rgba(148,163,184,.32)', borderRadius: 18, padding: '12px 14px', backgroundColor: 'rgba(255,255,255,.85)' }}>
                 <span style={{ color: '#0f172a', fontWeight: 700 }}>{incentive.rewardLabel || 'Tu regalo'}</span>
                 <span style={{ color: '#475569', fontWeight: 500, fontSize: 12, lineHeight: 1.5 }}>
@@ -582,9 +582,11 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
               </div>
             ) : null}
 
-            <button type="submit" disabled={submitting} style={{ border: 0, borderRadius: `${props.inputRadius}px`, background: `linear-gradient(135deg, ${props.ctaColor}, ${props.accentColor})`, color: props.ctaTextColor, fontWeight: 800, padding: '14px 18px', cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.82 : 1 }}>
-              {submitting ? 'Enviando...' : props.submitLabel}
-            </button>
+            {!success ? (
+              <button type="submit" disabled={submitting} style={{ border: 0, borderRadius: `${props.inputRadius}px`, background: `linear-gradient(135deg, ${props.ctaColor}, ${props.accentColor})`, color: props.ctaTextColor, fontWeight: 800, padding: '14px 18px', cursor: submitting ? 'wait' : 'pointer', opacity: submitting ? 0.82 : 1 }}>
+                {submitting ? 'Enviando...' : props.submitLabel}
+              </button>
+            ) : null}
           </form>
         </div>
       </div>

@@ -581,7 +581,7 @@ function getInitialChannelForm() {
     iframeHeight: '720',
     allowedDomains: '',
     accentColor: '#1d4ed8',
-    pageBackgroundColor: '#eef5ff',
+    pageBackgroundColor: 'transparent',
     backgroundColor: '#ffffff',
     fontFamily: 'ui-sans-serif, system-ui, sans-serif',
     floatingLauncherEnabled: true,
@@ -1565,7 +1565,8 @@ function getBackgroundColor(settingsJson: Record<string, unknown> | null | undef
 }
 
 function getPageBackgroundColor(settingsJson: Record<string, unknown> | null | undefined) {
-  return typeof settingsJson?.pageBackgroundColor === 'string' ? settingsJson.pageBackgroundColor : '#eef5ff'
+  const value = typeof settingsJson?.pageBackgroundColor === 'string' ? settingsJson.pageBackgroundColor.trim() : ''
+  return value || 'transparent'
 }
 
 function getFontFamily(settingsJson: Record<string, unknown> | null | undefined) {
@@ -2120,6 +2121,7 @@ function buildIntegrationSnippets(args: {
       panelZIndex: getPanelZIndex(args.settingsJson),
       chatShellRadius: getChatShellRadius(args.settingsJson),
       backgroundColor: getBackgroundColor(args.settingsJson),
+      pageBackgroundColor: getPageBackgroundColor(args.settingsJson),
     }),
     chatbotEmbedUrl: buildChatbotEmbedUrl(args.baseUrl, args.channelId),
     gmail: buildGmailAppsScriptSnippet({

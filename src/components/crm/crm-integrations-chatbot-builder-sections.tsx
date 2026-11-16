@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { CrmColorSwatchInput } from '@/components/crm/crm-color-swatch-input'
 
 type ChatbotBuilderSection = 'brand' | 'launcher' | 'copy'
 type PanelShadowPreset = 'soft' | 'medium' | 'strong'
@@ -121,8 +122,8 @@ export function CrmIntegrationsChatbotBuilderSections<TDraft extends ChatbotBuil
 
         <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
           <div className="grid gap-2"><Label>Color acento</Label><Input value={draft.accentColor} onChange={(e) => setDraft((current) => ({ ...current, accentColor: e.target.value }))} className="h-11 rounded-xl" /></div>
-          <div className="grid gap-2"><Label>Fondo general</Label><Input value={draft.pageBackgroundColor} onChange={(e) => setDraft((current) => ({ ...current, pageBackgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
-          <div className="grid gap-2"><Label>Fondo interno</Label><Input value={draft.backgroundColor} onChange={(e) => setDraft((current) => ({ ...current, backgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
+          <div className="grid gap-2"><Label>Fondo general</Label><CrmColorSwatchInput value={draft.pageBackgroundColor} onChange={(value) => setDraft((current) => ({ ...current, pageBackgroundColor: value }))} ariaLabel="Seleccionar fondo general" placeholder="transparent" /></div>
+          <div className="grid gap-2"><Label>Fondo interno</Label><CrmColorSwatchInput value={draft.backgroundColor} onChange={(value) => setDraft((current) => ({ ...current, backgroundColor: value }))} ariaLabel="Seleccionar fondo interno" placeholder="#f8fbff" /></div>
           <div className="grid gap-2"><Label>Etiqueta superior</Label><Input value={draft.headerBadgeLabel} onChange={(e) => setDraft((current) => ({ ...current, headerBadgeLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
           <div className="grid gap-2"><Label>Estado del asistente</Label><Input value={draft.statusBadgeLabel} onChange={(e) => setDraft((current) => ({ ...current, statusBadgeLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
           <div className="grid gap-2"><Label>Radio del panel</Label><Input value={draft.chatShellRadius} onChange={(e) => setDraft((current) => ({ ...current, chatShellRadius: normalizePixelValue(e.target.value, '30') }))} className="h-11 rounded-xl" /></div>
