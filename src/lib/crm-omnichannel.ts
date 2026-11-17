@@ -675,8 +675,8 @@ export async function createInboundArtifacts(
           empresaId: args.empresaId,
           sedeId: args.sedeId ?? null,
           userId: notificationUserId,
-          actionUrl: '/dashboard/crm/leads',
-          actionLabel: 'Abrir bandeja de leads',
+          actionUrl: `/dashboard/chat?conversationId=${conversation.id}`,
+          actionLabel: 'Abrir conversación',
         },
       })
     }
@@ -805,8 +805,8 @@ export async function attachCaptureConversation(
         empresaId: args.empresaId,
         sedeId: args.sedeId ?? null,
         userId: notificationUserId,
-        actionUrl: '/dashboard/chat',
-        actionLabel: 'Abrir conversaciones',
+        actionUrl: `/dashboard/chat?conversationId=${conversation.id}`,
+        actionLabel: 'Abrir conversación',
       },
     })
   }
@@ -996,7 +996,7 @@ export async function createConversationMessageEvent(args: {
           empresaId: args.empresaId,
           sedeId: args.sedeId ?? null,
           userId: notificationUserId,
-          actionUrl: '/dashboard/chat',
+          actionUrl: `/dashboard/chat?conversationId=${conversation.id}`,
           actionLabel: 'Revisar conversación',
         },
       })

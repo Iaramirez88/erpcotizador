@@ -25,7 +25,6 @@ async function assertLeadCapabilityAccess(args: {
     action: args.action,
     scope: 'SEDE',
     sedeId: sede.id,
-    allowLegacyFallback: false,
   })
 
   return access.ok ? null : { response: access.response }
@@ -38,7 +37,6 @@ export async function POST(request: Request, context: RouteContext) {
       subdomain: 'LEADS',
       action: 'UPDATE',
       scope: 'SEDE',
-      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 

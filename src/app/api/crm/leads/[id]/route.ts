@@ -28,7 +28,6 @@ async function assertLeadCapabilityAccess(args: {
     action: args.action,
     scope: 'SEDE',
     sedeId: sede.id,
-    allowLegacyFallback: false,
   })
 
   return access.ok ? null : { response: access.response }

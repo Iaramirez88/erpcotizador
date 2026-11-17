@@ -89,7 +89,6 @@ export async function GET(request: Request) {
       subdomain: 'LEADS',
       action: 'READ',
       scope: 'SEDE',
-      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
@@ -275,7 +274,6 @@ export async function POST(request: Request) {
       subdomain: 'LEADS',
       action: 'CREATE',
       scope: 'SEDE',
-      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 

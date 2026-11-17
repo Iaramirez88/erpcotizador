@@ -22,7 +22,6 @@ export async function requireCrmLeadAccess(args: {
     subdomain: 'LEADS',
     action: args.action,
     scope: 'SEDE',
-    allowLegacyFallback: false,
   })
   if (!access.ok) return { ok: false, response: access.response }
 
