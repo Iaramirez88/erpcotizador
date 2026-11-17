@@ -1,8 +1,10 @@
 'use client'
 
-import { BellRing, BellOff, Loader2, X } from 'lucide-react'
+import Link from 'next/link'
+import { BellRing, BellOff, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   PUSH_NOTIFICATIONS_DISMISS_KEY,
   PUSH_NOTIFICATIONS_STATE_EVENT,
@@ -27,6 +29,7 @@ export function PushNotificationProvider() {
   const [subscriptionReady, setSubscriptionReady] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
     if (isPublicEmbedPath(window.location.pathname)) return
@@ -68,6 +71,32 @@ export function PushNotificationProvider() {
     return isStandaloneMode()
   }, [dismissed, enabled, optedOut, permission, publicKey, subscriptionReady, supported])
 
+  // Abre el aviso cuando corresponde (p. ej. justo después de instalar la app).
+  useEffect(() => {
+    if (shouldShow) setOpen(true)
+  }, [shouldShow])
+
+  // Después de instalar la app, re-muestra el aviso de notificaciones aunque se
+  // hubiera descartado antes desde el navegador.
+  useEffect(() => {
+    function handleAppInstalled() {
+      window.localStorage.removeItem(PUSH_NOTIFICATIONS_DISMISS_KEY)
+      window.localStorage.removeItem('sgd_push_notifications_opt_out')
+      setDismissed(false)
+      setOptedOut(false)
+      if (Notification.permission !== 'granted') setOpen(true)
+    }
+
+    window.addEventListener('appinstalled', handleAppInstalled)
+    return () => window.removeEventListener('appinstalled', handleAppInstalled)
+  }, [])
+
+  function handleDismiss() {
+    window.localStorage.setItem(PUSH_NOTIFICATIONS_DISMISS_KEY, '1')
+    setDismissed(true)
+    setOpen(false)
+  }
+
   async function handleEnable() {
     if (!publicKey) return
 
@@ -94,6 +123,7 @@ export function PushNotificationProvider() {
       setSubscriptionReady(subscribed)
       setDismissed(false)
       setOptedOut(false)
+      setOpen(false)
     } catch {
       setSubscriptionReady(false)
       setError('No fue posible activar las notificaciones en este dispositivo.')
@@ -127,49 +157,45 @@ export function PushNotificationProvider() {
     return () => window.removeEventListener(PUSH_NOTIFICATIONS_STATE_EVENT, handlePushStateChanged)
   }, [])
 
-  if (!shouldShow) return null
+  if (!supported) return null
+
+  const description = permission === 'granted' && subscriptionReady === false
+    ? 'El permiso ya fue concedido, pero esta instalación no alcanzó a registrar una suscripción push activa. Usa el botón para repararla.'
+    : permission === 'denied'
+      ? 'El permiso está bloqueado. Debes habilitarlo en los ajustes del navegador o de la app para recibir avisos con la app cerrada.'
+      : 'Con esto Ordex podrá mostrarte avisos del sistema aunque la app esté cerrada o en segundo plano.'
 
   return (
-    <div className="fixed inset-x-0 top-4 z-[75] flex justify-center px-4">
-      <div className="w-full max-w-lg rounded-[22px] border border-amber-200 bg-[linear-gradient(135deg,_rgba(255,251,235,0.98)_0%,_rgba(255,237,213,0.98)_100%)] p-4 text-slate-900 shadow-[0_24px_50px_-28px_rgba(15,23,42,0.45)] backdrop-blur-xl">
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 rounded-2xl bg-amber-500/15 p-2.5 text-amber-700">
-            {permission === 'denied' ? <BellOff className="h-5 w-5" /> : <BellRing className="h-5 w-5" />}
+    <Dialog open={open} onOpenChange={(next) => { if (!next) handleDismiss() }}>
+      <DialogContent className="max-w-md rounded-[24px]">
+        <DialogHeader>
+          <div className="mb-1 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-700">
+            {permission === 'denied' ? <BellOff className="h-6 w-6" /> : <BellRing className="h-6 w-6" />}
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-sm font-semibold">Activa notificaciones reales en tu app instalada</p>
-                <p className="mt-1 text-xs leading-5 text-slate-700">
-                  {permission === 'granted' && subscriptionReady === false
-                    ? 'El permiso ya fue concedido, pero esta instalación no alcanzó a registrar una suscripción push activa. Usa el botón para repararla.'
-                    : permission === 'denied'
-                    ? 'El permiso está bloqueado. Debes habilitarlo en los ajustes del navegador o de la app para recibir avisos con la app cerrada.'
-                    : 'Con esto Ordex podrá mostrar avisos del sistema aunque la app esté cerrada o en segundo plano.'}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="rounded-full p-1 text-slate-500 transition hover:bg-white/70 hover:text-slate-900"
-                onClick={() => {
-                  window.localStorage.setItem(PUSH_NOTIFICATIONS_DISMISS_KEY, '1')
-                  setDismissed(true)
-                }}
-                aria-label="Ocultar aviso de notificaciones"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button className="h-9 rounded-xl bg-slate-900 px-4 text-white hover:bg-slate-800" onClick={() => void handleEnable()} disabled={busy || permission === 'denied'}>
-                {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BellRing className="mr-2 h-4 w-4" />}
-                {busy ? 'Activando...' : permission === 'granted' && subscriptionReady === false ? 'Reparar notificaciones' : 'Activar notificaciones'}
-              </Button>
-              {error ? <p className="text-xs text-rose-700">{error}</p> : null}
-            </div>
-          </div>
+          <DialogTitle>Activa las notificaciones</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-2">
+          {error ? <p className="text-xs text-rose-700">{error}</p> : null}
+          <p className="text-xs text-slate-500">
+            Puedes activarlas o desactivarlas cuando quieras desde{' '}
+            <Link href="/dashboard/configuracion/notificaciones" className="font-medium text-sky-700 underline-offset-2 hover:underline">
+              Configuración → Notificaciones
+            </Link>.
+          </p>
         </div>
-      </div>
-    </div>
+
+        <DialogFooter className="gap-2 sm:justify-between">
+          <Button type="button" variant="ghost" className="h-10 rounded-xl" onClick={handleDismiss}>
+            Ahora no
+          </Button>
+          <Button className="h-10 rounded-xl" onClick={() => void handleEnable()} disabled={busy || permission === 'denied'}>
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BellRing className="mr-2 h-4 w-4" />}
+            {busy ? 'Activando...' : permission === 'granted' && subscriptionReady === false ? 'Reparar notificaciones' : 'Activar notificaciones'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

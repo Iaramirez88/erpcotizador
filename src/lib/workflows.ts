@@ -102,11 +102,70 @@ function toInputJson(value: unknown): Prisma.InputJsonValue {
   return value as unknown as Prisma.InputJsonValue
 }
 
+function resolveContextPath(context: Record<string, unknown>, path: string): unknown {
+  return path.split('.').reduce<unknown>((acc, part) => {
+    if (acc && typeof acc === 'object' && part in acc) return (acc as Record<string, unknown>)[part]
+    return undefined
+  }, context)
+}
+
 function interpolateWorkflowVariables(template: string, context: Record<string, unknown>) {
   return template.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_match, key: string) => {
-    const value = context[key]
-    return value === undefined || value === null ? '' : String(value)
+    const value = resolveContextPath(context, key)
+    if (value === undefined || value === null) return ''
+    return typeof value === 'object' ? JSON.stringify(value) : String(value)
   })
+}
+
+function parseHeaderMap(raw: unknown): Record<string, string> {
+  if (typeof raw !== 'string' || !raw.trim()) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const map: Record<string, string> = {}
+      for (const [key, value] of Object.entries(parsed)) {
+        if (key) map[key] = String(value)
+      }
+      return map
+    }
+  } catch {
+    // Se ignora JSON inválido.
+  }
+  return {}
+}
+
+function evaluateCondition(left: string, operator: string, right: string): boolean {
+  switch (operator) {
+    case 'neq':
+      return left !== right
+    case 'gt':
+      return Number(left) > Number(right)
+    case 'gte':
+      return Number(left) >= Number(right)
+    case 'lt':
+      return Number(left) < Number(right)
+    case 'lte':
+      return Number(left) <= Number(right)
+    case 'contains':
+      return left.toLowerCase().includes(right.toLowerCase())
+    case 'not_contains':
+      return !left.toLowerCase().includes(right.toLowerCase())
+    case 'empty':
+      return left.trim() === ''
+    case 'not_empty':
+      return left.trim() !== ''
+    case 'eq':
+    default:
+      return left === right
+  }
+}
+
+function normalizeEdgeBranchLabel(label: string | null): 'true' | 'false' | null {
+  if (!label) return null
+  const value = label.trim().toLowerCase()
+  if (['true', 'verdadero', 'si', 'sí', 'yes'].includes(value)) return 'true'
+  if (['false', 'falso', 'no', 'not'].includes(value)) return 'false'
+  return null
 }
 
 export type WorkflowRunInput = {
@@ -132,35 +191,109 @@ export async function executeWorkflowRun(args: WorkflowRunInput) {
 
   const context: Record<string, unknown> = { ...definition.variables, ...payload, trigger: trigger.kind }
 
+  // Prepara el grafo para la ejecución por aristas. Si no hay aristas, se
+  // conserva el flujo secuencial (compatibilidad con workflows anteriores).
+  const hasEdges = definition.edges.length > 0
+  const nodeById = new Map(definition.nodes.map((node) => [node.id, node]))
+  const nodeIndex = new Map(definition.nodes.map((node, index) => [node.id, index]))
+  const outgoing = new Map<string, WorkflowEdge[]>()
+  const incomingCount = new Map<string, number>()
+  for (const edge of definition.edges) {
+    const list = outgoing.get(edge.from) ?? []
+    list.push(edge)
+    outgoing.set(edge.from, list)
+    incomingCount.set(edge.to, (incomingCount.get(edge.to) ?? 0) + 1)
+  }
+
+  const startIds = hasEdges
+    ? definition.nodes.filter((node) => !(incomingCount.get(node.id) ?? 0)).map((node) => node.id)
+    : definition.nodes.slice(0, 1).map((node) => node.id)
+  const queue = [...startIds]
+  const visited = new Set<string>()
+
   try {
-    for (const node of definition.nodes) {
+    while (queue.length) {
+      const nodeId = queue.shift()!
+      if (visited.has(nodeId)) continue
+      visited.add(nodeId)
+      const node = nodeById.get(nodeId)
+      if (!node) continue
+
       const startedAt = new Date()
       let outputJson: Record<string, unknown> = {}
       let stepError: string | null = null
+      let conditionMatched: boolean | null = null
+      let conditionStopped = false
 
       if (node.kind === 'HTTP_REQUEST') {
-        const url = interpolateWorkflowVariables(normalizeString(node.config.url) || '', context)
         const method = (normalizeString(node.config.method) || 'GET').toUpperCase()
+        let url = interpolateWorkflowVariables(normalizeString(node.config.url) || '', context)
+        const authType = normalizeString(node.config.authType) || 'none'
+        const timeoutSeconds = Number(node.config.timeoutSeconds) || 15
+
         if (!url) {
           stepError = 'Falta la URL del nodo HTTP'
         } else {
+          const headers: Record<string, string> = { Accept: 'application/json' }
+          for (const [key, value] of Object.entries(parseHeaderMap(node.config.headers))) {
+            const headerValue = interpolateWorkflowVariables(value, context)
+            if (key && headerValue) headers[key] = headerValue
+          }
+          if (authType === 'bearer') {
+            const token = interpolateWorkflowVariables(normalizeString(node.config.authToken) || '', context)
+            if (token) headers.Authorization = `Bearer ${token}`
+          } else if (authType === 'basic') {
+            const username = interpolateWorkflowVariables(normalizeString(node.config.authUsername) || '', context)
+            const password = interpolateWorkflowVariables(normalizeString(node.config.authPassword) || '', context)
+            headers.Authorization = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
+          }
+
+          const queryEntries = Object.entries(parseHeaderMap(node.config.query))
+          if (queryEntries.length) {
+            const params = new URLSearchParams()
+            for (const [key, value] of queryEntries) params.append(key, interpolateWorkflowVariables(value, context))
+            url = `${url}${url.includes('?') ? '&' : '?'}${params.toString()}`
+          }
+
+          const bodyText = normalizeString(node.config.body) ?? ''
+          const body = ['POST', 'PUT', 'PATCH'].includes(method) && bodyText.trim()
+            ? interpolateWorkflowVariables(bodyText, context)
+            : undefined
+
           try {
             const response = await fetch(url, {
               method,
-              signal: AbortSignal.timeout(15_000),
-              headers: { Accept: 'application/json' },
+              signal: AbortSignal.timeout(Math.min(Math.max(timeoutSeconds, 1), 120) * 1000),
+              headers,
+              body,
             })
             const text = await response.text()
-            outputJson = { status: response.status, body: text.slice(0, 4000) }
+            outputJson = { status: response.status, ok: response.ok, body: text.slice(0, 4000) }
+            const responseVariable = normalizeString(node.config.responseVariable)
+            if (responseVariable) {
+              context[responseVariable] = text
+              context[`${responseVariable}Status`] = response.status
+            }
             if (!response.ok) stepError = `HTTP ${response.status}`
           } catch (error) {
             stepError = error instanceof Error ? error.message : 'Fallo la solicitud HTTP'
           }
         }
       } else if (node.kind === 'CONDITION') {
-        outputJson = { evaluated: true, skipped: true }
+        const field = interpolateWorkflowVariables(normalizeString(node.config.field) || '', context)
+        const operator = normalizeString(node.config.operator) || 'eq'
+        const value = interpolateWorkflowVariables(normalizeString(node.config.value) || '', context)
+        const matched = evaluateCondition(field, operator, value)
+        conditionMatched = matched
+        conditionStopped = !matched && Boolean(node.config.stopWhenFalse ?? true)
+        outputJson = { matched, left: field, operator, right: value }
       } else if (node.kind === 'DELAY') {
-        outputJson = { skipped: true }
+        const rawValue = Number(node.config.value ?? node.config.seconds)
+        const unit = normalizeString(node.config.unit) || 'seconds'
+        const multiplier = unit === 'minutes' ? 60_000 : unit === 'hours' ? 3_600_000 : 1_000
+        const ms = Math.min(Math.max((Number.isFinite(rawValue) ? rawValue : 0) * multiplier, 0), 3_600_000)
+        if (ms > 0) await new Promise((resolve) => setTimeout(resolve, ms))
+        outputJson = { waitedMs: ms }
       } else if (node.kind === 'ACTION') {
         const action = normalizeString(node.config.action)
         const fields = asRecord(node.config.fields) ?? {}
@@ -226,6 +359,42 @@ export async function executeWorkflowRun(args: WorkflowRunInput) {
               outputJson = { ok: true }
             }
           }
+        } else if (action === 'send_notification') {
+          const notification = await prisma.notification.create({
+            data: {
+              type: 'INFO',
+              title: pick('title', '{{titulo}}') || 'Notificación de workflow',
+              body: pick('body', '{{mensaje}}'),
+              actionUrl: pick('actionUrl') ?? null,
+              actionLabel: pick('actionLabel') ?? null,
+              empresaId: args.workflow.empresaId,
+              userId: pick('userId') || args.workflow.createdById,
+            },
+          })
+          outputJson = { notificationId: notification.id }
+        } else if (action === 'create_task') {
+          const priorityRaw = (normalizeString(fields.priority) || 'NORMAL').toUpperCase()
+          const priority = (['LOW', 'NORMAL', 'HIGH'].includes(priorityRaw) ? priorityRaw : 'NORMAL') as 'LOW' | 'NORMAL' | 'HIGH'
+          const task = await prisma.crmTask.create({
+            data: {
+              empresaId: args.workflow.empresaId,
+              title: pick('title', '{{titulo}}') || 'Tarea desde workflow',
+              description: pick('description', '{{descripcion}}'),
+              priority,
+              assignedToUserId: pick('assignedToUserId') || args.workflow.createdById,
+              createdById: args.workflow.createdById,
+            },
+          })
+          outputJson = { taskId: task.id }
+        } else if (action === 'set_variable') {
+          const variableKey = normalizeString(fields.variableKey)
+          if (!variableKey) {
+            stepError = 'Falta el nombre de la variable'
+          } else {
+            const variableValue = interpolateWorkflowVariables(normalizeString(fields.variableValue) || '', context)
+            context[variableKey] = variableValue
+            outputJson = { [variableKey]: variableValue }
+          }
         } else {
           outputJson = { node: node.label }
         }
@@ -250,6 +419,31 @@ export async function executeWorkflowRun(args: WorkflowRunInput) {
       })
 
       if (stepError) throw new Error(stepError)
+
+      // Encamina al siguiente nodo según las aristas del grafo.
+      const nextEdges = outgoing.get(nodeId) ?? []
+      const linearNext = definition.nodes[(nodeIndex.get(nodeId) ?? -1) + 1]
+      if (node.kind === 'CONDITION') {
+        if (conditionMatched) {
+          for (const edge of nextEdges) {
+            if (normalizeEdgeBranchLabel(edge.label) !== 'false') queue.push(edge.to)
+          }
+          if (!hasEdges && linearNext) queue.push(linearNext.id)
+        } else {
+          const falseEdges = nextEdges.filter((edge) => normalizeEdgeBranchLabel(edge.label) === 'false')
+          if (falseEdges.length) {
+            for (const edge of falseEdges) queue.push(edge.to)
+          } else if (!conditionStopped) {
+            for (const edge of nextEdges) {
+              if (!normalizeEdgeBranchLabel(edge.label)) queue.push(edge.to)
+            }
+            if (!hasEdges && linearNext) queue.push(linearNext.id)
+          }
+        }
+      } else {
+        for (const edge of nextEdges) queue.push(edge.to)
+        if (!hasEdges && linearNext) queue.push(linearNext.id)
+      }
     }
 
     await prisma.workflowRun.update({

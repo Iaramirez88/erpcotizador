@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ArrowDown, Copy, Play, Plus, Save, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowDown, Copy, Play, Plus, Save, Settings2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,6 +11,8 @@ import { Textarea } from '@/components/ui/textarea'
 import type { WorkflowNodeKind, WorkflowTriggerKind } from '@prisma/client'
 import type { WorkflowDefinition, WorkflowEdge, WorkflowNode, WorkflowTriggerConfig } from '@/lib/workflows'
 import { WorkflowCanvas } from '@/components/workflows/workflow-canvas'
+import { WorkflowNodeModal } from '@/components/workflows/workflow-node-modal'
+import { defaultConfigForKind, NODE_KIND_LABELS, summarizeNodeConfig } from '@/components/workflows/workflow-node-catalog'
 
 type InitialWorkflow = {
   id: string
@@ -24,92 +26,10 @@ type InitialWorkflow = {
 
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
 
-const NODE_KIND_LABELS: Record<string, string> = {
-  TRIGGER: 'Disparador',
-  HTTP_REQUEST: 'HTTP Request',
-  CONDITION: 'Condición',
-  DELAY: 'Espera',
-  NOTE: 'Nota',
-  ACTION: 'Acción',
-}
-
 const ADDABLE_NODE_KINDS: WorkflowNodeKind[] = ['HTTP_REQUEST', 'CONDITION', 'DELAY', 'NOTE', 'ACTION']
 
 function makeNodeId() {
   return `n-${Math.random().toString(36).slice(2, 9)}`
-}
-
-function NodeConfigFields({ node, onChange }: { node: WorkflowNode; onChange: (key: string, value: unknown) => void }) {
-  if (node.kind === 'HTTP_REQUEST') {
-    return (
-      <div className="grid gap-2 md:grid-cols-2">
-        <div className="grid gap-1.5">
-          <Label>URL</Label>
-          <Input value={String(node.config.url ?? '')} onChange={(e) => onChange('url', e.target.value)} placeholder="https://api.example.com" />
-        </div>
-        <div className="grid gap-1.5">
-          <Label>Método</Label>
-          <Select value={String(node.config.method ?? 'GET')} onValueChange={(value) => onChange('method', value)}>
-            <SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="GET">GET</SelectItem>
-              <SelectItem value="POST">POST</SelectItem>
-              <SelectItem value="PUT">PUT</SelectItem>
-              <SelectItem value="PATCH">PATCH</SelectItem>
-              <SelectItem value="DELETE">DELETE</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-    )
-  }
-
-  if (node.kind === 'DELAY') {
-    return (
-      <div className="grid gap-1.5">
-        <Label>Segundos</Label>
-        <Input value={String(node.config.seconds ?? '')} onChange={(e) => onChange('seconds', e.target.value)} placeholder="60" />
-      </div>
-    )
-  }
-
-  if (node.kind === 'ACTION') {
-    return (
-      <div className="grid gap-2">
-        <div className="grid gap-1.5">
-          <Label>Acción</Label>
-          <Select value={String(node.config.action ?? 'create_lead')} onValueChange={(value) => onChange('action', value)}>
-            <SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="create_lead">Crear / actualizar lead</SelectItem>
-              <SelectItem value="create_opportunity">Crear oportunidad</SelectItem>
-              <SelectItem value="send_email">Enviar correo</SelectItem>
-              <SelectItem value="send_whatsapp">Enviar WhatsApp</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid gap-1.5">
-          <Label>Mapeo de campos (JSON)</Label>
-          <Textarea
-            value={JSON.stringify(node.config.fields ?? {}, null, 2)}
-            onChange={(e) => {
-              try { onChange('fields', JSON.parse(e.target.value)) } catch { /* JSON inválido: se ignora */ }
-            }}
-            rows={5}
-            className="rounded-2xl font-mono text-xs"
-          />
-          <p className="text-xs text-slate-500">Interpola el payload con {'{{campo}}'}, ej: {'{{nombre}}'}, {'{{email}}'}.</p>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="grid gap-1.5">
-      <Label>{node.kind === 'CONDITION' ? 'Condición' : 'Texto'}</Label>
-      <Input value={String(node.config.text ?? '')} onChange={(e) => onChange('text', e.target.value)} placeholder={node.kind === 'CONDITION' ? 'status == 200' : 'Texto'} />
-    </div>
-  )
 }
 
 export function WorkflowEditorClient({ initialWorkflow }: { initialWorkflow: InitialWorkflow }) {
@@ -123,6 +43,7 @@ export function WorkflowEditorClient({ initialWorkflow }: { initialWorkflow: Ini
   const [feedback, setFeedback] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [view, setView] = useState<'list' | 'canvas'>('list')
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
 
   function parseVariables(): Record<string, unknown> {
     try {
@@ -177,7 +98,7 @@ export function WorkflowEditorClient({ initialWorkflow }: { initialWorkflow: Ini
       id: makeNodeId(),
       kind,
       label: NODE_KIND_LABELS[kind] ?? kind,
-      config: kind === 'HTTP_REQUEST' ? { url: '', method: 'GET' } : kind === 'DELAY' ? { seconds: '60' } : kind === 'ACTION' ? { action: 'create_lead', fields: { nombre: '{{nombre}}', email: '{{email}}', phone: '{{telefono}}' } } : {},
+      config: defaultConfigForKind(kind),
     }
     setNodes((current) => [...current, node])
   }
@@ -203,6 +124,10 @@ export function WorkflowEditorClient({ initialWorkflow }: { initialWorkflow: Ini
       if (current.some((edge) => edge.from === fromId && edge.to === toId)) return current
       return [...current, { id: `e-${Date.now()}`, from: fromId, to: toId, label: null }]
     })
+  }
+
+  function handleEdgeLabel(edgeId: string, label: 'true' | 'false' | null) {
+    setEdges((current) => current.map((edge) => (edge.id === edgeId ? { ...edge, label } : edge)))
   }
 
   return (
@@ -312,11 +237,16 @@ export function WorkflowEditorClient({ initialWorkflow }: { initialWorkflow: Ini
                         <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-white">{NODE_KIND_LABELS[node.kind] ?? node.kind}</span>
                         <Input value={node.label} onChange={(e) => updateNode(node.id, { label: e.target.value })} className="h-9 w-48 rounded-lg" />
                       </div>
-                      <div className="mt-3"><NodeConfigFields node={node} onChange={(key, value) => updateNodeConfig(node.id, key, value)} /></div>
+                      <p className="mt-2 truncate text-xs text-slate-500">{summarizeNodeConfig(node) || 'Sin configuración'}</p>
                     </div>
-                    <Button type="button" variant="outline" className="h-9 rounded-xl text-rose-700 hover:text-rose-700" onClick={() => removeNode(node.id)}>
-                      <Trash2 className="mr-2 h-4 w-4" />Quitar
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button type="button" variant="outline" className="h-9 rounded-xl" onClick={() => setEditingNodeId(node.id)}>
+                        <Settings2 className="mr-2 h-4 w-4" />Configurar
+                      </Button>
+                      <Button type="button" variant="outline" className="h-9 rounded-xl text-rose-700 hover:text-rose-700" onClick={() => removeNode(node.id)}>
+                        <Trash2 className="mr-2 h-4 w-4" />Quitar
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -324,7 +254,7 @@ export function WorkflowEditorClient({ initialWorkflow }: { initialWorkflow: Ini
           )}
         </div>
         ) : (
-          <WorkflowCanvas nodes={nodes} edges={edges} onMoveNode={handleMoveNode} onConnectEdge={handleConnectEdge} />
+          <WorkflowCanvas nodes={nodes} edges={edges} onMoveNode={handleMoveNode} onConnectEdge={handleConnectEdge} onNodeClick={(id) => setEditingNodeId(id)} onEdgeLabel={handleEdgeLabel} />
         )}
         <div className="mt-4 flex flex-wrap gap-2">
           {ADDABLE_NODE_KINDS.map((kind) => (
@@ -340,6 +270,17 @@ export function WorkflowEditorClient({ initialWorkflow }: { initialWorkflow: Ini
         <p className="mt-1 text-xs text-slate-500">Objeto JSON con variables reutilizables en las URLs usando {'{{variable}}'}.</p>
         <Textarea value={variablesText} onChange={(e) => setVariablesText(e.target.value)} rows={6} className="mt-3 rounded-2xl font-mono text-xs" />
       </div>
+
+      <WorkflowNodeModal
+        node={nodes.find((node) => node.id === editingNodeId) ?? null}
+        open={Boolean(editingNodeId)}
+        onOpenChange={(open) => {
+          if (!open) setEditingNodeId(null)
+        }}
+        onChangeLabel={(id, label) => updateNode(id, { label })}
+        onChangeConfig={updateNodeConfig}
+        onDelete={removeNode}
+      />
     </div>
   )
 }

@@ -1,7 +1,8 @@
 "use client"
 
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Minus, Plus, RotateCcw } from 'lucide-react'
+import { Minus, Pencil, Plus, RotateCcw } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import type { WorkflowEdge, WorkflowNode } from '@/lib/workflows'
 
 type Position = { x: number; y: number }
@@ -20,13 +21,21 @@ function resolveNodePosition(node: WorkflowNode, index: number): Position {
   return { x: PADDING, y: PADDING + index * 120 }
 }
 
-type EdgeLine = { id: string; x1: number; y1: number; x2: number; y2: number }
+type EdgeLine = { id: string; from: string; label: string | null; x1: number; y1: number; x2: number; y2: number }
 
-export function WorkflowCanvas({ nodes, edges, onMoveNode, onConnectEdge }: {
+function nextBranchLabel(current: string | null): 'true' | 'false' | null {
+  if (current === 'true') return 'false'
+  if (current === 'false') return null
+  return 'true'
+}
+
+export function WorkflowCanvas({ nodes, edges, onMoveNode, onConnectEdge, onNodeClick, onEdgeLabel }: {
   nodes: WorkflowNode[]
   edges: WorkflowEdge[]
   onMoveNode: (id: string, position: Position) => void
   onConnectEdge: (fromId: string, toId: string) => void
+  onNodeClick: (id: string) => void
+  onEdgeLabel: (id: string, label: 'true' | 'false' | null) => void
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
@@ -44,9 +53,11 @@ export function WorkflowCanvas({ nodes, edges, onMoveNode, onConnectEdge }: {
       const from = nodePositions.get(edge.from)
       const to = nodePositions.get(edge.to)
       if (!from || !to) return null
-      return { id: edge.id, x1: from.x + NODE_WIDTH / 2, y1: from.y + NODE_HEIGHT, x2: to.x + NODE_WIDTH / 2, y2: to.y }
+      return { id: edge.id, from: edge.from, label: edge.label, x1: from.x + NODE_WIDTH / 2, y1: from.y + NODE_HEIGHT, x2: to.x + NODE_WIDTH / 2, y2: to.y }
     })
     .filter((item): item is EdgeLine => Boolean(item)), [edges, nodePositions])
+
+  const conditionNodeIds = useMemo(() => new Set(nodes.filter((node) => node.kind === 'CONDITION').map((node) => node.id)), [nodes])
 
   const canvasSize = useMemo(() => {
     const width = Math.max(480, ...nodes.map((node, index) => resolveNodePosition(node, index).x + NODE_WIDTH + PADDING))
@@ -64,11 +75,17 @@ export function WorkflowCanvas({ nodes, edges, onMoveNode, onConnectEdge }: {
 
   function handleNodePointerDown(event: ReactPointerEvent<HTMLDivElement>, node: WorkflowNode) {
     event.preventDefault()
+    const startClient = { x: event.clientX, y: event.clientY }
     const startContent = toContent(event)
     const startPosition = nodePositions.get(node.id) ?? { x: PADDING, y: PADDING }
+    let moved = false
     setDraggingId(node.id)
 
     function handleMove(moveEvent: PointerEvent) {
+      const dx = moveEvent.clientX - startClient.x
+      const dy = moveEvent.clientY - startClient.y
+      if (Math.abs(dx) + Math.abs(dy) > 4) moved = true
+      if (!moved) return
       const current = toContent(moveEvent)
       onMoveNode(node.id, {
         x: Math.max(0, startPosition.x + (current.x - startContent.x)),
@@ -80,6 +97,7 @@ export function WorkflowCanvas({ nodes, edges, onMoveNode, onConnectEdge }: {
       setDraggingId(null)
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
+      if (!moved) onNodeClick(node.id)
     }
 
     window.addEventListener('pointermove', handleMove)
@@ -147,6 +165,37 @@ export function WorkflowCanvas({ nodes, edges, onMoveNode, onConnectEdge }: {
               ) : null}
             </svg>
 
+            {edgeLines
+              .filter((line) => conditionNodeIds.has(line.from))
+              .map((line) => {
+                const mx = (line.x1 + line.x2) / 2
+                const my = (line.y1 + line.y2) / 2
+                const current = line.label === 'true' ? 'true' : line.label === 'false' ? 'false' : null
+                return (
+                  <button
+                    key={line.id}
+                    type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onEdgeLabel(line.id, nextBranchLabel(current))
+                    }}
+                    className={cn(
+                      'absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+                      current === 'true'
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                        : current === 'false'
+                          ? 'border-rose-300 bg-rose-50 text-rose-700'
+                          : 'border-slate-300 bg-white text-slate-500'
+                    )}
+                    style={{ left: mx, top: my }}
+                    title="Clic para alternar Sí / No (rama de la condición)"
+                  >
+                    {current === 'true' ? 'Sí' : current === 'false' ? 'No' : '…'}
+                  </button>
+                )
+              })}
+
             {nodes.map((node) => {
               const pos = nodePositions.get(node.id) ?? { x: PADDING, y: PADDING }
               const dragging = draggingId === node.id
@@ -158,8 +207,20 @@ export function WorkflowCanvas({ nodes, edges, onMoveNode, onConnectEdge }: {
                   className={`absolute select-none rounded-2xl border bg-white p-3 shadow-sm ${dragging ? 'cursor-grabbing border-sky-400 shadow-md' : 'cursor-grab border-slate-300'}`}
                   style={{ left: pos.x, top: pos.y, width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-white">{node.kind}</span>
+                    <button
+                      type="button"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onNodeClick(node.id)
+                      }}
+                      className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      title="Configurar nodo"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                   <p className="mt-2 line-clamp-2 text-sm font-medium text-slate-800">{node.label || node.kind}</p>
                   <span
