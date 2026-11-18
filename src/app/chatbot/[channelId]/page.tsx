@@ -114,6 +114,9 @@ export default async function PublicChatbotPage(props: PageProps) {
       termsLabel={settings.termsLabel}
       termsLinkText={settings.termsLinkText}
       termsLinkUrl={settings.termsLinkUrl}
+      chatLegalNoticeEnabled={settings.chatLegalNoticeEnabled}
+      chatPrivacyPolicyUrl={settings.chatPrivacyPolicyUrl}
+      chatTermsOfUseUrl={settings.chatTermsOfUseUrl}
       startStageId={settings.startStageId}
       quickActions={settings.quickActions}
       flowStages={settings.flowStages}

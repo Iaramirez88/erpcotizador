@@ -240,6 +240,9 @@ export type PublicChatbotSettings = {
   termsLabel: string
   termsLinkText: string
   termsLinkUrl: string
+  chatLegalNoticeEnabled: boolean
+  chatPrivacyPolicyUrl: string
+  chatTermsOfUseUrl: string
   startStageId: string
   quickActions: ChatbotQuickAction[]
   flowStages: ChatbotFlowStage[]
@@ -343,6 +346,9 @@ export function getPublicChatbotSettings(settingsJson: unknown): PublicChatbotSe
     termsLabel: normalizeString(settings.termsLabel, 'Acepto el tratamiento de datos personales.'),
     termsLinkText: normalizeString(settings.termsLinkText, 'Leer términos'),
     termsLinkUrl: normalizeString(settings.termsLinkUrl),
+    chatLegalNoticeEnabled: getBooleanSetting(settings, 'chatLegalNoticeEnabled', true),
+    chatPrivacyPolicyUrl: normalizeString(settings.chatPrivacyPolicyUrl),
+    chatTermsOfUseUrl: normalizeString(settings.chatTermsOfUseUrl),
     startStageId: defaultFlow.startStageId,
     quickActions: defaultFlow.quickActions.length
       ? defaultFlow.quickActions

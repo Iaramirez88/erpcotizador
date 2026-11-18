@@ -4,7 +4,7 @@ import Link from 'next/link'
 import type { CSSProperties, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, Copy, FileAudio, FileText, Image as ImageIcon, Mail, MessageCircle, MoreVertical, Pencil, PhoneCall, Plus, RefreshCcw, SendHorizontal, Smile, Video, X } from 'lucide-react'
+import { AlertTriangle, BellOff, Bot, Check, CheckCheck, ChevronDown, Clock3, Copy, FileAudio, FileText, Image as ImageIcon, Mail, MessageCircle, MoreVertical, Pencil, PhoneCall, Plus, RefreshCcw, SendHorizontal, Smile, Video, X } from 'lucide-react'
 import { CrmDailyCallEmbed } from '@/components/crm/crm-daily-call-embed'
 import {
   FacebookBrandLogo,
@@ -1127,8 +1127,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [detailLoading, setDetailLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'ALL' | ConversationStatus>('ALL')
-  const [inboxStatusTab, setInboxStatusTab] = useState<InboxStatusTab>('PENDING')
-  const [datePreset, setDatePreset] = useState<InboxDatePreset>('7D')
+  const [inboxStatusTab, setInboxStatusTab] = useState<InboxStatusTab>(requestedConversationId ? 'ALL' : 'PENDING')
+  const [datePreset, setDatePreset] = useState<InboxDatePreset>(requestedConversationId ? 'ALL' : '7D')
+  const [mobileListOpen, setMobileListOpen] = useState<boolean>(!requestedConversationId)
   const [assignedFilter, setAssignedFilter] = useState<'ALL' | string>('ALL')
   const [channelFilter, setChannelFilter] = useState<'ALL' | string>('ALL')
   const [providerFilter, setProviderFilter] = useState<'ALL' | ChannelProvider>(props.initialProviderFilter ?? 'ALL')
@@ -1693,6 +1694,12 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   useEffect(() => {
     setSelectedConversationId((current) => current && displayedConversations.some((item) => item.id === current) ? current : displayedConversations[0]?.id ?? null)
   }, [displayedConversations])
+
+  useEffect(() => {
+    if (!selectedConversationId || !mobileListOpen) return
+    const target = document.querySelector<HTMLElement>(`[data-conversation-id="${selectedConversationId}"]`)
+    target?.scrollIntoView({ block: 'nearest' })
+  }, [mobileListOpen, selectedConversationId])
 
   useEffect(() => {
     if (!newConversationOpen) return
@@ -2523,8 +2530,14 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
     return (
       <div className="space-y-4 pb-4">
+        <div className="xl:hidden">
+          <Button type="button" variant="outline" className="h-11 w-full justify-between rounded-2xl border-slate-200 bg-white px-4" onClick={() => setMobileListOpen((open) => !open)}>
+            <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700"><MessageCircle className="h-4 w-4" />Conversaciones</span>
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500"><span>{displayedConversations.length}</span><ChevronDown className={`h-4 w-4 transition-transform ${mobileListOpen ? 'rotate-180' : ''}`} /></span>
+          </Button>
+        </div>
         <div className="grid gap-4 xl:grid-cols-[320px_380px_minmax(0,1fr)] xl:items-stretch">
-          <Card className="overflow-hidden rounded-[30px] border-slate-200 bg-white/95 shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:sticky xl:top-4 xl:flex xl:h-[95vh] xl:flex-col">
+          <Card className={`overflow-hidden rounded-[30px] border-slate-200 bg-white/95 shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:sticky xl:top-4 ${mobileListOpen ? '' : 'hidden'} xl:flex xl:h-[95vh] xl:flex-col`}>
             <CardContent className="flex h-full min-h-0 flex-col gap-4 p-3.5">
               {props.sidebarHeader ? props.sidebarHeader : null}
 
@@ -2623,7 +2636,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
             </CardContent>
           </Card>
 
-          <Card className="overflow-hidden rounded-[30px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:sticky xl:top-4 xl:flex xl:h-[95vh] xl:flex-col">
+          <Card className={`overflow-hidden rounded-[30px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_24px_52px_-38px_rgba(15,23,42,0.28)] xl:sticky xl:top-4 ${mobileListOpen ? '' : 'hidden'} xl:flex xl:h-[95vh] xl:flex-col`}>
             <CardContent className="flex h-full min-h-0 flex-col p-3">
               <div className="border-b border-slate-200 pb-2.5">
                 <div className="flex items-center gap-2.5">
@@ -2674,6 +2687,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                       <button
                         key={item.id}
                         type="button"
+                        data-conversation-id={item.id}
                         onClick={() => setSelectedConversationId(item.id)}
                         className={isActive
                           ? 'w-full rounded-[18px] border-2 border-blue-500 bg-[linear-gradient(135deg,rgba(191,219,254,0.95),rgba(239,246,255,1))] px-3 py-2.5 text-left shadow-[0_18px_36px_-24px_rgba(37,99,235,0.7)]'
@@ -2870,7 +2884,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                     <Card className="flex h-full min-h-0 flex-col rounded-[24px] border border-slate-200 bg-white/98 shadow-none">
                       <CardContent className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-3 p-3.5 lg:p-4">
                         <div className="min-h-0 rounded-[24px] border border-slate-200/80 bg-white/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]" style={CONVERSATION_WALLPAPER_STYLE}>
-                          <div className="h-full space-y-3 overflow-y-auto px-1.5 pr-2 sm:px-3 lg:px-5 xl:px-7">
+                          <div className="h-full min-h-[55vh] space-y-3 overflow-y-auto px-1.5 pr-2 sm:px-3 lg:px-5 xl:px-7">
                           {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
                           {selectedConversation.messages.map((message, index) => {
                             const hasCollision = hasMessageCollision(message)
@@ -3662,6 +3676,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                 <button
                   key={item.id}
                   type="button"
+                  data-conversation-id={item.id}
                   onClick={() => setSelectedConversationId(item.id)}
                   className={isActive
                     ? 'w-full rounded-3xl border-2 border-blue-500 bg-[linear-gradient(180deg,rgba(191,219,254,0.9),#eff6ff)] p-4 text-left shadow-[0_22px_40px_-28px_rgba(37,99,235,0.72)]'

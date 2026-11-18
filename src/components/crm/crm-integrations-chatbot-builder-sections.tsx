@@ -96,6 +96,9 @@ type ChatbotBuilderDraft = {
   termsLabel: string
   termsLinkText: string
   termsLinkUrl: string
+  chatLegalNoticeEnabled: boolean
+  chatPrivacyPolicyUrl: string
+  chatTermsOfUseUrl: string
 }
 
 export function CrmIntegrationsChatbotBuilderSections<TDraft extends ChatbotBuilderDraft>(props: {
@@ -316,6 +319,13 @@ export function CrmIntegrationsChatbotBuilderSections<TDraft extends ChatbotBuil
                 <div className="grid gap-2 md:col-span-2"><Label>Texto legal</Label><Textarea value={draft.termsLabel} onChange={(e) => setDraft((current) => ({ ...current, termsLabel: e.target.value }))} rows={2} className="rounded-2xl" /></div>
                 <div className="grid gap-2"><Label>Texto enlace</Label><Input value={draft.termsLinkText} onChange={(e) => setDraft((current) => ({ ...current, termsLinkText: e.target.value }))} className="h-11 rounded-xl" /></div>
                 <div className="grid gap-2"><Label>URL política</Label><Input value={draft.termsLinkUrl} onChange={(e) => setDraft((current) => ({ ...current, termsLinkUrl: e.target.value }))} className="h-11 rounded-xl" placeholder="https://..." /></div>
+              </>
+            ) : null}
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Aviso legal en el chat</span><Switch checked={draft.chatLegalNoticeEnabled} onCheckedChange={(checked) => setDraft((current) => ({ ...current, chatLegalNoticeEnabled: checked }))} /></div>
+            {draft.chatLegalNoticeEnabled ? (
+              <>
+                <div className="grid gap-2"><Label>URL Política de privacidad</Label><Input value={draft.chatPrivacyPolicyUrl} onChange={(e) => setDraft((current) => ({ ...current, chatPrivacyPolicyUrl: e.target.value }))} className="h-11 rounded-xl" placeholder="https://..." /></div>
+                <div className="grid gap-2"><Label>URL Términos de uso</Label><Input value={draft.chatTermsOfUseUrl} onChange={(e) => setDraft((current) => ({ ...current, chatTermsOfUseUrl: e.target.value }))} className="h-11 rounded-xl" placeholder="https://..." /></div>
               </>
             ) : null}
           </>

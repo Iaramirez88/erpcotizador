@@ -465,6 +465,9 @@ type ChatbotBuilderState = Pick<ChannelFormState,
   | 'termsLabel'
   | 'termsLinkText'
   | 'termsLinkUrl'
+  | 'chatLegalNoticeEnabled'
+  | 'chatPrivacyPolicyUrl'
+  | 'chatTermsOfUseUrl'
   | 'quickActions'
   | 'flowStages'
 >
@@ -649,6 +652,9 @@ function getInitialChannelForm() {
     termsLabel: 'Acepto el tratamiento de datos personales.',
     termsLinkText: 'Leer términos',
     termsLinkUrl: '',
+    chatLegalNoticeEnabled: true,
+    chatPrivacyPolicyUrl: '',
+    chatTermsOfUseUrl: '',
   }
 }
 
@@ -1969,6 +1975,18 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
                   <div className="flex-1 rounded-xl px-3 py-2 text-center text-xs font-semibold text-white" style={{ backgroundColor: builderState.accentColor }}>Responder</div>
                   <div className="rounded-xl border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-600">Asesor humano</div>
                 </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  {builderState.chatLegalNoticeEnabled ? (
+                    <p className="max-w-[240px] text-[10px] leading-4 text-slate-400">
+                      Al chatear, aceptas los términos y condiciones establecidos en la{' '}
+                      {builderState.chatPrivacyPolicyUrl ? <span className="underline underline-offset-2">Política de privacidad</span> : <span>Política de privacidad</span>}{' '}
+                      y los{' '}
+                      {builderState.chatTermsOfUseUrl ? <span className="underline underline-offset-2">Términos de uso</span> : <span>Términos de uso</span>}
+                      .
+                    </p>
+                  ) : null}
+                  <span className="text-[11px] font-medium text-rose-600">Terminar conversación</span>
+                </div>
               </div>
             </div>
           </div> : null}
@@ -2601,6 +2619,9 @@ function getChatbotBuilderState(settingsJson: Record<string, unknown> | null | u
     termsLabel: publicSettings.termsLabel,
     termsLinkText: publicSettings.termsLinkText,
     termsLinkUrl: publicSettings.termsLinkUrl,
+    chatLegalNoticeEnabled: publicSettings.chatLegalNoticeEnabled,
+    chatPrivacyPolicyUrl: publicSettings.chatPrivacyPolicyUrl,
+    chatTermsOfUseUrl: publicSettings.chatTermsOfUseUrl,
     publicEmbedEnabled: getPublicEmbedEnabled(settingsJson),
     iframeHeight: getIframeHeight(settingsJson),
     allowedDomains: getAllowedDomains(settingsJson),
@@ -3100,6 +3121,9 @@ export function CrmIntegrationsClient() {
       termsLabel: getSettingText(settings, 'termsLabel', 'Acepto el tratamiento de datos personales.'),
       termsLinkText: getSettingText(settings, 'termsLinkText', 'Leer términos'),
       termsLinkUrl: getSettingText(settings, 'termsLinkUrl', ''),
+      chatLegalNoticeEnabled: getBooleanSetting(settings, 'chatLegalNoticeEnabled', true),
+      chatPrivacyPolicyUrl: getSettingText(settings, 'chatPrivacyPolicyUrl', ''),
+      chatTermsOfUseUrl: getSettingText(settings, 'chatTermsOfUseUrl', ''),
       ...getWebFormPurposeFormState(settings),
       ...getBookingSettingsFormState(settings),
       ...getCrmResponseEmailFormState(settings),
@@ -3379,6 +3403,9 @@ export function CrmIntegrationsClient() {
       termsLabel: createForm.termsLabel,
       termsLinkText: createForm.termsLinkText,
       termsLinkUrl: createForm.termsLinkUrl,
+      chatLegalNoticeEnabled: createForm.chatLegalNoticeEnabled,
+      chatPrivacyPolicyUrl: createForm.chatPrivacyPolicyUrl,
+      chatTermsOfUseUrl: createForm.chatTermsOfUseUrl,
       ...pickWebFormPurposeFormState(createForm),
       ...serializeBookingSettingsFormState(createForm),
       ...serializeCrmResponseEmailFormState(createForm),
@@ -4308,6 +4335,9 @@ export function CrmIntegrationsClient() {
         termsLabel: createForm.termsLabel,
         termsLinkText: createForm.termsLinkText,
         termsLinkUrl: createForm.termsLinkUrl,
+        chatLegalNoticeEnabled: createForm.chatLegalNoticeEnabled,
+        chatPrivacyPolicyUrl: createForm.chatPrivacyPolicyUrl,
+        chatTermsOfUseUrl: createForm.chatTermsOfUseUrl,
         ...pickWebFormPurposeFormState(createForm),
         allowHumanHandoff: true,
       }

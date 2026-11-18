@@ -125,6 +125,9 @@ type PublicChatbotEmbedProps = {
   termsLabel: string
   termsLinkText: string
   termsLinkUrl: string
+  chatLegalNoticeEnabled: boolean
+  chatPrivacyPolicyUrl: string
+  chatTermsOfUseUrl: string
   startStageId: string
   quickActions: ChatbotQuickAction[]
   flowStages: ChatbotFlowStage[]
@@ -1716,7 +1719,24 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
               </div>
             </div>
             {!shouldBlockConversation ? (
-              <div className="flex justify-end">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {props.chatLegalNoticeEnabled ? (
+                  <p className="max-w-[260px] text-[11px] leading-4 text-slate-400">
+                    Al chatear, aceptas los términos y condiciones establecidos en la{' '}
+                    {props.chatPrivacyPolicyUrl ? (
+                      <a href={props.chatPrivacyPolicyUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2 transition hover:text-slate-600">Política de privacidad</a>
+                    ) : (
+                      <span>Política de privacidad</span>
+                    )}{' '}
+                    y los{' '}
+                    {props.chatTermsOfUseUrl ? (
+                      <a href={props.chatTermsOfUseUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2 transition hover:text-slate-600">Términos de uso</a>
+                    ) : (
+                      <span>Términos de uso</span>
+                    )}
+                    .
+                  </p>
+                ) : null}
                 <button type="button" onClick={() => void endConversation()} disabled={endingConversation} className="text-xs font-medium text-rose-600 transition hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-60">
                   {endingConversation ? 'Terminando conversación...' : 'Terminar conversación'}
                 </button>
