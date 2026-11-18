@@ -1613,7 +1613,10 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
             {pendingAttachments.length > 0 ? (
               <div className="flex flex-wrap gap-2 rounded-[20px] border border-slate-200 bg-slate-50 px-3 py-2">
                 {pendingAttachments.map((attachment) => (
-                  <div key={attachment.url} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700">
+                  <div key={attachment.url} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-3 text-xs text-slate-700">
+                    {attachment.type === 'image' && attachment.url ? (
+                      <img src={attachment.url} alt={attachment.name} className="h-8 w-8 rounded-full border border-slate-200 object-cover" />
+                    ) : null}
                     <span className="max-w-[180px] truncate">{attachment.name}</span>
                     <button type="button" onClick={() => removePendingAttachment(attachment.url)} className="text-slate-400 transition hover:text-slate-700">
                       ×

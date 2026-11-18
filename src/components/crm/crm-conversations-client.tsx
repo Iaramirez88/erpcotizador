@@ -1806,6 +1806,75 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     }
   }
 
+  const [createLeadOpen, setCreateLeadOpen] = useState(false)
+  const [createLeadForm, setCreateLeadForm] = useState({ nombre: '', email: '', telefono: '' })
+  const [creatingLead, setCreatingLead] = useState(false)
+  const [createClienteOpen, setCreateClienteOpen] = useState(false)
+  const [createClienteForm, setCreateClienteForm] = useState({ nombre: '', tipoDocumento: 'CC', documento: '', email: '', telefono: '' })
+  const [creatingCliente, setCreatingCliente] = useState(false)
+
+  function openCreateLead() {
+    if (!selectedConversation) return
+    setCreateLeadForm({
+      nombre: selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || '',
+      email: selectedConversation.contactEmail || '',
+      telefono: selectedConversation.contactPhone || '',
+    })
+    setCreateLeadOpen(true)
+  }
+
+  async function submitCreateLead() {
+    if (!selectedConversation) return
+    setCreatingLead(true)
+    try {
+      const json = await requestJson<{ lead: { id: string } }>('/api/crm/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: createLeadForm.nombre, email: createLeadForm.email, telefono: createLeadForm.telefono }),
+      })
+      if (!json.success) {
+        alert(json.error || 'No se pudo crear el lead.')
+        return
+      }
+      setCreateLeadOpen(false)
+      await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
+    } finally {
+      setCreatingLead(false)
+    }
+  }
+
+  function openCreateCliente() {
+    if (!selectedConversation) return
+    setCreateClienteForm({
+      nombre: selectedConversation.contactDisplayName || selectedConversation.cliente?.nombre || '',
+      tipoDocumento: 'CC',
+      documento: selectedConversation.cliente?.documento || '',
+      email: selectedConversation.contactEmail || '',
+      telefono: selectedConversation.contactPhone || '',
+    })
+    setCreateClienteOpen(true)
+  }
+
+  async function submitCreateCliente() {
+    if (!selectedConversation) return
+    setCreatingCliente(true)
+    try {
+      const json = await requestJson<{ id: string }>('/api/clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createClienteForm),
+      })
+      if (!json.success) {
+        alert(json.error || 'No se pudo crear el cliente.')
+        return
+      }
+      setCreateClienteOpen(false)
+      await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
+    } finally {
+      setCreatingCliente(false)
+    }
+  }
+
   function openAttachmentPicker() {
     if (!attachmentInputRef.current || !selectedConversation || uploadingAttachment) return
     attachmentInputRef.current.accept = mapDraftMessageTypeToAttachmentAccept(messageTypeDraft)
@@ -2908,7 +2977,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                              <Textarea value={messageDraft} onChange={(e) => setMessageDraft(e.target.value)} rows={2} className="min-h-[54px] flex-1 resize-none rounded-2xl border-slate-200 bg-white" placeholder={messageTypeDraft === 'TEXT' ? 'Escribe una respuesta...' : 'Opcional para multimedia, especialmente en WhatsApp.'} />
+                              <Textarea value={messageDraft} onChange={(e) => setMessageDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submitMessage() } }} rows={2} className="min-h-[54px] flex-1 resize-none rounded-2xl border-slate-200 bg-white" placeholder={messageTypeDraft === 'TEXT' ? 'Escribe una respuesta...' : 'Opcional para multimedia, especialmente en WhatsApp.'} />
                               <Button type="button" size="icon" className="h-11 w-11 shrink-0 rounded-2xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => void submitMessage()} disabled={sending || uploadingAttachment || recordingAudio || Boolean(hybridComposerGuard && !hybridOverrideConfirmed)} aria-label="Enviar mensaje">
                                 <SendHorizontal className="h-5 w-5" />
                               </Button>
@@ -3735,6 +3804,18 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-60 rounded-2xl p-2">
                         <DropdownMenuLabel>Conversación CRM</DropdownMenuLabel>
+                        {!selectedConversation.lead ? (
+                          <DropdownMenuItem onSelect={openCreateLead}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Crear lead
+                          </DropdownMenuItem>
+                        ) : null}
+                        {!selectedConversation.cliente ? (
+                          <DropdownMenuItem onSelect={openCreateCliente}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Crear cliente
+                          </DropdownMenuItem>
+                        ) : null}
                         <DropdownMenuItem onSelect={toggleMuteSelectedConversation}>
                           <BellOff className="mr-2 h-4 w-4" />
                           {isMuted ? 'Activar notificaciones' : 'Silenciar notificaciones'}
@@ -4159,7 +4240,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                             </div>
                             <div className="grid gap-2">
                               <Label>{messageTypeDraft === 'TEXT' ? 'Mensaje' : 'Texto o caption opcional'}</Label>
-                              <Textarea value={messageDraft} onChange={(e) => setMessageDraft(e.target.value)} rows={4} placeholder={messageTypeDraft === 'TEXT' ? 'Escribe una respuesta...' : 'Opcional para multimedia, especialmente en WhatsApp.'} />
+                              <Textarea value={messageDraft} onChange={(e) => setMessageDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submitMessage() } }} rows={4} placeholder={messageTypeDraft === 'TEXT' ? 'Escribe una respuesta...' : 'Opcional para multimedia, especialmente en WhatsApp.'} />
                             </div>
                           </div>
                           {messageTypeDraft !== 'TEXT' ? (
@@ -4681,6 +4762,78 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setAiTaskDialogOpen(false)} disabled={creatingAiTask}>Cancelar</Button>
             <Button onClick={() => void submitAiTaskSuggestion()} disabled={creatingAiTask}>{creatingAiTask ? 'Creando tarea...' : 'Crear tarea'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={createLeadOpen} onOpenChange={setCreateLeadOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Crear lead</DialogTitle>
+            <DialogDescription>Registra este contacto como prospecto en el CRM.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-2">
+              <Label>Nombre</Label>
+              <Input value={createLeadForm.nombre} onChange={(e) => setCreateLeadForm((current) => ({ ...current, nombre: e.target.value }))} placeholder="Nombre del lead" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Email</Label>
+              <Input type="email" value={createLeadForm.email} onChange={(e) => setCreateLeadForm((current) => ({ ...current, email: e.target.value }))} placeholder="correo@ejemplo.com" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Teléfono</Label>
+              <Input value={createLeadForm.telefono} onChange={(e) => setCreateLeadForm((current) => ({ ...current, telefono: e.target.value }))} placeholder="300 000 0000" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateLeadOpen(false)} disabled={creatingLead}>Cancelar</Button>
+            <Button onClick={() => void submitCreateLead()} disabled={creatingLead || (!createLeadForm.nombre.trim() && !createLeadForm.email.trim() && !createLeadForm.telefono.trim())}>{creatingLead ? 'Creando...' : 'Crear lead'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={createClienteOpen} onOpenChange={setCreateClienteOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Crear cliente</DialogTitle>
+            <DialogDescription>Registra este contacto como cliente del ERP.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-2">
+              <Label>Nombre</Label>
+              <Input value={createClienteForm.nombre} onChange={(e) => setCreateClienteForm((current) => ({ ...current, nombre: e.target.value }))} placeholder="Nombre del cliente" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-2">
+                <Label>Tipo documento</Label>
+                <Select value={createClienteForm.tipoDocumento} onValueChange={(value) => setCreateClienteForm((current) => ({ ...current, tipoDocumento: value }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CC">CC</SelectItem>
+                    <SelectItem value="NIT">NIT</SelectItem>
+                    <SelectItem value="CE">CE</SelectItem>
+                    <SelectItem value="PASAPORTE">Pasaporte</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Documento</Label>
+                <Input value={createClienteForm.documento} onChange={(e) => setCreateClienteForm((current) => ({ ...current, documento: e.target.value }))} placeholder="123456789" />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Email</Label>
+              <Input type="email" value={createClienteForm.email} onChange={(e) => setCreateClienteForm((current) => ({ ...current, email: e.target.value }))} placeholder="correo@ejemplo.com" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Teléfono</Label>
+              <Input value={createClienteForm.telefono} onChange={(e) => setCreateClienteForm((current) => ({ ...current, telefono: e.target.value }))} placeholder="300 000 0000" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateClienteOpen(false)} disabled={creatingCliente}>Cancelar</Button>
+            <Button onClick={() => void submitCreateCliente()} disabled={creatingCliente || !createClienteForm.nombre.trim() || !createClienteForm.documento.trim()}>{creatingCliente ? 'Creando...' : 'Crear cliente'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1073,7 +1073,7 @@ export function CrmTeamChatClient({ sidebarHeader }: CrmTeamChatClientProps) {
                       ))}
                     </div>
                   ) : null}
-                  <Textarea value={messageDraft} onChange={(event) => setMessageDraft(event.target.value)} rows={4} placeholder={selectedThread.type === 'GROUP' ? 'Escribe un mensaje para el grupo...' : 'Escribe un mensaje interno para el equipo...'} />
+                  <Textarea value={messageDraft} onChange={(event) => setMessageDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void handleSendMessage() } }} rows={4} placeholder={selectedThread.type === 'GROUP' ? 'Escribe un mensaje para el grupo...' : 'Escribe un mensaje interno para el equipo...'} />
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-xs text-slate-500">{uploadingAttachment ? `Subiendo adjunto... ${attachmentUpload?.progress ?? 0}%` : 'Puedes enviar texto, emojis, imágenes y documentos.'}</p>
                     <Button className="rounded-xl" onClick={() => void handleSendMessage()} disabled={sending || uploadingAttachment}>
