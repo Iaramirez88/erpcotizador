@@ -707,19 +707,29 @@ function getEdgeCurveMetrics(source: StudioGraphNode, target: StudioGraphNode, a
   const startY = anchors?.startY ?? getNodeAnchorY(source)
   const endX = anchors?.endX ?? getNodeAnchorX(target, 'left')
   const endY = anchors?.endY ?? getNodeAnchorY(target)
-  const deltaX = Math.max((endX - startX) / 2, 56)
-  const control1X = startX + deltaX
-  const control2X = endX - deltaX
+
+  // Tramo recto de salida/llegada para que siempre se vea de dónde sale
+  // y a dónde llega la línea, incluso cuando la conexión es larga.
+  const leadOut = 12
+  const leadIn = 12
+  const curveStartX = startX + leadOut
+  const curveEndX = endX - leadIn
+
+  const deltaX = Math.max((curveEndX - curveStartX) / 2, 56)
+  const control1X = curveStartX + deltaX
+  const control2X = curveEndX - deltaX
+
   const midpoint = getBezierMidpoint({
-    startX,
+    startX: curveStartX,
     startY,
     control1X,
     control1Y: startY,
     control2X,
     control2Y: endY,
-    endX,
+    endX: curveEndX,
     endY,
   })
+
   return {
     startX,
     startY,
@@ -727,7 +737,7 @@ function getEdgeCurveMetrics(source: StudioGraphNode, target: StudioGraphNode, a
     endY,
     deltaX,
     midpoint,
-    path: `M ${startX} ${startY} C ${control1X} ${startY}, ${control2X} ${endY}, ${endX} ${endY}`,
+    path: `M ${startX} ${startY} L ${curveStartX} ${startY} C ${control1X} ${startY}, ${control2X} ${endY}, ${curveEndX} ${endY} L ${endX} ${endY}`,
   }
 }
 

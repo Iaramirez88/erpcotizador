@@ -45,6 +45,7 @@ type ChatbotSnippetArgs = {
   backgroundColor?: string
   launcherLabel?: string
   launcherIcon?: string
+  launcherIconImageUrl?: string
   launcherPosition?: 'right' | 'center' | 'left'
   launcherPlacement?: 'fixed' | 'absolute'
   launcherSize?: 'compact' | 'standard' | 'large'
@@ -331,13 +332,15 @@ export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
   const launcherSize = args.launcherSize === 'compact' ? 'compact' : args.launcherSize === 'large' ? 'large' : 'standard'
   const customCss = args.customCss || ''
   const iframeUrl = buildChatbotEmbedUrl(args.baseUrl, args.channelId, 'iframe')
-  const iconMarkup = launcherIcon === 'sparkles'
-    ? '&#10024;'
-    : launcherIcon === 'message-circle'
-      ? '&#128172;'
-      : launcherIcon === 'bot'
-        ? '&#129302;'
-        : '&#128172;'
+  const iconMarkup = launcherIcon === 'custom' && args.launcherIconImageUrl
+    ? `<img src="${args.launcherIconImageUrl.replace(/"/g, '&quot;')}" alt="" style="width:20px;height:20px;object-fit:contain;border-radius:5px;display:block;" />`
+    : launcherIcon === 'sparkles'
+      ? '&#10024;'
+      : launcherIcon === 'message-circle'
+        ? '&#128172;'
+        : launcherIcon === 'bot'
+          ? '&#129302;'
+          : '&#128172;'
   const launcherOffset = `${(args.launcherOffsetY || '60').replace(/[^0-9]/g, '') || '60'}px`
   const launcherOffsetX = `${(args.launcherOffsetX || '60').replace(/[^0-9]/g, '') || '60'}px`
   const panelOffset = `${Number.parseInt((args.launcherOffsetY || '60').replace(/[^0-9]/g, '') || '60', 10) + 88}px`

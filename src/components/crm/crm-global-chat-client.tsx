@@ -11,15 +11,15 @@ type Props = {
 }
 
 export function CrmGlobalChatClient({ canAccessTeamChat, canAccessCrmChat }: Props) {
-  const defaultTab = canAccessTeamChat ? 'team' : 'crm'
+  const defaultTab = canAccessCrmChat ? 'crm' : 'team'
   const [activeTab, setActiveTab] = useState<'team' | 'crm'>(defaultTab)
 
   const sidebarHeader = (
     <div className="space-y-3 rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#f8fbff,#ffffff)] p-3.5 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.24)]">
       <h1 className="text-xl font-semibold tracking-tight text-slate-950">Conversaciones</h1>
       <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-slate-100 p-1">
-        {canAccessTeamChat ? <TabsTrigger value="team" className="rounded-xl px-4 py-2.5 text-slate-600 data-[state=active]:bg-[#1f4aa8] data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-[#eef2f7]">Equipo</TabsTrigger> : null}
-        {canAccessCrmChat ? <TabsTrigger value="crm" className="rounded-xl px-4 py-2.5 text-slate-600 data-[state=active]:bg-[#1f4aa8] data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-[#eef2f7]">Prospectos y clientes</TabsTrigger> : null}
+        {canAccessCrmChat ? <TabsTrigger value="crm" className="rounded-xl px-4 py-2.5 text-slate-600 data-[state=active]:bg-[#2563eb] data-[state=active]:font-semibold data-[state=active]:text-white data-[state=active]:shadow data-[state=inactive]:bg-[#eef2f7]">Prospectos y clientes</TabsTrigger> : null}
+        {canAccessTeamChat ? <TabsTrigger value="team" className="rounded-xl px-4 py-2.5 text-slate-600 data-[state=active]:bg-[#2563eb] data-[state=active]:font-semibold data-[state=active]:text-white data-[state=active]:shadow data-[state=inactive]:bg-[#eef2f7]">Equipo</TabsTrigger> : null}
       </TabsList>
     </div>
   )

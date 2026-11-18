@@ -190,6 +190,7 @@ export type PublicChatbotSettings = {
   statusBadgeLabel: string
   launcherLabel: string
   launcherIcon: string
+  launcherIconImageUrl: string
   launcherPosition: 'right' | 'center' | 'left'
   launcherPlacement: 'fixed' | 'absolute'
   launcherSize: 'compact' | 'standard' | 'large'
@@ -291,7 +292,8 @@ export function getPublicChatbotSettings(settingsJson: unknown): PublicChatbotSe
     headerBadgeLabel: typeof settings.headerBadgeLabel === 'string' && settings.headerBadgeLabel.trim() ? settings.headerBadgeLabel.trim() : 'Chatbot CRM',
     statusBadgeLabel: typeof settings.statusBadgeLabel === 'string' && settings.statusBadgeLabel.trim() ? settings.statusBadgeLabel.trim() : 'En linea',
     launcherLabel: typeof settings.launcherLabel === 'string' && settings.launcherLabel.trim() ? settings.launcherLabel.trim() : 'Abrir asesor virtual',
-    launcherIcon: typeof settings.launcherIcon === 'string' && settings.launcherIcon.trim() ? settings.launcherIcon.trim() : 'Bot',
+    launcherIcon: typeof settings.launcherIcon === 'string' && settings.launcherIcon.trim() ? settings.launcherIcon.trim() : 'bot',
+    launcherIconImageUrl: typeof settings.launcherIconImageUrl === 'string' && settings.launcherIconImageUrl.trim() ? settings.launcherIconImageUrl.trim() : '',
     launcherPosition: settings.launcherPosition === 'left' ? 'left' : settings.launcherPosition === 'center' ? 'center' : 'right',
     launcherPlacement: settings.launcherPlacement === 'absolute' ? 'absolute' : 'fixed',
     launcherSize: settings.launcherSize === 'compact' ? 'compact' : settings.launcherSize === 'large' ? 'large' : 'standard',

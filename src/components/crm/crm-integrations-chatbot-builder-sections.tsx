@@ -56,6 +56,7 @@ type ChatbotBuilderDraft = {
   showProductField: boolean
   launcherLabel: string
   launcherIcon: string
+  launcherIconImageUrl: string
   launcherPosition: LauncherPosition
   launcherPlacement: LauncherPlacement
   launcherSize: LauncherSize
@@ -108,6 +109,44 @@ export function CrmIntegrationsChatbotBuilderSections<TDraft extends ChatbotBuil
 }) {
   const { section, draft, setDraft, normalizePixelValue, normalizeZIndexValue, getPreChatFormPreset, getPreChatFormPresets } = props
 
+  async function handleLauncherIconFile(file: File) {
+    if (!['image/png', 'image/jpeg', 'image/svg+xml'].includes(file.type)) {
+      alert('Formato no soportado. Usa PNG, JPG o SVG.')
+      return
+    }
+    if (file.size > 1024 * 1024) {
+      alert('El icono es muy pesado. Usa una imagen de máximo 1MB.')
+      return
+    }
+
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result ?? ''))
+      reader.onerror = () => reject(new Error('No se pudo leer el archivo.'))
+      reader.readAsDataURL(file)
+    })
+
+    const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+      const image = new Image()
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
+      image.onerror = () => resolve({ width: 0, height: 0 })
+      image.src = dataUrl
+    })
+
+    if (dimensions.width > 0 && dimensions.height > 0) {
+      if (dimensions.width !== dimensions.height) {
+        alert('El icono debe ser cuadrado (ancho y alto iguales).')
+        return
+      }
+      if (dimensions.width > 512 || dimensions.height > 512) {
+        alert('El icono no debe superar 512px por lado.')
+        return
+      }
+    }
+
+    setDraft((current) => ({ ...current, launcherIcon: 'custom', launcherIconImageUrl: dataUrl }))
+  }
+
   if (section === 'brand') {
     return (
       <>
@@ -159,7 +198,7 @@ export function CrmIntegrationsChatbotBuilderSections<TDraft extends ChatbotBuil
           <Switch checked={draft.showProductField} onCheckedChange={(checked) => setDraft((current) => ({ ...current, showProductField: checked }))} />
         </div>
         <div className="grid gap-2"><Label>Texto launcher</Label><Input value={draft.launcherLabel} onChange={(e) => setDraft((current) => ({ ...current, launcherLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-        <div className="grid gap-2"><Label>Icono launcher</Label><Select value={draft.launcherIcon} onValueChange={(value) => setDraft((current) => ({ ...current, launcherIcon: value }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bot">bot</SelectItem><SelectItem value="message-circle">message-circle</SelectItem><SelectItem value="sparkles">sparkles</SelectItem></SelectContent></Select></div>
+        <div className="grid gap-2 md:col-span-2"><Label>Icono launcher</Label><Select value={draft.launcherIcon} onValueChange={(value) => setDraft((current) => ({ ...current, launcherIcon: value }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bot">Bot</SelectItem><SelectItem value="message-circle">Burbuja de mensaje</SelectItem><SelectItem value="sparkles">Destellos</SelectItem><SelectItem value="custom">Icono personalizado</SelectItem></SelectContent></Select>{draft.launcherIcon === 'custom' ? <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-3"><div className="flex items-center gap-3">{draft.launcherIconImageUrl ? <img src={draft.launcherIconImageUrl} alt="Icono personalizado" className="h-12 w-12 rounded-xl border border-slate-200 bg-white object-contain" /> : null}<Input type="file" accept="image/png,image/jpeg,image/svg+xml" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; void handleLauncherIconFile(file); e.currentTarget.value = '' }} className="h-11 rounded-xl bg-white" /></div><p className="text-xs text-slate-500">Imagen cuadrada, máximo 512×512 px. Formatos: PNG, JPG o SVG.</p>{draft.launcherIconImageUrl ? <button type="button" onClick={() => setDraft((current) => ({ ...current, launcherIconImageUrl: '' }))} className="text-xs font-medium text-slate-600 underline hover:text-slate-900">Quitar icono</button> : null}</div> : null}</div>
         <div className="grid gap-2"><Label>Alineación launcher</Label><Select value={draft.launcherPosition} onValueChange={(value) => setDraft((current) => ({ ...current, launcherPosition: value as LauncherPosition }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Derecha</SelectItem><SelectItem value="center">Centro</SelectItem><SelectItem value="left">Izquierda</SelectItem></SelectContent></Select></div>
         <div className="grid gap-2"><Label>Tipo posición</Label><Select value={draft.launcherPlacement} onValueChange={(value) => setDraft((current) => ({ ...current, launcherPlacement: value as LauncherPlacement }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="fixed">Fixed</SelectItem><SelectItem value="absolute">Absolute</SelectItem></SelectContent></Select></div>
         <div className="grid gap-2"><Label>Tamaño launcher</Label><Select value={draft.launcherSize} onValueChange={(value) => setDraft((current) => ({ ...current, launcherSize: value as LauncherSize }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="compact">Compacto</SelectItem><SelectItem value="standard">Estándar</SelectItem><SelectItem value="large">Grande</SelectItem></SelectContent></Select></div>

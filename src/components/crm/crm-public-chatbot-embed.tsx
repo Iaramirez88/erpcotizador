@@ -81,6 +81,7 @@ type PublicChatbotEmbedProps = {
   floatingLauncherEnabled: boolean
   launcherLabel: string
   launcherIcon: string
+  launcherIconImageUrl: string
   launcherPosition: 'right' | 'center' | 'left'
   launcherPlacement: 'fixed' | 'absolute'
   launcherSize: 'compact' | 'standard' | 'large'
@@ -1375,7 +1376,11 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
               ...launcherAnchorStyle,
             }}
           >
-            <span style={{ fontSize: launcherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(props.launcherIcon)}</span>
+            {props.launcherIcon === 'custom' && props.launcherIconImageUrl ? (
+              <img src={props.launcherIconImageUrl} alt="" style={{ width: launcherMetrics.iconSize, height: launcherMetrics.iconSize, objectFit: 'contain', borderRadius: 6, display: 'block' }} />
+            ) : (
+              <span style={{ fontSize: launcherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(props.launcherIcon)}</span>
+            )}
             {launcherMetrics.labelVisible ? <span>{props.launcherLabel}</span> : null}
           </button>
         </div>

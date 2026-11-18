@@ -71,6 +71,7 @@ export default async function PublicChatbotPage(props: PageProps) {
       floatingLauncherEnabled={settings.floatingLauncherEnabled}
       launcherLabel={settings.launcherLabel}
       launcherIcon={settings.launcherIcon}
+      launcherIconImageUrl={settings.launcherIconImageUrl}
       launcherPosition={settings.launcherPosition}
       launcherPlacement={settings.launcherPlacement}
       launcherSize={settings.launcherSize}

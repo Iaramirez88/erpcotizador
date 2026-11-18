@@ -412,6 +412,7 @@ type ChatbotBuilderState = Pick<ChannelFormState,
   | 'floatingLauncherEnabled'
   | 'launcherLabel'
   | 'launcherIcon'
+  | 'launcherIconImageUrl'
   | 'launcherPlacement'
   | 'launcherPosition'
   | 'launcherSize'
@@ -587,6 +588,7 @@ function getInitialChannelForm() {
     floatingLauncherEnabled: true,
     launcherLabel: 'Abrir asesor virtual',
     launcherIcon: 'bot',
+    launcherIconImageUrl: '',
     launcherPosition: 'right' as LauncherPosition,
     launcherPlacement: 'fixed' as LauncherPlacement,
     launcherSize: 'standard' as LauncherSize,
@@ -1585,6 +1587,10 @@ function getLauncherIcon(settingsJson: Record<string, unknown> | null | undefine
   return typeof settingsJson?.launcherIcon === 'string' ? settingsJson.launcherIcon : 'bot'
 }
 
+function getLauncherIconImageUrl(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.launcherIconImageUrl === 'string' ? settingsJson.launcherIconImageUrl : ''
+}
+
 function getLauncherPosition(settingsJson: Record<string, unknown> | null | undefined): LauncherPosition {
   if (settingsJson?.launcherPosition === 'left') return 'left'
   if (settingsJson?.launcherPosition === 'center') return 'center'
@@ -2098,6 +2104,7 @@ function buildIntegrationSnippets(args: {
       backgroundColor: getBackgroundColor(args.settingsJson),
       launcherLabel: getLauncherLabel(args.settingsJson),
       launcherIcon: getLauncherIcon(args.settingsJson),
+      launcherIconImageUrl: getLauncherIconImageUrl(args.settingsJson),
       launcherPosition: getLauncherPosition(args.settingsJson),
       launcherPlacement: getLauncherPlacement(args.settingsJson),
       launcherSize: getLauncherSize(args.settingsJson),
@@ -2604,6 +2611,7 @@ function getChatbotBuilderState(settingsJson: Record<string, unknown> | null | u
     floatingLauncherEnabled: getFloatingLauncherEnabled(settingsJson),
     launcherLabel: getLauncherLabel(settingsJson),
     launcherIcon: getLauncherIcon(settingsJson),
+    launcherIconImageUrl: getLauncherIconImageUrl(settingsJson),
     launcherPosition: getLauncherPosition(settingsJson),
     launcherPlacement: getLauncherPlacement(settingsJson),
     launcherSize: getLauncherSize(settingsJson),
@@ -3032,6 +3040,7 @@ export function CrmIntegrationsClient() {
       floatingLauncherEnabled: getFloatingLauncherEnabled(settings),
       launcherLabel: getLauncherLabel(settings),
       launcherIcon: getLauncherIcon(settings),
+      launcherIconImageUrl: getLauncherIconImageUrl(settings),
       launcherPosition: getLauncherPosition(settings),
       launcherPlacement: getLauncherPlacement(settings),
       launcherSize: getLauncherSize(settings),
