@@ -3,6 +3,7 @@ import { normalizeString } from '@/lib/crm'
 import {
   buildDedupeTrace,
   buildPhoneWhereClauses,
+  CONTACT_IDENTITY_SELECT,
   normalizePhoneForMatching,
   normalizePhoneForStorage,
   type ContactRecord,
@@ -12,6 +13,7 @@ import {
 import {
   ensureLeadCaptureIdentity,
   recordLeadCaptureEvent,
+  type LeadCaptureIdentityResult,
   type LeadOriginFields,
 } from '@/lib/crm-lead-capture'
 import { applyCaptureScoreEvents, applyScoreEvent } from '@/lib/crm-scoring'
@@ -478,15 +480,42 @@ export async function createInboundArtifacts(
 ): Promise<InboundArtifactsResult | InboundArtifactsResultWithoutConversation> {
   const eventAt = args.eventAt ?? new Date()
   const createConversation = args.createConversation !== false
+
+  // Reutiliza el lead y el contacto de una conversación ya abierta para el mismo
+  // externalThreadId (mismo visitante del chatbot/web) para no crear un lead
+  // nuevo por cada mensaje entrante del mismo usuario.
+  const existingThreadConversation = createConversation && args.externalThreadId
+    ? await args.client.crmConversation.findFirst({
+        where: {
+          empresaId: args.empresaId,
+          channelConnectionId: args.channelConnectionId,
+          externalThreadId: normalizeString(args.externalThreadId),
+        },
+        orderBy: { lastMessageAt: 'desc' },
+        select: { id: true, leadId: true, contactId: true, assignedToUserId: true },
+      })
+    : null
+
+  const reusedLead = existingThreadConversation?.leadId
+    ? await args.client.crmLead.findUnique({ where: { id: existingThreadConversation.leadId } })
+    : null
+  const reusedContact = existingThreadConversation?.contactId
+    ? await args.client.crmContact.findUnique({
+        where: { id: existingThreadConversation.contactId },
+        select: CONTACT_IDENTITY_SELECT,
+      }) as ContactRecord | null
+    : null
+
   // En captación sin conversación el responsable lo deciden las reglas de
-  // asignación, no el reparto por carga de la bandeja.
+  // asignación, no el reparto por carga de la bandeja. Al reutilizar un hilo se
+  // conserva al responsable que ya tenía la conversación.
   const assignedToUserId = createConversation
     ? await resolveInboundAssigneeUserId({
         client: args.client,
         empresaId: args.empresaId,
         sedeId: args.sedeId ?? null,
         channelConnectionId: args.channelConnectionId,
-        preferredUserId: args.ownerUserId ?? null,
+        preferredUserId: existingThreadConversation?.assignedToUserId ?? args.ownerUserId ?? null,
       })
     : null
 
@@ -501,25 +530,65 @@ export async function createInboundArtifacts(
     resourceLabel: args.resourceLabel ?? null,
   }
 
-  const identity = await ensureLeadCaptureIdentity({
-    client: args.client,
-    empresaId: args.empresaId,
-    sedeId: args.sedeId ?? null,
-    createdById: args.createdById,
-    ownerUserId: assignedToUserId ?? args.ownerUserId ?? null,
-    nombre: args.nombre,
-    apellido: args.apellido,
-    empresaNombre: args.empresaNombre,
-    email: args.email,
-    phone: args.phone,
-    document: args.document,
-    ciudad: args.ciudad,
-    notes: args.messageText,
-    tags: args.tags,
-    source: args.source,
-    origin,
-    eventAt,
-  })
+  let identity: LeadCaptureIdentityResult
+  if (reusedLead && reusedContact) {
+    const email = normalizeString(args.email).toLowerCase()
+    const phone = normalizePhoneForStorage(args.phone)
+    const empresaNombre = normalizeString(args.empresaNombre)
+    const document = normalizeString(args.document)
+    const ciudad = normalizeString(args.ciudad)
+
+    // Enriquece el lead reutilizado sin crear registros nuevos ni reasignar la
+    // conversación a otro prospecto.
+    const lead = await args.client.crmLead.update({
+      where: { id: reusedLead.id },
+      data: {
+        sedeId: reusedLead.sedeId ?? args.sedeId ?? null,
+        contactId: reusedLead.contactId ?? reusedContact.id,
+        empresaNombre: reusedLead.empresaNombre || empresaNombre || null,
+        email: reusedLead.email || email || null,
+        telefono: reusedLead.telefono || phone || null,
+        celular: reusedLead.celular || phone || null,
+        documento: reusedLead.documento || document || null,
+        ciudad: reusedLead.ciudad || ciudad || null,
+      },
+    })
+
+    identity = {
+      lead,
+      contact: reusedContact,
+      contactCreated: false,
+      isFirstTouch: false,
+      leadDedupe: buildDedupeTrace({
+        matchedRecordId: lead.id,
+        strategy: 'conversation_thread_reuse',
+        matchedFields: ['externalThreadId'],
+        confidence: 'strong',
+      }),
+      contactDedupe: null,
+    }
+  } else {
+    identity = await ensureLeadCaptureIdentity({
+      client: args.client,
+      empresaId: args.empresaId,
+      sedeId: args.sedeId ?? null,
+      createdById: args.createdById,
+      ownerUserId: assignedToUserId ?? args.ownerUserId ?? null,
+      nombre: args.nombre,
+      apellido: args.apellido,
+      empresaNombre: args.empresaNombre,
+      email: args.email,
+      phone: args.phone,
+      document: args.document,
+      ciudad: args.ciudad,
+      notes: args.messageText,
+      tags: args.tags,
+      source: args.source,
+      origin,
+      eventAt,
+    })
+  }
+
   const lead = identity.lead
   const contact = identity.contact
 

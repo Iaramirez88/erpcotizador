@@ -391,6 +391,12 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     ciudad: '',
     direccion: '',
   })
+  const [createLeadOpen, setCreateLeadOpen] = useState(false)
+  const [createLeadForm, setCreateLeadForm] = useState({ nombre: '', email: '', telefono: '' })
+  const [creatingLead, setCreatingLead] = useState(false)
+  const [createClienteOpen, setCreateClienteOpen] = useState(false)
+  const [createClienteForm, setCreateClienteForm] = useState({ nombre: '', tipoDocumento: 'CC', documento: '', email: '', telefono: '' })
+  const [creatingCliente, setCreatingCliente] = useState(false)
   const [pendingTeamAttachments, setPendingTeamAttachments] = useState<ChatAttachment[]>([])
   const [teamAttachmentUpload, setTeamAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [teamLibraryPickerOpen, setTeamLibraryPickerOpen] = useState(false)
@@ -1080,6 +1086,68 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     }
   }
 
+  function openCreateLead() {
+    if (!selectedConversation) return
+    setCreateLeadForm({
+      nombre: selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || '',
+      email: selectedConversation.contactEmail || '',
+      telefono: selectedConversation.contactPhone || '',
+    })
+    setCreateLeadOpen(true)
+  }
+
+  async function submitCreateLead() {
+    if (!selectedConversation) return
+    setCreatingLead(true)
+    try {
+      const json = await requestJson<{ lead: { id: string } }>('/api/crm/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: createLeadForm.nombre, email: createLeadForm.email, telefono: createLeadForm.telefono }),
+      })
+      if (!json.success) {
+        alert(json.error || 'No se pudo crear el lead.')
+        return
+      }
+      setCreateLeadOpen(false)
+      await Promise.all([loadBase(), loadConversationDetail(selectedConversation.id)])
+    } finally {
+      setCreatingLead(false)
+    }
+  }
+
+  function openCreateCliente() {
+    if (!selectedConversation) return
+    setCreateClienteForm({
+      nombre: selectedConversation.contactDisplayName || selectedConversation.cliente?.nombre || '',
+      tipoDocumento: 'CC',
+      documento: selectedConversation.cliente?.documento || '',
+      email: selectedConversation.contactEmail || '',
+      telefono: selectedConversation.contactPhone || '',
+    })
+    setCreateClienteOpen(true)
+  }
+
+  async function submitCreateCliente() {
+    if (!selectedConversation) return
+    setCreatingCliente(true)
+    try {
+      const json = await requestJson<{ id: string }>('/api/clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createClienteForm),
+      })
+      if (!json.success) {
+        alert(json.error || 'No se pudo crear el cliente.')
+        return
+      }
+      setCreateClienteOpen(false)
+      await Promise.all([loadBase(), loadConversationDetail(selectedConversation.id)])
+    } finally {
+      setCreatingCliente(false)
+    }
+  }
+
   function openCrmPipelineBoard() {
     window.location.assign('/dashboard/crm/oportunidades')
   }
@@ -1497,6 +1565,77 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={createLeadOpen} onOpenChange={setCreateLeadOpen}>
+        <DialogContent className="z-[120] max-w-md">
+          <DialogHeader>
+            <DialogTitle>Crear lead</DialogTitle>
+            <DialogDescription>Registra este contacto como prospecto en el CRM.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-2">
+              <Label>Nombre</Label>
+              <Input value={createLeadForm.nombre} onChange={(event) => setCreateLeadForm((current) => ({ ...current, nombre: event.target.value }))} placeholder="Nombre del lead" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Email</Label>
+              <Input type="email" value={createLeadForm.email} onChange={(event) => setCreateLeadForm((current) => ({ ...current, email: event.target.value }))} placeholder="correo@ejemplo.com" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Teléfono</Label>
+              <Input value={createLeadForm.telefono} onChange={(event) => setCreateLeadForm((current) => ({ ...current, telefono: event.target.value }))} placeholder="300 000 0000" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateLeadOpen(false)} disabled={creatingLead}>Cancelar</Button>
+            <Button onClick={() => void submitCreateLead()} disabled={creatingLead || (!createLeadForm.nombre.trim() && !createLeadForm.email.trim() && !createLeadForm.telefono.trim())}>{creatingLead ? 'Creando...' : 'Crear lead'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={createClienteOpen} onOpenChange={setCreateClienteOpen}>
+        <DialogContent className="z-[120] max-w-md">
+          <DialogHeader>
+            <DialogTitle>Crear cliente</DialogTitle>
+            <DialogDescription>Registra este contacto como cliente del ERP.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-2">
+              <Label>Nombre</Label>
+              <Input value={createClienteForm.nombre} onChange={(event) => setCreateClienteForm((current) => ({ ...current, nombre: event.target.value }))} placeholder="Nombre del cliente" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-2">
+                <Label>Tipo documento</Label>
+                <select
+                  value={createClienteForm.tipoDocumento}
+                  onChange={(event) => setCreateClienteForm((current) => ({ ...current, tipoDocumento: event.target.value }))}
+                  className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                >
+                  <option value="CC">CC</option>
+                  <option value="NIT">NIT</option>
+                  <option value="CE">CE</option>
+                  <option value="PASAPORTE">Pasaporte</option>
+                </select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Documento</Label>
+                <Input value={createClienteForm.documento} onChange={(event) => setCreateClienteForm((current) => ({ ...current, documento: event.target.value }))} placeholder="123456789" />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Email</Label>
+              <Input type="email" value={createClienteForm.email} onChange={(event) => setCreateClienteForm((current) => ({ ...current, email: event.target.value }))} placeholder="correo@ejemplo.com" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Teléfono</Label>
+              <Input value={createClienteForm.telefono} onChange={(event) => setCreateClienteForm((current) => ({ ...current, telefono: event.target.value }))} placeholder="300 000 0000" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateClienteOpen(false)} disabled={creatingCliente}>Cancelar</Button>
+            <Button onClick={() => void submitCreateCliente()} disabled={creatingCliente || !createClienteForm.nombre.trim() || !createClienteForm.documento.trim()}>{creatingCliente ? 'Creando...' : 'Crear cliente'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="relative flex flex-col items-end">
         <div
           className={cn(
@@ -1683,6 +1822,18 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-60 rounded-2xl p-2">
                               <DropdownMenuLabel>Conversación CRM</DropdownMenuLabel>
+                              {!selectedConversation.lead ? (
+                                <DropdownMenuItem onSelect={openCreateLead}>
+                                  <Plus className="mr-2 h-4 w-4" />
+                                  Crear lead
+                                </DropdownMenuItem>
+                              ) : null}
+                              {!selectedConversation.cliente ? (
+                                <DropdownMenuItem onSelect={openCreateCliente}>
+                                  <Plus className="mr-2 h-4 w-4" />
+                                  Crear cliente
+                                </DropdownMenuItem>
+                              ) : null}
                               {selectedConversation.lead && !selectedConversation.cliente ? (
                                 <DropdownMenuItem onSelect={openCrmConvertDialog}>
                                   Guardar como cliente

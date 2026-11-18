@@ -1454,8 +1454,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
   useEffect(() => {
     if (!selectedConversation) return
+    // No pises el nombre mientras el usuario lo está editando: el live refresh
+    // (cada 8s) rehidrata la conversación y antes esto borraba lo escrito.
+    if (editingConversationName) return
     setConversationNameDraft(selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || '')
-  }, [selectedConversation])
+  }, [selectedConversation, editingConversationName])
 
   useEffect(() => {
     if (!selectedConversation) return
