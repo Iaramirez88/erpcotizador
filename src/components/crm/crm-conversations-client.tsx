@@ -43,7 +43,7 @@ type OriginFilter = 'ALL' | 'EMAIL' | 'FORM' | 'CHATBOT' | 'WHATSAPP' | 'SOCIAL'
 type QueueScope = 'TEAM' | 'MINE' | 'UNASSIGNED'
 type QueueFocus = 'ALL' | 'IMMEDIATE' | 'WAITING_CUSTOMER' | 'NEW_UNASSIGNED' | 'BOT_HANDOFF' | 'HYBRID_PHONE_ACTIVITY' | 'HYBRID_COLLISION'
 type InboxStatusTab = 'PENDING' | 'RESOLVED' | 'ALL'
-type InboxDatePreset = '7D' | '30D' | 'ALL'
+type InboxDatePreset = '12H' | 'TODAY' | '7D' | '30D' | 'CUSTOM' | 'ALL'
 
 type Assignee = {
   id: string
@@ -459,11 +459,42 @@ function formatConversationListTime(value: string, locale: string) {
     : { day: '2-digit', month: 'short' }).format(date)
 }
 
-function isConversationWithinDatePreset(lastMessageAt: string, preset: InboxDatePreset) {
-  if (preset === 'ALL') return true
-
+function isConversationWithinDatePreset(
+  lastMessageAt: string,
+  preset: InboxDatePreset,
+  range?: { from?: string; to?: string },
+) {
   const date = new Date(lastMessageAt)
   if (Number.isNaN(date.getTime())) return false
+
+  if (preset === 'ALL') return true
+
+  if (preset === '12H') {
+    return date.getTime() >= Date.now() - 12 * 60 * 60 * 1000
+  }
+
+  if (preset === 'TODAY') {
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    return date.getTime() >= startOfToday
+  }
+
+  if (preset === 'CUSTOM') {
+    let within = true
+    if (range?.from) {
+      const from = new Date(`${range.from}T00:00:00`)
+      if (!Number.isNaN(from.getTime())) within = within && date.getTime() >= from.getTime()
+    }
+    if (range?.to) {
+      const to = new Date(`${range.to}T00:00:00`)
+      if (!Number.isNaN(to.getTime())) {
+        const endOfTo = new Date(to)
+        endOfTo.setDate(endOfTo.getDate() + 1)
+        within = within && date.getTime() < endOfTo.getTime()
+      }
+    }
+    return within
+  }
 
   const days = preset === '30D' ? 30 : 7
   const threshold = Date.now() - days * 24 * 60 * 60 * 1000
@@ -1129,6 +1160,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [statusFilter, setStatusFilter] = useState<'ALL' | ConversationStatus>('ALL')
   const [inboxStatusTab, setInboxStatusTab] = useState<InboxStatusTab>(requestedConversationId ? 'ALL' : 'PENDING')
   const [datePreset, setDatePreset] = useState<InboxDatePreset>(requestedConversationId ? 'ALL' : '7D')
+  const [dateRangeFrom, setDateRangeFrom] = useState('')
+  const [dateRangeTo, setDateRangeTo] = useState('')
   const [mobileListOpen, setMobileListOpen] = useState<boolean>(!requestedConversationId)
   const [assignedFilter, setAssignedFilter] = useState<'ALL' | string>('ALL')
   const [channelFilter, setChannelFilter] = useState<'ALL' | string>('ALL')
@@ -1661,8 +1694,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   }, [locale, originFilter, queueFocus, queueScopedConversations])
 
   const dateScopedConversations = useMemo(() => {
-    return visibleConversations.filter((item) => isConversationWithinDatePreset(item.lastMessageAt, datePreset))
-  }, [datePreset, visibleConversations])
+    return visibleConversations.filter((item) => isConversationWithinDatePreset(item.lastMessageAt, datePreset, { from: dateRangeFrom, to: dateRangeTo }))
+  }, [datePreset, dateRangeFrom, dateRangeTo, visibleConversations])
 
   const inboxStatusCounts = useMemo(() => {
     const pendingCount = dateScopedConversations.filter((item) => item.status !== 'RESOLVED' && item.status !== 'DISABLED' && item.status !== 'SPAM').length
@@ -2408,8 +2441,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
             <Select value={datePreset} onValueChange={(value) => setDatePreset(value as InboxDatePreset)}>
               <SelectTrigger className="h-11 rounded-2xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="12H">Últimas 12 horas</SelectItem>
+                <SelectItem value="TODAY">Hoy</SelectItem>
                 <SelectItem value="7D">Últimos 7 días</SelectItem>
                 <SelectItem value="30D">Últimos 30 días</SelectItem>
+                <SelectItem value="CUSTOM">Rango de fechas</SelectItem>
                 <SelectItem value="ALL">Todo el historial</SelectItem>
               </SelectContent>
             </Select>
@@ -2437,6 +2473,19 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
               </button>
             </div>
           </div>
+
+          {datePreset === 'CUSTOM' ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Desde</Label>
+                <Input type="date" value={dateRangeFrom} onChange={(e) => setDateRangeFrom(e.target.value)} className="h-11 rounded-2xl border-slate-200 bg-white" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Hasta</Label>
+                <Input type="date" value={dateRangeTo} onChange={(e) => setDateRangeTo(e.target.value)} className="h-11 rounded-2xl border-slate-200 bg-white" />
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)]">
             <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
@@ -2648,8 +2697,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                   <Select value={datePreset} onValueChange={(value) => setDatePreset(value as InboxDatePreset)}>
                     <SelectTrigger className="h-8.5 rounded-2xl border-slate-200 bg-white text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="12H">Últimas 12 horas</SelectItem>
+                      <SelectItem value="TODAY">Hoy</SelectItem>
                       <SelectItem value="7D">Últimos 7 días</SelectItem>
                       <SelectItem value="30D">Últimos 30 días</SelectItem>
+                      <SelectItem value="CUSTOM">Rango de fechas</SelectItem>
                       <SelectItem value="ALL">Todo el historial</SelectItem>
                     </SelectContent>
                   </Select>
@@ -2657,6 +2709,18 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                     Aplicar
                   </Button>
                 </div>
+                {datePreset === 'CUSTOM' ? (
+                  <div className="mt-2.5 grid grid-cols-2 gap-2">
+                    <div className="grid gap-1">
+                      <Label className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Desde</Label>
+                      <Input type="date" value={dateRangeFrom} onChange={(e) => setDateRangeFrom(e.target.value)} className="h-9 rounded-2xl border-slate-200 bg-white text-xs" />
+                    </div>
+                    <div className="grid gap-1">
+                      <Label className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Hasta</Label>
+                      <Input type="date" value={dateRangeTo} onChange={(e) => setDateRangeTo(e.target.value)} className="h-9 rounded-2xl border-slate-200 bg-white text-xs" />
+                    </div>
+                  </div>
+                ) : null}
                 <div className="mt-2.5 grid grid-cols-3 gap-1 border-t border-slate-200 pt-2.5">
                   <button type="button" onClick={() => setInboxStatusTab('PENDING')} className={inboxStatusTab === 'PENDING' ? 'rounded-lg bg-slate-100 px-2 py-1.5 text-xs font-semibold text-blue-700' : 'rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500'}>
                     <span className="block">Por resolver</span>
