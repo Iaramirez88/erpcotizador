@@ -154,7 +154,6 @@ export async function GET(_: Request, context: RouteContext) {
       subdomain: 'LEADS',
       action: 'READ',
       scope: 'SEDE',
-      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
@@ -283,7 +282,6 @@ export async function PATCH(request: Request, context: RouteContext) {
       subdomain: 'LEADS',
       action: 'UPDATE',
       scope: 'SEDE',
-      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 

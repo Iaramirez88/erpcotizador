@@ -111,6 +111,7 @@ async function sendBookingEmail(args: {
     subject: emailSettings.enabled ? rendered.subject : `Confirmación de cita · ${formattedDate}`,
     html: emailSettings.enabled ? rendered.html : fallbackHtml,
     fromName: emailSettings.fromName,
+    fromEmail: emailSettings.fromEmail || undefined,
     replyTo: emailSettings.replyTo || undefined,
   })
 

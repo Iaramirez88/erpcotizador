@@ -1663,6 +1663,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const [agentGenerating, setAgentGenerating] = useState(false)
   const [agentDraft, setAgentDraft] = useState<ChatbotStudioFlowDraft | null>(null)
   const [agentConnection, setAgentConnection] = useState<{ enabled: boolean; model: string | null } | null>(null)
+  const [agentModalOpen, setAgentModalOpen] = useState(false)
   const [dragState, setDragState] = useState<StudioDragState | null>(null)
   const [panState, setPanState] = useState<StudioPanState | null>(null)
   const [connectionDraft, setConnectionDraft] = useState<StudioConnectionDraft | null>(null)
@@ -2139,6 +2140,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     })
     setAgentDraft(null)
     setAgentPrompt('')
+    setAgentModalOpen(false)
     setActiveStudioPanel('map')
     setError(null)
     setNotice(agentMode === 'append' ? 'Flujo generado por IA agregado como nuevo flujo. Revisa y guarda los cambios.' : 'Flujo generado por IA aplicado al estudio. Revisa y guarda los cambios.')
@@ -5354,6 +5356,82 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     )
   }
 
+  function renderAgentWorkspace() {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> Agente de IA del Studio</CardTitle>
+          <CardDescription>Describe en lenguaje natural el flujo que necesitas y la IA generará las cajas (mensajes, acciones y disparadores) listas para editar en el mapa.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${agentConnection?.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+              {agentConnection?.enabled ? `IA conectada · ${agentConnection.model ?? 'modelo configurado'}` : 'IA no configurada'}
+            </span>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="agent-prompt">Instrucción para el flujo</Label>
+            <Textarea
+              id="agent-prompt"
+              rows={5}
+              value={agentPrompt}
+              onChange={(event) => setAgentPrompt(event.target.value)}
+              placeholder="Ej: Crea un flujo donde el cliente entra, solicita información, elige entre cotizar o ver catálogo, deja sus datos de contacto y al final se escala a un asesor humano."
+            />
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span>Al generarlo:</span>
+              <Select value={agentMode} onValueChange={(value) => setAgentMode(value as 'replace' | 'append')}>
+                <SelectTrigger className="h-8 w-[190px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="replace">Reemplazar flujo actual</SelectItem>
+                  <SelectItem value="append">Agregar como flujo nuevo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={() => void handleGenerateAgentFlow()} disabled={agentGenerating || !agentConnection?.enabled || agentPrompt.trim().length < 12}>
+              {agentGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+              {agentGenerating ? 'Generando flujo…' : 'Generar flujo con IA'}
+            </Button>
+            {agentPrompt ? (
+              <Button type="button" variant="ghost" onClick={() => setAgentPrompt('')}>Limpiar</Button>
+            ) : null}
+          </div>
+
+          {agentDraft ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+              <div className="text-sm font-semibold text-emerald-950">Vista previa: {agentDraft.flowName}</div>
+              {agentDraft.flowDescription ? <div className="mt-1 text-xs text-emerald-800">{agentDraft.flowDescription}</div> : null}
+              <div className="mt-3 grid gap-1.5 text-xs text-emerald-900">
+                {agentDraft.stages.map((stage, index) => (
+                  <div key={`${stage.key}-${index}`} className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200/80 bg-white/70 px-3 py-1.5">
+                    <GitBranch className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    <span className="font-medium">{stage.title}</span>
+                    {stage.nextField !== 'none' ? <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium">captura: {stage.nextField}</span> : null}
+                    {stage.endChatbotSession ? <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">humano</span> : null}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={applyAgentDraft}>Aplicar al estudio</Button>
+                <Button type="button" size="sm" variant="outline" onClick={discardAgentDraft}>Descartar</Button>
+              </div>
+            </div>
+          ) : null}
+
+          {!agentConnection?.enabled ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              Configura las variables de IA (LITOGRAFIA_AI_BASE_URL / LITOGRAFIA_AI_API_KEY / LITOGRAFIA_AI_MODEL o LLM_BASE_URL / LLM_API_KEY / LLM_MODEL) para habilitar el agente.
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+    )
+  }
+
   function renderWorkspaceSwitcher(compact = false) {
     return (
       <div className="space-y-3">
@@ -5471,7 +5549,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <Button type="button" variant="outline" size="sm" onClick={resetStudioViewport}>Centrar vista</Button>
                   {canEditFlow ? <Button type="button" variant="outline" size="sm" onClick={clearStudioLayout}>Auto ordenar</Button> : null}
                   <Button type="button" variant="outline" size="sm" onClick={() => setHistoryOpen(true)} disabled={!selectedChannelId}><History className="mr-1.5 h-3.5 w-3.5" /> Historial</Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setActiveStudioPanel('agent')}><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Agente IA</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => { setMapFullscreen(false); setAgentModalOpen(true) }}><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Agente IA</Button>
                   {canEditFlow ? (
                     <Button type="button" size="sm" onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving || !hasUnsavedChanges || notificationValidationSummary.hasErrors}>
                       <Save className="mr-1.5 h-3.5 w-3.5" /> {saving ? 'Guardando...' : 'Guardar'}
@@ -6572,7 +6650,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                       <button
                         key={section.id}
                         type="button"
-                        onClick={() => setActiveStudioPanel(section.id as StudioPrimaryPanel)}
+                        onClick={() => { setMapFullscreen(false); setActiveStudioPanel(section.id as StudioPrimaryPanel) }}
                         className={`flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-left transition ${active ? 'border-emerald-300 bg-emerald-50 text-emerald-900 shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'}`}
                       >
                         <div className={`mt-0.5 rounded-xl p-2 ${active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
@@ -7091,79 +7169,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
               {activeStudioPanel === 'conversations' ? renderConversationsWorkspace() : null}
 
-              {activeStudioPanel === 'agent' ? (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> Agente de IA del Studio</CardTitle>
-                    <CardDescription>Describe en lenguaje natural el flujo que necesitas y la IA generará las cajas (mensajes, acciones y disparadores) listas para editar en el mapa.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${agentConnection?.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
-                        {agentConnection?.enabled ? `IA conectada · ${agentConnection.model ?? 'modelo configurado'}` : 'IA no configurada'}
-                      </span>
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="agent-prompt">Instrucción para el flujo</Label>
-                      <Textarea
-                        id="agent-prompt"
-                        rows={5}
-                        value={agentPrompt}
-                        onChange={(event) => setAgentPrompt(event.target.value)}
-                        placeholder="Ej: Crea un flujo donde el cliente entra, solicita información, elige entre cotizar o ver catálogo, deja sus datos de contacto y al final se escala a un asesor humano."
-                      />
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                        <span>Al generarlo:</span>
-                        <Select value={agentMode} onValueChange={(value) => setAgentMode(value as 'replace' | 'append')}>
-                          <SelectTrigger className="h-8 w-[190px]"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="replace">Reemplazar flujo actual</SelectItem>
-                            <SelectItem value="append">Agregar como flujo nuevo</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="button" onClick={() => void handleGenerateAgentFlow()} disabled={agentGenerating || !agentConnection?.enabled || agentPrompt.trim().length < 12}>
-                        {agentGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
-                        {agentGenerating ? 'Generando flujo…' : 'Generar flujo con IA'}
-                      </Button>
-                      {agentPrompt ? (
-                        <Button type="button" variant="ghost" onClick={() => setAgentPrompt('')}>Limpiar</Button>
-                      ) : null}
-                    </div>
-
-                    {agentDraft ? (
-                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
-                        <div className="text-sm font-semibold text-emerald-950">Vista previa: {agentDraft.flowName}</div>
-                        {agentDraft.flowDescription ? <div className="mt-1 text-xs text-emerald-800">{agentDraft.flowDescription}</div> : null}
-                        <div className="mt-3 grid gap-1.5 text-xs text-emerald-900">
-                          {agentDraft.stages.map((stage, index) => (
-                            <div key={`${stage.key}-${index}`} className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200/80 bg-white/70 px-3 py-1.5">
-                              <GitBranch className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                              <span className="font-medium">{stage.title}</span>
-                              {stage.nextField !== 'none' ? <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium">captura: {stage.nextField}</span> : null}
-                              {stage.endChatbotSession ? <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">humano</span> : null}
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Button type="button" size="sm" onClick={applyAgentDraft}>Aplicar al estudio</Button>
-                          <Button type="button" size="sm" variant="outline" onClick={discardAgentDraft}>Descartar</Button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {!agentConnection?.enabled ? (
-                      <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                        Configura las variables de IA (LITOGRAFIA_AI_BASE_URL / LITOGRAFIA_AI_API_KEY / LITOGRAFIA_AI_MODEL o LLM_BASE_URL / LLM_API_KEY / LLM_MODEL) para habilitar el agente.
-                      </p>
-                    ) : null}
-                  </CardContent>
-                </Card>
-              ) : null}
+              {activeStudioPanel === 'agent' ? renderAgentWorkspace() : null}
             </div>
           </div>
           )}
@@ -7185,6 +7191,16 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
           <div className="h-full overflow-hidden rounded-[24px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.08),_transparent_24%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] p-1">
             {activeStudioPanel === 'map' ? renderMapWorkspace(true) : null}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={agentModalOpen} onOpenChange={setAgentModalOpen}>
+        <DialogContent className="max-h-[86vh] overflow-y-auto border-slate-200 sm:max-w-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Agente de IA del Studio</DialogTitle>
+            <DialogDescription>Genera un flujo conversacional a partir de una instrucción en lenguaje natural.</DialogDescription>
+          </DialogHeader>
+          {renderAgentWorkspace()}
         </DialogContent>
       </Dialog>
 

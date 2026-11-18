@@ -17,13 +17,21 @@ type SendEmailArgs = {
   subject: string
   html: string
   fromName?: string
+  fromEmail?: string
   replyTo?: string
   attachments?: SendEmailAttachment[]
 }
 
-function resolveFromAddress(fromName?: string) {
+function resolveFromAddress(fromName?: string, fromEmail?: string) {
   const baseFrom = process.env.EMAIL_FROM || 'Ordex <onboarding@resend.dev>'
   const name = (fromName || '').trim()
+  const email = (fromEmail || '').trim()
+
+  // Remitente dinámico por empresa: si viene un correo propio válido se usa completo.
+  if (/^[^\s@]+@[^\s@]+$/.test(email)) {
+    return name ? `${name} <${email}>` : email
+  }
+
   if (!name) return baseFrom
 
   const match = /<([^>]+)>/.exec(baseFrom)
@@ -42,7 +50,7 @@ export async function sendEmail(args: SendEmailArgs) {
     }
   }
 
-  const from = resolveFromAddress(args.fromName)
+  const from = resolveFromAddress(args.fromName, args.fromEmail)
 
   const { data, error } = await resend.emails.send({
     from,

@@ -126,6 +126,7 @@ async function dispatchRewardByEmail(args: {
     subject: styledEmail?.subject || subject,
     html,
     fromName: args.responseEmail?.fromName,
+    fromEmail: args.responseEmail?.fromEmail || undefined,
     replyTo: args.responseEmail?.replyTo || undefined,
     ...(attachment ? { attachments: [attachment] } : {}),
   })

@@ -11,6 +11,38 @@ import {
   type CrmResponseEmailFormState,
 } from '@/lib/crm-response-email'
 
+const FREE_EMAIL_DOMAINS = new Set([
+  'gmail.com',
+  'googlemail.com',
+  'outlook.com',
+  'outlook.es',
+  'hotmail.com',
+  'hotmail.es',
+  'live.com',
+  'live.com.mx',
+  'msn.com',
+  'yahoo.com',
+  'yahoo.es',
+  'yahoo.com.mx',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'aol.com',
+  'protonmail.com',
+  'proton.me',
+  'gmx.com',
+  'gmx.es',
+  'zoho.com',
+  'mail.com',
+])
+
+function isFreeEmailDomain(email: string) {
+  const normalized = email.trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+$/.test(normalized)) return false
+  const domain = normalized.split('@')[1]
+  return FREE_EMAIL_DOMAINS.has(domain)
+}
+
 type Props = {
   form: CrmResponseEmailFormState
   patchForm: (patch: Partial<CrmResponseEmailFormState>) => void
@@ -62,6 +94,17 @@ export function CrmIntegrationsResponseEmailSection(props: Props) {
         <div className="grid gap-2">
           <Label>Nombre del remitente</Label>
           <Input value={form.responseEmailFromName} onChange={(event) => patchForm({ responseEmailFromName: event.target.value })} className="h-11 rounded-xl" placeholder="Equipo comercial" />
+        </div>
+        <div className="grid gap-2">
+          <Label>Correo del remitente</Label>
+          <Input value={form.responseEmailFromEmail} onChange={(event) => patchForm({ responseEmailFromEmail: event.target.value })} className="h-11 rounded-xl" placeholder="no-reply@tudominio.com" />
+          {isFreeEmailDomain(form.responseEmailFromEmail) ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+              Gmail, Outlook, Hotmail y Yahoo no se pueden usar como remitente (Resend no los permite). Déjalo vacío para usar el dominio de Ordex, o usa un dominio propio verificado en Resend.
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500">Si lo dejas vacío se usa el remitente global de Ordex. El dominio debe estar verificado en Resend para poder enviar.</p>
+          )}
         </div>
         <div className="grid gap-2">
           <Label>Responder a (reply-to)</Label>

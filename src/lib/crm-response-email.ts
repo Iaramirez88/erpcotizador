@@ -16,6 +16,7 @@ export type CrmResponseEmailVariables = {
 export type CrmResponseEmailSettings = {
   enabled: boolean
   fromName: string
+  fromEmail: string
   replyTo: string
   subject: string
   preheader: string
@@ -37,6 +38,7 @@ export type CrmResponseEmailSettings = {
 export type CrmResponseEmailFormState = {
   responseEmailEnabled: boolean
   responseEmailFromName: string
+  responseEmailFromEmail: string
   responseEmailReplyTo: string
   responseEmailSubject: string
   responseEmailPreheader: string
@@ -88,6 +90,7 @@ export function getCrmResponseEmailSettings(settingsJson: unknown): CrmResponseE
   return {
     enabled: getBool(settings, 'responseEmailEnabled', true),
     fromName: getSetting(settings, 'responseEmailFromName', ''),
+    fromEmail: getSetting(settings, 'responseEmailFromEmail', ''),
     replyTo: getSetting(settings, 'responseEmailReplyTo', ''),
     subject: getSetting(settings, 'responseEmailSubject', 'Recibimos tu solicitud · {{canal}}'),
     preheader: getSetting(settings, 'responseEmailPreheader', 'Tu solicitud quedó registrada y ya está en manos de nuestro equipo.'),
@@ -112,6 +115,7 @@ export function getDefaultCrmResponseEmailFormState(): CrmResponseEmailFormState
   return {
     responseEmailEnabled: defaults.enabled,
     responseEmailFromName: '',
+    responseEmailFromEmail: '',
     responseEmailReplyTo: '',
     responseEmailSubject: defaults.subject,
     responseEmailPreheader: defaults.preheader,
@@ -136,6 +140,7 @@ export function getCrmResponseEmailFormState(settingsJson: unknown): CrmResponse
   return {
     responseEmailEnabled: settings.enabled,
     responseEmailFromName: settings.fromName,
+    responseEmailFromEmail: settings.fromEmail,
     responseEmailReplyTo: settings.replyTo,
     responseEmailSubject: settings.subject,
     responseEmailPreheader: settings.preheader,
@@ -161,6 +166,7 @@ export function pickCrmResponseEmailFormState(source: Partial<CrmResponseEmailFo
   return {
     responseEmailEnabled: typeof input.responseEmailEnabled === 'boolean' ? input.responseEmailEnabled : defaults.responseEmailEnabled,
     responseEmailFromName: normalizeString(input.responseEmailFromName),
+    responseEmailFromEmail: normalizeString(input.responseEmailFromEmail),
     responseEmailReplyTo: normalizeString(input.responseEmailReplyTo),
     responseEmailSubject: normalizeString(input.responseEmailSubject) || defaults.responseEmailSubject,
     responseEmailPreheader: normalizeString(input.responseEmailPreheader) || defaults.responseEmailPreheader,

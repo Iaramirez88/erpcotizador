@@ -467,6 +467,7 @@ export async function POST(request: Request) {
         subject: rendered.subject,
         html: rendered.html,
         fromName: responseEmailSettings.fromName,
+        fromEmail: responseEmailSettings.fromEmail || undefined,
         replyTo: responseEmailSettings.replyTo || undefined,
       })
 

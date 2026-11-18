@@ -36,7 +36,6 @@ export async function GET(request: Request) {
       subdomain: 'OPPORTUNITIES',
       action: 'READ',
       scope: 'SEDE',
-      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
@@ -137,7 +136,6 @@ export async function POST(request: Request) {
       subdomain: 'OPPORTUNITIES',
       action: 'CREATE',
       scope: 'SEDE',
-      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 

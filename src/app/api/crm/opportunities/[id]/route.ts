@@ -71,7 +71,6 @@ export async function GET(_: Request, context: RouteContext) {
       subdomain: 'OPPORTUNITIES',
       action: 'READ',
       scope: 'SEDE',
-      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
@@ -120,7 +119,6 @@ export async function PATCH(request: Request, context: RouteContext) {
       subdomain: 'OPPORTUNITIES',
       action: 'UPDATE',
       scope: 'SEDE',
-      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
