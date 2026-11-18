@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Bell, Bot, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Copy, GitBranch, GripVertical, History, Info, PanelLeftClose, PanelLeftOpen, Plus, Redo2, Save, Smile, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { AArrowDown, AArrowUp, AlertTriangle, Bell, Bold, Bot, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Copy, GitBranch, GripVertical, Heading1, Heading2, History, Info, Italic, List, ListOrdered, Loader2, PanelLeftClose, PanelLeftOpen, Pilcrow, Plus, Redo2, Save, Smile, Sparkles, Trash2, Type, Underline, Undo2, Users, Variable, Wand2, Zap } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 import {
   getDefaultChatbotFlowStages,
   getDefaultChatbotQuickActionAutomationConfig,
@@ -65,6 +67,7 @@ import {
   type ChatbotInactivityUnit,
 } from '@/lib/crm-chatbot-inactivity'
 import { normalizeRichTextHtml, plainTextToRichTextHtml, richTextToPlainText, summarizeRichText } from '@/lib/chatbot-rich-text'
+import type { ChatbotStudioFlowDraft } from '@/lib/crm-chatbot-studio-ai'
 
 type ChannelStatus = 'DRAFT' | 'TESTING' | 'ACTIVE' | 'DISABLED' | 'ERROR'
 
@@ -225,7 +228,7 @@ type StudioFocusNode = {
 }
 
 type StudioEditingNode = StudioFocusNode | null
-type StudioPrimaryPanel = 'map' | 'general' | 'summary' | 'library' | 'flow' | 'triggers' | 'variables' | 'assignments' | 'conversations'
+type StudioPrimaryPanel = 'map' | 'general' | 'summary' | 'library' | 'flow' | 'triggers' | 'variables' | 'assignments' | 'conversations' | 'agent'
 
 const STUDIO_EMOJI_CHOICES = ['😀', '😁', '😂', '🙂', '😉', '😍', '🤩', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀', '🎉', '🛒', '💬', '📞', '📦', '⭐', '💡', '🎯', '❤️']
 const RICH_TEXT_RENDER_CLASS = '[&_h1]:text-xl [&_h1]:font-semibold [&_h1]:leading-tight [&_h1]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:leading-tight [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:leading-tight [&_h3]:mb-2 [&_p]:my-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_u]:underline [&_span]:whitespace-pre-wrap [&_div]:whitespace-pre-wrap'
@@ -1409,6 +1412,111 @@ function buildSettingsPayload(state: BuilderState) {
   }
 }
 
+function buildFlowFromAgentDraft(draft: ChatbotStudioFlowDraft): ChatbotAutomationFlow {
+  const stageIdByKey = new Map<string, string>()
+  const actionIdByKey = new Map<string, string>()
+
+  const flowStages: ChatbotFlowStage[] = draft.stages.map((stage) => {
+    const id = makeId('stage')
+    stageIdByKey.set(stage.key, id)
+    return {
+      id,
+      title: stage.title,
+      description: stage.description,
+      prompt: plainTextToRichTextHtml(stage.prompt),
+      templateKey: null,
+      nextField: stage.nextField,
+      endChatbotSession: stage.endChatbotSession,
+      quickActionIds: [],
+      responseOptions: [],
+      inactivityRule: getDefaultChatbotInactivityRule(),
+    }
+  })
+
+  const quickActions: ChatbotQuickAction[] = draft.quickActions.map((action) => {
+    const id = makeId('action')
+    actionIdByKey.set(action.key, id)
+    return {
+      id,
+      label: action.label,
+      kind: action.kind,
+      message: action.message,
+      targetStageId: '',
+      targetTriggerId: '',
+      actionUrl: null,
+      responseAttachmentType: null,
+      responseAttachmentUrl: null,
+      responseAttachmentName: null,
+      enabled: true,
+      inactivityRule: getDefaultChatbotInactivityRule(),
+      automation: getDefaultChatbotQuickActionAutomationConfig(),
+    }
+  })
+
+  const stageById = new Map(flowStages.map((stage) => [stage.id, stage]))
+
+  draft.stages.forEach((stage) => {
+    const currentStage = stageById.get(stageIdByKey.get(stage.key) ?? '')
+    if (!currentStage) return
+    currentStage.quickActionIds = stage.quickActionKeys
+      .map((key) => actionIdByKey.get(key))
+      .filter((id): id is string => Boolean(id))
+    currentStage.responseOptions = stage.responseOptions.map((option): ChatbotFlowResponseOption => ({
+      id: makeId('option'),
+      label: option.label,
+      userMessage: option.userMessage,
+      assistantReply: option.assistantReply,
+      matchMode: option.matchMode,
+      matchValue: option.matchValue || option.label,
+      targetStageId: option.targetStageKey ? (stageIdByKey.get(option.targetStageKey) ?? '') : '',
+      targetActionId: '',
+      targetTriggerId: '',
+    }))
+  })
+
+  const flowTriggers: ChatbotFlowTrigger[] = draft.triggers.map((trigger) => ({
+    id: makeId('trigger'),
+    label: trigger.label,
+    event: trigger.event,
+    matchMode: trigger.matchMode,
+    matchValue: trigger.matchValue,
+    targetStageId: trigger.targetStageKey ? (stageIdByKey.get(trigger.targetStageKey) ?? '') : '',
+    targetActionId: '',
+    targetTriggerId: '',
+    assistantReply: trigger.assistantReply,
+    enabled: true,
+    conditions: [],
+    inactivityRule: getDefaultChatbotInactivityRule(),
+  }))
+
+  const studioNodeLayout: StudioNodeLayout = {}
+  flowStages.forEach((stage, index) => {
+    studioNodeLayout[`stage:${stage.id}`] = { x: 112, y: 56 + index * 236 }
+  })
+  quickActions.forEach((action, index) => {
+    studioNodeLayout[`action:${action.id}`] = { x: 588, y: 56 + index * 148 }
+  })
+  flowTriggers.forEach((trigger, index) => {
+    studioNodeLayout[`trigger:${trigger.id}`] = { x: 112, y: 56 + (flowStages.length + index) * 236 }
+  })
+
+  return {
+    id: makeId('flow'),
+    name: draft.flowName,
+    description: draft.flowDescription,
+    enabled: true,
+    isDefault: true,
+    providers: getDefaultChatbotAutomationProviders(),
+    startStageId: draft.startStageKey ? (stageIdByKey.get(draft.startStageKey) ?? flowStages[0]?.id ?? '') : (flowStages[0]?.id ?? ''),
+    quickActions,
+    flowStages,
+    flowTriggers,
+    pauseNodes: [],
+    studioNodeLayout,
+    studioViewport: { x: 48, y: 36, scale: 0.88 },
+  }
+}
+
 function serializeBuilderState(state: BuilderState) {
   return JSON.stringify(state)
 }
@@ -1538,6 +1646,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const [editingVariableId, setEditingVariableId] = useState<string | null>(null)
   const [coherenceModalOpen, setCoherenceModalOpen] = useState(false)
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false)
+  const [agentPrompt, setAgentPrompt] = useState('')
+  const [agentMode, setAgentMode] = useState<'replace' | 'append'>('replace')
+  const [agentGenerating, setAgentGenerating] = useState(false)
+  const [agentDraft, setAgentDraft] = useState<ChatbotStudioFlowDraft | null>(null)
+  const [agentConnection, setAgentConnection] = useState<{ enabled: boolean; model: string | null } | null>(null)
   const [dragState, setDragState] = useState<StudioDragState | null>(null)
   const [panState, setPanState] = useState<StudioPanState | null>(null)
   const [connectionDraft, setConnectionDraft] = useState<StudioConnectionDraft | null>(null)
@@ -1559,6 +1672,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const [testingNotificationActionId, setTestingNotificationActionId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [collapsedResponseOptions, setCollapsedResponseOptions] = useState<Record<string, boolean>>({})
   const dragMovedRef = useRef(false)
   const boardViewportRef = useRef<HTMLDivElement | null>(null)
   const nodeElementsRef = useRef<Map<string, HTMLDivElement>>(new Map())
@@ -1764,6 +1878,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     setLoading(false)
   }
 
+  useEffect(() => {
+    if (selectedChannelId) void loadAgentConnection(selectedChannelId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChannelId])
+
   async function loadConversations(channelId: string) {
     if (!channelId) {
       setConversations([])
@@ -1944,6 +2063,80 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     setSaving(false)
   }
 
+  async function loadAgentConnection(channelId: string) {
+    if (!channelId) {
+      setAgentConnection(null)
+      return
+    }
+    const json = await requestJson<{ enabled: boolean; model: string | null }>(`/api/crm/channels/${channelId}/studio/ai`)
+    setAgentConnection(json.data ?? null)
+  }
+
+  async function handleGenerateAgentFlow() {
+    if (!selectedChannelId) return
+    const instruction = agentPrompt.trim()
+    if (instruction.length < 12) {
+      setError('Describe el flujo con al menos 12 caracteres.')
+      setNotice(null)
+      return
+    }
+    setAgentGenerating(true)
+    setError(null)
+    setNotice(null)
+    setAgentDraft(null)
+    try {
+      const json = await requestJson<{ draft: ChatbotStudioFlowDraft; engine: { provider: string; model: string | null } }>(
+        `/api/crm/channels/${selectedChannelId}/studio/ai`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ instruction }),
+        },
+      )
+      if (!json.success || !json.data) {
+        setError(json.error || 'No se pudo generar el flujo con IA.')
+        return
+      }
+      setAgentDraft(json.data.draft)
+      setNotice(`Flujo "${json.data.draft.flowName}" generado con ${json.data.draft.stages.length} etapas. Revisa la vista previa y aplícalo al estudio.`)
+    } catch (generationError) {
+      setError(generationError instanceof Error ? generationError.message : 'No se pudo generar el flujo.')
+    } finally {
+      setAgentGenerating(false)
+    }
+  }
+
+  function applyAgentDraft() {
+    if (!agentDraft) return
+    const generated = buildFlowFromAgentDraft(agentDraft)
+    setBuilder((current) => {
+      let nextFlows: ChatbotAutomationFlow[]
+      let nextSelectedId: string
+      if (agentMode === 'append') {
+        nextFlows = [...current.automationFlows.map((flow) => ({ ...flow, isDefault: false })), { ...generated, isDefault: true }]
+        nextSelectedId = generated.id
+      } else {
+        const existing = current.automationFlows.find((flow) => flow.id === current.selectedFlowId)
+        const replaced: ChatbotAutomationFlow = { ...generated, id: existing?.id ?? generated.id, isDefault: existing?.isDefault ?? true }
+        nextFlows = existing
+          ? current.automationFlows.map((flow) => flow.id === current.selectedFlowId ? replaced : { ...flow, isDefault: false })
+          : [replaced]
+        nextSelectedId = replaced.id
+      }
+      return applySelectedFlowToBuilder({ ...current, automationFlows: nextFlows, selectedFlowId: nextSelectedId }, nextSelectedId)
+    })
+    setAgentDraft(null)
+    setAgentPrompt('')
+    setActiveStudioPanel('map')
+    setError(null)
+    setNotice(agentMode === 'append' ? 'Flujo generado por IA agregado como nuevo flujo. Revisa y guarda los cambios.' : 'Flujo generado por IA aplicado al estudio. Revisa y guarda los cambios.')
+  }
+
+  function discardAgentDraft() {
+    setAgentDraft(null)
+    setNotice(null)
+  }
+
   async function handleSendNotificationTest(action: ChatbotQuickAction) {
     if (!selectedChannelId) return
 
@@ -2097,6 +2290,14 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     }))
   }
 
+  function isResponseOptionCollapsed(optionId: string) {
+    return collapsedResponseOptions[optionId] ?? true
+  }
+
+  function toggleResponseOptionCollapsed(optionId: string) {
+    setCollapsedResponseOptions((current) => ({ ...current, [optionId]: !(current[optionId] ?? true) }))
+  }
+
   function duplicateStageResponseOption(stageId: string, optionId: string) {
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
       flowStages: current.flowStages.map((stage) => {
@@ -2112,11 +2313,13 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   }
 
   function addResponseOptionToStage(stageId: string) {
+    const nextOption = createStageResponseOption(builder.flowStages, stageId)
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
       flowStages: current.flowStages.map((stage) => stage.id === stageId
-        ? { ...stage, responseOptions: [...stage.responseOptions, createStageResponseOption(current.flowStages, stageId)] }
+        ? { ...stage, responseOptions: [...stage.responseOptions, nextOption] }
         : stage),
     }))
+    setCollapsedResponseOptions((current) => ({ ...current, [nextOption.id]: false }))
   }
 
   function addExistingQuickActionToStage(stageId: string) {
@@ -2324,7 +2527,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     return measuredHandleAnchors[getHandleAnchorKey(nodeId, sourceOptionId)] ?? null
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const nextAnchors: Record<string, { x: number; y: number }> = {}
     handleElementsRef.current.forEach((element, key) => {
       const anchor = measureHandleAnchor(element)
@@ -2333,9 +2536,9 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       }
     })
     setMeasuredHandleAnchors(nextAnchors)
-  }, [builder.studioViewport.scale, builder.studioViewport.x, builder.studioViewport.y, studioGraph.nodes, studioGraph.edges])
+  }, [builder.studioViewport.scale, builder.studioViewport.x, builder.studioViewport.y, studioGraph.nodes, studioGraph.edges, focusedNode, boardViewportSize])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const elements = nodeElementsRef.current
 
     const updateHeights = () => {
@@ -4386,7 +4589,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               onChange: (rule) => updateStage(selectedStage.id, { inactivityRule: rule }),
             })}
             <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
-              <div className="flex items-center justify-between gap-2">
+              <div className="sticky top-0 z-20 -mx-3 -mt-3 flex items-center justify-between gap-2 rounded-t-2xl border-b border-slate-200 bg-white/95 px-3 py-2.5 backdrop-blur">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Opciones del cliente</div>
                   <div className="text-xs text-slate-500">Crea la opción y enlázala después cuando quieras.</div>
@@ -4394,12 +4597,42 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                 <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => addResponseOptionToStage(selectedStage.id)}>Agregar opción</Button>
               </div>
               <div className="space-y-2">
-                {selectedStage.responseOptions.length ? selectedStage.responseOptions.map((option) => (
-                  <div key={option.id} className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-                    <div className="grid gap-2">
-                      <Label>Texto de la opción</Label>
-                      <Input value={option.label} onChange={(event) => updateResponseOption(selectedStage.id, option.id, { label: event.target.value, userMessage: event.target.value })} placeholder="Ej: Quiero cotizar" />
-                    </div>
+                {selectedStage.responseOptions.length ? selectedStage.responseOptions.map((option) => {
+                  const optionCollapsed = isResponseOptionCollapsed(option.id)
+                  const optionLabel = option.label.trim() || 'Nueva opción'
+                  return (
+                    <div key={option.id} className="rounded-2xl border border-slate-200 bg-slate-50/70">
+                      <div className="flex items-center gap-1.5 p-3">
+                        <button
+                          type="button"
+                          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-0.5 text-left transition hover:bg-slate-100/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                          onClick={() => toggleResponseOptionCollapsed(option.id)}
+                          aria-expanded={!optionCollapsed}
+                          aria-label={`${optionCollapsed ? 'Mostrar' : 'Ocultar'} opción ${optionLabel}`}
+                        >
+                          {optionCollapsed
+                            ? <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                            : <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />}
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{optionLabel}</span>
+                          {optionCollapsed ? (
+                            <span className="shrink-0 truncate text-xs text-slate-500">
+                              {option.targetStageId ? '→ mensaje' : option.targetActionId ? '→ acción' : option.targetTriggerId ? '→ filtro' : 'Sin enlazar'}
+                            </span>
+                          ) : null}
+                        </button>
+                        <RowActionsMenu label={optionLabel} align="end" className="h-8 w-8 shrink-0">
+                          <DropdownMenuItem onSelect={() => createAction({ sourceNode: { kind: 'stage', id: selectedStage.id }, sourceOptionId: option.id })}>Nueva acción</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => duplicateStageResponseOption(selectedStage.id, option.id)}>Duplicar</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={() => removeResponseOption(selectedStage.id, option.id)}>Eliminar</DropdownMenuItem>
+                        </RowActionsMenu>
+                      </div>
+                      {optionCollapsed ? null : (
+                        <div className="space-y-2 border-t border-slate-200 p-3">
+                          <div className="grid gap-2">
+                            <Label>Texto de la opción</Label>
+                            <Input value={option.label} onChange={(event) => updateResponseOption(selectedStage.id, option.id, { label: event.target.value, userMessage: event.target.value })} placeholder="Ej: Quiero cotizar" />
+                          </div>
                     <div className="grid gap-2">
                       <Label>Ir a mensaje</Label>
                       <Select value={option.targetStageId || '__none__'} onValueChange={(value) => updateResponseOption(selectedStage.id, option.id, { targetStageId: value === '__none__' ? '' : value, targetActionId: value === '__none__' ? option.targetActionId : '', targetTriggerId: value === '__none__' ? option.targetTriggerId : '' })}>
@@ -4430,13 +4663,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => createAction({ sourceNode: { kind: 'stage', id: selectedStage.id }, sourceOptionId: option.id })}>Nueva acción</Button>
-                      <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => duplicateStageResponseOption(selectedStage.id, option.id)}>Duplicar</Button>
-                      <Button type="button" variant="outline" size="sm" className="h-8 border-rose-200 text-xs text-rose-700" onClick={() => removeResponseOption(selectedStage.id, option.id)}>Eliminar</Button>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )) : <div className="rounded-2xl border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500">Todavía no hay opciones visibles para este mensaje.</div>}
+                  )
+                }) : <div className="rounded-2xl border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500">Todavía no hay opciones visibles para este mensaje.</div>}
               </div>
             </div>
           </div>
@@ -5227,6 +5458,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <Button type="button" variant="outline" size="sm" onClick={() => setStudioScale(builder.studioViewport.scale + 0.1)}>Zoom +</Button>
                   <Button type="button" variant="outline" size="sm" onClick={resetStudioViewport}>Centrar vista</Button>
                   {canEditFlow ? <Button type="button" variant="outline" size="sm" onClick={clearStudioLayout}>Auto ordenar</Button> : null}
+                  <Button type="button" variant="outline" size="sm" onClick={() => setActiveStudioPanel('agent')}><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Agente IA</Button>
                   {canEditFlow ? (
                     <Button type="button" size="sm" onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving || !hasUnsavedChanges || notificationValidationSummary.hasErrors}>
                       <Save className="mr-1.5 h-3.5 w-3.5" /> {saving ? 'Guardando...' : 'Guardar'}
@@ -6317,6 +6549,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                     { id: 'variables', label: 'Variables y coherencia', detail: `${builder.flowVariables.length} variables`, icon: Variable },
                     { id: 'assignments', label: 'Asignaciones automáticas', detail: builder.assignmentRules.assignmentMode, icon: Users },
                     { id: 'conversations', label: 'Conversaciones', detail: `${conversations.length} chats del canal`, icon: History },
+                    { id: 'agent', label: 'Agente de IA', detail: agentConnection?.enabled ? 'Conectado' : 'Crea flujos con instrucciones', icon: Sparkles },
                   ].map((section) => {
                     const Icon = section.icon
                     const active = activeStudioPanel === section.id
@@ -6842,6 +7075,80 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               ) : null}
 
               {activeStudioPanel === 'conversations' ? renderConversationsWorkspace() : null}
+
+              {activeStudioPanel === 'agent' ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> Agente de IA del Studio</CardTitle>
+                    <CardDescription>Describe en lenguaje natural el flujo que necesitas y la IA generará las cajas (mensajes, acciones y disparadores) listas para editar en el mapa.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${agentConnection?.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                        {agentConnection?.enabled ? `IA conectada · ${agentConnection.model ?? 'modelo configurado'}` : 'IA no configurada'}
+                      </span>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="agent-prompt">Instrucción para el flujo</Label>
+                      <Textarea
+                        id="agent-prompt"
+                        rows={5}
+                        value={agentPrompt}
+                        onChange={(event) => setAgentPrompt(event.target.value)}
+                        placeholder="Ej: Crea un flujo donde el cliente entra, solicita información, elige entre cotizar o ver catálogo, deja sus datos de contacto y al final se escala a un asesor humano."
+                      />
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span>Al generarlo:</span>
+                        <Select value={agentMode} onValueChange={(value) => setAgentMode(value as 'replace' | 'append')}>
+                          <SelectTrigger className="h-8 w-[190px]"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="replace">Reemplazar flujo actual</SelectItem>
+                            <SelectItem value="append">Agregar como flujo nuevo</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" onClick={() => void handleGenerateAgentFlow()} disabled={agentGenerating || !agentConnection?.enabled || agentPrompt.trim().length < 12}>
+                        {agentGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+                        {agentGenerating ? 'Generando flujo…' : 'Generar flujo con IA'}
+                      </Button>
+                      {agentPrompt ? (
+                        <Button type="button" variant="ghost" onClick={() => setAgentPrompt('')}>Limpiar</Button>
+                      ) : null}
+                    </div>
+
+                    {agentDraft ? (
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+                        <div className="text-sm font-semibold text-emerald-950">Vista previa: {agentDraft.flowName}</div>
+                        {agentDraft.flowDescription ? <div className="mt-1 text-xs text-emerald-800">{agentDraft.flowDescription}</div> : null}
+                        <div className="mt-3 grid gap-1.5 text-xs text-emerald-900">
+                          {agentDraft.stages.map((stage, index) => (
+                            <div key={`${stage.key}-${index}`} className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200/80 bg-white/70 px-3 py-1.5">
+                              <GitBranch className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                              <span className="font-medium">{stage.title}</span>
+                              {stage.nextField !== 'none' ? <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium">captura: {stage.nextField}</span> : null}
+                              {stage.endChatbotSession ? <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">humano</span> : null}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button type="button" size="sm" onClick={applyAgentDraft}>Aplicar al estudio</Button>
+                          <Button type="button" size="sm" variant="outline" onClick={discardAgentDraft}>Descartar</Button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {!agentConnection?.enabled ? (
+                      <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                        Configura las variables de IA (LITOGRAFIA_AI_BASE_URL / LITOGRAFIA_AI_API_KEY / LITOGRAFIA_AI_MODEL o LLM_BASE_URL / LLM_API_KEY / LLM_MODEL) para habilitar el agente.
+                      </p>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              ) : null}
             </div>
           </div>
           )}
@@ -6927,27 +7234,49 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                       <Label>Opciones de respuesta y ramas</Label>
                       <div className="mt-1 text-xs text-slate-500">Cada opción representa una intención posible del prospecto. Puedes dejarla sin destino y enlazarla después.</div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => updateStage(editingStage.id, { responseOptions: [...editingStage.responseOptions, createStageResponseOption(builder.flowStages, editingStage.id)] })}>Agregar opción</Button>
+                    <Button variant="outline" size="sm" onClick={() => addResponseOptionToStage(editingStage.id)}>Agregar opción</Button>
                   </div>
                   {!editingStage.responseOptions.length ? (
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-500">
                       Esta etapa todavía no tiene ramas. Agrega una opción para decirle al bot qué debe entender y a dónde debe continuar.
                     </div>
                   ) : null}
-                  {editingStage.responseOptions.map((option) => (
-                    <div key={option.id} className="rounded-xl border border-dashed border-slate-200 p-2.5">
-                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Ruta {editingStage.responseOptions.findIndex((item) => item.id === option.id) + 1}</div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => duplicateStageResponseOption(editingStage.id, option.id)}>Duplicar</Button>
-                          <Button type="button" variant="outline" size="sm" className="h-8 border-rose-200 px-3 text-xs text-rose-700" onClick={() => removeResponseOption(editingStage.id, option.id)}>Eliminar</Button>
+                  {editingStage.responseOptions.map((option, optionIndex) => {
+                    const optionCollapsed = isResponseOptionCollapsed(option.id)
+                    const optionLabel = option.label.trim() || 'Nueva opción'
+                    return (
+                      <div key={option.id} className="rounded-xl border border-dashed border-slate-200">
+                        <div className="flex items-center gap-1.5 p-2.5">
+                          <button
+                            type="button"
+                            className="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-0.5 text-left transition hover:bg-slate-100/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                            onClick={() => toggleResponseOptionCollapsed(option.id)}
+                            aria-expanded={!optionCollapsed}
+                            aria-label={`${optionCollapsed ? 'Mostrar' : 'Ocultar'} ruta ${optionLabel}`}
+                          >
+                            {optionCollapsed
+                              ? <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                              : <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />}
+                            <span className="shrink-0 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Ruta {optionIndex + 1}</span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{optionLabel}</span>
+                            {optionCollapsed ? (
+                              <span className="shrink-0 truncate text-xs text-slate-500">
+                                {option.targetStageId ? '→ mensaje' : option.targetTriggerId ? '→ filtro' : 'Sin enlazar'}
+                              </span>
+                            ) : null}
+                          </button>
+                          <RowActionsMenu label={optionLabel} align="end" className="h-8 w-8 shrink-0">
+                            <DropdownMenuItem onSelect={() => duplicateStageResponseOption(editingStage.id, option.id)}>Duplicar</DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={() => removeResponseOption(editingStage.id, option.id)}>Eliminar</DropdownMenuItem>
+                          </RowActionsMenu>
                         </div>
-                      </div>
-                      <div className="grid gap-2.5 md:grid-cols-2">
-                        <div className="grid gap-1.5">
-                          <Label>Etiqueta visible</Label>
-                          <Input value={option.label} onChange={(event) => updateResponseOption(editingStage.id, option.id, { label: event.target.value })} placeholder="Ej: Quiero cotizar impresión digital" />
-                        </div>
+                        {optionCollapsed ? null : (
+                          <div className="grid gap-2.5 border-t border-slate-200 p-2.5 md:grid-cols-2">
+                            <div className="grid gap-1.5">
+                              <Label>Etiqueta visible</Label>
+                              <Input value={option.label} onChange={(event) => updateResponseOption(editingStage.id, option.id, { label: event.target.value })} placeholder="Ej: Quiero cotizar impresión digital" />
+                            </div>
                         <div className="grid gap-1.5">
                           <Label>Siguiente mensaje</Label>
                           <Select value={option.targetStageId || '__none__'} onValueChange={(value) => updateResponseOption(editingStage.id, option.id, { targetStageId: value === '__none__' ? '' : value, targetActionId: value === '__none__' ? option.targetActionId : '', targetTriggerId: value === '__none__' ? option.targetTriggerId : '' })}>
@@ -6990,9 +7319,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                           <Label>Respuesta del bot cuando toma esta rama</Label>
                           <Textarea value={option.assistantReply} onChange={(event) => updateResponseOption(editingStage.id, option.id, { assistantReply: event.target.value })} rows={2} placeholder="Ej: Claro, te ayudo con impresión digital. ¿Qué tamaño necesitas?" />
                         </div>
-                      </div>
+                        </div>
+                      )}
                     </div>
-                  ))}
+                  )
+                })}
                 </div>
               </div>
               <DialogFooter className="sticky -bottom-6 z-20 -mx-6 border-t border-slate-200 bg-white px-6 pb-6 pt-3">
@@ -7664,6 +7995,23 @@ function RichTextContent({ html, className }: { html: string; className?: string
   return <div className={`${RICH_TEXT_RENDER_CLASS} ${className || ''}`.trim()} dangerouslySetInnerHTML={{ __html: normalized }} />
 }
 
+function RichTextToolbarButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      className="h-8 w-8 shrink-0"
+      title={label}
+      aria-label={label}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onClick}
+    >
+      {children}
+    </Button>
+  )
+}
+
 function RichTextComposer({ value, placeholder, variableOptions, onChange }: RichTextComposerProps) {
   const editorRef = useRef<HTMLDivElement | null>(null)
   const selectionRef = useRef<Range | null>(null)
@@ -7730,25 +8078,34 @@ function RichTextComposer({ value, placeholder, variableOptions, onChange }: Ric
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-2">
-        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('formatBlock', 'p')}>Párrafo</Button>
-        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('formatBlock', 'h1')}>Título</Button>
-        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('formatBlock', 'h2')}>Subtítulo</Button>
-        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('bold')}>Negrilla</Button>
-        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('italic')}>Itálica</Button>
-        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('underline')}>Subrayado</Button>
-        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('fontSize', '2')}>Chico</Button>
-        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('fontSize', '3')}>Normal</Button>
-        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('fontSize', '5')}>Grande</Button>
-        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('insertUnorderedList')}>Lista</Button>
-        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('insertOrderedList')}>Numerada</Button>
-        <Select onValueChange={(selectedValue) => selectedValue !== '__none__' ? insertVariable(selectedValue) : undefined}>
-          <SelectTrigger className="h-8 w-[140px] bg-white text-xs"><SelectValue placeholder="Variable" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Variable</SelectItem>
-            {variableOptions.map((option) => <SelectItem key={option.key} value={option.key}>{option.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => setEmojiOpen((current) => !current)}>Emojis</Button>
+        <RichTextToolbarButton label="Párrafo" onClick={() => runCommand('formatBlock', 'p')}><Pilcrow className="h-4 w-4" /></RichTextToolbarButton>
+        <RichTextToolbarButton label="Título" onClick={() => runCommand('formatBlock', 'h1')}><Heading1 className="h-4 w-4" /></RichTextToolbarButton>
+        <RichTextToolbarButton label="Subtítulo" onClick={() => runCommand('formatBlock', 'h2')}><Heading2 className="h-4 w-4" /></RichTextToolbarButton>
+        <div className="mx-0.5 h-5 w-px bg-slate-200" />
+        <RichTextToolbarButton label="Negrilla" onClick={() => runCommand('bold')}><Bold className="h-4 w-4" /></RichTextToolbarButton>
+        <RichTextToolbarButton label="Itálica" onClick={() => runCommand('italic')}><Italic className="h-4 w-4" /></RichTextToolbarButton>
+        <RichTextToolbarButton label="Subrayado" onClick={() => runCommand('underline')}><Underline className="h-4 w-4" /></RichTextToolbarButton>
+        <div className="mx-0.5 h-5 w-px bg-slate-200" />
+        <RichTextToolbarButton label="Texto chico" onClick={() => runCommand('fontSize', '2')}><AArrowDown className="h-4 w-4" /></RichTextToolbarButton>
+        <RichTextToolbarButton label="Texto normal" onClick={() => runCommand('fontSize', '3')}><Type className="h-4 w-4" /></RichTextToolbarButton>
+        <RichTextToolbarButton label="Texto grande" onClick={() => runCommand('fontSize', '5')}><AArrowUp className="h-4 w-4" /></RichTextToolbarButton>
+        <div className="mx-0.5 h-5 w-px bg-slate-200" />
+        <RichTextToolbarButton label="Lista" onClick={() => runCommand('insertUnorderedList')}><List className="h-4 w-4" /></RichTextToolbarButton>
+        <RichTextToolbarButton label="Lista numerada" onClick={() => runCommand('insertOrderedList')}><ListOrdered className="h-4 w-4" /></RichTextToolbarButton>
+        <div className="mx-0.5 h-5 w-px bg-slate-200" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="outline" size="icon" className="h-8 w-8 shrink-0" title="Insertar variable" aria-label="Insertar variable">
+              <Variable className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="max-h-72 w-60 overflow-y-auto">
+            {variableOptions.length ? variableOptions.map((option) => (
+              <DropdownMenuItem key={option.key} onSelect={() => insertVariable(option.key)}>{option.label}</DropdownMenuItem>
+            )) : <div className="px-2 py-1.5 text-xs text-slate-400">Sin variables disponibles</div>}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <RichTextToolbarButton label="Emojis" onClick={() => setEmojiOpen((current) => !current)}><Smile className="h-4 w-4" /></RichTextToolbarButton>
       </div>
       {emojiOpen ? (
         <div className="grid grid-cols-8 gap-2 rounded-2xl border border-slate-200 bg-white p-3">
