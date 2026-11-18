@@ -1976,7 +1976,7 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
           {launcherVisible ? (
             <div className="absolute" style={{ zIndex: Number.parseInt(normalizeZIndexValue(builderState.launcherZIndex, '2147483647'), 10), ...previewAnchorStyle }}>
               <div className="flex max-w-full items-center justify-center whitespace-nowrap text-white shadow-[0_18px_44px_-26px_rgba(15,23,42,0.55)]" style={{ backgroundColor: builderState.accentColor, borderRadius: launcherMetrics.buttonRadius, padding: launcherMetrics.buttonPadding, height: launcherMetrics.buttonHeight, gap: effectiveMode === 'compact' ? '0' : launcherMetrics.buttonGap, minWidth: effectiveMode === 'compact' ? launcherMetrics.buttonHeight : undefined, fontSize: launcherMetrics.fontSize, fontWeight: 700 }}>
-                <span style={{ fontSize: launcherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(builderState.launcherIcon)}</span>
+                {builderState.launcherIcon === 'custom' && builderState.launcherIconImageUrl ? <img src={builderState.launcherIconImageUrl} alt="" style={{ width: launcherMetrics.iconSize, height: launcherMetrics.iconSize, objectFit: 'contain', borderRadius: 6, display: 'block' }} /> : <span style={{ fontSize: launcherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(builderState.launcherIcon)}</span>}
                 {launcherLabelVisible ? <span>{builderState.launcherLabel}</span> : null}
               </div>
             </div>
@@ -3320,6 +3320,7 @@ export function CrmIntegrationsClient() {
       floatingLauncherEnabled: createForm.floatingLauncherEnabled,
       launcherLabel: createForm.launcherLabel,
       launcherIcon: createForm.launcherIcon,
+      launcherIconImageUrl: createForm.launcherIconImageUrl,
       launcherPosition: createForm.launcherPosition,
       launcherPlacement: createForm.launcherPlacement,
       launcherSize: createForm.launcherSize,
@@ -4239,6 +4240,7 @@ export function CrmIntegrationsClient() {
         floatingLauncherEnabled: createForm.floatingLauncherEnabled,
         launcherLabel: createForm.launcherLabel,
         launcherIcon: createForm.launcherIcon,
+        launcherIconImageUrl: createForm.launcherIconImageUrl,
         launcherPosition: createForm.launcherPosition,
         launcherPlacement: createForm.launcherPlacement,
         launcherSize: createForm.launcherSize,
@@ -6437,7 +6439,7 @@ export function CrmIntegrationsClient() {
                               onClick={() => setFloatingPreviewOpen((current) => !current)}
                               disabled={!getFloatingLauncherEnabled(selectedSettings)}
                             >
-                              <span>{getLauncherPreviewIcon(getLauncherIcon(selectedSettings))}</span>
+                              {getLauncherIcon(selectedSettings) === 'custom' && getLauncherIconImageUrl(selectedSettings) ? <img src={getLauncherIconImageUrl(selectedSettings)} alt="" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 6, display: 'block' }} /> : <span>{getLauncherPreviewIcon(getLauncherIcon(selectedSettings))}</span>}
                               <span>{getLauncherLabel(selectedSettings)}</span>
                             </button>
                           </div>

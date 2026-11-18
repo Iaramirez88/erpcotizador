@@ -37,6 +37,7 @@ type WizardChatbotForm = {
   launcherStartsCollapsed: boolean
   launcherLabel: string
   launcherIcon: string
+  launcherIconImageUrl: string
   launcherPosition: string
   launcherPlacement: string
   launcherSize: string
@@ -70,6 +71,44 @@ type Props<TForm extends WizardChatbotForm> = {
 
 export function CrmIntegrationsChatbotWizardSections<TForm extends WizardChatbotForm>(props: Props<TForm>) {
   const { form, setForm } = props
+
+  async function handleLauncherIconFile(file: File) {
+    if (!['image/png', 'image/jpeg', 'image/svg+xml'].includes(file.type)) {
+      alert('Formato no soportado. Usa PNG, JPG o SVG.')
+      return
+    }
+    if (file.size > 1024 * 1024) {
+      alert('El icono es muy pesado. Usa una imagen de máximo 1MB.')
+      return
+    }
+
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result ?? ''))
+      reader.onerror = () => reject(new Error('No se pudo leer el archivo.'))
+      reader.readAsDataURL(file)
+    })
+
+    const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+      const image = new Image()
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
+      image.onerror = () => resolve({ width: 0, height: 0 })
+      image.src = dataUrl
+    })
+
+    if (dimensions.width > 0 && dimensions.height > 0) {
+      if (dimensions.width !== dimensions.height) {
+        alert('El icono debe ser cuadrado (ancho y alto iguales).')
+        return
+      }
+      if (dimensions.width > 512 || dimensions.height > 512) {
+        alert('El icono no debe superar 512px por lado.')
+        return
+      }
+    }
+
+    setForm((current) => ({ ...current, launcherIcon: 'custom', launcherIconImageUrl: dataUrl }))
+  }
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -167,7 +206,7 @@ export function CrmIntegrationsChatbotWizardSections<TForm extends WizardChatbot
             <Switch checked={!form.launcherStartsCollapsed} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, launcherStartsCollapsed: !checked }))} disabled={!form.floatingLauncherEnabled} />
           </div>
           <div className="grid gap-2"><Label>Texto del launcher flotante</Label><Input value={form.launcherLabel} onChange={(e) => setForm((prev) => ({ ...prev, launcherLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="Abrir asesor virtual" /></div>
-          <div className="grid gap-2"><Label>Icono del launcher</Label><Select value={form.launcherIcon} onValueChange={(value) => setForm((prev) => ({ ...prev, launcherIcon: value }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bot">bot</SelectItem><SelectItem value="message-circle">message-circle</SelectItem><SelectItem value="sparkles">sparkles</SelectItem></SelectContent></Select></div>
+          <div className="grid gap-2"><Label>Icono del launcher</Label><Select value={form.launcherIcon} onValueChange={(value) => setForm((prev) => ({ ...prev, launcherIcon: value }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bot">Bot</SelectItem><SelectItem value="message-circle">Burbuja de mensaje</SelectItem><SelectItem value="sparkles">Destellos</SelectItem><SelectItem value="custom">Icono personalizado</SelectItem></SelectContent></Select>{form.launcherIcon === 'custom' ? <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-3"><div className="flex items-center gap-3">{form.launcherIconImageUrl ? <img src={form.launcherIconImageUrl} alt="Icono personalizado" className="h-12 w-12 rounded-xl border border-slate-200 bg-white object-contain" /> : null}<Input type="file" accept="image/png,image/jpeg,image/svg+xml" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; void handleLauncherIconFile(file); e.currentTarget.value = '' }} className="h-11 rounded-xl bg-white" /></div><p className="text-xs text-slate-500">Imagen cuadrada, máximo 512×512 px. Formatos: PNG, JPG o SVG.</p>{form.launcherIconImageUrl ? <button type="button" onClick={() => setForm((prev) => ({ ...prev, launcherIconImageUrl: '' }))} className="text-xs font-medium text-slate-600 underline hover:text-slate-900">Quitar icono</button> : null}</div> : null}</div>
           <div className="grid gap-2"><Label>Alineación horizontal</Label><Select value={form.launcherPosition} onValueChange={(value) => setForm((prev) => ({ ...prev, launcherPosition: value }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Derecha</SelectItem><SelectItem value="center">Centro</SelectItem><SelectItem value="left">Izquierda</SelectItem></SelectContent></Select></div>
           <div className="grid gap-2"><Label>Tipo de posición</Label><Select value={form.launcherPlacement} onValueChange={(value) => setForm((prev) => ({ ...prev, launcherPlacement: value }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="fixed">Fixed</SelectItem><SelectItem value="absolute">Absolute</SelectItem></SelectContent></Select></div>
           <div className="grid gap-2"><Label>Tamaño del launcher</Label><Select value={form.launcherSize} onValueChange={(value) => setForm((prev) => ({ ...prev, launcherSize: value }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="compact">Compacto</SelectItem><SelectItem value="standard">Estándar</SelectItem><SelectItem value="large">Grande</SelectItem></SelectContent></Select></div>

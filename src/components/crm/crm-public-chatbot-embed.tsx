@@ -1010,7 +1010,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
         threadId: sessionId,
         parentReferrer: document.referrer || '',
       })
-      const response = await fetch(`/api/public/chatbot/${props.channelId}/conversation?${params.toString()}`)
+      const response = await fetch(`/api/public/chatbot/${props.channelId}/conversation?${params.toString()}`, { cache: 'no-store' })
       if (!response.ok) {
         const detail = await getResponseErrorMessage(response)
         throw new Error(`No se pudo sincronizar la conversación (${response.status}). ${detail}`)
@@ -1026,7 +1026,22 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
         ? mergeServerMessagesWithWelcome(serverMessages, welcomeMessage)
         : defaultMessages
       const latestServerMessageId = serverMessages[serverMessages.length - 1]?.id || ''
-      setMessages(mergedMessages)
+      setMessages((current) => {
+        // Conserva el mensaje optimista (p. ej. una imagen enviada sin texto) hasta
+        // que el servidor devuelva el mensaje real equivalente. Así el usuario siempre
+        // ve lo que acaba de enviar, aunque el primer sync llegue antes que la captura.
+        const optimistic = current.filter((item) => item.id.startsWith('optimistic-'))
+        if (!optimistic.length) return mergedMessages
+
+        const serverUserMessages = mergedMessages.filter((item) => item.role === 'user')
+        const stillPending = optimistic.filter((opt) => !serverUserMessages.some((server) =>
+          server.body === opt.body &&
+          (server.attachments?.length ?? 0) === (opt.attachments?.length ?? 0),
+        ))
+
+        if (!stillPending.length) return mergedMessages
+        return [...mergedMessages, ...stillPending]
+      })
       if (latestServerMessageId && latestServerMessageId !== lastServerMessageIdRef.current) {
         lastServerMessageIdRef.current = latestServerMessageId
         setLastActivityAt(Date.now())
