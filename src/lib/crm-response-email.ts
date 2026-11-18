@@ -1,5 +1,7 @@
 import { escapeHtml } from '@/lib/email-template'
 
+export type CrmResponseEmailLogoSize = 'small' | 'medium' | 'large'
+
 export type CrmResponseEmailVariables = {
   nombre?: string
   email?: string
@@ -31,6 +33,7 @@ export type CrmResponseEmailSettings = {
   cardColor: string
   textColor: string
   logoUrl: string
+  logoSize: CrmResponseEmailLogoSize
   brandName: string
   showBrand: boolean
 }
@@ -53,6 +56,7 @@ export type CrmResponseEmailFormState = {
   responseEmailCardColor: string
   responseEmailTextColor: string
   responseEmailLogoUrl: string
+  responseEmailLogoSize: CrmResponseEmailLogoSize
   responseEmailBrandName: string
   responseEmailShowBrand: boolean
 }
@@ -82,6 +86,17 @@ function getBool(settings: Record<string, unknown>, key: string, fallback: boole
   return typeof settings[key] === 'boolean' ? settings[key] as boolean : fallback
 }
 
+function normalizeLogoSize(value: unknown): CrmResponseEmailLogoSize {
+  if (value === 'small' || value === 'large') return value
+  return 'medium'
+}
+
+function getLogoSizeStyle(size: CrmResponseEmailLogoSize) {
+  if (size === 'small') return 'max-height:28px; max-width:120px;'
+  if (size === 'large') return 'max-height:64px; max-width:260px;'
+  return 'max-height:42px; max-width:180px;'
+}
+
 export function getCrmResponseEmailSettings(settingsJson: unknown): CrmResponseEmailSettings {
   const settings = settingsJson && typeof settingsJson === 'object' && !Array.isArray(settingsJson)
     ? settingsJson as Record<string, unknown>
@@ -105,6 +120,7 @@ export function getCrmResponseEmailSettings(settingsJson: unknown): CrmResponseE
     cardColor: getSetting(settings, 'responseEmailCardColor', '#ffffff'),
     textColor: getSetting(settings, 'responseEmailTextColor', '#111827'),
     logoUrl: getSetting(settings, 'responseEmailLogoUrl', ''),
+    logoSize: normalizeLogoSize(getSetting(settings, 'responseEmailLogoSize', 'medium')),
     brandName: getSetting(settings, 'responseEmailBrandName', 'Ordex'),
     showBrand: getBool(settings, 'responseEmailShowBrand', true),
   }
@@ -130,6 +146,7 @@ export function getDefaultCrmResponseEmailFormState(): CrmResponseEmailFormState
     responseEmailCardColor: defaults.cardColor,
     responseEmailTextColor: defaults.textColor,
     responseEmailLogoUrl: '',
+    responseEmailLogoSize: defaults.logoSize,
     responseEmailBrandName: defaults.brandName,
     responseEmailShowBrand: true,
   }
@@ -155,6 +172,7 @@ export function getCrmResponseEmailFormState(settingsJson: unknown): CrmResponse
     responseEmailCardColor: settings.cardColor,
     responseEmailTextColor: settings.textColor,
     responseEmailLogoUrl: settings.logoUrl,
+    responseEmailLogoSize: settings.logoSize,
     responseEmailBrandName: settings.brandName,
     responseEmailShowBrand: settings.showBrand,
   }
@@ -181,6 +199,7 @@ export function pickCrmResponseEmailFormState(source: Partial<CrmResponseEmailFo
     responseEmailCardColor: normalizeString(input.responseEmailCardColor) || defaults.responseEmailCardColor,
     responseEmailTextColor: normalizeString(input.responseEmailTextColor) || defaults.responseEmailTextColor,
     responseEmailLogoUrl: normalizeString(input.responseEmailLogoUrl),
+    responseEmailLogoSize: normalizeLogoSize(input.responseEmailLogoSize),
     responseEmailBrandName: normalizeString(input.responseEmailBrandName) || defaults.responseEmailBrandName,
     responseEmailShowBrand: typeof input.responseEmailShowBrand === 'boolean' ? input.responseEmailShowBrand : defaults.responseEmailShowBrand,
   }
@@ -233,7 +252,7 @@ export function renderCrmResponseEmail(args: {
   const ctaUrl = resolveCrmResponseEmailText(settings.ctaUrl, variables)
 
   const brandBlock = settings.logoUrl
-    ? `<img src="${escapeHtml(settings.logoUrl)}" alt="${escapeHtml(settings.brandName)}" style="max-height:42px; max-width:180px; display:block;" />`
+    ? `<img src="${escapeHtml(settings.logoUrl)}" alt="${escapeHtml(settings.brandName)}" style="${getLogoSizeStyle(settings.logoSize)} display:block;" />`
     : `<div style="font-family:Arial, sans-serif; font-size:18px; font-weight:700; color:${escapeHtml(settings.textColor)};">${escapeHtml(settings.brandName)}</div>`
 
   const header = (settings.showBrand || settings.logoUrl)

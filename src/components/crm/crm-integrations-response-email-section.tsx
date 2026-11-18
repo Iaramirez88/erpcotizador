@@ -3,12 +3,14 @@
 import { Mail } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
   CRM_RESPONSE_EMAIL_VARIABLES,
   resolveCrmResponseEmailText,
   type CrmResponseEmailFormState,
+  type CrmResponseEmailLogoSize,
 } from '@/lib/crm-response-email'
 
 const FREE_EMAIL_DOMAINS = new Set([
@@ -65,6 +67,12 @@ export function CrmIntegrationsResponseEmailSection(props: Props) {
     cupon: 'PROMO10',
     enlace: 'https://tudominio.com/regalo.pdf',
   }
+
+  const previewLogoStyle = form.responseEmailLogoSize === 'small'
+    ? { maxHeight: 28, maxWidth: 120 }
+    : form.responseEmailLogoSize === 'large'
+      ? { maxHeight: 64, maxWidth: 260 }
+      : { maxHeight: 42, maxWidth: 180 }
 
   return (
     <div className="space-y-4">
@@ -168,9 +176,20 @@ export function CrmIntegrationsResponseEmailSection(props: Props) {
             <Switch checked={form.responseEmailShowBrand} onCheckedChange={(checked) => patchForm({ responseEmailShowBrand: checked })} aria-label="Mostrar marca en el correo" />
           </label>
         </div>
-        <div className="grid gap-2 md:col-span-2">
+        <div className="grid gap-2">
           <Label>Logo (URL pública opcional)</Label>
           <Input value={form.responseEmailLogoUrl} onChange={(event) => patchForm({ responseEmailLogoUrl: event.target.value })} className="h-11 rounded-xl" placeholder="https://tudominio.com/logo.png" />
+        </div>
+        <div className="grid gap-2">
+          <Label>Tamaño del logo</Label>
+          <Select value={form.responseEmailLogoSize} onValueChange={(value) => patchForm({ responseEmailLogoSize: value as CrmResponseEmailLogoSize })}>
+            <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="small">Pequeño</SelectItem>
+              <SelectItem value="medium">Mediano</SelectItem>
+              <SelectItem value="large">Grande</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="grid gap-2">
           <Label>Color de acento</Label>
@@ -206,7 +225,14 @@ export function CrmIntegrationsResponseEmailSection(props: Props) {
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vista previa</p>
         <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200" style={{ backgroundColor: form.responseEmailCardColor, color: form.responseEmailTextColor }}>
           {form.responseEmailShowBrand || form.responseEmailLogoUrl ? (
-            <div className="border-b border-slate-100 px-4 py-3 text-sm font-bold">{form.responseEmailBrandName || 'Marca'}</div>
+            <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
+              {form.responseEmailLogoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={form.responseEmailLogoUrl} alt={form.responseEmailBrandName || 'Logo'} style={{ ...previewLogoStyle, objectFit: 'contain', display: 'block' }} />
+              ) : (
+                <span className="text-sm font-bold">{form.responseEmailBrandName || 'Marca'}</span>
+              )}
+            </div>
           ) : null}
           <div className="space-y-2 px-4 py-4">
             <p className="text-lg font-semibold">{resolveCrmResponseEmailText(form.responseEmailTitle, previewVariables)}</p>
@@ -216,10 +242,15 @@ export function CrmIntegrationsResponseEmailSection(props: Props) {
                 {resolveCrmResponseEmailText(form.responseEmailBody, previewVariables)}
               </div>
             ) : null}
-            {form.responseEmailCtaLabel && /^https?:\/\//i.test(resolveCrmResponseEmailText(form.responseEmailCtaUrl, previewVariables)) ? (
-              <span className="inline-flex rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{ backgroundColor: form.responseEmailAccentColor }}>
-                {resolveCrmResponseEmailText(form.responseEmailCtaLabel, previewVariables)}
-              </span>
+            {form.responseEmailCtaLabel ? (
+              <div className="space-y-1">
+                <span className="inline-flex rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{ backgroundColor: form.responseEmailAccentColor }}>
+                  {resolveCrmResponseEmailText(form.responseEmailCtaLabel, previewVariables)}
+                </span>
+                {!/^https?:\/\//i.test(resolveCrmResponseEmailText(form.responseEmailCtaUrl, previewVariables)) ? (
+                  <p className="text-[11px] text-amber-600">Agrega un enlace válido (o usa la variable enlace) para que el botón funcione en el correo.</p>
+                ) : null}
+              </div>
             ) : null}
           </div>
           {form.responseEmailFooter.trim() ? (

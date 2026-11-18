@@ -1392,7 +1392,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
             }}
           >
             {props.launcherIcon === 'custom' && props.launcherIconImageUrl ? (
-              <img src={props.launcherIconImageUrl} alt="" style={{ width: launcherMetrics.iconSize, height: launcherMetrics.iconSize, objectFit: 'contain', borderRadius: 6, display: 'block' }} />
+              <img src={props.launcherIconImageUrl} alt="" style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: 6, display: 'block' }} />
             ) : (
               <span style={{ fontSize: launcherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(props.launcherIcon)}</span>
             )}
@@ -1404,9 +1404,14 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
       <div className="sgd-chatbot-shell mx-auto flex h-[720px] max-h-[calc(100vh-24px)] max-w-[420px] flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_-44px_rgba(15,23,42,0.42)]" style={{ display: !panelOpen ? 'none' : 'flex' }}>
         <div className="sgd-chatbot-header border-b border-slate-100 px-5 py-4 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${props.accentColor})` }}>
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">{props.headerBadgeLabel}</p>
-              <h1 className="mt-1 text-xl font-semibold">{props.title}</h1>
+            <div className="flex min-w-0 items-center gap-3">
+              {props.launcherIcon === 'custom' && props.launcherIconImageUrl ? (
+                <img src={props.launcherIconImageUrl} alt="" style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: 10, display: 'block', background: 'rgba(255,255,255,0.14)' }} />
+              ) : null}
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">{props.headerBadgeLabel}</p>
+                <h1 className="mt-1 text-xl font-semibold">{props.title}</h1>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <div className="rounded-full bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-white/90">

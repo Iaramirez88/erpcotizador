@@ -333,7 +333,7 @@ export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
   const customCss = args.customCss || ''
   const iframeUrl = buildChatbotEmbedUrl(args.baseUrl, args.channelId, 'iframe')
   const iconMarkup = launcherIcon === 'custom' && args.launcherIconImageUrl
-    ? `<img src="${args.launcherIconImageUrl.replace(/"/g, '&quot;')}" alt="" style="width:20px;height:20px;object-fit:contain;border-radius:5px;display:block;" />`
+    ? `<img src="${args.launcherIconImageUrl.replace(/"/g, '&quot;')}" alt="" style="width:40px;height:40px;object-fit:contain;border-radius:5px;display:block;" />`
     : launcherIcon === 'sparkles'
       ? '&#10024;'
       : launcherIcon === 'message-circle'
@@ -341,6 +341,9 @@ export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
         : launcherIcon === 'bot'
           ? '&#129302;'
           : '&#128172;'
+  const headerIconMarkup = launcherIcon === 'custom' && args.launcherIconImageUrl
+    ? `<img src="${args.launcherIconImageUrl.replace(/"/g, '&quot;')}" alt="" style="width:40px;height:40px;object-fit:contain;border-radius:10px;display:block;background:rgba(255,255,255,.14);" />`
+    : ''
   const launcherOffset = `${(args.launcherOffsetY || '60').replace(/[^0-9]/g, '') || '60'}px`
   const launcherOffsetX = `${(args.launcherOffsetX || '60').replace(/[^0-9]/g, '') || '60'}px`
   const panelOffset = `${Number.parseInt((args.launcherOffsetY || '60').replace(/[^0-9]/g, '') || '60', 10) + 88}px`
@@ -386,7 +389,7 @@ export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
   button.id = launcherId;
   const backdrop = createNode('div', 'position:fixed;inset:0;z-index:${backdropZIndex};background:linear-gradient(180deg,rgba(15,23,42,.08),rgba(15,23,42,.18));backdrop-filter:blur(3px);', '');
   backdrop.id = backdropId;
-  const panel = createNode('div', 'position:fixed;bottom:${panelOffset};${panelAnchorStyle}z-index:${panelZIndex};width:min(420px,calc(100vw - 32px));height:min(760px,calc(100vh - 180px));border:1px solid rgba(148,163,184,.28);border-radius:24px;background:${backgroundColor};overflow:hidden;box-shadow:0 24px 80px rgba(15,23,42,.28);font:14px sans-serif;color:#0f172a;', '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(226,232,240,1);background:linear-gradient(135deg,#0f172a,${accentColor});color:#fff;"><div><div style="font-weight:700;font-size:16px;">${title}</div><div style="font-size:12px;opacity:.9;margin-top:4px;">${prompt}</div></div><button type="button" id="sgd-chatbot-close" style="border:none;background:rgba(255,255,255,.14);color:#fff;width:34px;height:34px;border-radius:999px;cursor:pointer;font-size:18px;transition:transform .2s ease, background .2s ease;">×</button></div><iframe src="'+iframeUrl+'" title="${title}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" style="display:block;width:100%;height:calc(100% - 68px);border:0;background:${backgroundColor};"></iframe>');
+  const panel = createNode('div', 'position:fixed;bottom:${panelOffset};${panelAnchorStyle}z-index:${panelZIndex};width:min(420px,calc(100vw - 32px));height:min(760px,calc(100vh - 180px));border:1px solid rgba(148,163,184,.28);border-radius:24px;background:${backgroundColor};overflow:hidden;box-shadow:0 24px 80px rgba(15,23,42,.28);font:14px sans-serif;color:#0f172a;', '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(226,232,240,1);background:linear-gradient(135deg,#0f172a,${accentColor});color:#fff;"><div style="display:flex;align-items:center;gap:12px;">${headerIconMarkup}<div><div style="font-weight:700;font-size:16px;">${title}</div><div style="font-size:12px;opacity:.9;margin-top:4px;">${prompt}</div></div></div><button type="button" id="sgd-chatbot-close" style="border:none;background:rgba(255,255,255,.14);color:#fff;width:34px;height:34px;border-radius:999px;cursor:pointer;font-size:18px;transition:transform .2s ease, background .2s ease;">×</button></div><iframe src="'+iframeUrl+'" title="${title}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" style="display:block;width:100%;height:calc(100% - 68px);border:0;background:${backgroundColor};"></iframe>');
   panel.id = panelId;
 
   function openPanel() {

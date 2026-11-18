@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { type ReactElement, useDeferredValue, useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, ChevronRight, Copy, Download, Eye, FileText, Folder, FolderInput, FolderPlus, ImageIcon, MoreHorizontal, Music2, Pencil, Plus, Search, Share2, Trash2, Upload, Video } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Copy, Download, Eye, FileText, Folder, FolderInput, FolderPlus, ImageIcon, MoreHorizontal, Music2, Pencil, Plus, Search, Share2, Trash2, Upload, Video } from 'lucide-react'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ import type { CrmFileItem, CrmFilesSnapshot, CrmFilesTeamUser, CrmFolderNode, Js
 
 type OwnershipFilter = 'all' | 'own' | 'shared'
 type AdminScopeFilter = 'ALL' | string
+type FileSortKey = 'name' | 'size' | 'date' | 'type'
 
 function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0 B'
@@ -94,6 +95,8 @@ export function CrmFilesManagerClient({ currentUserId, canViewAllFiles, activeSe
   const [adminScopeFilter, setAdminScopeFilter] = useState<AdminScopeFilter>('ALL')
   const { mode: viewMode, setMode: setViewMode } = useDataViewMode('crm.files.history', 'list')
   const [search, setSearch] = useState('')
+  const [sortKey, setSortKey] = useState<FileSortKey>('name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [folderDialogOpen, setFolderDialogOpen] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [newFolderShareUserIds, setNewFolderShareUserIds] = useState<string[]>([])
@@ -177,6 +180,32 @@ export function CrmFilesManagerClient({ currentUserId, canViewAllFiles, activeSe
     if (!matchesOwnership(item)) return false
     if (!deferredSearch) return true
     return item.name.toLowerCase().includes(deferredSearch)
+  })
+
+  const sortedVisibleItems = [...visibleItems].sort((left, right) => {
+    const leftIsFolder = left.type === 'folder'
+    const rightIsFolder = right.type === 'folder'
+    if (leftIsFolder !== rightIsFolder) return leftIsFolder ? -1 : 1
+
+    let comparison = 0
+    switch (sortKey) {
+      case 'name':
+        comparison = left.name.localeCompare(right.name, 'es', { sensitivity: 'base' })
+        break
+      case 'size':
+        comparison = left.sizeBytes - right.sizeBytes
+        break
+      case 'date':
+        comparison = new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime()
+        break
+      case 'type': {
+        const leftLabel = `${left.type}:${left.extension || ''}`
+        const rightLabel = `${right.type}:${right.extension || ''}`
+        comparison = leftLabel.localeCompare(rightLabel, 'es', { sensitivity: 'base' })
+        break
+      }
+    }
+    return sortDir === 'asc' ? comparison : -comparison
   })
 
   const visibleRecentItems = (snapshot?.recentItems || []).filter((item) => {
@@ -603,10 +632,24 @@ export function CrmFilesManagerClient({ currentUserId, canViewAllFiles, activeSe
               description={snapshot?.currentPath ? `Carpeta actual: /${snapshot.currentPath}` : 'Carpeta raíz del CRM con historial reciente y vista por grid o lista.'}
               tone="action"
               actions={<div className="flex flex-wrap items-center gap-2">
-                <div className="relative min-w-[260px]">
+                <div className="relative min-w-[220px]">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nombre" className="rounded-xl pl-9" />
                 </div>
+                <Select value={sortKey} onValueChange={(value) => setSortKey(value as FileSortKey)}>
+                  <SelectTrigger className="h-10 w-[150px] rounded-xl bg-white" aria-label="Ordenar por">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name">Nombre</SelectItem>
+                    <SelectItem value="size">Tamaño</SelectItem>
+                    <SelectItem value="date">Fecha</SelectItem>
+                    <SelectItem value="type">Tipo</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button type="button" variant="outline" className="h-10 w-10 rounded-xl px-0" onClick={() => setSortDir((current) => current === 'asc' ? 'desc' : 'asc')} aria-label={sortDir === 'asc' ? 'Orden ascendente' : 'Orden descendente'} title={sortDir === 'asc' ? 'Ascendente' : 'Descendente'}>
+                  {sortDir === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+                </Button>
                 <DataViewToggle mode={viewMode} onChange={setViewMode} />
               </div>}
             />
@@ -683,9 +726,9 @@ export function CrmFilesManagerClient({ currentUserId, canViewAllFiles, activeSe
                   </div>
                 ) : null}
 
-                {!loading && visibleItems.length && viewMode === 'grid' ? (
+                {!loading && sortedVisibleItems.length && viewMode === 'grid' ? (
                   <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                    {visibleItems.map((item) => {
+                    {sortedVisibleItems.map((item) => {
                       return (
                         <div key={item.path} className="overflow-hidden rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
                           <button
@@ -728,9 +771,9 @@ export function CrmFilesManagerClient({ currentUserId, canViewAllFiles, activeSe
                   </div>
                 ) : null}
 
-                {!loading && visibleItems.length && viewMode === 'list' ? (
+                {!loading && sortedVisibleItems.length && viewMode === 'list' ? (
                   <div className="overflow-hidden rounded-[24px] border border-slate-200">
-                    {visibleItems.map((item) => {
+                    {sortedVisibleItems.map((item) => {
                       return (
                         <div key={item.path} className="grid grid-cols-[minmax(0,1.5fr)_0.7fr_0.8fr_auto] items-center gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
                           <button type="button" className="flex min-w-0 items-center gap-3 text-left" onClick={() => item.type === 'folder' ? void loadSnapshot(item.path) : openPreview(item)}>
