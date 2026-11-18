@@ -570,11 +570,15 @@ export function mergeChatbotDefaultFlowSettings(args: {
   const baseSettings = asRecord(args.settingsJson) ?? {}
   const studioSettings = getChatbotStudioSettings(baseSettings)
   const currentDefaultFlow = getDefaultChatbotAutomationFlowFromSettings(studioSettings)
+  // Si el caller no trae stages/actions (p. ej. un guardado parcial del wizard),
+  // se conserva el flujo ya existente en lugar de vaciarlo.
+  const nextQuickActions = normalizeChatbotQuickActions(args.quickActions)
+  const nextFlowStages = normalizeChatbotFlowStages(args.flowStages)
   const nextDefaultFlow: ChatbotAutomationFlow = {
     ...currentDefaultFlow,
     isDefault: true,
-    quickActions: normalizeChatbotQuickActions(args.quickActions),
-    flowStages: normalizeChatbotFlowStages(args.flowStages),
+    quickActions: nextQuickActions.length ? nextQuickActions : currentDefaultFlow.quickActions,
+    flowStages: nextFlowStages.length ? nextFlowStages : currentDefaultFlow.flowStages,
   }
   const automationFlows = studioSettings.automationFlows.length
     ? studioSettings.automationFlows.map((flow) => (

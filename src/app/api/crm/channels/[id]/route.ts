@@ -131,7 +131,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (body?.verifyToken !== undefined) patch.verifyToken = normalizeString(body.verifyToken) || null
     if (body?.settingsJson !== undefined) {
       if (!isPlainObject(body.settingsJson)) return NextResponse.json({ error: 'settingsJson inválido' }, { status: 400 })
-      patch.settingsJson = body.settingsJson as Prisma.InputJsonValue
+      const incomingSettings = body.settingsJson as Record<string, unknown>
+      const currentSettings = (current.settingsJson && isPlainObject(current.settingsJson) ? current.settingsJson : {}) as Record<string, unknown>
+      // Shallow merge: conserva los campos previos (flujo del Studio, variables,
+      // reglas, layout, etc.) que el cliente no envíe, evitando pérdida de
+      // configuración ante PATCH parciales.
+      patch.settingsJson = { ...currentSettings, ...incomingSettings } as Prisma.InputJsonValue
     }
 
     const archivedFlag = typeof body?.archived === 'boolean' ? body.archived : null
@@ -168,14 +173,50 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: 'WhatsApp Cloud solo puede pasar a ACTIVE cuando el canal queda conectado por Meta OAuth y con un número sincronizado del cliente.' }, { status: 400 })
     }
 
-    const updated = await prisma.crmChannelConnection.update({
-      where: { id },
-      data: patch,
-      include: {
-        sede: { select: { id: true, nombre: true, codigo: true } },
-        createdBy: { select: { id: true, name: true, email: true } },
-        _count: { select: { conversations: true, captures: true } },
-      },
+    // Respaldo de versiones: guarda un snapshot del settingsJson previo antes de
+    // sobrescribirlo, para poder restaurar una configuración anterior.
+    const settingsChanged = body?.settingsJson !== undefined
+
+    const updated = await prisma.$transaction(async (tx) => {
+      if (settingsChanged) {
+        const latest = await tx.crmChannelSettingsVersion.findFirst({
+          where: { channelConnectionId: id },
+          orderBy: { versionNumber: 'desc' },
+          select: { versionNumber: true },
+        })
+        await tx.crmChannelSettingsVersion.create({
+          data: {
+            channelConnectionId: id,
+            versionNumber: (latest?.versionNumber ?? 0) + 1,
+            settingsJson: (current.settingsJson ?? {}) as Prisma.InputJsonValue,
+            changeNote: typeof body?.settingsChangeNote === 'string' ? normalizeString(body.settingsChangeNote) || null : null,
+            createdByUserId: access.userId,
+          },
+        })
+
+        // Mantener un máximo de 100 versiones por canal para no crecer sin límite.
+        const versionsToDelete = await tx.crmChannelSettingsVersion.findMany({
+          where: { channelConnectionId: id },
+          orderBy: { versionNumber: 'desc' },
+          skip: 100,
+          select: { id: true },
+        })
+        if (versionsToDelete.length) {
+          await tx.crmChannelSettingsVersion.deleteMany({
+            where: { id: { in: versionsToDelete.map((item) => item.id) } },
+          })
+        }
+      }
+
+      return tx.crmChannelConnection.update({
+        where: { id },
+        data: patch,
+        include: {
+          sede: { select: { id: true, nombre: true, codigo: true } },
+          createdBy: { select: { id: true, name: true, email: true } },
+          _count: { select: { conversations: true, captures: true } },
+        },
+      })
     })
 
     return NextResponse.json({

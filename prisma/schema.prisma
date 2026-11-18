@@ -89,6 +89,7 @@ model User {
   crmGanttComments CrmGanttItemComment[]
   crmGanttItemReads CrmGanttItemRead[]
   crmChannelConnectionsCreated CrmChannelConnection[] @relation("CrmChannelConnectionCreatedBy")
+  crmChannelSettingsVersionsCreated CrmChannelSettingsVersion[] @relation("CrmChannelSettingsVersionCreatedBy")
   crmMarketingConnectionsCreated CrmMarketingConnection[] @relation("CrmMarketingConnectionCreatedBy")
   crmContentBriefsCreated CrmContentBrief[] @relation("CrmContentBriefCreatedBy")
   crmConversationsAssigned CrmConversation[] @relation("CrmConversationAssignedTo")
@@ -3850,6 +3851,8 @@ model CrmChannelConnection {
   conversations CrmConversation[]
   captures      CrmLeadCapture[]
 
+  settingsVersions CrmChannelSettingsVersion[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -3857,6 +3860,26 @@ model CrmChannelConnection {
   @@index([empresaId, sedeId, provider])
   @@index([createdById])
   @@map("crm_channel_connections")
+}
+
+model CrmChannelSettingsVersion {
+  id String @id @default(cuid())
+
+  channelConnectionId String
+  channelConnection   CrmChannelConnection @relation(fields: [channelConnectionId], references: [id], onDelete: Cascade)
+
+  versionNumber Int
+  settingsJson  Json
+  changeNote    String?
+
+  createdByUserId String?
+  createdByUser   User? @relation("CrmChannelSettingsVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@unique([channelConnectionId, versionNumber])
+  @@index([channelConnectionId, createdAt])
+  @@map("crm_channel_settings_versions")
 }
 
 model CrmMarketingConnection {

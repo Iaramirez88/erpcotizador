@@ -4199,7 +4199,16 @@ export function CrmIntegrationsClient() {
 
     setSaving(true)
     try {
+      const isEditing = Boolean(editingChannelId)
+      // Al editar un canal existente se conserva todo el settingsJson previo
+      // (flujo del Studio: automationFlows, flowTriggers, pauseNodes, layout,
+      // variables, reglas, coherencia, etc.) para no borrar lo ya construido.
+      const existingSettingsJson = isEditing
+        ? (channels.find((channel) => channel.id === editingChannelId)?.settingsJson as Record<string, unknown> | null | undefined) ?? null
+        : null
+
       const settingsJsonBase = {
+        ...(existingSettingsJson ?? {}),
         testingToken: createForm.testingToken,
         bridgeKind: createForm.bridgeKind,
         googleSheetsSpreadsheetId: createForm.googleSheetsSpreadsheetId,
@@ -4310,7 +4319,6 @@ export function CrmIntegrationsClient() {
           })
         : settingsJsonBase
 
-      const isEditing = Boolean(editingChannelId)
       const json = await requestJson<ChannelConnection>(isEditing ? `/api/crm/channels/${editingChannelId}` : '/api/crm/channels', {
         method: isEditing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },

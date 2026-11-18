@@ -68,6 +68,7 @@ import {
 } from '@/lib/crm-chatbot-inactivity'
 import { normalizeRichTextHtml, plainTextToRichTextHtml, richTextToPlainText, summarizeRichText } from '@/lib/chatbot-rich-text'
 import type { ChatbotStudioFlowDraft } from '@/lib/crm-chatbot-studio-ai'
+import { CrmChannelSettingsHistoryDialog } from '@/components/crm/crm-channel-settings-history-dialog'
 
 type ChannelStatus = 'DRAFT' | 'TESTING' | 'ACTIVE' | 'DISABLED' | 'ERROR'
 
@@ -1646,6 +1647,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const [showConversationEmojiPicker, setShowConversationEmojiPicker] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [assigningConversationId, setAssigningConversationId] = useState<string | null>(null)
   const [focusedNode, setFocusedNode] = useState<StudioFocusNode | null>(null)
@@ -5468,6 +5470,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <Button type="button" variant="outline" size="sm" onClick={() => setStudioScale(builder.studioViewport.scale + 0.1)}>Zoom +</Button>
                   <Button type="button" variant="outline" size="sm" onClick={resetStudioViewport}>Centrar vista</Button>
                   {canEditFlow ? <Button type="button" variant="outline" size="sm" onClick={clearStudioLayout}>Auto ordenar</Button> : null}
+                  <Button type="button" variant="outline" size="sm" onClick={() => setHistoryOpen(true)} disabled={!selectedChannelId}><History className="mr-1.5 h-3.5 w-3.5" /> Historial</Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => setActiveStudioPanel('agent')}><Sparkles className="mr-1.5 h-3.5 w-3.5" /> Agente IA</Button>
                   {canEditFlow ? (
                     <Button type="button" size="sm" onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving || !hasUnsavedChanges || notificationValidationSummary.hasErrors}>
@@ -6513,6 +6516,8 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
           { label: 'Conversaciones', value: conversations.length, hint: 'Historial del canal seleccionado', tone: 'amber' },
         ]}
       />
+
+      <CrmChannelSettingsHistoryDialog channelId={selectedChannelId} open={historyOpen} onOpenChange={setHistoryOpen} onRestored={() => void loadBase()} />
 
       {!loading && !channels.length ? (
         <Card className="border-sky-200 bg-white/95 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.24)]">
