@@ -233,7 +233,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: Request, context: RouteContext) {
+export async function DELETE(request: Request, context: RouteContext) {
   try {
     const access = await requireCapabilityAccess({
       domain: 'CAPTACION',
@@ -249,6 +249,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
       select: {
         id: true,
         sedeId: true,
+        status: true,
         _count: { select: { conversations: true, captures: true } },
       },
     })
@@ -262,9 +263,45 @@ export async function DELETE(_request: Request, context: RouteContext) {
       if (denied) return denied
     }
 
+    const conversations = current._count.conversations ?? 0
+    const captures = current._count.captures ?? 0
+
     if (channelHasActivity(current._count)) {
-      const conversations = current._count.conversations ?? 0
-      const captures = current._count.captures ?? 0
+      // En modo testing la información es de prueba y puede eliminarse junto al canal,
+      // siempre que el usuario confirme explícitamente la pérdida de datos.
+      if (current.status === 'TESTING') {
+        let confirmCascade = false
+        try {
+          const body = (await request.json().catch(() => null)) as { confirmCascade?: boolean } | null
+          confirmCascade = body?.confirmCascade === true
+        } catch {
+          confirmCascade = false
+        }
+
+        if (!confirmCascade) {
+          return NextResponse.json(
+            {
+              error: 'Este canal está en modo testing. Confirma que deseas eliminar el canal junto con toda su información de prueba.',
+              code: 'TESTING_CASCADE_REQUIRED',
+              data: {
+                conversations,
+                captures,
+                canDeleteWithData: true,
+              },
+            },
+            { status: 409 },
+          )
+        }
+
+        await prisma.$transaction([
+          prisma.crmMessage.deleteMany({ where: { conversation: { channelConnectionId: id } } }),
+          prisma.crmLeadCapture.deleteMany({ where: { channelConnectionId: id } }),
+          prisma.crmConversation.deleteMany({ where: { channelConnectionId: id } }),
+          prisma.crmChannelSettingsVersion.deleteMany({ where: { channelConnectionId: id } }),
+          prisma.crmChannelConnection.delete({ where: { id } }),
+        ])
+        return NextResponse.json({ success: true })
+      }
 
       return NextResponse.json(
         {

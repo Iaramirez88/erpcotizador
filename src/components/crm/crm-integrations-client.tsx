@@ -117,7 +117,7 @@ type ChannelStatus = 'DRAFT' | 'TESTING' | 'ACTIVE' | 'DISABLED' | 'ERROR'
 
 type ChannelListTab = 'active' | 'disabled' | 'archived'
 
-type ChannelRemovalStep = 'confirm' | 'blocked' | 'deactivated'
+type ChannelRemovalStep = 'confirm' | 'testing' | 'blocked' | 'deactivated'
 
 type WhatsAppConnectionMode = 'CRM_ONLY' | 'HYBRID_CRM_PHONE'
 
@@ -184,7 +184,7 @@ type MetaWhatsAppAsset = {
   verifiedName?: string | null
 }
 
-type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
+type JsonResponse<T> = { success?: boolean; data?: T; error?: string; code?: string }
 
 
 type TemplatePreset = {
@@ -2834,6 +2834,7 @@ export function CrmIntegrationsClient() {
   const [deleteCandidate, setDeleteCandidate] = useState<ChannelConnection | null>(null)
   const [removalStep, setRemovalStep] = useState<ChannelRemovalStep>('confirm')
   const [removalError, setRemovalError] = useState<string | null>(null)
+  const [removalAcceptDataLoss, setRemovalAcceptDataLoss] = useState(false)
   const [channelsTab, setChannelsTab] = useState<ChannelListTab>('active')
   const [channels, setChannels] = useState<ChannelConnection[]>([])
   const [archivedChannels, setArchivedChannels] = useState<ChannelConnection[]>([])
@@ -4433,7 +4434,14 @@ export function CrmIntegrationsClient() {
   function openChannelRemoval(channel: ChannelConnection) {
     setDeleteCandidate(channel)
     setRemovalError(null)
-    setRemovalStep(channelHasActivity(channel._count) ? 'blocked' : 'confirm')
+    setRemovalAcceptDataLoss(false)
+    if (!channelHasActivity(channel._count)) {
+      setRemovalStep('confirm')
+    } else if (channel.status === 'TESTING') {
+      setRemovalStep('testing')
+    } else {
+      setRemovalStep('blocked')
+    }
   }
 
   function closeChannelRemoval() {
@@ -4443,18 +4451,27 @@ export function CrmIntegrationsClient() {
     setRemovalStep('confirm')
   }
 
-  async function deleteChannel(channelId: string) {
+  async function deleteChannel(channelId: string, options?: { confirmCascade?: boolean }) {
     setDeletingChannelId(channelId)
     try {
-      const json = await requestJson(`/api/crm/channels/${channelId}`, { method: 'DELETE' })
+      const json = await requestJson(`/api/crm/channels/${channelId}`, {
+        method: 'DELETE',
+        ...(options?.confirmCascade
+          ? {
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ confirmCascade: true }),
+            }
+          : {}),
+      })
       if (!json.success) {
         setRemovalError(json.error || 'No se pudo eliminar el canal.')
-        setRemovalStep('blocked')
+        setRemovalStep(json.code === 'TESTING_CASCADE_REQUIRED' ? 'testing' : 'blocked')
         return
       }
       setDeleteCandidate(null)
       setRemovalError(null)
       setRemovalStep('confirm')
+      setRemovalAcceptDataLoss(false)
       await loadChannels()
     } finally {
       setDeletingChannelId(null)
@@ -7574,14 +7591,18 @@ export function CrmIntegrationsClient() {
                   ? 'Este canal no se puede eliminar'
                   : removalStep === 'deactivated'
                     ? 'Canal desactivado'
-                    : 'Eliminar canal configurado'}
+                    : removalStep === 'testing'
+                      ? 'Eliminar canal en modo testing'
+                      : 'Eliminar canal configurado'}
               </DialogTitle>
               <DialogDescription>
                 {removalStep === 'blocked'
                   ? 'El canal ya tiene actividad registrada. Para conservar el histórico comercial puedes desactivarlo o archivarlo.'
                   : removalStep === 'deactivated'
                     ? 'El canal quedó fuera de operación. Si ya no lo vas a usar, archívalo para que salga del panel de canales configurados.'
-                    : 'Esta acción solo funciona si el canal aún no tiene conversaciones ni capturas asociadas.'}
+                    : removalStep === 'testing'
+                      ? 'El canal está en modo testing, así que toda su información es de prueba y se puede eliminar junto al canal.'
+                      : 'Esta acción solo funciona si el canal aún no tiene conversaciones ni capturas asociadas.'}
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -7595,12 +7616,28 @@ export function CrmIntegrationsClient() {
                   Actividad detectada: <strong>{deleteCandidate?._count?.conversations ?? 0}</strong> conversaciones y <strong>{deleteCandidate?._count?.captures ?? 0}</strong> capturas. Desactivar detiene la operación sin perder nada; archivar además lo oculta del panel.
                 </p>
               ) : null}
+              {removalStep === 'testing' ? (
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  Canal en <strong>modo testing</strong>: las conversaciones y capturas son solo de prueba. Al eliminar el canal se perderán <strong>{deleteCandidate?._count?.conversations ?? 0}</strong> conversaciones y <strong>{deleteCandidate?._count?.captures ?? 0}</strong> capturas de prueba.
+                </p>
+              ) : null}
               {removalStep === 'deactivated' ? (
                 <p className="mt-3 text-sm leading-6 text-slate-600">
                   Archivar conserva conversaciones, capturas y configuración, pero el canal deja de aparecer entre los canales operativos y desactivados.
                 </p>
               ) : null}
             </div>
+            {removalStep === 'testing' ? (
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-2xl border border-rose-200 bg-rose-50/70 p-3 text-sm leading-5 text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={removalAcceptDataLoss}
+                  onChange={(event) => setRemovalAcceptDataLoss(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-rose-600"
+                />
+                <span>Acepto que al eliminar este canal en modo testing se perderá de forma permanente toda la información de prueba vinculada (conversaciones y capturas).</span>
+              </label>
+            ) : null}
             {removalError ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{removalError}</div>
             ) : null}
@@ -7615,6 +7652,15 @@ export function CrmIntegrationsClient() {
                   disabled={removalBusy}
                 >
                   {deletingChannelId ? 'Eliminando...' : 'Confirmar eliminación'}
+                </Button>
+              ) : null}
+              {removalStep === 'testing' ? (
+                <Button
+                  className="rounded-xl bg-rose-600 text-white hover:bg-rose-700"
+                  onClick={() => deleteCandidate ? void deleteChannel(deleteCandidate.id, { confirmCascade: true }) : undefined}
+                  disabled={removalBusy || !removalAcceptDataLoss}
+                >
+                  {deletingChannelId ? 'Eliminando...' : 'Eliminar canal y toda su información'}
                 </Button>
               ) : null}
               {removalStep === 'blocked' ? (
