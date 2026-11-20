@@ -748,6 +748,79 @@ Del lado del cliente, lo minimo viable es esto:
 
 Si eso no se cumple, el canal puede quedar creado pero no operativo para conversacion real.
 
+### 8.8 Conexion de WhatsApp Cloud: requisitos del cliente y casos frecuentes
+
+Esta seccion aclara lo que una empresa debe tener en Meta antes de conectar el canal, y resuelve las dudas mas comunes sobre cuentas, numeros y costos.
+
+#### 8.8.1 Las piezas de Meta que se suelen confundir
+
+Para WhatsApp Cloud no alcanza "un Facebook". Hay piezas distintas:
+
+1. Cuenta personal de Meta (antes cuenta de Facebook): es la cuenta con la que se inicia sesion y se autoriza la conexion. Obligatoria.
+2. Business Portfolio / Business Manager: el negocio dentro de Meta que agrupa los activos. Obligatorio.
+3. WABA (WhatsApp Business Account): el negocio de WhatsApp dentro del Business Portfolio. Obligatoria.
+4. Numero de telefono: el numero dado de alta en la WABA. Genera el Phone Number ID. Obligatorio.
+5. Pagina de Facebook: solo se necesita para Messenger/Facebook/Instagram, NO para WhatsApp Cloud.
+
+#### 8.8.2 Que debe tener el cliente como minimo
+
+1. Una cuenta personal de Meta con rol administrador.
+2. Un Business Portfolio creado y verificado.
+3. Una WABA creada dentro del Business Portfolio.
+4. Un numero verificado (SMS o llamada) dentro de esa WABA.
+5. Metodo de pago configurado en la WABA para la mensajeria.
+6. Permisos reales sobre Business Portfolio, WABA y numero en la cuenta que autoriza.
+
+#### 8.8.3 Cuenta de Facebook vs cuenta de Meta
+
+Son lo mismo: la cuenta personal de Meta (la que se usa para iniciar sesion). No se necesita una pagina de Facebook para WhatsApp Cloud.
+
+#### 8.8.4 El numero: Meta no lo regala
+
+En el alta normal el cliente aporta un numero propio (SIM que reciba SMS o llamada). Meta no entrega un numero gratis en el flujo estandar. Solo en programas tipo BSP/partner puede existir un numero de API facilitado por el proveedor.
+
+#### 8.8.5 Numero ya vinculado a WhatsApp Messenger o a WhatsApp Business App
+
+Un mismo numero no puede estar a la vez en la app personal, en WhatsApp Business App y en Cloud API.
+
+1. Si el numero esta en la app personal o en WhatsApp Business App, hay que migrarlo/desvincularlo para pasarlo a Cloud API.
+2. Al migrarlo a la API, deja de usarse desde la app del celular.
+3. El modo hibrido (mismo numero en CRM y celular) no se logra solo activando el webhook; requiere coexistencia oficial de Meta.
+
+Recomendacion operativa: usar un numero dedicado al CRM (modo Solo CRM) y, si el cliente necesita el celular, usar otro numero distinto para la app.
+
+#### 8.8.6 Como dar de alta un numero nuevo
+
+1. Comprar un SIM nuevo que pueda recibir SMS o llamada.
+2. En Business Portfolio, ir a WhatsApp > Anadir numero.
+3. Elegir pais, ingresar el numero y verificar por SMS o llamada.
+4. Definir el display name.
+5. Confirmar que el numero quede en la WABA con su Phone Number ID.
+6. En SGDigital: Conectar con Meta > Sincronizar > seleccionar ese numero.
+
+#### 8.8.7 Costo
+
+1. Cuenta, Business Portfolio, WABA y app de Meta: gratis.
+2. El SIM lo paga el cliente a su operador.
+3. La mensajeria se factura por conversacion segun categoria (service, marketing, utility, authentication) y pais, con un tier gratuito mensual limitado. Las tarifas cambian; consultar la tabla oficial de Meta.
+
+#### 8.8.8 Orden correcto dentro del CRM (y errores 401/409)
+
+El flujo correcto es:
+
+1. Crear el canal WhatsApp Cloud en TESTING.
+2. Pulsar Conectar con Meta (no Sincronizar primero).
+3. Permitir la ventana emergente, iniciar sesion en Meta y aceptar permisos.
+4. Esperar el regreso al CRM. El sistema guarda el access token y trae los numeros (metaWhatsAppAssets).
+5. Elegir el numero sincronizado y guardar.
+6. Pasar a ACTIVE solo cuando el numero quede sincronizado.
+
+Errores frecuentes al recrear el canal:
+
+1. Si borraste el canal anterior y creaste uno nuevo, el canal nuevo no tiene token de Meta. Por eso Sincronizar Meta responde 409 "El canal no tiene una conexion Meta activa" y no aparecen numeros: primero hay que hacer Conectar con Meta.
+2. Si ves un 401 en consola, suele ser por sesion vencida o por una cookie que no se envio. Cierra sesion, vuelve a entrar y reintenta.
+3. El 401 de /api/push/subscriptions y los avisos de beforeinstallprompt, aria-describedby o "message channel closed" son ruido del navegador/extensiones y no afectan la conexion de Meta.
+
 ## 9. WhatsApp Sandbox
 
 Funciona con la misma base operativa del webhook global de Meta, pero orientado a pruebas.
