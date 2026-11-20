@@ -201,7 +201,9 @@ export async function exchangeMetaCode(args: { code: string; redirectUri?: strin
   const longJson = await longResponse.json().catch(() => ({})) as MetaTokenResponse & { error?: { message?: string } }
 
   if (longResponse.ok && longJson.access_token) {
-    return longJson
+    // El intercambio a token de larga duración NO devuelve granted_scopes,
+    // así que conservamos los scopes del token corto para poder guardarlos.
+    return { ...longJson, granted_scopes: shortJson.granted_scopes }
   }
 
   return shortJson
@@ -456,11 +458,14 @@ async function fetchWhatsAppAssetsForBusiness(accessToken: string, businessId: s
     fields: 'owned_whatsapp_business_accounts{id,name},client_whatsapp_business_accounts{id,name}',
   }, accessToken)
 
-  const ownedWabas = Array.isArray(business.owned_whatsapp_business_accounts)
-    ? business.owned_whatsapp_business_accounts.map((item) => parseJsonObject(item))
+  // Meta devuelve estos edges como { data: [...] } (no como array plano).
+  const ownedEdge = parseJsonObject(business.owned_whatsapp_business_accounts)
+  const clientEdge = parseJsonObject(business.client_whatsapp_business_accounts)
+  const ownedWabas = Array.isArray(ownedEdge.data)
+    ? ownedEdge.data.map((item) => parseJsonObject(item))
     : []
-  const clientWabas = Array.isArray(business.client_whatsapp_business_accounts)
-    ? business.client_whatsapp_business_accounts.map((item) => parseJsonObject(item))
+  const clientWabas = Array.isArray(clientEdge.data)
+    ? clientEdge.data.map((item) => parseJsonObject(item))
     : []
   const wabas = [...ownedWabas, ...clientWabas]
   const seenWabaIds = new Set<string>()

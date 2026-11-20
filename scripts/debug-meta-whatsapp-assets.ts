@@ -28,6 +28,15 @@ function normalizeString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function edgeData(value: unknown): GraphWaba[] {
+  if (Array.isArray(value)) return value as GraphWaba[]
+  if (value && typeof value === 'object') {
+    const data = (value as { data?: unknown }).data
+    if (Array.isArray(data)) return data as GraphWaba[]
+  }
+  return []
+}
+
 async function fetchGraph<T>(path: string, accessToken: string, params: Record<string, string> = {}) {
   const search = new URLSearchParams({ ...params, access_token: accessToken })
   const response = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}${path}?${search.toString()}`, {
@@ -170,12 +179,8 @@ async function main() {
       continue
     }
 
-    const owned = Array.isArray(businessDetail.owned_whatsapp_business_accounts)
-      ? businessDetail.owned_whatsapp_business_accounts as GraphWaba[]
-      : []
-    const client = Array.isArray(businessDetail.client_whatsapp_business_accounts)
-      ? businessDetail.client_whatsapp_business_accounts as GraphWaba[]
-      : []
+    const owned = edgeData(businessDetail.owned_whatsapp_business_accounts)
+    const client = edgeData(businessDetail.client_whatsapp_business_accounts)
     const wabas = [...owned, ...client]
 
     console.log(`\nWABAs visibles para business ${business.name || businessId}:`)
