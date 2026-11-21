@@ -15,7 +15,7 @@ import {
 async function assertLeadCapabilityAccess(args: {
   sedeId: string
   empresaId: string
-  action: 'READ' | 'UPDATE'
+  action: 'READ' | 'UPDATE' | 'DELETE'
 }) {
   const sede = await prisma.sede.findUnique({ where: { id: args.sedeId }, select: { id: true, empresaId: true } })
   if (!sede || sede.empresaId !== args.empresaId) {
@@ -109,7 +109,7 @@ async function findConflictingLead(args: {
 async function ensureLeadAccess(args: {
   leadId: string
   empresaId: string
-  action: 'READ' | 'UPDATE'
+  action: 'READ' | 'UPDATE' | 'DELETE'
 }) {
   const lead = await prisma.crmLead.findUnique({
     where: { id: args.leadId },
@@ -410,5 +410,33 @@ export async function PATCH(request: Request, context: RouteContext) {
   } catch (error) {
     console.error('Error al actualizar lead CRM:', error)
     return NextResponse.json({ error: 'Error al actualizar lead CRM' }, { status: 500 })
+  }
+}
+
+export async function DELETE(_: Request, context: RouteContext) {
+  try {
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'LEADS',
+      action: 'DELETE',
+      scope: 'SEDE',
+    })
+    if (!access.ok) return access.response
+
+    const { id } = await context.params
+    const result = await ensureLeadAccess({ leadId: id, empresaId: access.empresaId, action: 'DELETE' })
+    if ('response' in result) return result.response
+
+    const scope = await resolveCrmRequestScope(access, { subdomain: 'LEADS', action: 'DELETE' })
+    if (!canAccessCrmRecord(scope, 'lead', result.lead)) {
+      return NextResponse.json({ error: 'Sin acceso a este lead' }, { status: 403 })
+    }
+
+    await prisma.crmLead.delete({ where: { id } })
+
+    return NextResponse.json({ success: true, data: { id } })
+  } catch (error) {
+    console.error('Error al eliminar lead CRM:', error)
+    return NextResponse.json({ error: 'Error al eliminar lead CRM' }, { status: 500 })
   }
 }

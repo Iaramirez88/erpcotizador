@@ -124,6 +124,21 @@ export async function POST(request: Request, context: RouteContext) {
           } as Prisma.InputJsonValue,
         })
 
+        // El CSV es la fuente autoritativa de la importación: sincroniza los
+        // campos de identidad del lead con la fila (incluso cuando se reutiliza
+        // un lead previo por email/teléfono/documento) para que la bandeja de
+        // leads muestre exactamente lo que dice la hoja.
+        await tx.crmLead.update({
+          where: { id: artifacts.lead.id },
+          data: {
+            ...(row.nombre ? { nombre: row.nombre } : {}),
+            ...(row.empresaNombre ? { empresaNombre: row.empresaNombre } : {}),
+            ...(row.email ? { email: row.email.toLowerCase() } : {}),
+            ...(row.documento ? { documento: row.documento } : {}),
+            ...(row.ciudad ? { ciudad: row.ciudad } : {}),
+          },
+        })
+
         let opportunityId: string | undefined
         if (normalizedSettings.importMode === 'LEADS_AND_OPPORTUNITIES' && (row.opportunityTitle || row.expectedValue !== null || row.producto)) {
           const title = row.opportunityTitle || (row.producto ? `Oportunidad · ${row.producto}` : `Oportunidad · fila ${row.rowNumber}`)

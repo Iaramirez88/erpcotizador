@@ -59,7 +59,7 @@ export const RBAC_V2_CAPABILITY_CATALOG: RbacV2CapabilityDefinition[] = [
 
   { domain: 'CAPTACION', subdomain: 'INBOX', actions: ['READ', 'UPDATE', 'ASSIGN'], recommendedScopes: ['ASSIGNED', 'TEAM', 'SEDE', 'EMPRESA'] },
   { domain: 'CAPTACION', subdomain: 'CHANNELS', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'CONFIGURE'], recommendedScopes: ['SEDE', 'EMPRESA'] },
-  { domain: 'CAPTACION', subdomain: 'LEADS', actions: ['READ', 'CREATE', 'UPDATE', 'ASSIGN', 'EXPORT'], recommendedScopes: ['OWN', 'ASSIGNED', 'TEAM', 'SEDE', 'EMPRESA'] },
+  { domain: 'CAPTACION', subdomain: 'LEADS', actions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'ASSIGN', 'EXPORT'], recommendedScopes: ['OWN', 'ASSIGNED', 'TEAM', 'SEDE', 'EMPRESA'] },
   { domain: 'CAPTACION', subdomain: 'OPPORTUNITIES', actions: ['READ', 'CREATE', 'UPDATE', 'ASSIGN', 'EXPORT', 'CONFIGURE'], recommendedScopes: ['OWN', 'ASSIGNED', 'TEAM', 'SEDE', 'EMPRESA'] },
   { domain: 'CAPTACION', subdomain: 'CONTACTS', actions: ['READ', 'CREATE', 'UPDATE'], recommendedScopes: ['OWN', 'ASSIGNED', 'TEAM', 'SEDE', 'EMPRESA'] },
   { domain: 'CAPTACION', subdomain: 'ACTIVITIES', actions: ['READ', 'CREATE', 'UPDATE'], recommendedScopes: ['OWN', 'ASSIGNED', 'TEAM', 'SEDE', 'EMPRESA'] },

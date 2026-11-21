@@ -1,9 +1,17 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { LayoutGrid, List, Plus, RefreshCw } from 'lucide-react'
+import { LayoutGrid, List, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import {
@@ -63,6 +71,12 @@ export function CrmLeadsInboxClient() {
   const [creating, setCreating] = useState(false)
   const [newLead, setNewLead] = useState(EMPTY_NEW_LEAD)
   const [viewMode, setViewMode] = useState<'list' | 'cards'>('list')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<
+    { kind: 'single'; lead: CrmLeadRow } | { kind: 'bulk'; count: number } | null
+  >(null)
+  const [deleting, setDeleting] = useState(false)
 
   const query = useMemo(() => {
     const params = new URLSearchParams()
@@ -166,6 +180,82 @@ export function CrmLeadsInboxClient() {
       })
     } finally {
       setCreating(false)
+    }
+  }
+
+  const allSelected = leads.length > 0 && leads.every((lead) => selectedIds.has(lead.id))
+
+  function toggleSelect(leadId: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(leadId)) next.delete(leadId)
+      else next.add(leadId)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(leads.map((lead) => lead.id)))
+    }
+  }
+
+  function requestSingleDelete(lead: CrmLeadRow) {
+    setDeleteTarget({ kind: 'single', lead })
+    setDeleteDialogOpen(true)
+  }
+
+  function requestBulkDelete() {
+    setDeleteTarget({ kind: 'bulk', count: selectedIds.size })
+    setDeleteDialogOpen(true)
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      if (deleteTarget.kind === 'single') {
+        const response = await fetch(`/api/crm/leads/${deleteTarget.lead.id}`, { method: 'DELETE' })
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null
+        if (!response.ok) throw new Error(payload?.error || 'No se pudo eliminar el lead')
+        toast({ title: 'Lead eliminado' })
+        setSelectedIds((current) => {
+          const next = new Set(current)
+          next.delete(deleteTarget.lead.id)
+          return next
+        })
+        if (selectedId === deleteTarget.lead.id) setSelectedId(null)
+      } else {
+        const response = await fetch('/api/crm/leads/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: Array.from(selectedIds) }),
+        })
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string; data?: { deleted?: number; skipped?: number } }
+          | null
+        if (!response.ok) throw new Error(payload?.error || 'No se pudieron eliminar los leads')
+        const deleted = payload?.data?.deleted ?? selectedIds.size
+        const skipped = payload?.data?.skipped ?? 0
+        toast({
+          title: `${deleted} lead${deleted === 1 ? '' : 's'} eliminado${deleted === 1 ? '' : 's'}`,
+          description: skipped ? `${skipped} sin permiso para eliminar` : undefined,
+        })
+        setSelectedIds(new Set())
+      }
+      setDeleteDialogOpen(false)
+      setDeleteTarget(null)
+      await loadLeads()
+    } catch (deleteError) {
+      toast({
+        title: 'No se pudo eliminar',
+        description: deleteError instanceof Error ? deleteError.message : 'Error desconocido',
+        variant: 'destructive',
+      })
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -294,6 +384,21 @@ export function CrmLeadsInboxClient() {
         }}
       />
 
+      {selectedIds.size > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+          <span className="font-medium">
+            {selectedIds.size} seleccionado{selectedIds.size === 1 ? '' : 's'}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={toggleSelectAll}>
+              {allSelected ? 'Quitar selección' : 'Seleccionar todos'}
+            </Button>
+            <Button size="sm" variant="destructive" onClick={requestBulkDelete} disabled={deleting}>
+              <Trash2 className="h-3.5 w-3.5" /> Eliminar seleccionados
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-3 xl:flex-row">
         <div className="min-w-0 flex-1 space-y-3">
@@ -302,21 +407,28 @@ export function CrmLeadsInboxClient() {
               leads={leads}
               loading={loading}
               selectedId={selectedId}
+              selectedIds={selectedIds}
               onSelect={(lead) => setSelectedId(lead.id)}
+              onToggleSelect={toggleSelect}
             />
           ) : (
             <CrmLeadsTable
               leads={leads}
               loading={loading}
               selectedId={selectedId}
+              selectedIds={selectedIds}
+              allSelected={allSelected}
               sortKey={sortKey}
               sortDir={sortDir}
               onSelect={(lead) => setSelectedId(lead.id)}
               onSortChange={changeSort}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={toggleSelectAll}
               onAssign={(lead) => setSelectedId(lead.id)}
               onStatus={(lead) => setSelectedId(lead.id)}
               onConvert={(lead) => setSelectedId(lead.id)}
               onDoNotContact={(lead) => setSelectedId(lead.id)}
+              onDelete={requestSingleDelete}
             />
           )}
 
@@ -366,6 +478,46 @@ export function CrmLeadsInboxClient() {
           onChanged={() => void loadLeads()}
         />
       </div>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !deleting) {
+            setDeleteDialogOpen(false)
+            setDeleteTarget(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {deleteTarget?.kind === 'single' ? 'Eliminar lead' : 'Eliminar leads seleccionados'}
+            </DialogTitle>
+            <DialogDescription>
+              {deleteTarget?.kind === 'single'
+                ? `¿Eliminar el lead “${deleteTarget.lead.nombre}”?`
+                : `¿Eliminar ${deleteTarget?.count ?? 0} leads seleccionados?`}{' '}
+              Esta acción es irreversible y los registros se borrarán permanentemente. Las conversaciones,
+              tareas y oportunidades asociadas quedarán sin lead vinculado.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={deleting}
+              onClick={() => {
+                setDeleteDialogOpen(false)
+                setDeleteTarget(null)
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button variant="destructive" disabled={deleting} onClick={() => void confirmDelete()}>
+              {deleting ? 'Eliminando…' : 'Eliminar definitivamente'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

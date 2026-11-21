@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeftRight, Ban, CheckCircle2, ExternalLink, UserPlus } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { ArrowLeftRight, Ban, CheckCircle2, Pencil, Trash2, UserPlus } from 'lucide-react'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
+import { RowActionsMenu } from '@/components/ui/row-actions-menu'
 import { cn } from '@/lib/utils'
 import { CrmLeadsScoreBadge } from '@/components/crm/crm-leads-score-badge'
 import {
@@ -18,26 +19,36 @@ export function CrmLeadsTable({
   leads,
   loading,
   selectedId,
+  selectedIds,
+  allSelected,
   sortKey,
   sortDir,
   onSelect,
   onSortChange,
+  onToggleSelect,
+  onToggleSelectAll,
   onAssign,
   onStatus,
   onConvert,
   onDoNotContact,
+  onDelete,
 }: {
   leads: CrmLeadRow[]
   loading: boolean
   selectedId: string | null
+  selectedIds: Set<string>
+  allSelected: boolean
   sortKey: CrmLeadsSortKey
   sortDir: 'asc' | 'desc'
   onSelect: (lead: CrmLeadRow) => void
   onSortChange: (key: CrmLeadsSortKey) => void
+  onToggleSelect: (leadId: string) => void
+  onToggleSelectAll: () => void
   onAssign: (lead: CrmLeadRow) => void
   onStatus: (lead: CrmLeadRow) => void
   onConvert: (lead: CrmLeadRow) => void
   onDoNotContact: (lead: CrmLeadRow) => void
+  onDelete: (lead: CrmLeadRow) => void
 }) {
   function sortIndicator(key: CrmLeadsSortKey) {
     if (sortKey !== key) return ''
@@ -72,6 +83,15 @@ export function CrmLeadsTable({
         <table className="w-full min-w-[1040px] text-left text-xs">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
             <tr>
+              <th className="w-8 px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={onToggleSelectAll}
+                  className="h-3.5 w-3.5 rounded border-slate-300"
+                  aria-label="Seleccionar todos"
+                />
+              </th>
               <th className="cursor-pointer px-3 py-2.5 font-semibold" onClick={() => onSortChange('nombre')}>
                 Lead{sortIndicator('nombre')}
               </th>
@@ -104,6 +124,15 @@ export function CrmLeadsTable({
                   selectedId === lead.id ? 'bg-sky-50/60' : ''
                 )}
               >
+                <td className="px-3 py-2.5" onClick={(event) => event.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(lead.id)}
+                    onChange={() => onToggleSelect(lead.id)}
+                    className="h-3.5 w-3.5 rounded border-slate-300"
+                    aria-label={`Seleccionar ${lead.nombre}`}
+                  />
+                </td>
                 <td className="px-3 py-2.5">
                   <div className="font-semibold text-slate-900">{lead.nombre}</div>
                   <div className="text-[11px] text-slate-500">{lead.empresaNombre || '—'}</div>
@@ -144,25 +173,34 @@ export function CrmLeadsTable({
                 </td>
                 <td className="px-3 py-2.5 text-slate-600">{formatRelativeDate(lead.createdAt)}</td>
                 <td className="px-3 py-2.5 text-slate-600">{formatRelativeDate(lead.lastActivityAt)}</td>
-                <td className="px-3 py-2.5">
-                  <div className="flex items-center justify-end gap-1" onClick={(event) => event.stopPropagation()}>
-                    <Button size="sm" variant="ghost" title="Asignar" onClick={() => onAssign(lead)}>
-                      <UserPlus className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" title="Cambiar estado" onClick={() => onStatus(lead)}>
-                      <ArrowLeftRight className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" title="Convertir en oportunidad" onClick={() => onConvert(lead)}>
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" title="No contactar" onClick={() => onDoNotContact(lead)}>
-                      <Ban className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button asChild size="sm" variant="ghost" title="Abrir ficha">
-                      <Link href={`/dashboard/crm/leads/${lead.id}`}>
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </Link>
-                    </Button>
+                <td className="px-3 py-2.5" onClick={(event) => event.stopPropagation()}>
+                  <div className="flex justify-end">
+                    <RowActionsMenu label={lead.nombre}>
+                      <DropdownMenuItem asChild onSelect={(event) => event.preventDefault()}>
+                        <Link href={`/dashboard/crm/leads/${lead.id}`} className="flex items-center gap-2">
+                          <Pencil className="h-3.5 w-3.5" /> Editar
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="gap-2" onSelect={() => onAssign(lead)}>
+                        <UserPlus className="h-3.5 w-3.5" /> Asignar
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="gap-2" onSelect={() => onStatus(lead)}>
+                        <ArrowLeftRight className="h-3.5 w-3.5" /> Cambiar estado
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="gap-2" onSelect={() => onConvert(lead)}>
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Convertir en oportunidad
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="gap-2" onSelect={() => onDoNotContact(lead)}>
+                        <Ban className="h-3.5 w-3.5" /> No contactar
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="gap-2 text-rose-600 focus:text-rose-600"
+                        onSelect={() => onDelete(lead)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Eliminar
+                      </DropdownMenuItem>
+                    </RowActionsMenu>
                   </div>
                 </td>
               </tr>

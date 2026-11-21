@@ -14,12 +14,16 @@ export function CrmLeadsCards({
   leads,
   loading,
   selectedId,
+  selectedIds,
   onSelect,
+  onToggleSelect,
 }: {
   leads: CrmLeadRow[]
   loading: boolean
   selectedId: string | null
+  selectedIds: Set<string>
   onSelect: (lead: CrmLeadRow) => void
+  onToggleSelect: (leadId: string) => void
 }) {
   if (loading) {
     return (
@@ -70,7 +74,17 @@ export function CrmLeadsCards({
                   {lead.empresaNombre || '—'}
                 </div>
               </div>
-              <CrmLeadsScoreBadge score={lead.score} band={lead.scoreBand} />
+              <div className="flex shrink-0 items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(lead.id)}
+                  onChange={() => onToggleSelect(lead.id)}
+                  onClick={(event) => event.stopPropagation()}
+                  className="h-3.5 w-3.5 rounded border-slate-300"
+                  aria-label={`Seleccionar ${lead.nombre}`}
+                />
+                <CrmLeadsScoreBadge score={lead.score} band={lead.scoreBand} />
+              </div>
             </div>
 
             <div className="mt-2 space-y-1 text-[11px] text-slate-600">
