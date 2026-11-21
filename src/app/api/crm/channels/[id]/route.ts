@@ -11,6 +11,7 @@ import {
 } from '@/lib/crm'
 import { buildOutboundMessagingUsageMeters, getOutboundMessagingLimitConfig, getOutboundMessagingUsageSnapshot, hasOutboundMessagingLimits } from '@/lib/crm-channel-limits'
 import { channelHasActivity, getChannelArchiveState, withChannelArchiveState } from '@/lib/crm-channel-archive'
+import { computeBridgeDiagnostics, isBridgeDiagnosticsApplicable } from '@/lib/crm-channel-diagnostics'
 import { isWhatsAppCloudChannelReadyForProduction } from '@/lib/crm-meta'
 import { maskTokenPreview } from '@/lib/crm-omnichannel'
 
@@ -52,12 +53,24 @@ export async function GET(_request: Request, context: RouteContext) {
       ? buildOutboundMessagingUsageMeters(outboundMessagingLimitConfig, outboundMessagingUsage)
       : []
 
+    const bridgeKind = normalizeString((row.settingsJson as Record<string, unknown> | null | undefined)?.bridgeKind)
+    const diagnostics = isBridgeDiagnosticsApplicable(bridgeKind)
+      ? await computeBridgeDiagnostics({
+          channelId: row.id,
+          verifyToken: row.verifyToken,
+          lastWebhookAt: row.lastWebhookAt,
+          lastErrorAt: row.lastErrorAt,
+          lastErrorMessage: row.lastErrorMessage,
+        })
+      : null
+
     return NextResponse.json({
       success: true,
       data: {
         ...row,
         verifyTokenPreview: maskTokenPreview(row.verifyToken),
         archivedAt: getChannelArchiveState(row.settingsJson).archivedAt,
+        diagnostics,
         outboundMessagingStats: {
           config: outboundMessagingLimitConfig,
           usage: outboundMessagingUsage,

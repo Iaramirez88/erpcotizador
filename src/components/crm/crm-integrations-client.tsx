@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { Activity, Bot, Copy, Download, Eye, Facebook, Globe, Goal, Info, Instagram, MessageCircle, MoreHorizontal, Target, TrendingUp, Upload } from 'lucide-react'
 import { CrmAddonsMarketplaceCard } from '@/components/crm/crm-addons-marketplace-card'
+import { CrmBridgeDiagnostics } from '@/components/crm/crm-bridge-diagnostics'
 import {
   FacebookBrandLogo,
   GmailBrandLogo,
@@ -4220,7 +4221,7 @@ export function CrmIntegrationsClient() {
       return
     }
 
-    if (requiresMetaOAuthBeforeActive(createForm)) {
+    if (!editingChannelId && requiresMetaOAuthBeforeActive(createForm)) {
       alert('WhatsApp Cloud debe crearse en TESTING. Pásalo a ACTIVE solo después de Conectar con Meta y aplicar el número sincronizado del cliente.')
       return
     }
@@ -4402,6 +4403,28 @@ export function CrmIntegrationsClient() {
       return true
     } finally {
       setUpdatingChannelId(null)
+    }
+  }
+
+  const [connectingGmail, setConnectingGmail] = useState(false)
+
+  async function connectGmail() {
+    setConnectingGmail(true)
+    try {
+      const json = await requestJson<{ channelId: string }>(`/api/crm/gmail/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      if (!json.success || !json.data) {
+        alert(json.error || 'No se pudo conectar Gmail.')
+        return
+      }
+      await loadChannels()
+      setSelectedChannelId(json.data.channelId)
+      setActiveAssetTab('bridge')
+    } finally {
+      setConnectingGmail(false)
     }
   }
 
@@ -5130,6 +5153,9 @@ export function CrmIntegrationsClient() {
             <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
               <Link href="/dashboard/chat">{language === 'en' ? 'Open omnichannel inbox' : 'Abrir bandeja omnicanal'}</Link>
             </Button>
+            <Button variant="outline" className="rounded-2xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100" onClick={() => void connectGmail()} disabled={connectingGmail}>
+              {connectingGmail ? 'Conectando...' : 'Conectar Gmail'}
+            </Button>
             <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={openCreateWizard}>
               {language === 'en' ? 'New channel' : 'Nuevo canal'}
             </Button>
@@ -5443,6 +5469,11 @@ export function CrmIntegrationsClient() {
                               </DropdownMenuItem>
                             ) : null}
                             <DropdownMenuSeparator />
+                            {!channelIsArchived(selectedChannel) && selectedChannel.status === 'TESTING' ? (
+                              <DropdownMenuItem onSelect={() => void updateChannelStatus(selectedChannel.id, 'ACTIVE')} disabled={updatingChannelId === selectedChannel.id}>
+                                {language === 'en' ? 'Activate channel' : 'Activar canal'}
+                              </DropdownMenuItem>
+                            ) : null}
                             {!channelIsArchived(selectedChannel) && selectedChannel.status !== 'DISABLED' ? (
                               <DropdownMenuItem onSelect={() => void updateChannelStatus(selectedChannel.id, 'DISABLED')} disabled={updatingChannelId === selectedChannel.id}>
                                 {language === 'en' ? 'Deactivate channel' : 'Desactivar canal'}
@@ -5486,6 +5517,8 @@ export function CrmIntegrationsClient() {
                         <p className="mt-2 text-sm font-semibold text-slate-950">{formatDate(selectedChannel.lastWebhookAt, language)}</p>
                       </div>
                     </div>
+
+                    <CrmBridgeDiagnostics channelId={selectedChannel.id} />
 
                     {channelIsArchived(selectedChannel) ? (
                       <div className="mt-5 rounded-2xl border border-slate-300 bg-white/90 p-4">
@@ -6944,6 +6977,11 @@ export function CrmIntegrationsClient() {
                           {copiedKey === 'wizard-selected-endpoint' ? 'Copiado' : 'Copiar endpoint'}
                         </Button>
                         {selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>Ver iframe</Link></Button> : null}
+                        {!channelIsArchived(selectedChannel) && selectedChannel.status === 'TESTING' ? (
+                          <Button className="rounded-xl bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => void updateChannelStatus(selectedChannel.id, 'ACTIVE')} disabled={updatingChannelId === selectedChannel.id}>
+                            Activar canal
+                          </Button>
+                        ) : null}
                         {!channelIsArchived(selectedChannel) && selectedChannel.status !== 'DISABLED' ? (
                           <Button variant="outline" className="rounded-xl" onClick={() => void updateChannelStatus(selectedChannel.id, 'DISABLED')} disabled={updatingChannelId === selectedChannel.id}>
                             Desactivar canal
@@ -7278,6 +7316,13 @@ export function CrmIntegrationsClient() {
                         </Select>
                       </div>
                     ) : null}
+                    <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4 text-sm text-sky-900 md:col-span-2">
+                      <p className="font-semibold">Columnas que debe tener la hoja</p>
+                      <p className="mt-2 leading-6"><span className="font-semibold">Obligatorias (al menos una):</span> nombre, email/correo o telefono.</p>
+                      <p className="mt-1 leading-6"><span className="font-semibold">Recomendadas:</span> empresa, ciudad, producto/servicio, mensaje/comentarios.</p>
+                      <p className="mt-1 leading-6"><span className="font-semibold">Opcionales:</span> documento/nit, landing/url, campana, medio, utm_source, utm_campaign, oportunidad, valor esperado, probabilidad, fecha de cierre.</p>
+                      <p className="mt-2 text-xs leading-5 text-sky-700">La primera fila debe ser de encabezados. Evita comillas dobles sin escapar y saltos de línea dentro de las celdas. Las columnas no reconocidas se ignoran.</p>
+                    </div>
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm text-emerald-900 md:col-span-2">
                       <p className="font-semibold">Primer slice operativo</p>
                       <p className="mt-2 leading-6">Este bridge ya deja lista la previsualización de filas, la importación al CRM y la exportación CSV del propio canal. OAuth y service account quedan para la fase enterprise, pero el flujo comercial ya puede operar hoy.</p>

@@ -136,6 +136,10 @@ async function main() {
     metaConnectedAt: rawSettings.metaConnectedAt,
     metaLastSyncAt: rawSettings.metaLastSyncAt,
     metaGrantedScopes: rawSettings.metaGrantedScopes,
+    metaGranularScopes: rawSettings.metaGranularScopes,
+    metaTokenType: rawSettings.metaTokenType,
+    metaTokenKind: rawSettings.metaTokenKind,
+    metaTokenExpiresAt: rawSettings.metaTokenExpiresAt,
     metaSelectedPhoneNumberId: rawSettings.metaSelectedPhoneNumberId,
     metaWhatsAppAssetsCount: Array.isArray(rawSettings.metaWhatsAppAssets) ? rawSettings.metaWhatsAppAssets.length : 0,
     metaWhatsAppAssets: rawSettings.metaWhatsAppAssets,
@@ -205,7 +209,11 @@ async function main() {
   console.log(JSON.stringify({
     connectedUserId: snapshot.connectedUserId,
     connectedUserName: snapshot.connectedUserName,
+    tokenType: snapshot.tokenType,
+    tokenKind: snapshot.tokenKind,
     grantedScopes: snapshot.grantedScopes,
+    granularScopes: snapshot.granularScopes,
+    expiresAt: snapshot.expiresAt,
     whatsappAssetsCount: snapshot.whatsappAssets.length,
     whatsappAssets: snapshot.whatsappAssets,
   }, null, 2))

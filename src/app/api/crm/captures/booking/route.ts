@@ -8,6 +8,7 @@ import { dispatchCrmTaskCalendarBridges } from '@/lib/crm-calendar-bridges'
 import { createInboundArtifacts, getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
 import { extractHostFromUrl, getPublicWebFormSettings, getReferrerHost, getRequestHost, isPublicWebFormDomainAllowed } from '@/lib/crm-public-web-form'
 import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
+import { checkOutboundQuota, formatViolation, recordOutboundUsageEvent, releaseOutboundQuota } from '@/lib/messaging-quota'
 import { formatBookingDuration, getBookingSettings } from '@/lib/crm-booking-settings'
 import {
   countBookingOverlaps,
@@ -148,8 +149,13 @@ async function sendBookingWhatsApp(args: {
   }
 
   const config = getWhatsAppDispatchConfig(selectedChannel)
+  const quotaCheck = await checkOutboundQuota({ empresaId: args.empresaId, channelConnectionId: selectedChannel.id, provider: selectedChannel.provider, settingsJson: selectedChannel.settingsJson })
+  if (!quotaCheck.allowed) {
+    return { channel: 'WHATSAPP', ok: false, message: quotaCheck.violation ? formatViolation(quotaCheck.violation) : 'Límite de mensajería alcanzado.' }
+  }
+
   try {
-    await sendWhatsAppTextMessage({
+    const result = await sendWhatsAppTextMessage({
       config,
       to: args.to,
       bodyText: [
@@ -159,8 +165,10 @@ async function sendBookingWhatsApp(args: {
         args.service ? `Servicio: ${args.service}` : '',
       ].filter(Boolean).join('\n'),
     })
+    await recordOutboundUsageEvent({ empresaId: args.empresaId, channelConnectionId: selectedChannel.id, provider: selectedChannel.provider, status: result.providerMessageId ? 'SENT' : 'FAILED', providerMessageId: result.providerMessageId })
     return { channel: 'WHATSAPP', ok: true, message: 'WhatsApp de confirmación enviado.' }
   } catch (error) {
+    await releaseOutboundQuota({ empresaId: args.empresaId, channelConnectionId: selectedChannel.id, provider: selectedChannel.provider })
     return { channel: 'WHATSAPP', ok: false, message: error instanceof Error ? error.message : 'No se pudo enviar WhatsApp.' }
   }
 }

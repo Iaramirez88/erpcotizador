@@ -59,11 +59,27 @@ export type MetaWhatsAppAsset = {
   verifiedName: string | null
 }
 
+export type MetaGranularScope = {
+  scope: string
+  targetIds: string[]
+}
+
+export type MetaDebugTokenInfo = {
+  isValid: boolean
+  tokenKind: string | null
+  appId: string | null
+  scopes: string[]
+  granularScopes: MetaGranularScope[]
+  expiresAt: string | null
+}
+
 export type MetaConnectionSnapshot = {
   connectedUserId: string
   connectedUserName: string | null
   tokenType: string | null
+  tokenKind: string | null
   grantedScopes: string[]
+  granularScopes: MetaGranularScope[]
   expiresAt: string | null
   pages: MetaPageAsset[]
   whatsappAssets: MetaWhatsAppAsset[]
@@ -207,6 +223,67 @@ export async function exchangeMetaCode(args: { code: string; redirectUri?: strin
   }
 
   return shortJson
+}
+
+export async function debugMetaToken(inputToken: string): Promise<MetaDebugTokenInfo | null> {
+  if (!inputToken) return null
+
+  const appId = process.env.META_APP_ID || ''
+  const appSecret = process.env.META_APP_SECRET || ''
+  if (!appId || !appSecret) return null
+
+  const appAccessToken = `${appId}|${appSecret}`
+  const params = new URLSearchParams({
+    input_token: inputToken,
+    access_token: appAccessToken,
+  })
+
+  try {
+    const response = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/debug_token?${params.toString()}`, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    })
+    const json = await response.json().catch(() => ({})) as { data?: Record<string, unknown>; error?: { message?: string } }
+    const data = json.data && typeof json.data === 'object' && !Array.isArray(json.data) ? json.data : null
+
+    if (!response.ok || !data) {
+      console.warn('[Meta debug_token] No se pudo inspeccionar el token.', { error: json?.error?.message || `HTTP ${response.status}` })
+      return null
+    }
+
+    const dataAppId = normalizeString(data.app_id)
+    if (dataAppId && dataAppId !== appId) {
+      console.warn('[Meta debug_token] El token pertenece a otra app.', { appId: dataAppId })
+      return null
+    }
+
+    const scopes = Array.isArray(data.scopes)
+      ? data.scopes.map((item) => normalizeString(item)).filter(Boolean)
+      : []
+
+    const granularScopes = Array.isArray(data.granular_scopes)
+      ? data.granular_scopes.map((item) => {
+          const row = item && typeof item === 'object' && !Array.isArray(item) ? item as Record<string, unknown> : {}
+          const targetIds = Array.isArray(row.target_ids) ? row.target_ids.map((targetId) => normalizeString(targetId)).filter(Boolean) : []
+          return { scope: normalizeString(row.scope), targetIds }
+        }).filter((item) => item.scope)
+      : []
+
+    const expiresAtSeconds = typeof data.expires_at === 'number' ? data.expires_at : null
+
+    return {
+      isValid: data.is_valid === true,
+      tokenKind: normalizeString(data.type) || null,
+      appId: dataAppId || null,
+      scopes,
+      granularScopes,
+      expiresAt: expiresAtSeconds ? new Date(expiresAtSeconds * 1000).toISOString() : null,
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error inesperado'
+    console.warn('[Meta debug_token] Fallo consultando debug_token.', { error: message })
+    return null
+  }
 }
 
 export function getMetaAccessToken(settingsJson: unknown) {
@@ -502,7 +579,7 @@ async function fetchWhatsAppAssetsForBusiness(accessToken: string, businessId: s
   return assets
 }
 
-export async function syncMetaConnection(accessToken: string, expiresInSeconds?: number | null, grantedScopes?: string[] | null) {
+export async function syncMetaConnection(accessToken: string, expiresInSeconds?: number | null, grantedScopesFallback?: string[] | null) {
   const profile = await fetchMetaGraph<Record<string, unknown>>('/me', { fields: 'id,name' }, accessToken)
   const pages = await fetchMetaPages(accessToken).catch(() => [])
   const businesses = await fetchMetaBusinesses(accessToken).catch(() => [])
@@ -513,12 +590,26 @@ export async function syncMetaConnection(accessToken: string, expiresInSeconds?:
     whatsappAssets.push(...businessAssets)
   }
 
+  // Permisos autoritativos y tipo de token vía debug_token.
+  const debugInfo = await debugMetaToken(accessToken)
+
+  const grantedScopes = debugInfo && debugInfo.scopes.length > 0
+    ? debugInfo.scopes
+    : Array.isArray(grantedScopesFallback)
+      ? grantedScopesFallback.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      : []
+
+  const expiresAt = debugInfo?.expiresAt
+    || (typeof expiresInSeconds === 'number' && expiresInSeconds > 0 ? new Date(Date.now() + expiresInSeconds * 1000).toISOString() : null)
+
   return {
     connectedUserId: normalizeString(profile.id),
     connectedUserName: normalizeString(profile.name) || null,
     tokenType: 'bearer',
-    grantedScopes: Array.isArray(grantedScopes) ? grantedScopes.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [],
-    expiresAt: typeof expiresInSeconds === 'number' && expiresInSeconds > 0 ? new Date(Date.now() + expiresInSeconds * 1000).toISOString() : null,
+    tokenKind: debugInfo?.tokenKind ?? null,
+    grantedScopes,
+    granularScopes: debugInfo?.granularScopes ?? [],
+    expiresAt,
     pages,
     whatsappAssets,
   } satisfies MetaConnectionSnapshot
@@ -555,14 +646,30 @@ export function buildMetaSettingsPatch(args: {
   const selectedWhatsApp = resolveSelectedWhatsApp(args.snapshot, requestedPhoneNumberId)
 
   const selectedPageAccessToken = selectedInstagram?.pageAccessToken || selectedPage?.pageAccessToken || null
+
+  // Preservar permisos ya guardados cuando la nueva sincronización no trae info válida.
+  const previousGrantedScopes = Array.isArray(settings.metaGrantedScopes)
+    ? settings.metaGrantedScopes.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
+  const previousGranularScopes = Array.isArray(settings.metaGranularScopes) ? settings.metaGranularScopes : []
+  const previousTokenKind = normalizeString(settings.metaTokenKind) || null
+  const previousTokenExpiresAt = typeof settings.metaTokenExpiresAt === 'string' ? settings.metaTokenExpiresAt : null
+
+  const nextGrantedScopes = args.snapshot.grantedScopes.length > 0 ? args.snapshot.grantedScopes : previousGrantedScopes
+  const nextGranularScopes = args.snapshot.granularScopes.length > 0 ? args.snapshot.granularScopes : previousGranularScopes
+  const nextTokenKind = args.snapshot.tokenKind || previousTokenKind
+  const nextTokenExpiresAt = args.snapshot.expiresAt || previousTokenExpiresAt || null
+
   const settingsPatch: Record<string, unknown> = {
     ...settings,
     metaConnectedAt: new Date().toISOString(),
     metaConnectedUserId: args.snapshot.connectedUserId,
     metaConnectedUserName: args.snapshot.connectedUserName,
-    metaGrantedScopes: args.snapshot.grantedScopes,
+    metaGrantedScopes: nextGrantedScopes,
+    metaGranularScopes: nextGranularScopes,
     metaTokenType: args.snapshot.tokenType,
-    metaTokenExpiresAt: args.snapshot.expiresAt,
+    metaTokenKind: nextTokenKind,
+    metaTokenExpiresAt: nextTokenExpiresAt,
     metaLastSyncAt: new Date().toISOString(),
     metaAccessTokenEncrypted: encryptChannelSecret(args.accessToken),
     metaPages: args.snapshot.pages,
@@ -604,7 +711,9 @@ export function clearMetaSettings(settingsJson: unknown) {
     'metaConnectedUserId',
     'metaConnectedUserName',
     'metaGrantedScopes',
+    'metaGranularScopes',
     'metaTokenType',
+    'metaTokenKind',
     'metaTokenExpiresAt',
     'metaLastSyncAt',
     'metaAccessTokenEncrypted',

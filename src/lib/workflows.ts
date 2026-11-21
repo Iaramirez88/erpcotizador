@@ -3,6 +3,7 @@ import { normalizeString, parseOpportunityStage } from '@/lib/crm'
 import { upsertLeadFromInbound } from '@/lib/crm-lead-capture'
 import { sendEmail } from '@/lib/email'
 import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
+import { checkOutboundQuota, formatViolation, recordOutboundUsageEvent, releaseOutboundQuota } from '@/lib/messaging-quota'
 import type { Prisma, WorkflowNodeKind, WorkflowTriggerKind } from '@prisma/client'
 
 /**
@@ -355,8 +356,19 @@ export async function executeWorkflowRun(args: WorkflowRunInput) {
             if (!channel) {
               stepError = 'No hay canal de WhatsApp activo para enviar el mensaje'
             } else {
-              await sendWhatsAppTextMessage({ config: getWhatsAppDispatchConfig(channel), to, bodyText: pick('message', '{{mensaje}}') || '' })
-              outputJson = { ok: true }
+              const quotaCheck = await checkOutboundQuota({ empresaId: args.workflow.empresaId, channelConnectionId: channel.id, provider: channel.provider, settingsJson: channel.settingsJson })
+              if (!quotaCheck.allowed) {
+                stepError = quotaCheck.violation ? formatViolation(quotaCheck.violation) : 'Límite de mensajería alcanzado'
+              } else {
+                try {
+                  const result = await sendWhatsAppTextMessage({ config: getWhatsAppDispatchConfig(channel), to, bodyText: pick('message', '{{mensaje}}') || '' })
+                  await recordOutboundUsageEvent({ empresaId: args.workflow.empresaId, channelConnectionId: channel.id, provider: channel.provider, status: result.providerMessageId ? 'SENT' : 'FAILED', providerMessageId: result.providerMessageId })
+                  outputJson = { ok: true }
+                } catch {
+                  await releaseOutboundQuota({ empresaId: args.workflow.empresaId, channelConnectionId: channel.id, provider: channel.provider })
+                  stepError = 'No se pudo enviar el mensaje por WhatsApp'
+                }
+              }
             }
           }
         } else if (action === 'send_notification') {

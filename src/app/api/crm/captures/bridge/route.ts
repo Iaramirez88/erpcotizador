@@ -218,7 +218,23 @@ function resolveBridgeMetadata(bridgeKind: string) {
   }
 }
 
+async function recordBridgeError(channelId: string, type: 'AUTH' | 'CHANNEL', message: string) {
+  try {
+    await prisma.crmChannelConnection.update({
+      where: { id: channelId },
+      data: {
+        lastErrorAt: new Date(),
+        lastErrorMessage: `[${type}] ${message}`,
+      },
+    })
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Error inesperado'
+    console.warn('[bridge] No se pudo registrar el error en el canal.', { channelId, error: detail })
+  }
+}
+
 export async function POST(request: Request) {
+  let resolvedChannelId = ''
   try {
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
     const channelId = normalizeString(body?.channelId)
@@ -233,22 +249,30 @@ export async function POST(request: Request) {
       include: { createdBy: { select: { id: true } } },
     })
 
-    if (!channel || channel.provider !== 'WEB_FORM') {
+    if (!channel) {
       return NextResponse.json({ error: 'Canal bridge no encontrado' }, { status: 404 })
+    }
+    resolvedChannelId = channel.id
+    if (channel.provider !== 'WEB_FORM') {
+      await recordBridgeError(channel.id, 'CHANNEL', 'El canal no es un bridge: su provider no es WEB_FORM. Usa el channelId del canal Gmail/Outlook bridge correcto.')
+      return NextResponse.json({ error: 'El canal enviado no es un bridge (provider distinto de WEB_FORM)' }, { status: 404 })
     }
 
     if (!['TESTING', 'ACTIVE'].includes(channel.status)) {
+      await recordBridgeError(channel.id, 'CHANNEL', `Canal no disponible para capturas (estado ${channel.status})`)
       return NextResponse.json({ error: 'Canal no disponible para capturas' }, { status: 409 })
     }
 
     const settings = parseJsonObject(channel.settingsJson)
     const bridgeKind = normalizeString(settings.bridgeKind).toUpperCase()
     if (!SUPPORTED_BRIDGES.has(bridgeKind)) {
+      await recordBridgeError(channel.id, 'CHANNEL', 'Canal no configurado como bridge soportado')
       return NextResponse.json({ error: 'Canal no configurado como bridge soportado' }, { status: 409 })
     }
 
     const expectedToken = getConnectionToken(channel.settingsJson, channel.verifyToken)
     if (expectedToken && providedToken !== expectedToken) {
+      await recordBridgeError(channel.id, 'AUTH', 'Token inválido para bridge CRM')
       return NextResponse.json({ error: 'Token inválido para bridge CRM' }, { status: 403 })
     }
 
@@ -554,7 +578,11 @@ export async function POST(request: Request) {
       },
     }, { status: 201 })
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error capturando bridge CRM'
     console.error('Error capturando bridge CRM:', error)
+    if (resolvedChannelId) {
+      await recordBridgeError(resolvedChannelId, 'CHANNEL', message)
+    }
     return NextResponse.json({ error: 'Error capturando bridge CRM' }, { status: 500 })
   }
 }

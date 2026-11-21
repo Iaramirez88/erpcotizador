@@ -5,6 +5,7 @@ import type { ChatbotQuickActionNotificationConfig } from '@/lib/crm-chatbot-flo
 import { normalizeString } from '@/lib/crm'
 import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
 import { sendTelegramMessage } from '@/lib/telegram'
+import { checkOutboundQuota, formatViolation, recordOutboundUsageEvent, releaseOutboundQuota } from '@/lib/messaging-quota'
 
 export type ChatbotNotificationChannel = 'email' | 'whatsapp' | 'telegram'
 
@@ -185,16 +186,26 @@ async function sendChatbotNotificationWhatsApp(db: ChatbotNotificationDbClient, 
   }
 
   const config = getWhatsAppDispatchConfig(selectedChannel)
-  const settled = await Promise.allSettled(args.to.map((phone) => sendWhatsAppTextMessage({
-    config,
-    to: phone,
-    bodyText: args.bodyText,
-  })))
 
-  const sentCount = settled.filter((item) => item.status === 'fulfilled').length
-  const warnings = settled
-    .filter((item): item is PromiseRejectedResult => item.status === 'rejected')
-    .map((item) => item.reason instanceof Error ? item.reason.message : 'No se pudo enviar WhatsApp.')
+  let sentCount = 0
+  const warnings: string[] = []
+
+  for (const phone of args.to) {
+    const quotaCheck = await checkOutboundQuota({ empresaId: args.empresaId, channelConnectionId: selectedChannel.id, provider: selectedChannel.provider, settingsJson: selectedChannel.settingsJson })
+    if (!quotaCheck.allowed) {
+      warnings.push(quotaCheck.violation ? formatViolation(quotaCheck.violation) : 'Límite de mensajería alcanzado')
+      continue
+    }
+
+    try {
+      const result = await sendWhatsAppTextMessage({ config, to: phone, bodyText: args.bodyText })
+      await recordOutboundUsageEvent({ empresaId: args.empresaId, channelConnectionId: selectedChannel.id, provider: selectedChannel.provider, status: result.providerMessageId ? 'SENT' : 'FAILED', providerMessageId: result.providerMessageId })
+      sentCount += 1
+    } catch (error) {
+      await releaseOutboundQuota({ empresaId: args.empresaId, channelConnectionId: selectedChannel.id, provider: selectedChannel.provider })
+      warnings.push(error instanceof Error ? error.message : 'No se pudo enviar WhatsApp.')
+    }
+  }
 
   return { sentCount, warnings }
 }

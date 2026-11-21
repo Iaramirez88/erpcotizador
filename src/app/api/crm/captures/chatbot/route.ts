@@ -9,6 +9,7 @@ import { fetchGoogleSheetsRows } from '@/lib/crm-google-sheets'
 import { getMetaMessagingDispatchConfig, sendMetaMediaMessage, sendMetaTextMessage } from '@/lib/crm-meta'
 import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppMediaMessage, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
 import { sendTelegramMessage } from '@/lib/telegram'
+import { checkOutboundQuota, recordOutboundUsageEvent, releaseOutboundQuota } from '@/lib/messaging-quota'
 import { ensureInvoiceFromQuote } from '@/lib/quote-invoicing'
 import { ensureWorkOrderFromQuote } from '@/lib/work-orders'
 import {
@@ -2073,11 +2074,36 @@ async function sendChatbotNotificationWhatsApp(tx: Prisma.TransactionClient, arg
   if (!selectedChannel) return
 
   const config = getWhatsAppDispatchConfig(selectedChannel)
-  await Promise.allSettled(args.to.map((phone) => sendWhatsAppTextMessage({
-    config,
-    to: phone,
-    bodyText: args.bodyText,
-  })))
+
+  for (const phone of args.to) {
+    const quotaCheck = await checkOutboundQuota({
+      empresaId: args.empresaId,
+      channelConnectionId: selectedChannel.id,
+      provider: selectedChannel.provider,
+      settingsJson: selectedChannel.settingsJson,
+      client: tx,
+    })
+    if (!quotaCheck.allowed) continue
+
+    try {
+      const result = await sendWhatsAppTextMessage({ config, to: phone, bodyText: args.bodyText })
+      await recordOutboundUsageEvent({
+        empresaId: args.empresaId,
+        channelConnectionId: selectedChannel.id,
+        provider: selectedChannel.provider,
+        status: result.providerMessageId ? 'SENT' : 'FAILED',
+        providerMessageId: result.providerMessageId,
+        client: tx,
+      })
+    } catch {
+      await releaseOutboundQuota({
+        empresaId: args.empresaId,
+        channelConnectionId: selectedChannel.id,
+        provider: selectedChannel.provider,
+        client: tx,
+      })
+    }
+  }
 }
 
 function resolveExternalWhatsAppNotificationTargets(args: {

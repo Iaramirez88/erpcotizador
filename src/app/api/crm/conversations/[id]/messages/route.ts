@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { getRequestBaseUrl } from '@/lib/app-url'
 import { assertCrmSedeAccess, normalizeString, parseMessageType } from '@/lib/crm'
-import { findOutboundMessagingLimitViolation, formatOutboundMessagingLimitViolation, getOutboundMessagingLimitConfig, getOutboundMessagingUsageSnapshot, hasOutboundMessagingLimits } from '@/lib/crm-channel-limits'
+import { checkOutboundQuota, formatViolation, recordOutboundUsageEvent, releaseOutboundQuota } from '@/lib/messaging-quota'
 import { getMetaMessagingDispatchConfig, sendMetaMediaMessage, sendMetaTextMessage } from '@/lib/crm-meta'
 import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppMediaMessage, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
 
@@ -131,7 +131,6 @@ export async function POST(request: Request, context: RouteContext) {
     const metaConfig = getMetaMessagingDispatchConfig(current.channelConnection.settingsJson)
     const recipientPhone = normalizeWhatsAppRecipient(current.contactPhone)
     const recipientThreadId = normalizeString(current.externalThreadId)
-    const outboundLimits = getOutboundMessagingLimitConfig(current.channelConnection.settingsJson)
     const hasCostedProviderDispatch = (isWhatsApp && whatsappConfig.enabled) || (isMetaMessaging && metaConfig.enabled)
     const recentOutboundMessages = await prisma.crmMessage.findMany({
       where: {
@@ -233,15 +232,18 @@ export async function POST(request: Request, context: RouteContext) {
       }, { status: 409 })
     }
 
-    if (hasCostedProviderDispatch && hasOutboundMessagingLimits(outboundLimits)) {
-      const usage = await getOutboundMessagingUsageSnapshot({
+    let quotaReserved = false
+    if (hasCostedProviderDispatch) {
+      const quotaCheck = await checkOutboundQuota({
         empresaId: access.empresaId,
         channelConnectionId: current.channelConnection.id,
+        provider: current.channelConnection.provider,
+        settingsJson: current.channelConnection.settingsJson,
       })
-      const violation = findOutboundMessagingLimitViolation(outboundLimits, usage)
 
-      if (violation) {
-        const limitMessage = formatOutboundMessagingLimitViolation(violation)
+      if (!quotaCheck.allowed && quotaCheck.violation) {
+        const violation = quotaCheck.violation
+        const limitMessage = formatViolation(violation)
         const failedMessage = await prisma.$transaction(async (tx) => {
           const message = await tx.crmMessage.create({
             data: {
@@ -291,9 +293,11 @@ export async function POST(request: Request, context: RouteContext) {
           error: limitMessage,
           data: failedMessage,
           limit: violation,
-          usage,
+          usage: quotaCheck.usage,
         }, { status: 409 })
       }
+
+      quotaReserved = quotaCheck.allowed
     }
 
     if (isWhatsApp && whatsappConfig.enabled) {
@@ -436,6 +440,23 @@ export async function POST(request: Request, context: RouteContext) {
 
       return message
     })
+
+    if (providerMessageId) {
+      await recordOutboundUsageEvent({
+        empresaId: access.empresaId,
+        channelConnectionId: current.channelConnection.id,
+        provider: current.channelConnection.provider,
+        status: messageStatus,
+        providerMessageId,
+        messageId: row.id,
+      })
+    } else if (quotaReserved) {
+      await releaseOutboundQuota({
+        empresaId: access.empresaId,
+        channelConnectionId: current.channelConnection.id,
+        provider: current.channelConnection.provider,
+      })
+    }
 
     if (messageStatus === 'FAILED') {
       return NextResponse.json({ error: sendErrorMessage || 'No se pudo enviar el mensaje por WhatsApp.', data: row }, { status: 502 })

@@ -8250,3 +8250,77 @@ model RopCompanyVisibilityPolicy {
   @@index([companyId])
   @@map("rop_company_visibility_policies")
 }
+
+// ============================================
+// CONTROL DE CONSUMO Y CUOTAS DE MENSAJERÍA
+// Cuotas comerciales internas de ORDEx (NO son límites de Meta).
+// ============================================
+
+/// Política centralizada de cuotas de mensajería saliente.
+/// Se resuelve por herencia: GLOBAL (sin empresa) -> EMPRESA -> CHANNEL.
+model MessagingQuotaPolicy {
+  id                  String   @id @default(cuid())
+  empresaId           String?
+  channelConnectionId String?
+  provider            String?   // WHATSAPP_CLOUD | MESSENGER | INSTAGRAM_DM | FACEBOOK_PAGE | ...
+  category            String?   // SERVICE | MARKETING | UTILITY | AUTHENTICATION | TEMPLATE
+  scope               String   @default("EMPRESA") // GLOBAL | EMPRESA | CHANNEL
+  window              String   @default("MONTHLY") // DAILY | MONTHLY
+  limitValue          Int
+  overagePolicy       String   @default("BLOCK")   // BLOCK | SOFT | ALLOW
+  warningPct          Int      @default(70)
+  criticalPct         Int      @default(85)
+  blockPct            Int      @default(100)
+  timezone            String   @default("America/Bogota")
+  enabled             Boolean  @default(true)
+  notes               String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, scope, window])
+  @@index([channelConnectionId])
+  @@index([provider, category])
+  @@index([enabled])
+  @@map("messaging_quota_policies")
+}
+
+/// Contador atómico diario/mensual por empresa y canal.
+/// `channelConnectionId` usa el centinela "__EMPRESA__" para el agregado de empresa.
+model MessagingUsageCounter {
+  id                  String   @id @default(cuid())
+  empresaId           String
+  channelConnectionId String
+  provider            String
+  window              String   // DAILY | MONTHLY
+  periodKey           String   // "YYYY-MM-DD" | "YYYY-MM" (según timezone de la empresa)
+  count               Int      @default(0)
+  updatedAt           DateTime @updatedAt
+
+  @@unique([empresaId, channelConnectionId, provider, window, periodKey], name: "usage_counter_period_key")
+  @@index([empresaId, window, periodKey])
+  @@map("messaging_usage_counters")
+}
+
+/// Ledger de consumo: un registro por mensaje saliente con costo.
+model MessagingUsageEvent {
+  id                  String   @id @default(cuid())
+  empresaId           String
+  channelConnectionId String
+  provider            String
+  category            String?
+  countryCode         String?
+  status              String   @default("SENT") // SENT | DELIVERED | READ | FAILED
+  estimatedCost       Float?
+  providerMessageId   String?  @unique
+  messageId           String?
+  occurredAt          DateTime @default(now())
+  createdAt           DateTime @default(now())
+
+  @@index([empresaId, occurredAt])
+  @@index([channelConnectionId, occurredAt])
+  @@index([empresaId, provider, occurredAt])
+  @@index([empresaId, status, occurredAt])
+  @@map("messaging_usage_events")
+}
+

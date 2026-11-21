@@ -558,7 +558,12 @@ function forwardLeadsToCrm() {
     const status = response.getResponseCode();
     if (status >= 200 && status < 300) {
       markProcessed(messageId);
-      thread.removeLabel(label);
+
+      const processedLabel =
+        GmailApp.getUserLabelByName('CRM/PROCESADOS') ||
+        GmailApp.createLabel('CRM/PROCESADOS');
+      thread.addLabel(processedLabel);
+
       return;
     }
 

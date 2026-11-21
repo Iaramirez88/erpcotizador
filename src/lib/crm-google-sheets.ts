@@ -196,6 +196,46 @@ export function normalizeGoogleSheetsRow(row: Record<string, string>, rowNumber:
   }
 }
 
+function hasUsableRows(result: { data?: Array<Record<string, string>> }) {
+  return (result.data || []).some((row) => row && typeof row === 'object' && Object.values(row).some((value) => normalizeString(value)))
+}
+
+function sanitizeCsvQuotes(csvText: string) {
+  // Repara comillas dobles sueltas (no escapadas) que suelen romper el CSV.
+  // Si una línea tiene un número impar de comillas, reemplaza la última por una comilla simple.
+  return csvText
+    .split('\n')
+    .map((line) => {
+      const count = (line.match(/"/g) || []).length
+      if (count % 2 === 1) {
+        const idx = line.lastIndexOf('"')
+        if (idx >= 0) return line.slice(0, idx) + "'" + line.slice(idx + 1)
+      }
+      return line
+    })
+    .join('\n')
+}
+
+function parseGoogleSheetsCsv(csvText: string) {
+  const options = {
+    header: true,
+    skipEmptyLines: 'greedy' as const,
+    transformHeader: (value: string) => normalizeString(value),
+    transform: (value: string) => normalizeString(value),
+  }
+
+  const first = Papa.parse<Record<string, string>>(csvText, options)
+  if (!first.errors.length || hasUsableRows(first)) return first
+
+  const sanitized = sanitizeCsvQuotes(csvText)
+  if (sanitized !== csvText) {
+    const retry = Papa.parse<Record<string, string>>(sanitized, options)
+    if (!retry.errors.length || hasUsableRows(retry)) return retry
+  }
+
+  return first
+}
+
 export async function fetchGoogleSheetsRows(settingsJson: Record<string, unknown> | null | undefined): Promise<GoogleSheetsFetchResult> {
   const settings = getGoogleSheetsSettings(settingsJson)
   const csvUrl = buildCsvUrl(settings)
@@ -213,15 +253,14 @@ export async function fetchGoogleSheetsRows(settingsJson: Record<string, unknown
   }
 
   const csvText = await response.text()
-  const parsed = Papa.parse<Record<string, string>>(csvText, {
-    header: true,
-    skipEmptyLines: true,
-    transformHeader: (value) => normalizeString(value),
-    transform: (value) => normalizeString(value),
-  })
+  const parsed = parseGoogleSheetsCsv(csvText)
 
-  if (parsed.errors.length) {
-    throw new Error(parsed.errors[0]?.message || 'No se pudo parsear el CSV de Google Sheets.')
+  if (parsed.errors.length && !hasUsableRows(parsed)) {
+    throw new Error(
+      'No se pudo leer la hoja: el CSV tiene comillas dobles o saltos de línea mal formados dentro de las celdas. ' +
+      'Verifica que ninguna celda contenga comillas dobles sin escapar ni saltos de línea. ' +
+      'Sugerencia: en Google Sheets usa Archivo > Compartir > Publicar en la web (formato CSV), o reemplaza las comillas dobles por comillas simples.'
+    )
   }
 
   const rows = (parsed.data || [])

@@ -948,6 +948,16 @@ Este canal ya esta listo para operar via bridge real hacia el CRM.
 
 ### 13.1 Como crearlo
 
+Hay dos formas:
+
+#### Opcion A (recomendada): boton Conectar Gmail
+
+1. En Integraciones, pulsa el boton Conectar Gmail.
+2. ORDEx crea automaticamente el canal Gmail Inbox Bridge (provider WEB_FORM + bridgeKind GMAIL), un identificador exclusivo y un token exclusivo.
+3. El sistema selecciona el canal y abre la pestana Bridges con el script ya configurado.
+
+#### Opcion B: manual
+
 1. Crea un canal con la plantilla Gmail Inbox Bridge.
 2. Verifica que el proveedor quede en WEB_FORM.
 3. Verifica que el bridgeKind quede en GMAIL.
@@ -958,17 +968,21 @@ Este canal ya esta listo para operar via bridge real hacia el CRM.
 
 ### 13.2 Como conectarlo
 
-1. Selecciona el canal.
-2. Ve a la pestaña Bridges.
+1. Selecciona el canal Gmail Inbox Bridge.
+2. Ve a la pestana Bridges.
 3. Copia el script de Google Apps Script.
 https://script.google.com/home/?hl=es-419
 4. En tu cuenta de Google, abre Apps Script.
 5. Crea un proyecto nuevo.
 6. Pega el script.
-7. Ajusta la etiqueta si quieres otra distinta de CRM/Prospectos.
-8. Autoriza el script.
-9. Crea un trigger recurrente para ejecutar la funcion.
-10. En Gmail, etiqueta los correos de prospectos con la etiqueta configurada.
+7. Autoriza el script.
+8. Crea un trigger recurrente para ejecutar la funcion.
+9. En Gmail, etiqueta los correos de prospectos con la etiqueta CRM/Prospectos (o la configurada).
+
+El script usa dos etiquetas:
+
+1. CRM/Prospectos: conserva los correos identificados como prospectos (historial).
+2. CRM/PROCESADOS: identifica los correos que ya llegaron correctamente a ORDEx. Se crea automaticamente si no existe.
 
 ### 13.3 Que hace el script
 
@@ -977,7 +991,7 @@ https://script.google.com/home/?hl=es-419
 3. Normaliza el correo del remitente para enviar una direccion limpia.
 4. Construye payload con remitente, correo, asunto y cuerpo.
 5. Lo envia al bridge del CRM.
-6. Marca el mensaje como procesado y solo remueve la etiqueta si el CRM responde OK.
+6. Marca el mensaje como procesado. Si el CRM responde OK, conserva la etiqueta original CRM/Prospectos y agrega la etiqueta CRM/PROCESADOS, sin eliminar el historial.
 
 ### 13.4 Endpoint real
 
@@ -1002,6 +1016,19 @@ https://script.google.com/home/?hl=es-419
 3. Verifica que aparezca una conversacion en el inbox.
 4. Si el CRM responde error, revisa el log del Apps Script antes de volver a ejecutar.
 4. Revisa que la actividad quede como ingreso de Gmail.
+
+### 13.7 Diagnostico del bridge
+
+En el detalle del canal, el panel Diagnostico del bridge muestra:
+
+- Conectado: el canal tiene token configurado (Gmail autorizado).
+- Escuchando: hubo sincronizacion en las ultimas 24 horas.
+- Correos detectados: cantidad de mensajes entrantes procesados.
+- Sincronizacion exitosa: cantidad de prospectos enviados al CRM.
+- Error de canal / Error de autenticacion: ultimo fallo registrado.
+- Ultima sincronizacion: fecha y hora del ultimo evento.
+
+Con esto cada empresa puede comprobar si su Gmail esta funcionando sin entrar a Google Apps Script.
 
 ## 14. Outlook Inbox Bridge
 

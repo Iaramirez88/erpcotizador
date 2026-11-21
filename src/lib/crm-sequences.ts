@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import { normalizeString } from '@/lib/crm'
 import { sendEmail } from '@/lib/email'
 import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
+import { checkOutboundQuota, formatViolation, recordOutboundUsageEvent, releaseOutboundQuota } from '@/lib/messaging-quota'
 import type { CrmResponseEmailVariables } from '@/lib/crm-response-email'
 import { resolveCrmResponseEmailText } from '@/lib/crm-response-email'
 
@@ -267,7 +268,7 @@ async function executeWhatsAppStep(args: {
       ...(args.sedeId ? { OR: [{ sedeId: args.sedeId }, { sedeId: null }] } : {}),
     },
     orderBy: [{ sedeId: 'desc' }, { updatedAt: 'desc' }],
-    select: { provider: true, externalPhoneNumberId: true, externalPageId: true, settingsJson: true },
+    select: { id: true, provider: true, externalPhoneNumberId: true, externalPageId: true, settingsJson: true },
   })
 
   if (!channel) {
@@ -279,10 +280,17 @@ async function executeWhatsAppStep(args: {
     return { status: 'SKIPPED', recipient, errorMessage: 'El canal de WhatsApp no tiene credenciales completas' }
   }
 
+  const quotaCheck = await checkOutboundQuota({ empresaId: args.empresaId, channelConnectionId: channel.id, provider: channel.provider, settingsJson: channel.settingsJson })
+  if (!quotaCheck.allowed) {
+    return { status: 'SKIPPED', recipient, errorMessage: quotaCheck.violation ? formatViolation(quotaCheck.violation) : 'Límite de mensajería alcanzado' }
+  }
+
   try {
     const result = await sendWhatsAppTextMessage({ config, to: recipient, bodyText: args.bodyText })
+    await recordOutboundUsageEvent({ empresaId: args.empresaId, channelConnectionId: channel.id, provider: channel.provider, status: result.providerMessageId ? 'SENT' : 'FAILED', providerMessageId: result.providerMessageId })
     return { status: 'SENT', recipient, providerMessageId: result.providerMessageId }
   } catch (error) {
+    await releaseOutboundQuota({ empresaId: args.empresaId, channelConnectionId: channel.id, provider: channel.provider })
     return {
       status: 'FAILED',
       recipient,

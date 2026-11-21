@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { escapeHtml, renderEmail } from '@/lib/email-template'
 import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppMediaMessage, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
+import { checkOutboundQuota, formatViolation, recordOutboundUsageEvent, releaseOutboundQuota } from '@/lib/messaging-quota'
 import type { WebFormRewardDeliveryMode, WebFormRewardType } from '@/lib/crm-web-form-purpose'
 import { loadRewardPdfAttachment, type RewardAttachment } from '@/lib/crm-reward-file'
 import {
@@ -193,9 +194,21 @@ async function dispatchRewardByWhatsApp(args: {
   const config = getWhatsAppDispatchConfig(selectedChannel)
   const fileName = `${(args.rewardLabel || 'regalo').replace(/[^a-zA-Z0-9-_ ]+/g, '').trim().slice(0, 60) || 'regalo'}.pdf`
 
+  const quotaCheck = await checkOutboundQuota({ empresaId: args.empresaId, channelConnectionId: selectedChannel.id, provider: selectedChannel.provider, settingsJson: selectedChannel.settingsJson })
+  if (!quotaCheck.allowed) {
+    return {
+      delivery: 'WHATSAPP',
+      status: 'FAILED',
+      message: quotaCheck.violation ? formatViolation(quotaCheck.violation) : 'Límite de mensajería alcanzado.',
+      supportUrl,
+      attachment: 'NOT_APPLICABLE',
+    }
+  }
+
   try {
+    let result
     if (args.rewardType === 'PDF') {
-      await sendWhatsAppMediaMessage({
+      result = await sendWhatsAppMediaMessage({
         config,
         to,
         attachment: {
@@ -206,12 +219,14 @@ async function dispatchRewardByWhatsApp(args: {
         },
       })
     } else {
-      await sendWhatsAppTextMessage({
+      result = await sendWhatsAppTextMessage({
         config,
         to,
         bodyText: `${args.whatsAppMessage}\n${args.rewardLabel}: ${args.rewardUrl}`,
       })
     }
+
+    await recordOutboundUsageEvent({ empresaId: args.empresaId, channelConnectionId: selectedChannel.id, provider: selectedChannel.provider, status: result.providerMessageId ? 'SENT' : 'FAILED', providerMessageId: result.providerMessageId })
 
     return {
       delivery: 'WHATSAPP',
@@ -221,6 +236,7 @@ async function dispatchRewardByWhatsApp(args: {
       attachment: 'NOT_APPLICABLE',
     }
   } catch (error) {
+    await releaseOutboundQuota({ empresaId: args.empresaId, channelConnectionId: selectedChannel.id, provider: selectedChannel.provider })
     return {
       delivery: 'WHATSAPP',
       status: 'FAILED',
