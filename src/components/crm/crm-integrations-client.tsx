@@ -691,6 +691,8 @@ const TEMPLATE_PRESETS: TemplatePreset[] = [
   { key: 'external-form-bridge', name: 'Formulario Externo Bridge', provider: 'WEB_FORM', bridgeKind: 'EXTERNAL_FORM', description: 'Conecta formularios de terceros al CRM sin reescribir el frontend del cliente.', connectionModel: 'Bridge API', readiness: 'Operativo hoy', focus: 'Captura externa unificada' },
   { key: 'tiktok-bridge', name: 'TikTok Lead Bridge', provider: 'WEB_FORM', bridgeKind: 'TIKTOK', description: 'Usa Make/Zapier o webhook para llevar leads al CRM.', connectionModel: 'Bridge automation', readiness: 'Demo guiada', focus: 'Lead Ads y formularios externos' },
   { key: 'youtube-bridge', name: 'YouTube Lead Bridge', provider: 'WEB_FORM', bridgeKind: 'YOUTUBE', description: 'Bridge para formularios, comentarios o capturas desde campañas.', connectionModel: 'Bridge automation', readiness: 'Demo guiada', focus: 'Captura desde video y campañas' },
+  { key: 'tiktok-ads-leads', name: 'TikTok Ads Leads', provider: 'TIKTOK_LEADS', description: 'Captura automática de formularios instantáneos de TikTok Ads.', connectionModel: 'OAuth + webhook', readiness: 'Requiere credenciales', focus: 'Leads de campañas publicitarias' },
+  { key: 'tiktok-inbox', name: 'TikTok Inbox', provider: 'TIKTOK_MESSAGING', description: 'Recepción, consulta y envío de mensajes privados con TikTok Business Messaging.', connectionModel: 'OAuth + webhook', readiness: 'Requiere credenciales', focus: 'Mensajería privada y conversaciones' },
 ]
 
 function guideAccentClasses(accent: GuideAccent) {
@@ -2247,6 +2249,10 @@ function hasManualMetaConfiguration(form: ChannelFormState) {
 
 function requiresMetaOAuthBeforeActive(form: ChannelFormState) {
   return form.provider === 'WHATSAPP_CLOUD' && form.status === 'ACTIVE'
+}
+
+function requiresTikTokOAuthBeforeActive(form: ChannelFormState) {
+  return (form.provider === 'TIKTOK_LEADS' || form.provider === 'TIKTOK_MESSAGING') && form.status === 'ACTIVE'
 }
 
 function getMetaWizardChecklist(form: ChannelFormState, baseUrl: string): ReadinessItem[] {
@@ -4223,6 +4229,11 @@ export function CrmIntegrationsClient() {
 
     if (!editingChannelId && requiresMetaOAuthBeforeActive(createForm)) {
       alert('WhatsApp Cloud debe crearse en TESTING. Pásalo a ACTIVE solo después de Conectar con Meta y aplicar el número sincronizado del cliente.')
+      return
+    }
+
+    if (!editingChannelId && requiresTikTokOAuthBeforeActive(createForm)) {
+      alert('TikTok Ads Leads y TikTok Inbox requieren conexión OAuth de TikTok. Crea el canal en TESTING y conéctalo cuando la app de TikTok esté aprobada.')
       return
     }
 

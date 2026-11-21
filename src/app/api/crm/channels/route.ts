@@ -108,6 +108,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'WhatsApp Cloud solo puede pasar a ACTIVE cuando el canal queda conectado por Meta OAuth y con un número sincronizado del cliente.' }, { status: 400 })
     }
 
+    if ((provider === 'TIKTOK_LEADS' || provider === 'TIKTOK_MESSAGING') && status === 'ACTIVE') {
+      return NextResponse.json({ error: 'TikTok Ads Leads / TikTok Inbox aún no admite ACTIVE: la integración OAuth de TikTok está pendiente.' }, { status: 400 })
+    }
+
     const row = await prisma.crmChannelConnection.create({
       data: {
         empresaId: access.empresaId,

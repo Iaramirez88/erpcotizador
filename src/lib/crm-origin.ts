@@ -1,4 +1,4 @@
-export type CrmOriginProvider = 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM'
+export type CrmOriginProvider = 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM' | 'TIKTOK_LEADS' | 'TIKTOK_MESSAGING'
 export type CrmBridgeKind = 'GENERIC' | 'BOOKING' | 'GMAIL' | 'OUTLOOK' | 'GOOGLE_SHEETS' | 'GOOGLE_CALENDAR' | 'MICROSOFT_365_CALENDAR' | 'SLACK' | 'TEAMS' | 'META_LEAD_ADS' | 'EXTERNAL_FORM' | 'TIKTOK' | 'YOUTUBE'
 export type CrmLeadSource = 'WEB' | 'REFERIDO' | 'WHATSAPP' | 'LLAMADA' | 'IMPORT' | 'OTRO'
 
@@ -9,6 +9,7 @@ export type CrmOriginKey =
   | 'FORM_WEB'
   | 'CHATBOT_WEB'
   | 'LEAD_TIKTOK'
+  | 'TIKTOK_INBOX'
   | 'LEAD_YOUTUBE'
   | 'WHATSAPP'
   | 'MESSENGER_FACEBOOK'
@@ -59,6 +60,8 @@ export function getCrmOriginMeta(args: {
   if (args.provider === 'WHATSAPP_CLOUD' || args.provider === 'WHATSAPP_SANDBOX') return { key: 'WHATSAPP', label: 'WhatsApp' }
   if (args.provider === 'FACEBOOK_PAGE' || args.provider === 'MESSENGER') return { key: 'MESSENGER_FACEBOOK', label: 'Messenger/Facebook' }
   if (args.provider === 'INSTAGRAM_DM') return { key: 'INSTAGRAM_DM', label: 'Instagram DM' }
+  if (args.provider === 'TIKTOK_LEADS') return { key: 'LEAD_TIKTOK', label: 'TikTok Ads Leads' }
+  if (args.provider === 'TIKTOK_MESSAGING') return { key: 'TIKTOK_INBOX', label: 'TikTok Inbox' }
 
   const source = normalizeString(args.source).toUpperCase()
   if (source === 'WEB') return { key: 'FORM_WEB', label: 'Formulario web' }

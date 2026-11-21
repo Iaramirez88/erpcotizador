@@ -69,7 +69,7 @@ async function persistCrmCallInviteMessage(args: {
     clienteId: string | null
     status: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'DISABLED' | 'RESOLVED' | 'SPAM'
     resolvedAt: Date | null
-    provider: 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM'
+    provider: 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM' | 'TIKTOK_LEADS' | 'TIKTOK_MESSAGING'
   }
   inviteUrl: string
   callType: 'video' | 'audio'
@@ -147,7 +147,7 @@ async function sendWhatsAppDailyInvite(args: {
     channelConnection: {
       id: string
       name: string
-      provider: 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM'
+      provider: 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM' | 'TIKTOK_LEADS' | 'TIKTOK_MESSAGING'
       externalPhoneNumberId: string | null
       externalPageId: string | null
       settingsJson: Prisma.JsonValue

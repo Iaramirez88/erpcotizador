@@ -6,6 +6,8 @@ export type CrmChannelProvider =
   | 'WEB_FORM'
   | 'WEB_CHATBOT'
   | 'INSTAGRAM_DM'
+  | 'TIKTOK_LEADS'
+  | 'TIKTOK_MESSAGING'
 
 export type CrmBridgeKind = 'GENERIC' | 'BOOKING' | 'GMAIL' | 'OUTLOOK' | 'GOOGLE_SHEETS' | 'GOOGLE_CALENDAR' | 'MICROSOFT_365_CALENDAR' | 'SLACK' | 'TEAMS' | 'META_LEAD_ADS' | 'EXTERNAL_FORM' | 'TIKTOK' | 'YOUTUBE'
 

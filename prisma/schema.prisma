@@ -2929,6 +2929,8 @@ enum CrmChannelProvider {
   WEB_FORM
   WEB_CHATBOT
   INSTAGRAM_DM
+  TIKTOK_LEADS
+  TIKTOK_MESSAGING
 }
 
 enum CrmChannelConnectionStatus {
