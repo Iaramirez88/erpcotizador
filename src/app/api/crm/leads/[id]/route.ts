@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 import { syncCrmLeadFollowUpTaskById } from '@/lib/crm-follow-up'
+import { deleteCrmLeadsCascade } from '@/lib/crm-lead-delete'
 import { canAccessCrmRecord, resolveCrmRequestScope } from '@/lib/crm-scope'
 import { loadLeadTimeline } from '@/lib/crm-timeline'
 import {
@@ -432,7 +433,13 @@ export async function DELETE(_: Request, context: RouteContext) {
       return NextResponse.json({ error: 'Sin acceso a este lead' }, { status: 403 })
     }
 
-    await prisma.crmLead.delete({ where: { id } })
+    const deleted = await prisma.$transaction((tx) =>
+      deleteCrmLeadsCascade(tx, { empresaId: access.empresaId, leadIds: [id] })
+    )
+
+    if (!deleted) {
+      return NextResponse.json({ error: 'Lead no encontrado' }, { status: 404 })
+    }
 
     return NextResponse.json({ success: true, data: { id } })
   } catch (error) {

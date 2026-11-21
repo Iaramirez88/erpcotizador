@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
+import { deleteCrmLeadsCascade } from '@/lib/crm-lead-delete'
 import { canAccessCrmRecord, resolveCrmRequestScope } from '@/lib/crm-scope'
 
 export const runtime = 'nodejs'
@@ -55,14 +56,17 @@ export async function POST(request: Request) {
       )
     }
 
-    const result = await prisma.crmLead.deleteMany({
-      where: { id: { in: deletable.map((lead) => lead.id) }, empresaId: access.empresaId },
-    })
+    const deleted = await prisma.$transaction((tx) =>
+      deleteCrmLeadsCascade(tx, {
+        empresaId: access.empresaId,
+        leadIds: deletable.map((lead) => lead.id),
+      })
+    )
 
     return NextResponse.json({
       success: true,
       data: {
-        deleted: result.count,
+        deleted,
         skipped: leads.length - deletable.length,
       },
     })
