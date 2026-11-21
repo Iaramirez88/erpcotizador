@@ -253,6 +253,9 @@ export async function fetchGoogleSheetsRows(settingsJson: Record<string, unknown
   }
 
   const csvText = await response.text()
+  if (/^\s*<!DOCTYPE|<html|<\/html>|<head|window\['ppConfig'\]/i.test(csvText.slice(0, 2000))) {
+    throw new Error('Google devolvió una página HTML en lugar del CSV. La hoja no está publicada/compartida correctamente. En Google Sheets: Archivo > Compartir > Publicar en la web (formato CSV), o asegúrate de que "cualquier persona con el enlace" pueda verla.')
+  }
   const parsed = parseGoogleSheetsCsv(csvText)
 
   if (parsed.errors.length && !hasUsableRows(parsed)) {

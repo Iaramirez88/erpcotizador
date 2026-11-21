@@ -29,9 +29,12 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
         <div className="space-y-2 text-xs text-muted-foreground">
           <div>© {new Date().getFullYear()} Ordex</div>
-          <div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
             <Link href="/politica-de-privacidad" className="underline underline-offset-4 hover:text-foreground">
               Política de privacidad
+            </Link>
+            <Link href="/terminos-de-servicio" className="underline underline-offset-4 hover:text-foreground">
+              Términos de uso
             </Link>
           </div>
         </div>

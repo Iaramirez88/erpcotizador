@@ -1,11 +1,5 @@
-import { CrmIntegrationsClient } from '@/components/crm/crm-integrations-client'
-import { CrmMessagingConsumption } from '@/components/crm/crm-messaging-consumption'
+import { CrmIntegrationsTabs } from '@/components/crm/crm-integrations-tabs'
 
 export default function CrmIntegrationsPage() {
-  return (
-    <>
-      <CrmMessagingConsumption />
-      <CrmIntegrationsClient />
-    </>
-  )
+  return <CrmIntegrationsTabs />
 }
