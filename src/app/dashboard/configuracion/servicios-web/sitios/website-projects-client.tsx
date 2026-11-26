@@ -28,6 +28,7 @@ type WebsiteProjectItem = {
   subdomain: string | null
   primaryDomain: string | null
   status: string
+  isMainSite?: boolean
   createdAt: string
   updatedAt: string
   pages: WebsiteProjectPageItem[]
@@ -274,7 +275,10 @@ export default function WebsiteProjectsClient() {
               <div key={project.id} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-lg font-semibold text-slate-950">{project.nombre}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-lg font-semibold text-slate-950">{project.nombre}</div>
+                      {project.isMainSite ? <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">Sitio principal</span> : null}
+                    </div>
                     <div className="mt-1 text-sm text-slate-500">
                       /{project.slug} · {project.subdomain || 'sin subdominio'} · actualizado {formatDate(project.updatedAt)}
                     </div>

@@ -33,6 +33,13 @@ export async function requireWebsiteBuilderAccess() {
   return { ok: true as const, userId, access }
 }
 
+export function accessibleWebsiteProjectWhere(access: { empresaId: string | null; isSuperAdmin: boolean }): Prisma.WebsiteProjectWhereInput {
+  if (!access.isSuperAdmin) {
+    return { empresaId: access.empresaId ?? '' }
+  }
+  return { OR: [{ empresaId: access.empresaId ?? '' }, { isMainSite: true }] }
+}
+
 export async function resolvePublishedWebsitePageByPath(args: {
   subdomain: string
   slug?: string | null

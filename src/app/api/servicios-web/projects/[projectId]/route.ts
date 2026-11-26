@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireWebsiteBuilderAccess } from '@/lib/website-builder-server'
+import { accessibleWebsiteProjectWhere, requireWebsiteBuilderAccess } from '@/lib/website-builder-server'
 
 export const runtime = 'nodejs'
 
 const ALLOWED_STATUSES = new Set(['DRAFT', 'DISABLED'])
 
-async function loadOwnedProject(projectId: string, empresaId: string) {
+async function loadOwnedProject(projectId: string, access: { empresaId: string | null; isSuperAdmin: boolean }) {
   return prisma.websiteProject.findFirst({
-    where: { id: projectId, empresaId },
+    where: { id: projectId, ...accessibleWebsiteProjectWhere(access) },
     select: { id: true, nombre: true, status: true },
   })
 }
@@ -20,7 +20,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ p
   }
 
   const { projectId } = await context.params
-  const project = await loadOwnedProject(projectId, guard.access.empresaId!)
+  const project = await loadOwnedProject(projectId, guard.access)
   if (!project?.id) {
     return NextResponse.json({ ok: false, error: 'Sitio no encontrado.' }, { status: 404 })
   }
@@ -50,7 +50,7 @@ export async function DELETE(_request: NextRequest, context: { params: Promise<{
   }
 
   const { projectId } = await context.params
-  const project = await loadOwnedProject(projectId, guard.access.empresaId!)
+  const project = await loadOwnedProject(projectId, guard.access)
   if (!project?.id) {
     return NextResponse.json({ ok: false, error: 'Sitio no encontrado.' }, { status: 404 })
   }

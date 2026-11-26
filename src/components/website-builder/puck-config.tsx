@@ -98,6 +98,106 @@ function dateTimeField(label: string): CustomField<string> {
   }
 }
 
+function parseDimension(value: string): { value: string; unit: string } {
+  const match = /^(-?\d*\.?\d+)\s*(px|em|rem|%|vw|vh)?$/.exec(String(value || '').trim())
+  if (match) return { value: match[1], unit: match[2] || 'px' }
+  return { value: '', unit: 'px' }
+}
+
+function dimensionField(label: string, units: string[] = ['px', 'em', 'rem', '%', 'vw']): CustomField<string> {
+  return {
+    type: 'custom',
+    label,
+    render: ({ value, onChange, readOnly }) => {
+      const parsed = parseDimension(String(value ?? ''))
+      const controlStyle: React.CSSProperties = { padding: '7px 9px', borderRadius: 7, border: '1px solid #e2e8f0', fontSize: 13, color: '#0f172a', background: '#fff' }
+      return (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input type="number" value={parsed.value} disabled={readOnly} onChange={(e) => onChange(`${e.target.value}${parsed.unit}`)} style={{ ...controlStyle, flex: 1, minWidth: 0 }} />
+          <select value={parsed.unit} disabled={readOnly} onChange={(e) => onChange(`${parsed.value}${e.target.value}`)} style={{ ...controlStyle, width: 66 }}>
+            {units.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+          </select>
+        </div>
+      )
+    },
+  }
+}
+
+function styleDimension(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function advancedStyleFields() {
+  return {
+    contentMaxWidth: dimensionField('Ancho máximo del contenido', ['px', '%', 'vw', 'em', 'rem']),
+    minHeight: dimensionField('Altura mínima', ['px', 'vh', '%', 'em', 'rem']),
+    paddingTop: dimensionField('Padding arriba'),
+    paddingRight: dimensionField('Padding derecha'),
+    paddingBottom: dimensionField('Padding abajo'),
+    paddingLeft: dimensionField('Padding izquierda'),
+    marginTop: dimensionField('Margen arriba'),
+    marginRight: dimensionField('Margen derecha'),
+    marginBottom: dimensionField('Margen abajo'),
+    marginLeft: dimensionField('Margen izquierda'),
+    columnGap: dimensionField('Espacio entre columnas'),
+    borderWidth: { type: 'number' as const, label: 'Grosor del borde', min: 0, max: 20, step: 1 },
+    borderStyle: { type: 'select' as const, label: 'Estilo del borde', options: [{ label: 'Ninguno', value: 'none' }, { label: 'Sólido', value: 'solid' }, { label: 'Punteado', value: 'dashed' }, { label: 'Puntos', value: 'dotted' }] },
+    borderColor: { type: 'text' as const, label: 'Color del borde' },
+    borderRadius: dimensionField('Radio del borde'),
+  }
+}
+
+function buildAdvancedStyle(props: unknown): React.CSSProperties {
+  const style: React.CSSProperties = {}
+  const p = (props ?? {}) as Record<string, unknown>
+  const dim = styleDimension
+  if (dim(p.contentMaxWidth)) style.maxWidth = dim(p.contentMaxWidth)
+  if (dim(p.minHeight)) style.minHeight = dim(p.minHeight)
+  if (dim(p.paddingTop)) style.paddingTop = dim(p.paddingTop)
+  if (dim(p.paddingRight)) style.paddingRight = dim(p.paddingRight)
+  if (dim(p.paddingBottom)) style.paddingBottom = dim(p.paddingBottom)
+  if (dim(p.paddingLeft)) style.paddingLeft = dim(p.paddingLeft)
+  if (dim(p.marginTop)) style.marginTop = dim(p.marginTop)
+  if (dim(p.marginRight)) style.marginRight = dim(p.marginRight)
+  if (dim(p.marginBottom)) style.marginBottom = dim(p.marginBottom)
+  if (dim(p.marginLeft)) style.marginLeft = dim(p.marginLeft)
+
+  const borderWidth = Number(p.borderWidth)
+  const borderStyle = dim(p.borderStyle)
+  if (borderWidth > 0 && borderStyle && borderStyle !== 'none') {
+    style.borderWidth = `${borderWidth}px`
+    style.borderStyle = borderStyle as React.CSSProperties['borderStyle']
+    style.borderColor = dim(p.borderColor) || '#e2e8f0'
+  }
+  if (dim(p.borderRadius)) style.borderRadius = dim(p.borderRadius)
+
+  return style
+}
+
+function typographyStyleFields() {
+  return {
+    fontSize: dimensionField('Tamaño de fuente', ['px', 'em', 'rem']),
+    lineHeight: { type: 'number' as const, label: 'Altura de línea', min: 1, max: 3, step: 0.1 },
+    letterSpacing: dimensionField('Espacio entre letras', ['px', 'em', 'rem']),
+    wordSpacing: dimensionField('Espacio entre palabras', ['px', 'em', 'rem']),
+    fontWeight: { type: 'select' as const, label: 'Peso de fuente', options: [{ label: 'Normal', value: 400 }, { label: 'Medio', value: 500 }, { label: 'Seminegrita', value: 600 }, { label: 'Negrita', value: 700 }, { label: 'Extra negrita', value: 800 }] },
+  }
+}
+
+function buildTypographyStyle(props: unknown): React.CSSProperties {
+  const style: React.CSSProperties = {}
+  const p = (props ?? {}) as Record<string, unknown>
+  const dim = styleDimension
+  if (dim(p.fontSize)) style.fontSize = dim(p.fontSize)
+  const lineHeight = Number(p.lineHeight)
+  if (lineHeight) style.lineHeight = lineHeight
+  if (dim(p.letterSpacing)) style.letterSpacing = dim(p.letterSpacing)
+  if (dim(p.wordSpacing)) style.wordSpacing = dim(p.wordSpacing)
+  const fontWeight = Number(p.fontWeight)
+  if (fontWeight) style.fontWeight = fontWeight
+  return style
+}
+
 function sectionStyle(backgroundColor?: string, textColor?: string, paddingY?: number) {
   return {
     backgroundColor: backgroundColor || '#ffffff',
@@ -235,7 +335,7 @@ function renderImageFrame({
 export const websiteBuilderPuckConfig: Config = {
   categories: {
     basico: { title: 'Básico', components: ['HeroBlock', 'TextBlock', 'ImageBlock', 'VideoBlock', 'CtaBlock', 'SpacerBlock'] },
-    disposicion: { title: 'Disposición', components: ['ResponsiveBlock', 'SectionBlock', 'ColumnsBlock'] },
+    disposicion: { title: 'Disposición', components: ['ResponsiveBlock', 'SectionBlock', 'ColumnsBlock', 'GridBlock'] },
     general: { title: 'General', components: ['TabsBlock', 'AccordionBlock', 'GalleryBlock', 'CarouselBlock', 'FeaturesBlock', 'StatsBlock', 'TeamBlock', 'LogosBlock', 'TestimonialsBlock', 'FaqBlock', 'CountdownBlock', 'MapBlock', 'EmbedBlock'] },
     conversion: { title: 'Conversión', components: ['PricingBlock', 'PricingToggleBlock', 'ContactFormBlock'] },
     navegacion: { title: 'Navegación', components: ['NavbarBlock', 'FooterBlock'] },
@@ -489,23 +589,29 @@ export const websiteBuilderPuckConfig: Config = {
           label: 'Contenido',
           allow: ['TextBlock', 'ImageBlock', 'CtaBlock'],
         },
+        ...advancedStyleFields(),
+        ...typographyStyleFields(),
       },
-      render: ({ eyebrow, title, description, tone = 'white', contentWidth = 'xl', content: Content }) => (
-        <section className={`rounded-[32px] px-6 py-8 sm:px-8 sm:py-10 ${getSurfaceToneClasses(tone as SurfaceTone)}`}>
-          <div className={`mx-auto ${getWidthClass(contentWidth as WidthScale)}`}>
-            {(eyebrow || title || description) ? (
-              <div className="mb-6 text-center">
-                {eyebrow ? <div className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-600">{eyebrow}</div> : null}
-                {title ? <h2 className="mt-3 text-3xl font-semibold tracking-tight">{title}</h2> : null}
-                {description ? <p className="mt-3 whitespace-pre-wrap text-base leading-7 text-current/75">{description}</p> : null}
+      render: (props) => {
+        const { eyebrow, title, description, tone = 'white', contentWidth = 'xl', content: Content } = props
+        const style = { ...buildAdvancedStyle(props), ...buildTypographyStyle(props) }
+        return (
+          <section className={`rounded-[32px] px-6 py-8 sm:px-8 sm:py-10 ${getSurfaceToneClasses(tone as SurfaceTone)}`} style={style}>
+            <div className={`mx-auto ${getWidthClass(contentWidth as WidthScale)}`}>
+              {(eyebrow || title || description) ? (
+                <div className="mb-6 text-center">
+                  {eyebrow ? <div className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-600">{eyebrow}</div> : null}
+                  {title ? <h2 className="mt-3 text-3xl font-semibold tracking-tight">{title}</h2> : null}
+                  {description ? <p className="mt-3 whitespace-pre-wrap text-base leading-7 text-current/75">{description}</p> : null}
+                </div>
+              ) : null}
+              <div className="space-y-5">
+                {Content ? <Content className="min-h-[120px] rounded-[24px] border border-dashed border-slate-300/70 p-3" /> : null}
               </div>
-            ) : null}
-            <div className="space-y-5">
-              {Content ? <Content className="min-h-[120px] rounded-[24px] border border-dashed border-slate-300/70 p-3" /> : null}
             </div>
-          </div>
-        </section>
-      ),
+          </section>
+        )
+      },
     },
     TextBlock: {
       label: 'Texto',
@@ -530,15 +636,22 @@ export const websiteBuilderPuckConfig: Config = {
             { label: 'Completo', value: 'full' },
           ],
         },
+        ...advancedStyleFields(),
+        ...typographyStyleFields(),
       },
-      render: ({ title, body, alignment = 'left', width = 'lg' }) => (
-        <section className="rounded-[28px] border border-slate-200 bg-white px-8 py-10 shadow-sm">
-          <div className={`mx-auto flex flex-col ${getAlignmentClass(alignment as Alignment)} ${getWidthClass(width as WidthScale)}`}>
-            {title ? <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{title}</h2> : null}
-            <p className="mt-3 whitespace-pre-wrap text-base leading-7 text-slate-600">{body || 'Agrega aquí el contenido principal de la sección.'}</p>
-          </div>
-        </section>
-      ),
+      render: (props) => {
+        const { title, body, alignment = 'left', width = 'lg' } = props
+        const advanced = buildAdvancedStyle(props)
+        const typography = buildTypographyStyle(props)
+        return (
+          <section className="rounded-[28px] border border-slate-200 bg-white px-8 py-10 shadow-sm" style={advanced}>
+            <div className={`mx-auto flex flex-col ${getAlignmentClass(alignment as Alignment)} ${getWidthClass(width as WidthScale)}`} style={typography}>
+              {title ? <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{title}</h2> : null}
+              <p className="mt-3 whitespace-pre-wrap text-base leading-7 text-slate-600">{body || 'Agrega aquí el contenido principal de la sección.'}</p>
+            </div>
+          </section>
+        )
+      },
     },
     ImageBlock: {
       label: 'Imagen',
@@ -1006,6 +1119,39 @@ export const websiteBuilderPuckConfig: Config = {
       },
       defaultProps: { html: '<div style="padding:48px;text-align:center;border:1px dashed #cbd5e1;border-radius:12px">Pega aquí tu HTML personalizado.</div>' },
       render: ({ html }) => <div dangerouslySetInnerHTML={{ __html: String(html || '') }} />,
+    },
+    GridBlock: {
+      label: 'Grid de columnas',
+      fields: {
+        columns: { type: 'select', label: 'Columnas', options: [{ label: '2', value: 2 }, { label: '3', value: 3 }, { label: '4', value: 4 }] },
+        gap: { type: 'number', label: 'Separación (px)', min: 12, max: 64, step: 4 },
+        backgroundColor: { type: 'text', label: 'Color de fondo' },
+        ...advancedStyleFields(),
+        column1: { type: 'slot', label: 'Columna 1' },
+        column2: { type: 'slot', label: 'Columna 2' },
+        column3: { type: 'slot', label: 'Columna 3' },
+        column4: { type: 'slot', label: 'Columna 4' },
+      },
+      defaultProps: { columns: 2, gap: 24, backgroundColor: 'transparent' },
+      render: (props) => {
+        const { columns = 2, gap = 24, backgroundColor, column1: Col1, column2: Col2, column3: Col3, column4: Col4 } = props
+        const advanced = buildAdvancedStyle(props)
+        const cols = Math.min(Math.max(Number(columns) || 2, 2), 4)
+        const cells = [Col1, Col2, Col3, Col4].slice(0, cols)
+        const gridClass = cols === 2 ? 'md:grid-cols-2' : cols === 3 ? 'md:grid-cols-3' : 'md:grid-cols-4'
+        const gapValue = styleDimension(props.columnGap) || `${Math.min(Math.max(Number(gap) || 24, 12), 64)}px`
+        return (
+          <section style={{ backgroundColor: backgroundColor || 'transparent', ...advanced }}>
+            <div className={`grid grid-cols-1 ${gridClass}`} style={{ gap: gapValue }}>
+              {cells.map((Cell, index) => (
+                <div key={index} className="min-w-0">
+                  {Cell ? <Cell className="min-h-[120px] rounded-[16px] border border-dashed border-slate-300/80 p-3" /> : <div className="flex min-h-[120px] items-center justify-center rounded-[16px] border border-dashed border-slate-300/70 text-sm text-slate-400">Columna {index + 1}</div>}
+                </div>
+              ))}
+            </div>
+          </section>
+        )
+      },
     },
     SpacerBlock: {
       label: 'Espaciador',

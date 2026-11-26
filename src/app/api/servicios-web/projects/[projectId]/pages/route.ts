@@ -6,13 +6,13 @@ import {
   serializeWebsiteProjectPage,
   slugifyWebsiteBuilderValue,
 } from '@/lib/website-builder'
-import { requireWebsiteBuilderAccess, toWebsiteBuilderInputJsonValue } from '@/lib/website-builder-server'
+import { accessibleWebsiteProjectWhere, requireWebsiteBuilderAccess, toWebsiteBuilderInputJsonValue } from '@/lib/website-builder-server'
 
 export const runtime = 'nodejs'
 
-async function loadProject(projectId: string, empresaId: string) {
+async function loadProject(projectId: string, access: { empresaId: string | null; isSuperAdmin: boolean }) {
   return prisma.websiteProject.findFirst({
-    where: { id: projectId, empresaId },
+    where: { id: projectId, ...accessibleWebsiteProjectWhere(access) },
     select: { id: true },
   })
 }
@@ -39,7 +39,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ projec
   }
 
   const { projectId } = await context.params
-  const project = await loadProject(projectId, guard.access.empresaId!)
+  const project = await loadProject(projectId, guard.access)
   if (!project?.id) {
     return NextResponse.json({ ok: false, error: 'Sitio no encontrado.' }, { status: 404 })
   }
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ projec
   }
 
   const { projectId } = await context.params
-  const project = await loadProject(projectId, guard.access.empresaId!)
+  const project = await loadProject(projectId, guard.access)
   if (!project?.id) {
     return NextResponse.json({ ok: false, error: 'Sitio no encontrado.' }, { status: 404 })
   }

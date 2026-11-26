@@ -1,17 +1,24 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { sanitizeWebsiteLinkHref } from '@/lib/website-embed'
 import type { WebsiteSiteSettings } from '@/lib/website-site-settings'
+import WebsiteSiteHeader from '@/components/website-builder/website-site-header'
 
 const CHROME_CSS = `
 .jc-site{min-height:100vh;display:flex;flex-direction:column}
 .jc-site-header{border-bottom:1px solid rgba(0,0,0,.08)}
-.jc-site-header-inner{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:0 auto;padding:16px 24px;width:100%;max-width:var(--jc-container)}
+.jc-site-header-inner{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 auto;padding:16px 24px;width:100%;max-width:var(--jc-container)}
 .jc-site-brand{display:flex;align-items:center;gap:12px;font-weight:700;font-size:18px;text-decoration:none;color:inherit}
 .jc-site-brand img{height:40px;width:auto;max-width:180px;object-fit:contain}
 .jc-site-nav{display:flex;align-items:center;gap:24px}
 .jc-site-nav a{color:inherit;opacity:.78;text-decoration:none;font-size:14px;font-weight:500}
 .jc-site-nav a:hover{opacity:1}
-.jc-site-btn{display:inline-flex;align-items:center;padding:10px 18px;border-radius:var(--jc-radius);background:var(--jc-accent);color:#fff;font-size:14px;font-weight:600;text-decoration:none}
+.jc-site-btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 18px;border-radius:var(--jc-radius);background:var(--jc-accent);color:#fff;font-size:14px;font-weight:600;text-decoration:none}
+.jc-site-header-btn{margin-left:8px}
+.jc-site-menu-toggle{display:none;align-items:center;justify-content:center;width:42px;height:42px;border:1px solid rgba(0,0,0,.14);border-radius:12px;background:transparent;color:inherit;cursor:pointer;flex:0 0 auto}
+.jc-site-mobile-menu{display:flex;flex-direction:column;gap:6px;padding:10px 24px 18px;border-top:1px solid rgba(0,0,0,.08)}
+.jc-site-mobile-nav{display:flex;flex-direction:column}
+.jc-site-mobile-nav a{padding:12px 0;color:inherit;opacity:.85;text-decoration:none;font-size:15px;font-weight:500;border-bottom:1px solid rgba(0,0,0,.07)}
+.jc-site-mobile-nav a:last-child{border-bottom:0}
 .jc-site-footer{margin-top:auto;padding:48px 24px 32px}
 .jc-site-footer-inner{display:flex;flex-wrap:wrap;gap:32px;justify-content:space-between;margin:0 auto;width:100%;max-width:var(--jc-container)}
 .jc-site-footer-brand{font-weight:700;font-size:18px}
@@ -20,7 +27,7 @@ const CHROME_CSS = `
 .jc-site-footer-links a{color:inherit;opacity:.75;text-decoration:none;font-size:14px}
 .jc-site-footer-links a:hover{opacity:1}
 .jc-site-footer-copy{width:100%;border-top:1px solid rgba(255,255,255,.16);margin-top:8px;padding-top:20px;font-size:13px;opacity:.6}
-@media(max-width:640px){.jc-site-header-inner{flex-direction:column;align-items:flex-start}.jc-site-nav{flex-wrap:wrap;gap:12px 20px}.jc-site-footer-inner{flex-direction:column}}
+@media(max-width:640px){.jc-site-nav{display:none}.jc-site-header-btn{display:none}.jc-site-menu-toggle{display:inline-flex}.jc-site-footer-inner{flex-direction:column}}
 `
 
 export default function WebsiteSiteChrome({
@@ -59,32 +66,7 @@ export default function WebsiteSiteChrome({
       {enableScripts && settings.customJsHead ? <script dangerouslySetInnerHTML={{ __html: settings.customJsHead }} /> : null}
       {css ? <style dangerouslySetInnerHTML={{ __html: css }} /> : null}
 
-      {header.enabled ? (
-        <header
-          className="jc-site-header"
-          style={{
-            backgroundColor: header.backgroundColor,
-            color: header.textColor,
-            position: header.sticky ? 'sticky' : 'relative',
-            top: 0,
-            zIndex: 40,
-          }}
-        >
-          <div className="jc-site-header-inner">
-            <a href="/" className="jc-site-brand">
-              {header.logoUrl ? <img src={header.logoUrl} alt={header.brand || 'Logo'} /> : <span>{header.brand || 'Mi marca'}</span>}
-            </a>
-            <nav className="jc-site-nav">
-              {header.links.map((link, index) => (
-                <a key={`${link.href}-${index}`} href={sanitizeWebsiteLinkHref(link.href)}>{link.label}</a>
-              ))}
-            </nav>
-            {header.buttonLabel ? (
-              <a className="jc-site-btn" href={sanitizeWebsiteLinkHref(header.buttonHref)}>{header.buttonLabel}</a>
-            ) : null}
-          </div>
-        </header>
-      ) : null}
+      {header.enabled ? <WebsiteSiteHeader header={header} /> : null}
 
       {children}
 

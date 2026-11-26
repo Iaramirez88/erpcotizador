@@ -7,7 +7,7 @@ import {
   slugifyWebsiteBuilderValue,
   validateWebsiteSubdomain,
 } from '@/lib/website-builder'
-import { requireWebsiteBuilderAccess, toWebsiteBuilderInputJsonValue } from '@/lib/website-builder-server'
+import { accessibleWebsiteProjectWhere, requireWebsiteBuilderAccess, toWebsiteBuilderInputJsonValue } from '@/lib/website-builder-server'
 
 export const runtime = 'nodejs'
 
@@ -49,7 +49,7 @@ export async function GET() {
   }
 
   const projects = await prisma.websiteProject.findMany({
-    where: { empresaId: guard.access.empresaId, trackingOnly: false },
+    where: { trackingOnly: false, ...accessibleWebsiteProjectWhere(guard.access) },
     orderBy: [{ updatedAt: 'desc' }],
     select: {
       id: true,
@@ -58,6 +58,7 @@ export async function GET() {
       subdomain: true,
       primaryDomain: true,
       status: true,
+      isMainSite: true,
       createdAt: true,
       updatedAt: true,
       pages: {

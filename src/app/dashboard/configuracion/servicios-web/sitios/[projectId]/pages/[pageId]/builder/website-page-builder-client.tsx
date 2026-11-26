@@ -4,7 +4,7 @@ import '@puckeditor/core/puck.css'
 
 import { Puck, type Data } from '@puckeditor/core'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { ArrowRight, Check, ChevronsDownUp, ChevronsUpDown, ExternalLink, Eye, Globe, History, LayoutTemplate, Loader2, MoreHorizontal, Pin, PinOff, RotateCcw, Save, Sparkles, UploadCloud } from 'lucide-react'
+import { ArrowRight, Check, ChevronsDownUp, ChevronsUpDown, ExternalLink, Eye, Globe, History, LayoutTemplate, Loader2, MoreHorizontal, Pin, PinOff, Plus, RotateCcw, Save, Sparkles, UploadCloud } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -149,6 +149,22 @@ export default function WebsitePageBuilderClient({
     setData(nextData)
     setIsDirty(true)
   }
+
+  function makeBlockId(prefix: string) {
+    return `${prefix}-${Math.random().toString(36).slice(2, 10)}`
+  }
+
+  function insertStructure(kind: 'full' | 2 | 3 | 4) {
+    const block = kind === 'full'
+      ? { type: 'ResponsiveBlock', props: { id: makeBlockId('contenedor'), backgroundColor: 'transparent', desktopPadding: 24, tabletPadding: 20, mobilePadding: 16, hideOnTablet: 'no', hideOnMobile: 'no' } }
+      : { type: 'GridBlock', props: { id: makeBlockId('grid'), columns: kind, gap: 24, backgroundColor: 'transparent' } }
+
+    dataRevisionRef.current += 1
+    setData({ ...data, content: [block] } as Data)
+    setIsDirty(true)
+  }
+
+  const isEmptyCanvas = !Array.isArray(data.content) || data.content.length === 0
 
   function applyTemplate(template: WebsiteFunnelTemplate) {
     const currentContent = Array.isArray(data.content) ? data.content : []
@@ -373,16 +389,34 @@ export default function WebsitePageBuilderClient({
 
       <div className="space-y-4">
         <div className={cn('overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm', expandedView && 'rounded-[20px]')}>
-          <Puck
-            key={editorRevision}
-            config={websiteBuilderPuckConfig}
-            data={data}
-            onChange={handleBuilderChange}
-            onPublish={(nextData) => handlePublish(nextData)}
-            headerTitle={`${projectName} · ${pageName}`}
-            height={expandedView ? 'calc(100vh - 1rem)' : undefined}
-            overrides={puckOverrides}
-          />
+          {isEmptyCanvas ? (
+            <div className="flex min-h-[520px] flex-col items-center justify-center gap-6 p-10 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                <Plus className="h-8 w-8" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-950">Comienza a construir tu página</h3>
+                <p className="mt-1 text-sm text-slate-500">Elige una estructura para empezar a colocar bloques.</p>
+              </div>
+              <div className="grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Button type="button" variant="outline" onClick={() => insertStructure('full')}>Contenedor completo</Button>
+                <Button type="button" variant="outline" onClick={() => insertStructure(2)}>2 columnas</Button>
+                <Button type="button" variant="outline" onClick={() => insertStructure(3)}>3 columnas</Button>
+                <Button type="button" variant="outline" onClick={() => insertStructure(4)}>4 columnas</Button>
+              </div>
+            </div>
+          ) : (
+            <Puck
+              key={editorRevision}
+              config={websiteBuilderPuckConfig}
+              data={data}
+              onChange={handleBuilderChange}
+              onPublish={(nextData) => handlePublish(nextData)}
+              headerTitle={`${projectName} · ${pageName}`}
+              height={expandedView ? 'calc(100vh - 1rem)' : undefined}
+              overrides={puckOverrides}
+            />
+          )}
         </div>
       </div>
 

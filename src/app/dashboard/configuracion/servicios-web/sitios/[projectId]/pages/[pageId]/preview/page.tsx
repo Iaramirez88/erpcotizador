@@ -6,6 +6,7 @@ import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import WebsitePageRender from '@/components/website-builder/website-page-render'
 import WebsiteServicesModuleTabs from '../../../../../website-services-module-tabs'
 import { getWebsiteServicesAccessForUser, hasWebsiteBuilderPagesForEmpresa } from '@/lib/website-services'
+import { accessibleWebsiteProjectWhere } from '@/lib/website-builder-server'
 
 export const runtime = 'nodejs'
 
@@ -29,7 +30,7 @@ export default async function WebsiteProjectPagePreviewRoute(
     where: {
       id: pageId,
       websiteProjectId: projectId,
-      websiteProject: { empresaId: access.empresaId },
+      websiteProject: accessibleWebsiteProjectWhere(access),
     },
     select: {
       id: true,

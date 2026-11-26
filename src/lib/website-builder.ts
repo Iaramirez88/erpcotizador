@@ -122,6 +122,7 @@ export function serializeWebsiteProject(project: {
   subdomain: string | null
   primaryDomain: string | null
   status: string
+  isMainSite?: boolean
   updatedAt: Date
   createdAt: Date
   pages?: Array<{
@@ -141,6 +142,7 @@ export function serializeWebsiteProject(project: {
     subdomain: project.subdomain,
     primaryDomain: project.primaryDomain,
     status: project.status,
+    isMainSite: Boolean(project.isMainSite),
     createdAt: project.createdAt.toISOString(),
     updatedAt: project.updatedAt.toISOString(),
     pages: (project.pages ?? []).map((page) => ({

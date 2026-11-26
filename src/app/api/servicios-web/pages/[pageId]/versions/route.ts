@@ -4,17 +4,15 @@ import {
   normalizeWebsiteBuilderData,
   serializeWebsiteProjectVersion,
 } from '@/lib/website-builder'
-import { requireWebsiteBuilderAccess, toWebsiteBuilderInputJsonValue } from '@/lib/website-builder-server'
+import { accessibleWebsiteProjectWhere, requireWebsiteBuilderAccess, toWebsiteBuilderInputJsonValue } from '@/lib/website-builder-server'
 
 export const runtime = 'nodejs'
 
-async function loadPage(pageId: string, empresaId: string) {
+async function loadPage(pageId: string, access: { empresaId: string | null; isSuperAdmin: boolean }) {
   return prisma.websiteProjectPage.findFirst({
     where: {
       id: pageId,
-      websiteProject: {
-        empresaId,
-      },
+      websiteProject: accessibleWebsiteProjectWhere(access),
     },
     select: {
       id: true,
@@ -30,7 +28,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ pageId
   }
 
   const { pageId } = await context.params
-  const page = await loadPage(pageId, guard.access.empresaId!)
+  const page = await loadPage(pageId, guard.access)
   if (!page?.id) {
     return NextResponse.json({ ok: false, error: 'Página no encontrada.' }, { status: 404 })
   }

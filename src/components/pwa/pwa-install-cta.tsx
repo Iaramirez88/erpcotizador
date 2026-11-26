@@ -114,7 +114,7 @@ export function PwaInstallCta() {
   return (
     <>
       <div
-        className="fixed inset-x-0 bottom-0 z-[70] flex justify-center px-4 pb-4"
+        className="fixed inset-x-0 bottom-0 z-[110] flex justify-center px-4 pb-4"
         style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
       >
         <div className="w-full max-w-md rounded-[24px] border border-slate-200 bg-[linear-gradient(135deg,_rgba(15,23,42,0.96)_0%,_rgba(11,92,171,0.96)_55%,_rgba(105,195,255,0.94)_100%)] p-4 text-white shadow-[0_24px_60px_-24px_rgba(15,23,42,0.55)] backdrop-blur-xl">
