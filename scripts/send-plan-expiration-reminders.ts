@@ -72,7 +72,7 @@ async function main() {
     const toEmail = (e.email ?? ownerEmail ?? '').trim()
     const toPhone = e.telefono ? normalizePhone(e.telefono) : ''
 
-    const subject = `${e.nombre} · Ordex — Tu plan vence en ${threshold} día(s)`
+    const subject = `${e.nombre} · Joinclap — Tu plan vence en ${threshold} día(s)`
 
     const html = renderEmail({
       title: 'Recordatorio de vencimiento',

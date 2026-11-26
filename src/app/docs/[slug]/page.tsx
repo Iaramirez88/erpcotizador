@@ -40,12 +40,12 @@ export async function generateMetadata({ params }: DocsDomainPageProps): Promise
 
   if (!domain) {
     return {
-      title: 'Portal privado | Ordex',
+      title: 'Portal privado | Joinclap',
     }
   }
 
   return {
-    title: `${domain.name} | Portal privado Ordex`,
+    title: `${domain.name} | Portal privado Joinclap`,
     description: domain.summary,
     robots: {
       index: false,

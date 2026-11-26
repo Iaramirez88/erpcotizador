@@ -30,6 +30,6 @@ export async function GET() {
     method: 'POST',
     description: 'Recoge resultados pendientes y encola keywords sin rastrear durante los últimos siete días.',
     authentication: 'Requiere X-API-Key o Authorization: Bearer.',
-    cron_setup: '0 */2 * * * curl -X POST https://sgdigitalordex.com/api/admin/jobs/seo-rank-tracker -H "X-API-Key: YOUR_KEY"',
+    cron_setup: '0 */2 * * * curl -X POST https://joinclap.com.co/api/admin/jobs/seo-rank-tracker -H "X-API-Key: YOUR_KEY"',
   })
 }

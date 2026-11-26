@@ -1297,7 +1297,7 @@ export async function getRopHomeForUser(userId: string): Promise<RopHomeResponse
   const hero: RopHomeResponse['hero'] = profileIncomplete
     ? {
         title: 'Activa tu presencia operativa en la red',
-        summary: 'Completa el perfil para que ORDEX ROP pueda recomendarte aliados, oportunidades y capacidad relevante.',
+        summary: 'Completa el perfil para que Joinclap ROP pueda recomendarte aliados, oportunidades y capacidad relevante.',
         primaryAction: { type: 'COMPLETE_PROFILE', label: 'Completar perfil' },
         secondaryAction: { type: 'EDIT_PROFILE', label: 'Editar perfil' },
       }

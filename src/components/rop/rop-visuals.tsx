@@ -15,8 +15,8 @@ export function buildRopWhatsAppHref(phone: string | null | undefined, companyNa
   const normalized = normalizePhone(phone)
   if (!normalized) return null
   const message = companyName
-    ? `Hola, te contacto desde Ordex ROP por ${companyName}.`
-    : 'Hola, te contacto desde Ordex ROP.'
+    ? `Hola, te contacto desde Joinclap ROP por ${companyName}.`
+    : 'Hola, te contacto desde Joinclap ROP.'
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`
 }
 

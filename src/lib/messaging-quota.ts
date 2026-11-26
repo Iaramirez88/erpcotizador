@@ -5,7 +5,7 @@ import { getOutboundMessagingLimitConfig, getOutboundMessagingUsageSnapshot } fr
 
 /**
  * Control centralizado de consumo y cuotas de mensajería saliente.
- * Cuotas COMERCIALES internas de ORDEx (no son límites de Meta).
+ * Cuotas COMERCIALES internas de Joinclap (no son límites de Meta).
  */
 
 export const EMPRESA_COUNTER_KEY = '__EMPRESA__'

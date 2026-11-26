@@ -26,5 +26,5 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   const session = await auth()
   if (session?.user?.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  return NextResponse.json({ endpoint: '/api/admin/jobs/seo-search-console', method: 'POST', description: 'Sincroniza diariamente hasta 20 sitios conectados a Search Console.', authentication: 'Requiere X-API-Key o Authorization: Bearer.', cronSetup: '30 4 * * * curl -X POST https://sgdigitalordex.com/api/admin/jobs/seo-search-console -H "X-API-Key: YOUR_KEY"' })
+  return NextResponse.json({ endpoint: '/api/admin/jobs/seo-search-console', method: 'POST', description: 'Sincroniza diariamente hasta 20 sitios conectados a Search Console.', authentication: 'Requiere X-API-Key o Authorization: Bearer.', cronSetup: '30 4 * * * curl -X POST https://joinclap.com.co/api/admin/jobs/seo-search-console -H "X-API-Key: YOUR_KEY"' })
 }

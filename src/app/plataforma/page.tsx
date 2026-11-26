@@ -12,8 +12,8 @@ import {
 } from '@/lib/public-docs-content'
 
 export const metadata: Metadata = {
-  title: 'Plataforma y confiabilidad | Ordex',
-  description: 'Centro de confianza de Ordex con seguridad, confiabilidad, integraciones y arquitectura modular.',
+  title: 'Plataforma y confiabilidad | Joinclap',
+  description: 'Centro de confianza de Joinclap con seguridad, confiabilidad, integraciones y arquitectura modular.',
   robots: {
     index: true,
     follow: true,
@@ -51,7 +51,7 @@ export default function PlataformaPage() {
           <div className="border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.22),transparent_32%),linear-gradient(135deg,#082032,#0f4c81_58%,#0ea5e9_100%)] px-6 py-10 text-white sm:px-10 lg:px-12">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-100">Trust Center</p>
             <h1 className="mt-3 max-w-4xl text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
-              Seguridad, confiabilidad e integraciones empresariales de Ordex
+              Seguridad, confiabilidad e integraciones empresariales de Joinclap
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-white/82 sm:text-base">
               Esta pagina resume la capa publica de confianza de la plataforma: seguridad, continuidad operativa,
@@ -87,7 +87,7 @@ export default function PlataformaPage() {
             <CardHeader>
               <CardTitle className="text-2xl text-slate-950">Arquitectura modular</CardTitle>
               <CardDescription>
-                Ordex se organiza por responsabilidades de negocio para evitar herramientas aisladas y procesos desconectados.
+                Joinclap se organiza por responsabilidades de negocio para evitar herramientas aisladas y procesos desconectados.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

@@ -44,7 +44,7 @@ https://www.googleapis.com/auth/webmasters.readonly
 - ORDEX usa Authorization Code desde backend, `state` firmado con expiración, PKCE S256, verificador cifrado de un solo uso y callback vinculado al usuario que inició la conexión.
 - ORDEX no usa flujo implícito ni WebViews embebidas.
 - En producción, la redirect URI debe usar HTTPS y coincidir exactamente con `GOOGLE_MARKETING_REDIRECT_URI`.
-- En producción configura `APP_URL`, `NEXTAUTH_URL` y `GOOGLE_MARKETING_REDIRECT_URI` con `https://sgdigitalordex.com`; el callback usa el origen de esta última para no redirigir a `localhost` detrás del proxy.
+- En producción configura `APP_URL`, `NEXTAUTH_URL` y `GOOGLE_MARKETING_REDIRECT_URI` con `https://joinclap.com.co`; el callback usa el origen de esta última para no redirigir a `localhost` detrás del proxy.
 - Tras desplegar y completar una autorización real, Google puede tardar en recalcular el estado del chequeo del proyecto.
 
 ### Acceso a Google Ads API
@@ -76,7 +76,7 @@ PageSpeed utiliza una API key independiente del cliente OAuth:
 ```bash
 GOOGLE_MARKETING_CLIENT_ID="..."
 GOOGLE_MARKETING_CLIENT_SECRET="..."
-GOOGLE_MARKETING_REDIRECT_URI="https://sgdigitalordex.com/api/oauth/google-marketing/callback"
+GOOGLE_MARKETING_REDIRECT_URI="https://joinclap.com.co/api/oauth/google-marketing/callback"
 GOOGLE_ADS_LOGIN_CUSTOMER_ID="7889973249" # MCC, solo números; no usar el customer ID operativo
 GOOGLE_ADS_API_VERSION="v25"
 PAGESPEED_API_KEY="..."

@@ -1,17 +1,17 @@
-/**
- * Página Principal
- * Redirige al dashboard o al login según el estado de autenticación
- */
+import type { Metadata } from "next"
+import JoinclapHome from "@/components/joinclap/JoinclapHome"
+import "./joinclap.css"
 
-import { auth } from "@/lib/auth"
-import { redirect } from "next/navigation"
+export const metadata: Metadata = {
+  title: "Joinclap — Todo tu negocio, en movimiento",
+  description:
+    "Joinclap conecta ventas, clientes, inventario, equipos y procesos en una plataforma ERP + CRM con inteligencia artificial integrada. Una red operativa para hacer crecer tu empresa.",
+  robots: {
+    index: true,
+    follow: true,
+  },
+}
 
-export default async function Home() {
-  const session = await auth()
-  
-  if (session?.user) {
-    redirect("/dashboard")
-  } else {
-    redirect("/auth/login")
-  }
+export default function Home() {
+  return <JoinclapHome />
 }

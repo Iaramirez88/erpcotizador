@@ -4,8 +4,8 @@ import Link from 'next/link'
 const lastUpdated = '4 de noviembre de 2026'
 
 export const metadata: Metadata = {
-  title: 'Política de privacidad | Ordex',
-  description: 'Política de privacidad pública de la aplicación Ordex.',
+  title: 'Política de privacidad | Joinclap',
+  description: 'Política de privacidad pública de la aplicación Joinclap.',
   robots: {
     index: true,
     follow: true,
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 const sections = [
   {
     title: '1. Responsable del tratamiento',
-    body: 'Ordex es una plataforma operada por SGDigital para gestionar cotizaciones, órdenes, CRM, formularios y canales conversacionales. Esta política aplica a los datos personales tratados a través del sitio web, la aplicación y sus integraciones, incluyendo WhatsApp y formularios públicos.',
+    body: 'Joinclap es una plataforma operada por SGDigital para gestionar cotizaciones, órdenes, CRM, formularios y canales conversacionales. Esta política aplica a los datos personales tratados a través del sitio web, la aplicación y sus integraciones, incluyendo WhatsApp y formularios públicos.',
   },
   {
     title: '2. Datos que podemos recopilar',
@@ -27,7 +27,7 @@ const sections = [
   },
   {
     title: '4. Integración con WhatsApp y Meta',
-    body: 'Si te comunicas con una empresa usuaria de Ordex por WhatsApp u otros canales conectados mediante Meta, los mensajes y datos compartidos podrán ser procesados por la empresa responsable del canal y por Ordex como encargado tecnológico, exclusivamente para gestionar la conversación, el seguimiento comercial y la operación del servicio.',
+    body: 'Si te comunicas con una empresa usuaria de Joinclap por WhatsApp u otros canales conectados mediante Meta, los mensajes y datos compartidos podrán ser procesados por la empresa responsable del canal y por Joinclap como encargado tecnológico, exclusivamente para gestionar la conversación, el seguimiento comercial y la operación del servicio.',
   },
   {
     title: '5. Base legal y uso autorizado',

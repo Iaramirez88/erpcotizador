@@ -294,7 +294,7 @@ export async function POST(request: Request) {
     })
 
     // Enviar correo de verificación
-    const subject = `Código de verificación · ${empresaFinal.nombre} · Ordex`
+    const subject = `Código de verificación · ${empresaFinal.nombre} · Joinclap`
 
     const html = renderEmail({
       title: `Verifica tu cuenta (${empresaFinal.nombre})`,

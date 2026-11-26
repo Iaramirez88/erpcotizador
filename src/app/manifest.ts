@@ -2,8 +2,8 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Ordex',
-    short_name: 'Ordex',
+    name: 'Joinclap',
+    short_name: 'Joinclap',
     description: 'Sistema de cotización y órdenes de trabajo de SGDigital.',
     start_url: '/',
     display: 'standalone',

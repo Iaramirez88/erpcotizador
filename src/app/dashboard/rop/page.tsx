@@ -54,7 +54,7 @@ export default async function RopPage() {
       <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(15,118,110,0.18),_transparent_35%),linear-gradient(135deg,_#f8fafc_0%,_#ecfeff_55%,_#fefce8_100%)] p-6 shadow-sm sm:p-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Ordex ROP</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">Joinclap ROP</p>
             <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">{home.hero.title}</h1>
             <p className="max-w-2xl text-sm leading-6 text-slate-700 sm:text-base">{home.hero.summary}</p>
             {home.cluster ? (

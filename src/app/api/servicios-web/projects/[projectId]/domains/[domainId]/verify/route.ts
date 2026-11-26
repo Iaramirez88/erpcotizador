@@ -38,9 +38,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ pr
   const failureReason = !result.ownershipVerified
     ? 'No encontramos el registro TXT de propiedad.'
     : !result.routingConfigured
-      ? 'Ordex no tiene configurado un destino DNS para dominios personalizados.'
+      ? 'Joinclap no tiene configurado un destino DNS para dominios personalizados.'
       : !result.routingVerified
-        ? 'El dominio todavía no apunta al destino DNS de Ordex.'
+        ? 'El dominio todavía no apunta al destino DNS de Joinclap.'
         : null
 
   const updated = await prisma.$transaction(async (tx) => {

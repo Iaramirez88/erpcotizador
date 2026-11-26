@@ -57,7 +57,7 @@ export function validateWebsiteSubdomain(value: unknown) {
     return { ok: false as const, error: 'El subdominio debe tener al menos 3 caracteres.' }
   }
   if (WEBSITE_RESERVED_SUBDOMAINS.has(subdomain)) {
-    return { ok: false as const, error: 'Este subdominio está reservado por Ordex.' }
+    return { ok: false as const, error: 'Este subdominio está reservado por Joinclap.' }
   }
 
   return { ok: true as const, subdomain }

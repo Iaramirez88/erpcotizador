@@ -129,7 +129,7 @@ export async function POST(request: Request) {
       grantedByUserId: session.user.id,
     })
 
-    const subject = `Acceso · ${empresa.nombre} · Ordex`
+    const subject = `Acceso · ${empresa.nombre} · Joinclap`
     const baseUrl = getBaseUrl(request)
     const loginUrl = baseUrl ? new URL('/auth/login', baseUrl).toString() : '/auth/login'
 
@@ -172,7 +172,7 @@ export async function POST(request: Request) {
     },
   })
 
-  const subject = `Invitación · ${empresa.nombre} · Ordex`
+  const subject = `Invitación · ${empresa.nombre} · Joinclap`
   const baseUrl = getBaseUrl(request)
   const workspaceCode = await ensureWorkspaceCodeForEmpresa(empresa.id)
   const registerUrlObj = baseUrl ? new URL('/rop/unirse', baseUrl) : new URL('http://localhost/rop/unirse')

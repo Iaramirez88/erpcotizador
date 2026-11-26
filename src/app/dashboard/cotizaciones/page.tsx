@@ -1444,7 +1444,7 @@ export default function CotizacionesPage() {
 
               <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-1">
                 <Button asChild className="rounded-full px-5">
-                  <Link href={buildRopNeedHref(ropCotizacion)}>Abrir en ORDEX ROP</Link>
+                  <Link href={buildRopNeedHref(ropCotizacion)}>Abrir en Joinclap ROP</Link>
                 </Button>
                 <Button variant="outline" className="rounded-full px-5" onClick={() => setRopDialogOpen(false)}>
                   Cerrar

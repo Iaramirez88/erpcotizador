@@ -42,7 +42,7 @@ export default async function RopActivatePage() {
       <RopModuleChrome
         current="activar"
         breadcrumbs={[{ label: 'Inicio', href: '/dashboard' }, { label: 'ROP', href: '/dashboard/rop' }, { label: 'Activar' }]}
-        title={isActivated ? 'Tu empresa ya está activa en ORDEX ROP' : 'Activa tu empresa en la red operativa'}
+        title={isActivated ? 'Tu empresa ya está activa en Joinclap ROP' : 'Activa tu empresa en la red operativa'}
         description={isActivated
           ? 'Ya tienes base suficiente para discovery y matching. Desde aquí solo ajustas perfil, servicios y capacidad visible.'
           : 'Define perfil, servicios y visibilidad. Luego ROP empieza a recomendar empresas y oportunidades.'}

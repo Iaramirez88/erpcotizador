@@ -108,10 +108,10 @@ export function CrmIntegrationsResponseEmailSection(props: Props) {
           <Input value={form.responseEmailFromEmail} onChange={(event) => patchForm({ responseEmailFromEmail: event.target.value })} className="h-11 rounded-xl" placeholder="no-reply@tudominio.com" />
           {isFreeEmailDomain(form.responseEmailFromEmail) ? (
             <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-              Gmail, Outlook, Hotmail y Yahoo no se pueden usar como remitente (Resend no los permite). Déjalo vacío para usar el dominio de Ordex, o usa un dominio propio verificado en Resend.
+              Gmail, Outlook, Hotmail y Yahoo no se pueden usar como remitente (Resend no los permite). Déjalo vacío para usar el dominio de Joinclap, o usa un dominio propio verificado en Resend.
             </p>
           ) : (
-            <p className="text-xs text-slate-500">Si lo dejas vacío se usa el remitente global de Ordex. El dominio debe estar verificado en Resend para poder enviar.</p>
+            <p className="text-xs text-slate-500">Si lo dejas vacío se usa el remitente global de Joinclap. El dominio debe estar verificado en Resend para poder enviar.</p>
           )}
         </div>
         <div className="grid gap-2">

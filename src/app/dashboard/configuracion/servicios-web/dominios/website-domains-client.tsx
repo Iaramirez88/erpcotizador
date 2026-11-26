@@ -122,7 +122,7 @@ export default function WebsiteDomainsClient() {
       setProjects((current) => current.map((project) => project.id === projectId ? { ...project, subdomain: payload.item.subdomain } : project))
       setDrafts((current) => ({ ...current, [projectId]: payload.item.subdomain }))
       setAvailability((current) => ({ ...current, [projectId]: { value: payload.item.subdomain, available: true } }))
-      toast({ title: 'Subdominio actualizado', description: `${payload.item.subdomain}.sgdigitalordex.com ya identifica este sitio.` })
+      toast({ title: 'Subdominio actualizado', description: `${payload.item.subdomain}.joinclap.com.co ya identifica este sitio.` })
     } catch (error) {
       toast({ title: 'No se pudo guardar', description: error instanceof Error ? error.message : 'Intenta nuevamente.', variant: 'destructive' })
     } finally {
@@ -206,7 +206,7 @@ export default function WebsiteDomainsClient() {
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white"><Globe2 className="h-5 w-5" /></div>
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Subdominio gratuito</h2>
-            <p className="mt-1 text-sm text-slate-600">Cada sitio incluye una dirección profesional bajo sgdigitalordex.com.</p>
+            <p className="mt-1 text-sm text-slate-600">Cada sitio incluye una dirección profesional bajo joinclap.com.co.</p>
           </div>
         </div>
 
@@ -242,7 +242,7 @@ export default function WebsiteDomainsClient() {
                       className="min-w-0 border-0 shadow-none focus-visible:ring-0"
                       placeholder="mi-empresa"
                     />
-                    <span className="shrink-0 border-l border-slate-200 px-3 text-sm text-slate-500">.sgdigitalordex.com</span>
+                    <span className="shrink-0 border-l border-slate-200 px-3 text-sm text-slate-500">.joinclap.com.co</span>
                   </div>
                   {result?.value === normalizedDraft ? (
                     <div className={`mt-1.5 text-xs ${result.available ? 'text-emerald-700' : 'text-rose-700'}`}>
@@ -269,7 +269,7 @@ export default function WebsiteDomainsClient() {
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-600 text-white"><ShieldCheck className="h-5 w-5" /></div>
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Conectar un dominio existente</h2>
-            <p className="mt-1 text-sm text-slate-600">Verifica que el dominio te pertenece y apúntalo a Ordex para activar el sitio y su certificado.</p>
+            <p className="mt-1 text-sm text-slate-600">Verifica que el dominio te pertenece y apúntalo a Joinclap para activar el sitio y su certificado.</p>
           </div>
         </div>
 
@@ -335,13 +335,13 @@ export default function WebsiteDomainsClient() {
                       </div>
                     </div>
                     <div>
-                      <div className="text-xs font-semibold uppercase text-slate-500">2. Apuntar hacia Ordex</div>
+                      <div className="text-xs font-semibold uppercase text-slate-500">2. Apuntar hacia Joinclap</div>
                       {routingValues.length ? routingValues.map((value) => (
                         <div key={value} className="mt-2 flex items-center gap-2 text-sm text-slate-700">
                           <code className="min-w-0 break-all">{value}</code>
                           <Button type="button" size="icon" variant="ghost" title="Copiar destino" onClick={() => copyValue(value.split('→')[1]?.trim() || value)}><Copy className="h-4 w-4" /></Button>
                         </div>
-                      )) : <p className="mt-2 text-sm text-rose-700">Falta configurar el destino DNS en el servidor Ordex.</p>}
+                      )) : <p className="mt-2 text-sm text-rose-700">Falta configurar el destino DNS en el servidor Joinclap.</p>}
                     </div>
                   </div>
                 ) : (

@@ -63,6 +63,6 @@ export async function GET() {
     method: 'POST',
     description: 'Audita hasta 20 sitios que no tengan una auditoría en los últimos siete días.',
     authentication: 'Requiere X-API-Key o Authorization: Bearer.',
-    cronSetup: '15 3 * * * curl -X POST https://sgdigitalordex.com/api/admin/jobs/seo-audits -H "X-API-Key: YOUR_KEY"',
+    cronSetup: '15 3 * * * curl -X POST https://joinclap.com.co/api/admin/jobs/seo-audits -H "X-API-Key: YOUR_KEY"',
   })
 }

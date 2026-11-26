@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { platformFlowDiagram, publicDomainDocs, trustMetrics } from '@/lib/public-docs-content'
 
 export const metadata: Metadata = {
-  title: 'Ordex | Plataforma empresarial para operar, vender y escalar',
-  description: 'Landing publica comercial de Ordex con confianza empresarial, arquitectura modular e integraciones visibles.',
+  title: 'Joinclap | Plataforma empresarial para operar, vender y escalar',
+  description: 'Landing publica comercial de Joinclap con confianza empresarial, arquitectura modular e integraciones visibles.',
   robots: {
     index: true,
     follow: true,
@@ -20,7 +20,7 @@ const icons = [Building2, Boxes, Factory, LineChart, BrainCircuit, ShieldCheck] 
 const sellingBlocks = [
   {
     title: 'Una sola operacion, no herramientas aisladas',
-    body: 'Ordex conecta CRM, ventas, operaciones, inventario y finanzas dentro de una misma plataforma empresarial.',
+    body: 'Joinclap conecta CRM, ventas, operaciones, inventario y finanzas dentro de una misma plataforma empresarial.',
   },
   {
     title: 'Confianza visible para clientes y equipos internos',
@@ -44,7 +44,7 @@ export default function ProductoPage() {
                 Vender, operar y controlar el negocio desde una sola plataforma
               </h1>
               <p className="mt-5 max-w-2xl text-sm leading-7 text-white/82 sm:text-base">
-                Ordex unifica CRM, ventas, operaciones, inventario, finanzas, documentos e inteligencia aplicada sobre una arquitectura modular pensada para empresas que necesitan crecer con control.
+                Joinclap unifica CRM, ventas, operaciones, inventario, finanzas, documentos e inteligencia aplicada sobre una arquitectura modular pensada para empresas que necesitan crecer con control.
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
                 <Link href="/plataforma" className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-slate-100">
@@ -146,7 +146,7 @@ export default function ProductoPage() {
                 Ver trust center
               </Link>
               <Link href="/auth/login" className="inline-flex items-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
-                Entrar a Ordex
+                Entrar a Joinclap
               </Link>
             </div>
           </div>

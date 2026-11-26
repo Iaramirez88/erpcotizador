@@ -86,7 +86,7 @@ export async function POST(request: Request) {
     const resetUrl = `${origin}/auth/reset-password?token=${encodeURIComponent(token)}`
 
     const empresaNombre = (user.empresa?.nombre ?? '').trim()
-    const subject = empresaNombre ? `Restablecer contraseña · ${empresaNombre} · Ordex` : 'Restablecer contraseña · Ordex'
+    const subject = empresaNombre ? `Restablecer contraseña · ${empresaNombre} · Joinclap` : 'Restablecer contraseña · Joinclap'
 
     const html = renderEmail({
       title: 'Restablecimiento de contraseña',

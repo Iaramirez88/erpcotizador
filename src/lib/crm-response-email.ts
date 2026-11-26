@@ -121,7 +121,7 @@ export function getCrmResponseEmailSettings(settingsJson: unknown): CrmResponseE
     textColor: getSetting(settings, 'responseEmailTextColor', '#111827'),
     logoUrl: getSetting(settings, 'responseEmailLogoUrl', ''),
     logoSize: normalizeLogoSize(getSetting(settings, 'responseEmailLogoSize', 'medium')),
-    brandName: getSetting(settings, 'responseEmailBrandName', 'Ordex'),
+    brandName: getSetting(settings, 'responseEmailBrandName', 'Joinclap'),
     showBrand: getBool(settings, 'responseEmailShowBrand', true),
   }
 }

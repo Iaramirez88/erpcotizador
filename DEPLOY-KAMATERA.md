@@ -87,11 +87,11 @@ En producción, lo ideal es que el servicio `app` **no** publique `3000:3000` a 
 
 ### D) Subdominios gratuitos del Website Builder
 
-Para publicar sitios como `empresa.sgdigitalordex.com`:
+Para publicar sitios como `empresa.joinclap.com.co`:
 
 1. En Cloudflare crea un registro `A` con nombre `*` apuntando a la IP pública del VPS.
 2. Déjalo inicialmente como **DNS only** para que Caddy complete los desafíos HTTP/TLS de cada certificado.
-3. Define `NEXT_PUBLIC_WEBSITE_BASE_DOMAIN=sgdigitalordex.com` en `.env`.
+3. Define `NEXT_PUBLIC_WEBSITE_BASE_DOMAIN=joinclap.com.co` en `.env`.
 4. Reconstruye `app` porque la variable `NEXT_PUBLIC_*` se integra durante el build.
 5. Reinicia `caddy` para cargar el bloque HTTPS dinámico.
 
@@ -105,7 +105,7 @@ Para que un cliente conecte un dominio que ya posee:
 2. Configura en el `.env` del servidor:
 
 ```dotenv
-WEBSITE_DOMAIN_CNAME_TARGET=edge.sgdigitalordex.com
+WEBSITE_DOMAIN_CNAME_TARGET=edge.joinclap.com.co
 WEBSITE_DOMAIN_IPV4=66.55.74.8
 WEBSITE_DOMAIN_IPV6=
 ```
@@ -114,8 +114,8 @@ WEBSITE_DOMAIN_IPV6=
 4. Despliega la migración `20261002120000_website_project_custom_domains` con `docker compose -f docker-compose.prod.yml run --rm migrate`.
 5. Reinicia `app` y `caddy`.
 6. Desde **Servicios web → Dominios**, agrega el dominio, publica el TXT mostrado y configura uno de estos destinos:
-  - Subdominio o `www`: `CNAME → edge.sgdigitalordex.com`.
-  - Dominio raíz: `A → 66.55.74.8`, o ALIAS/ANAME/CNAME flattening hacia `edge.sgdigitalordex.com` si el proveedor lo admite.
+  - Subdominio o `www`: `CNAME → edge.joinclap.com.co`.
+  - Dominio raíz: `A → 66.55.74.8`, o ALIAS/ANAME/CNAME flattening hacia `edge.joinclap.com.co` si el proveedor lo admite.
 7. Pulsa **Comprobar DNS**. Ordex solo autoriza TLS cuando propiedad y destino estén verificados y el sitio esté publicado.
 
 Si el sitio usa formularios con Turnstile, agrega también el dominio personalizado a la lista de hostnames permitidos del widget en Cloudflare. La aplicación valida automáticamente que el hostname pertenezca a un dominio `ACTIVE`, pero Cloudflare debe autorizarlo para poder generar el token en el navegador.
@@ -153,13 +153,13 @@ Opcional pero recomendado:
 Los formularios del Website Builder y `/form/[channelId]` incluyen rate limiting con Redis, honeypot, límite de body y soporte para Cloudflare Turnstile.
 
 1. En Cloudflare abre **Turnstile → Add widget** y usa modo administrado.
-2. Autoriza el hostname raíz `sgdigitalordex.com`. Cloudflare autoriza automáticamente sus subdominios; no escribas `*.sgdigitalordex.com`.
+2. Autoriza el hostname raíz `joinclap.com.co`. Cloudflare autoriza automáticamente sus subdominios; no escribas `*.joinclap.com.co`.
 3. Agrega al `.env` de producción:
 
 ```dotenv
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=""
 TURNSTILE_SECRET_KEY=""
-TURNSTILE_ALLOWED_HOSTS=sgdigitalordex.com
+TURNSTILE_ALLOWED_HOSTS=joinclap.com.co
 PUBLIC_FORM_RATE_LIMIT_PER_MINUTE=5
 PUBLIC_FORM_RATE_LIMIT_PER_HOUR=30
 PUBLIC_FORM_RATE_LIMIT_CHANNEL_DAILY=2000
@@ -222,7 +222,7 @@ La app ya expone el job administrativo [src/app/api/admin/jobs/payroll-contract-
 Variables necesarias en `.env`:
 
 - `ADMIN_API_KEY` con un secreto largo y aleatorio
-- `APP_URL` apuntando al dominio público real, por ejemplo `https://sgdigitalordex.com`
+- `APP_URL` apuntando al dominio público real, por ejemplo `https://joinclap.com.co`
 
 Generar una llave robusta en Ubuntu:
 

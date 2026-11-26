@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     ? registerUrlObj.toString()
     : `/auth/register?empresaId=${encodeURIComponent(codePlain)}&email=${encodeURIComponent(email)}`
 
-  const subject = `Código de espacio · ${empresa.nombre} · Ordex`
+  const subject = `Código de espacio · ${empresa.nombre} · Joinclap`
 
   const html = renderEmail({
     title: `Acceso a ${empresa.nombre}`,

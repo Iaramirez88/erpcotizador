@@ -6,7 +6,7 @@ Actualizado: 2026-09-12
 
 Ofrecer publicación profesional para sitios creados en Ordex:
 
-- Gratis: `empresa.sgdigitalordex.com`.
+- Gratis: `empresa.joinclap.com.co`.
 - Dominio existente: `empresa.com` conectado mediante DNS.
 - Compra: búsqueda y registro mediante un proveedor reseller.
 
@@ -15,7 +15,7 @@ Ofrecer publicación profesional para sitios creados en Ordex:
 ### Aplicación
 
 - [x] Resolver solicitudes públicas por cabecera `Host` y reescribirlas al renderer `/sites/*`.
-- [x] Generar URLs públicas como `https://empresa.sgdigitalordex.com` cuando `NEXT_PUBLIC_WEBSITE_BASE_DOMAIN` está configurado.
+- [x] Generar URLs públicas como `https://empresa.joinclap.com.co` cuando `NEXT_PUBLIC_WEBSITE_BASE_DOMAIN` está configurado.
 - [x] Mantener fallback `/sites/empresa` para desarrollo y entornos sin dominio base.
 - [x] Hacer `WebsiteProject.subdomain` único en toda la plataforma.
 - [x] Sanear duplicados y nombres reservados existentes mediante migración no destructiva.
@@ -36,8 +36,8 @@ Ofrecer publicación profesional para sitios creados en Ordex:
 - [ ] Crear en Cloudflare el registro wildcard `A  *  -> IP_DEL_VPS`.
 - [ ] Mantener inicialmente el wildcard como DNS only.
 - [ ] Desplegar la migración `20260912143000_website_project_global_subdomain`.
-- [ ] Reconstruir `app` con `NEXT_PUBLIC_WEBSITE_BASE_DOMAIN=sgdigitalordex.com`.
-- [ ] Reiniciar Caddy y comprobar `https://subdominio.sgdigitalordex.com`.
+- [ ] Reconstruir `app` con `NEXT_PUBLIC_WEBSITE_BASE_DOMAIN=joinclap.com.co`.
+- [ ] Reiniciar Caddy y comprobar `https://subdominio.joinclap.com.co`.
 - [ ] Verificar renovación y persistencia de certificados en `caddy_data`.
 
 ## Fase 2 - Conectar dominio existente
@@ -49,7 +49,7 @@ Ofrecer publicación profesional para sitios creados en Ordex:
 - [x] Implementar consulta DNS TXT y CNAME/A/AAAA desde backend.
 - [x] Activar dominios únicamente después de verificar propiedad y que A/AAAA/CNAME apunten a la infraestructura Ordex esperada.
 - [x] No realizar fetch HTTP hacia el dominio durante la verificación para evitar SSRF y DNS rebinding; verificar mediante resolución DNS.
-- [x] Usar un destino estable como `edge.sgdigitalordex.com`; indicar CNAME para `www`/subdominios y ALIAS/ANAME/CNAME flattening o A/AAAA para el dominio raíz.
+- [x] Usar un destino estable como `edge.joinclap.com.co`; indicar CNAME para `www`/subdominios y ALIAS/ANAME/CNAME flattening o A/AAAA para el dominio raíz.
 - [x] Permitir seleccionar dominio principal.
 - [x] Resolver dominios personalizados activos desde el proxy.
 - [x] Autorizar TLS bajo demanda únicamente para dominios activos.

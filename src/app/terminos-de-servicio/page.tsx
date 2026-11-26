@@ -4,8 +4,8 @@ import Link from 'next/link'
 const lastUpdated = '20 de noviembre de 2026'
 
 export const metadata: Metadata = {
-  title: 'Términos de servicio | Ordex',
-  description: 'Términos de servicio públicos de la aplicación Ordex.',
+  title: 'Términos de servicio | Joinclap',
+  description: 'Términos de servicio públicos de la aplicación Joinclap.',
   robots: {
     index: true,
     follow: true,
@@ -15,39 +15,39 @@ export const metadata: Metadata = {
 const sections = [
   {
     title: '1. Aceptación de los términos',
-    body: 'Al acceder o utilizar Ordex aceptas estos términos de servicio y nuestra política de privacidad. Si no estás de acuerdo con alguno de estos términos, no debes utilizar la plataforma. El uso de Ordex por parte de una empresa implica que la persona que crea el espacio de trabajo tiene autorización para aceptar estos términos en su nombre.',
+    body: 'Al acceder o utilizar Joinclap aceptas estos términos de servicio y nuestra política de privacidad. Si no estás de acuerdo con alguno de estos términos, no debes utilizar la plataforma. El uso de Joinclap por parte de una empresa implica que la persona que crea el espacio de trabajo tiene autorización para aceptar estos términos en su nombre.',
   },
   {
     title: '2. Descripción del servicio',
-    body: 'Ordex es una plataforma de gestión empresarial que integra cotizaciones, órdenes, facturación, CRM omnicanal, formularios, chatbot, agenda y canales conversacionales como WhatsApp, Messenger, Instagram y TikTok. El servicio se presta bajo el modelo de suscripción y se entrega como herramienta de gestión, no como asesoría legal, contable o financiera.',
+    body: 'Joinclap es una plataforma de gestión empresarial que integra cotizaciones, órdenes, facturación, CRM omnicanal, formularios, chatbot, agenda y canales conversacionales como WhatsApp, Messenger, Instagram y TikTok. El servicio se presta bajo el modelo de suscripción y se entrega como herramienta de gestión, no como asesoría legal, contable o financiera.',
   },
   {
     title: '3. Cuentas y seguridad de acceso',
-    body: 'Cada empresa usuaria es responsable de mantener la confidencialidad de sus credenciales de acceso y de las credenciales de las integraciones que conecte. Debes notificar de inmediato cualquier uso no autorizado. Ordex puede suspender accesos que comprometan la seguridad o la integridad del servicio.',
+    body: 'Cada empresa usuaria es responsable de mantener la confidencialidad de sus credenciales de acceso y de las credenciales de las integraciones que conecte. Debes notificar de inmediato cualquier uso no autorizado. Joinclap puede suspender accesos que comprometan la seguridad o la integridad del servicio.',
   },
   {
     title: '4. Uso permitido',
-    body: 'Te comprometes a utilizar Ordex exclusivamente para fines lícitos y conforme a la normativa aplicable. Está prohibido usar la plataforma para enviar contenido no solicitado (spam), contenido fraudulento, discriminatorio o que infrinja derechos de terceros, así como intentar acceder a datos de otras empresas o usuarios.',
+    body: 'Te comprometes a utilizar Joinclap exclusivamente para fines lícitos y conforme a la normativa aplicable. Está prohibido usar la plataforma para enviar contenido no solicitado (spam), contenido fraudulento, discriminatorio o que infrinja derechos de terceros, así como intentar acceder a datos de otras empresas o usuarios.',
   },
   {
     title: '5. Planes, facturación y vigencia',
-    body: 'El acceso a Ordex está sujeto al plan contratado y a su vigencia. Al vencerse el plan sin renovación, el servicio podrá suspenderse y la información eliminarse conforme a lo descrito en la política de privacidad. Las condiciones de precio, periodo y renovación se informan en el proceso de contratación.',
+    body: 'El acceso a Joinclap está sujeto al plan contratado y a su vigencia. Al vencerse el plan sin renovación, el servicio podrá suspenderse y la información eliminarse conforme a lo descrito en la política de privacidad. Las condiciones de precio, periodo y renovación se informan en el proceso de contratación.',
   },
   {
     title: '6. Propiedad intelectual',
-    body: 'Ordex, su interfaz, su marca y su código son propiedad de SGDigital o de sus licenciantes. Los datos que cada empresa introduce en la plataforma pertenecen a dicha empresa. Al usar la plataforma no adquieres derechos de propiedad sobre el software, salvo la licencia de uso limitada que otorgan estos términos.',
+    body: 'Joinclap, su interfaz, su marca y su código son propiedad de SGDigital o de sus licenciantes. Los datos que cada empresa introduce en la plataforma pertenecen a dicha empresa. Al usar la plataforma no adquieres derechos de propiedad sobre el software, salvo la licencia de uso limitada que otorgan estos términos.',
   },
   {
     title: '7. Integraciones con terceros',
-    body: 'Ordex puede conectarse a servicios de terceros como WhatsApp, Messenger, Instagram, TikTok, Gmail, Outlook y Google Sheets. El uso de estas integraciones está sujeto además a los términos de dichos proveedores. La empresa usuaria es responsable de conectar únicamente cuentas y activos que esté autorizada a gestionar.',
+    body: 'Joinclap puede conectarse a servicios de terceros como WhatsApp, Messenger, Instagram, TikTok, Gmail, Outlook y Google Sheets. El uso de estas integraciones está sujeto además a los términos de dichos proveedores. La empresa usuaria es responsable de conectar únicamente cuentas y activos que esté autorizada a gestionar.',
   },
   {
     title: '8. Limitación de responsabilidad',
-    body: 'Ordex se presta bajo un modelo de disponibilidad razonable, sin garantías de funcionamiento ininterrumpido. En la medida permitida por la ley, SGDigital no será responsable por daños indirectos, pérdida de datos o lucro cesante derivados del uso o de la imposibilidad de uso de la plataforma.',
+    body: 'Joinclap se presta bajo un modelo de disponibilidad razonable, sin garantías de funcionamiento ininterrumpido. En la medida permitida por la ley, SGDigital no será responsable por daños indirectos, pérdida de datos o lucro cesante derivados del uso o de la imposibilidad de uso de la plataforma.',
   },
   {
     title: '9. Suspensión y terminación',
-    body: 'Ordex puede suspender o terminar una cuenta por incumplimiento de estos términos, por falta de pago o por uso indebido del servicio. La empresa usuaria puede dejar de usar la plataforma en cualquier momento, sujeto a las condiciones de cancelación del plan contratado.',
+    body: 'Joinclap puede suspender o terminar una cuenta por incumplimiento de estos términos, por falta de pago o por uso indebido del servicio. La empresa usuaria puede dejar de usar la plataforma en cualquier momento, sujeto a las condiciones de cancelación del plan contratado.',
   },
   {
     title: '10. Cambios a estos términos',

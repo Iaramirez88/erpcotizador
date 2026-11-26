@@ -7,7 +7,7 @@
 }
 
 # Hosts que van a servir la app.
-sgdigitalordex.com, www.sgdigitalordex.com {
+joinclap.com.co, www.joinclap.com.co {
   encode zstd gzip
 
   header {
@@ -21,8 +21,8 @@ sgdigitalordex.com, www.sgdigitalordex.com {
   reverse_proxy app:3000
 }
 
-# Sitios gratuitos publicados como empresa.sgdigitalordex.com.
-# Requiere un registro DNS wildcard *.sgdigitalordex.com apuntando a este servidor.
+# Sitios gratuitos publicados como empresa.joinclap.com.co.
+# Requiere un registro DNS wildcard *.joinclap.com.co apuntando a este servidor.
 https:// {
   tls {
     on_demand
@@ -30,4 +30,10 @@ https:// {
 
   encode zstd gzip
   reverse_proxy app:3000
+}
+
+# Fase 8 — Redirección 301 del dominio antiguo al nuevo (recomendado).
+# Conserva la ruta con {uri}: los enlaces viejos caen en el dominio nuevo.
+sgdigitalordex.com, www.sgdigitalordex.com {
+    redir https://joinclap.com.co{uri} permanent
 }

@@ -57,7 +57,7 @@ export const DASHBOARD_SECTION_ORDER: DashboardSectionTitle[] = [
 export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard', label: 'Dashboard', labelKey: 'nav.dashboard', section: 'Inicio', layer: 'Inicio', domain: 'Inicio', moduleKey: 'DASHBOARD' },
   { href: '/dashboard/inteligencia', label: 'Inteligencia', labelKey: 'nav.intelligence', section: 'Analítica', layer: 'Analítica', domain: 'Motor de inteligencia empresarial', moduleKey: 'REPORTES' },
-  { href: '/dashboard/rop', label: 'Red operativa', labelKey: 'nav.rop', section: 'Operaciones', layer: 'Operaciones', domain: 'ORDEX ROP', moduleKey: 'DASHBOARD' },
+  { href: '/dashboard/rop', label: 'Red operativa', labelKey: 'nav.rop', section: 'Operaciones', layer: 'Operaciones', domain: 'Joinclap ROP', moduleKey: 'DASHBOARD' },
   { href: '/dashboard/perfil', label: 'Mi perfil', labelKey: 'header.profile', section: 'Administración', layer: 'Administración', domain: 'Perfil de usuario', moduleKey: null },
   { href: '/dashboard/mapa-producto', label: 'Mapa de producto', labelKey: 'nav.productMap', section: 'Administración', layer: 'Administración', domain: 'Arquitectura de producto', moduleKey: 'DASHBOARD' },
   { href: '/dashboard/plantillas', label: 'Plantillas', labelKey: 'nav.templates', section: 'Configuración', layer: 'Configuración', domain: 'Plantillas', moduleKey: 'DASHBOARD' },

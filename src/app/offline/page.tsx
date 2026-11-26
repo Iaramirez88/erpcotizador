@@ -15,7 +15,7 @@ export default function OfflinePage() {
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">Modo sin conexión</p>
             <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">No hay internet en este momento</h1>
             <p className="text-sm leading-7 text-slate-600 md:text-base">
-              Ordex no pudo cargar esta vista porque tu dispositivo perdió la conexión. Cuando vuelva el internet podrás seguir trabajando normalmente.
+              Joinclap no pudo cargar esta vista porque tu dispositivo perdió la conexión. Cuando vuelva el internet podrás seguir trabajando normalmente.
             </p>
           </div>
 
@@ -26,7 +26,7 @@ export default function OfflinePage() {
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
               <p className="text-sm font-semibold text-slate-900">Si instalaste la app</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Ordex seguirá abriéndose como aplicación y recuperará la sesión al reconectarse.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Joinclap seguirá abriéndose como aplicación y recuperará la sesión al reconectarse.</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
               <p className="text-sm font-semibold text-slate-900">Siguiente paso</p>

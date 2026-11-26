@@ -15,7 +15,7 @@ export async function GET() {
 
     const emailReady = Boolean(process.env.RESEND_API_KEY)
     const telegramReady = Boolean(process.env.TELEGRAM_BOT_TOKEN)
-    const emailFrom = process.env.EMAIL_FROM || 'Ordex <onboarding@resend.dev>'
+    const emailFrom = process.env.EMAIL_FROM || 'Joinclap <onboarding@resend.dev>'
 
     return NextResponse.json({
       success: true,

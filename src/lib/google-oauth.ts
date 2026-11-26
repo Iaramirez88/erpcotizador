@@ -59,7 +59,7 @@ function requireGoogleOAuthEnv() {
 }
 
 function buildFrontendRedirect(params: { token?: string; error?: string }) {
-  const url = new URL('https://sgdigitalordex.com/dashboard')
+  const url = new URL('https://joinclap.com.co/dashboard')
   if (params.token) url.searchParams.set('token', params.token)
   if (params.error) url.searchParams.set('error', params.error)
   return url

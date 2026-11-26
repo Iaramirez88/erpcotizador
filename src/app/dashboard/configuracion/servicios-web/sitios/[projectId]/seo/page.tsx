@@ -26,7 +26,7 @@ export default async function WebsiteProjectSeoPage({ params }: { params: Promis
   if (!project) notFound()
 
   const showBuilderTab = await hasWebsiteBuilderPagesForEmpresa(access.empresaId)
-  const domain = project.primaryDomain || (project.subdomain ? `${project.subdomain}.sgdigitalordex.com` : `${project.slug}.sgdigitalordex.com`)
+  const domain = project.primaryDomain || (project.subdomain ? `${project.subdomain}.joinclap.com.co` : `${project.slug}.joinclap.com.co`)
   const configuredSiteUrl = parseJsonObject(project.seoJson).siteUrl
   const defaultSiteUrl = typeof configuredSiteUrl === 'string' && configuredSiteUrl ? configuredSiteUrl : `https://${domain}`
 

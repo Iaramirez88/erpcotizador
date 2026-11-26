@@ -41,7 +41,7 @@ export default async function WebsiteSeoOverviewPage() {
 
   const sites = projects.map((project) => {
     const seo = parseJsonObject(project.seoJson)
-    const host = project.primaryDomain || (project.subdomain ? `${project.subdomain}.sgdigitalordex.com` : `${project.slug}.sgdigitalordex.com`)
+    const host = project.primaryDomain || (project.subdomain ? `${project.subdomain}.joinclap.com.co` : `${project.slug}.joinclap.com.co`)
     const defaultUrl = /^https?:\/\//i.test(host) ? host : `https://${host}`
     return {
       id: project.id,

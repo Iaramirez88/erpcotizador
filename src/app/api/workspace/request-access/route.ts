@@ -68,7 +68,7 @@ export async function POST(req: Request) {
   const requesterEmail = (requester.email || '').trim().toLowerCase()
   const requesterName = (requester.name || '').trim()
 
-  const subject = `Solicitud de acceso · ${empresa.nombre} · Ordex`
+  const subject = `Solicitud de acceso · ${empresa.nombre} · Joinclap`
   const who = requesterName ? `${requesterName} (${requesterEmail})` : requesterEmail
 
   // Registrar solicitud pendiente (evita duplicados PENDING por usuario+empresa)

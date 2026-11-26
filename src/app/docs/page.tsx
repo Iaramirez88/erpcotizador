@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { integrationCatalog, platformFlowDiagram, publicDocsLastUpdated, publicDomainDocs } from '@/lib/public-docs-content'
 
 export const metadata: Metadata = {
-  title: 'Portal privado de confianza | Ordex',
-  description: 'Portal privado de Ordex para clientes y partners con dominios, integraciones y alcance funcional.',
+  title: 'Portal privado de confianza | Joinclap',
+  description: 'Portal privado de Joinclap para clientes y partners con dominios, integraciones y alcance funcional.',
   robots: {
     index: false,
     follow: false,
@@ -215,7 +215,7 @@ export default function DocsPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Integraciones empresariales</p>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Conexiones visibles para operacion y cumplimiento</h2>
             <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-              Ordex se conecta con canales, documentos y procesos empresariales sin obligar a fragmentar la operacion en herramientas separadas.
+              Joinclap se conecta con canales, documentos y procesos empresariales sin obligar a fragmentar la operacion en herramientas separadas.
             </p>
           </div>
           <div className="mt-6 grid gap-4 lg:grid-cols-3">
@@ -251,7 +251,7 @@ export default function DocsPage() {
                 Ver landing comercial
               </Link>
               <Link href="/auth/login" className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/15">
-                Entrar a Ordex
+                Entrar a Joinclap
               </Link>
             </div>
           </div>

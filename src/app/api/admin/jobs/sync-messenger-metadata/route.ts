@@ -10,7 +10,7 @@ import { execSync } from 'child_process'
  * Requiere: autenticación de admin + API key
  * 
  * Llamable por:
- * - cron del servidor: curl -X POST https://sgdigitalordex.com/api/admin/jobs/sync-messenger-metadata -H "Authorization: Bearer YOUR_SECRET_KEY"
+ * - cron del servidor: curl -X POST https://joinclap.com.co/api/admin/jobs/sync-messenger-metadata -H "Authorization: Bearer YOUR_SECRET_KEY"
  * - Manualmente desde el CRM (admin panel)
  * - Scheduled tasks
  */
@@ -74,12 +74,12 @@ export async function GET(request: NextRequest) {
     method: 'POST',
     description: 'Sincroniza nombres y mensajes de Messenger/Facebook',
     authentication: 'Requiere X-API-Key header o Authorization: Bearer token',
-    curl_example: `curl -X POST https://sgdigitalordex.com/api/admin/jobs/sync-messenger-metadata \\
+    curl_example: `curl -X POST https://joinclap.com.co/api/admin/jobs/sync-messenger-metadata \\
   -H "X-API-Key: ${process.env.ADMIN_API_KEY?.slice(0, 10)}..."`,
     cron_setup: `# Ejecutar cada hora en servidor Linux
-0 * * * * curl -X POST https://sgdigitalordex.com/api/admin/jobs/sync-messenger-metadata -H "X-API-Key: YOUR_KEY"
+0 * * * * curl -X POST https://joinclap.com.co/api/admin/jobs/sync-messenger-metadata -H "X-API-Key: YOUR_KEY"
 
 # O cada 30 minutos
-*/30 * * * * curl -X POST https://sgdigitalordex.com/api/admin/jobs/sync-messenger-metadata -H "X-API-Key: YOUR_KEY"`,
+*/30 * * * * curl -X POST https://joinclap.com.co/api/admin/jobs/sync-messenger-metadata -H "X-API-Key: YOUR_KEY"`,
   })
 }

@@ -243,8 +243,8 @@ export async function PATCH(req: NextRequest) {
   if (emailChanged && verificationCode) {
     const empresaNombre = (currentUser.empresa?.nombre ?? '').trim()
     const subject = empresaNombre
-      ? `Código de verificación · ${empresaNombre} · Ordex`
-      : 'Código de verificación · Ordex'
+      ? `Código de verificación · ${empresaNombre} · Joinclap`
+      : 'Código de verificación · Joinclap'
 
     const html = renderEmail({
       title: 'Verifica tu nuevo correo',

@@ -228,7 +228,7 @@ export function MobileNotificationSettings() {
                   </div>
                   <p className="mt-1 text-sm leading-6 text-slate-600">
                     {currentDeviceEnabled
-                      ? 'Este dispositivo ya puede recibir notificaciones push de Ordex.'
+                      ? 'Este dispositivo ya puede recibir notificaciones push de Joinclap.'
                       : 'Activa esta opcion para recibir avisos aunque la app este en segundo plano o cerrada.'}
                   </p>
                 </div>
@@ -245,12 +245,12 @@ export function MobileNotificationSettings() {
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Modo actual</div>
                 <div className="mt-2 text-base font-semibold text-slate-950">{standalone ? 'App instalada' : 'Navegador'}</div>
-                <p className="mt-1 text-xs leading-5 text-slate-600">{standalone ? 'Ordex se esta ejecutando como app instalada en este dispositivo.' : 'Si usas iPhone, agrega Ordex a pantalla de inicio para habilitar push real.'}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">{standalone ? 'Joinclap se esta ejecutando como app instalada en este dispositivo.' : 'Si usas iPhone, agrega Joinclap a pantalla de inicio para habilitar push real.'}</p>
               </div>
             </div>
 
             <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm leading-6 text-slate-600">
-              En iPhone o iPad las notificaciones push solo funcionan con Ordex instalado en pantalla de inicio y permiso concedido. En Android se recomienda instalar la app, aunque algunos navegadores tambien soportan push desde el navegador.
+              En iPhone o iPad las notificaciones push solo funcionan con Joinclap instalado en pantalla de inicio y permiso concedido. En Android se recomienda instalar la app, aunque algunos navegadores tambien soportan push desde el navegador.
             </div>
           </CardContent>
         </Card>
@@ -259,7 +259,7 @@ export function MobileNotificationSettings() {
           <CardHeader>
             <CardTitle className="text-xl text-slate-950">Dispositivos del usuario</CardTitle>
             <CardDescription>
-              Esta lista muestra los dispositivos con suscripcion push activa para tu cuenta. Es la mejor senal disponible para saber donde Ordex puede notificarte.
+              Esta lista muestra los dispositivos con suscripcion push activa para tu cuenta. Es la mejor senal disponible para saber donde Joinclap puede notificarte.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">

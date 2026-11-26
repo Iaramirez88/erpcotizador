@@ -17,14 +17,14 @@ export async function generateMetadata({ params }: PublicWebsitePageProps): Prom
 
   if (!page?.id) {
     return {
-      title: 'Sitio no encontrado | Ordex',
+      title: 'Sitio no encontrado | Joinclap',
       robots: { index: false, follow: false },
     }
   }
 
   return {
     title: page.seoTitle || `${page.nombre} | ${page.websiteProject.nombre}`,
-    description: page.seoDescription || `Sitio publicado desde Ordex para ${page.websiteProject.nombre}.`,
+    description: page.seoDescription || `Sitio publicado desde Joinclap para ${page.websiteProject.nombre}.`,
   }
 }
 

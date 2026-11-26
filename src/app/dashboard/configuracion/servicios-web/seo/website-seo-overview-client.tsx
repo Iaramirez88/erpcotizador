@@ -64,7 +64,7 @@ export default function WebsiteSeoOverviewClient({ sites, searchConsoleConnected
     </section>
 
     <section className="border-y border-slate-200 bg-slate-50/70 px-5 py-5">
-      <div className="flex items-start gap-3"><div className="rounded-lg border border-slate-200 bg-white p-2 text-slate-700"><Globe2 className="h-5 w-5" /></div><div><h3 className="font-semibold text-slate-950">Agregar una URL externa</h3><p className="mt-0.5 text-sm text-slate-600">Rastrea cualquier web pública, aunque no haya sido creada en ORDEX.</p></div></div>
+      <div className="flex items-start gap-3"><div className="rounded-lg border border-slate-200 bg-white p-2 text-slate-700"><Globe2 className="h-5 w-5" /></div><div><h3 className="font-semibold text-slate-950">Agregar una URL externa</h3><p className="mt-0.5 text-sm text-slate-600">Rastrea cualquier web pública, aunque no haya sido creada en Joinclap.</p></div></div>
       <div className="mt-4 grid gap-3 lg:grid-cols-[0.8fr_1.2fr_1.2fr_auto]">
         <div><Label>Nombre</Label><Input className="mt-1.5 bg-white" value={externalSite.nombre} onChange={(event) => setExternalSite((current) => ({ ...current, nombre: event.target.value }))} placeholder="Sitio del cliente" /></div>
         <div><Label>URL pública</Label><Input className="mt-1.5 bg-white" type="url" value={externalSite.siteUrl} onChange={(event) => setExternalSite((current) => ({ ...current, siteUrl: event.target.value }))} placeholder="https://cliente.com/pagina/" /></div>

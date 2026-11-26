@@ -45,8 +45,8 @@ export async function POST(request: Request) {
 
     const empresaNombre = (user.empresa?.nombre ?? '').trim()
     const subject = empresaNombre
-      ? `Código de verificación · ${empresaNombre} · Ordex`
-      : 'Código de verificación · Ordex'
+      ? `Código de verificación · ${empresaNombre} · Joinclap`
+      : 'Código de verificación · Joinclap'
 
     const html = renderEmail({
       title: 'Verifica tu cuenta',

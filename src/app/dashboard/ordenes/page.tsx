@@ -1400,7 +1400,7 @@ export default function OrdenesPage() {
           <DialogHeader className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.18),_transparent_34%),linear-gradient(135deg,_#fffbeb_0%,_#fff7ed_100%)] px-6 py-6 text-left">
             <DialogTitle>Aliados por capacidad</DialogTitle>
             <DialogDescription>
-              Usa ORDEX ROP para buscar apoyo operativo cuando una orden activa muestra presión de entrega o asignación.
+              Usa Joinclap ROP para buscar apoyo operativo cuando una orden activa muestra presión de entrega o asignación.
             </DialogDescription>
           </DialogHeader>
 

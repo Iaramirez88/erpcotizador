@@ -243,7 +243,7 @@ export function RegisterPageClient({ defaultCallbackUrl }: RegisterPageClientPro
     <Card className="w-full max-w-md border-0 shadow-sm">
         <CardHeader className="space-y-1">
           <div className="flex justify-center mb-2">
-            <div className="text-3xl font-semibold tracking-tight">Ordex</div>
+            <img src="/brand/logo-joinclap.png" alt="Joinclap" className="h-[55px] w-auto" />
           </div>
           <CardTitle className="text-2xl text-center">{t('auth.register.title')}</CardTitle>
           <CardDescription className="text-center">{t('auth.register.description')}</CardDescription>

@@ -1121,14 +1121,14 @@ export default function Sidebar({ user }: SidebarProps) {
   const personalDisplayName = useMemo(() => {
     const trimmedUserName = (user.name ?? '').trim()
     if (trimmedUserName) return trimmedUserName
-    return 'Ordex'
+    return 'Joinclap'
   }, [user.name])
 
   const sidebarBrandName = isPersonal ? personalDisplayName : (empresa?.nombre ?? 'SGDigital')
   const sidebarBrandLogo = isPersonal && !(user.name ?? '').trim()
     ? ORDEX_FALLBACK_LOGO
     : (empresa?.logo ?? null)
-  const sidebarBrandAlt = sidebarBrandName || 'Ordex'
+  const sidebarBrandAlt = sidebarBrandName || 'Joinclap'
 
   // Para persona individual, mostrar todos los módulos (candado si no está habilitado por plan).
   // Para empresa, ocultar directamente lo que el plan u override dejó apagado.

@@ -121,7 +121,7 @@ export function CrmMessagingConsumption() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Consumo de mensajería</h2>
-          <p className="text-sm text-slate-500">Cuotas comerciales internas de ORDEx por canal y empresa.</p>
+          <p className="text-sm text-slate-500">Cuotas comerciales internas de Joinclap por canal y empresa.</p>
         </div>
         <Button variant="outline" onClick={() => void loadOverview()} disabled={loading}>
           Actualizar

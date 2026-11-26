@@ -41,6 +41,6 @@ export async function GET() {
     method: 'POST',
     description: 'Dispara el recordatorio diario de contratos por vencer en nómina.',
     authentication: 'Requiere X-API-Key header o Authorization: Bearer token',
-    cron_setup: `# Ejecutar todos los días a las 7:00 a.m.\n0 7 * * * curl -X POST https://sgdigitalordex.com/api/admin/jobs/payroll-contract-reminders -H "X-API-Key: YOUR_KEY"`,
+    cron_setup: `# Ejecutar todos los días a las 7:00 a.m.\n0 7 * * * curl -X POST https://joinclap.com.co/api/admin/jobs/payroll-contract-reminders -H "X-API-Key: YOUR_KEY"`,
   })
 }

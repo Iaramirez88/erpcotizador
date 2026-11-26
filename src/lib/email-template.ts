@@ -50,7 +50,7 @@ export function renderEmailLink(href: string, label?: string): string {
 }
 
 export function renderEmail(args: RenderEmailArgs): string {
-  const brandName = 'Ordex'
+  const brandName = 'Joinclap'
   const preheader = args.preheader
     ? `<div style="display:none; max-height:0; overflow:hidden; opacity:0; color:transparent;">${escapeHtml(args.preheader)}</div>`
     : ''

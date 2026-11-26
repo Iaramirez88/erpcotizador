@@ -14,7 +14,7 @@ type BeforeInstallPromptEvent = Event & {
 const IOS_INSTALL_STEPS = [
   'Abre el menú Compartir de Safari.',
   'Toca Agregar a pantalla de inicio.',
-  'Confirma con Agregar para instalar Ordex como app.',
+  'Confirma con Agregar para instalar Joinclap como app.',
 ]
 
 function detectMobileOrTablet() {
@@ -85,7 +85,7 @@ export function PwaInstallCta() {
   const pathname = usePathname()
   const isIos = useMemo(() => detectIOS(), [])
   // Los embeds públicos (formulario, chatbot y agenda) son para visitantes finales:
-  // ahí no debe aparecer el aviso de instalación de Ordex, solo el contenido del embed.
+  // ahí no debe aparecer el aviso de instalación de Joinclap, solo el contenido del embed.
   const isPublicEmbedPage = /^\/(form|chatbot|booking)\//.test(pathname || '')
   const canShow = isEligibleDevice && !isInstalled && !dismissed && !isPublicEmbedPage
   const isNativeInstallSupported = Boolean(installPromptEvent)
@@ -125,7 +125,7 @@ export function PwaInstallCta() {
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="text-sm font-semibold">Instala Ordex en tu dispositivo</p>
+                  <p className="text-sm font-semibold">Instala Joinclap en tu dispositivo</p>
                   <p className="mt-1 text-xs leading-5 text-sky-50/90">Acceso directo, apertura tipo app y mejor experiencia cuando trabajas desde móvil o tablet.</p>
                 </div>
                 <button
@@ -156,7 +156,7 @@ export function PwaInstallCta() {
       <Dialog open={instructionsOpen} onOpenChange={setInstructionsOpen}>
         <DialogContent className="max-w-md rounded-[24px]">
           <DialogHeader>
-            <DialogTitle>Instalar Ordex en {isIos ? 'iPhone o iPad' : 'tu dispositivo'}</DialogTitle>
+            <DialogTitle>Instalar Joinclap en {isIos ? 'iPhone o iPad' : 'tu dispositivo'}</DialogTitle>
             <DialogDescription>
               {isIos
                 ? 'En iOS la instalación se hace desde el menú del navegador. Toma solo unos segundos.'
@@ -167,7 +167,7 @@ export function PwaInstallCta() {
             {(isIos ? IOS_INSTALL_STEPS : [
               'Abre el menú del navegador.',
               'Busca la opción Instalar app o Agregar a pantalla de inicio.',
-              'Confirma para guardar Ordex como aplicación.',
+              'Confirma para guardar Joinclap como aplicación.',
             ]).map((step, index) => (
               <div key={step} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">{index + 1}</span>

@@ -140,7 +140,7 @@ export function RopExternalOnboardingClient() {
                   Únete a una red operativa real sin entrar primero al ERP completo.
                 </h1>
                 <p className="max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-                  Este portal concentra el onboarding externo de ORDEX ROP. Si recibiste una invitación o un código de espacio, aquí preparas tu registro y caes directo en el flujo correcto.
+                  Este portal concentra el onboarding externo de Joinclap ROP. Si recibiste una invitación o un código de espacio, aquí preparas tu registro y caes directo en el flujo correcto.
                 </p>
               </div>
 

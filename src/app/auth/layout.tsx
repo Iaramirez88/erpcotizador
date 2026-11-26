@@ -11,7 +11,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     <div className="min-h-screen flex">
       <div className="hidden md:flex md:w-1/2 flex-col justify-between p-10 bg-muted">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-2xl font-semibold tracking-tight">Ordex</div>
+          <img src="/brand/logo-joinclap.png" alt="Joinclap" className="h-[55px] w-auto" />
           <div className="flex items-center gap-2">
             <Button type="button" variant={language === 'es' ? 'default' : 'outline'} size="sm" onClick={() => setLanguage('es')}>
               {t('common.spanish')}
@@ -28,7 +28,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           </div>
         </div>
         <div className="space-y-2 text-xs text-muted-foreground">
-          <div>© {new Date().getFullYear()} Ordex</div>
+          <div>© {new Date().getFullYear()} Joinclap</div>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <Link href="/politica-de-privacidad" className="underline underline-offset-4 hover:text-foreground">
               Política de privacidad

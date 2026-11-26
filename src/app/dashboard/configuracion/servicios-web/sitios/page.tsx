@@ -31,7 +31,7 @@ export default async function WebsiteBuilderSitesPage() {
           { label: 'Sitios' },
         ]}
         title="Sitios web"
-        description="Base operativa para crear, organizar, versionar y publicar sitios desde Ordex."
+        description="Base operativa para crear, organizar, versionar y publicar sitios desde Joinclap."
       />
 
       <WebsiteServicesModuleTabs showBuilderTab={showBuilderTab} />

@@ -23,7 +23,7 @@ type SendEmailArgs = {
 }
 
 function resolveFromAddress(fromName?: string, fromEmail?: string) {
-  const baseFrom = process.env.EMAIL_FROM || 'Ordex <onboarding@resend.dev>'
+  const baseFrom = process.env.EMAIL_FROM || 'Joinclap <onboarding@resend.dev>'
   const name = (fromName || '').trim()
   const email = (fromEmail || '').trim()
 

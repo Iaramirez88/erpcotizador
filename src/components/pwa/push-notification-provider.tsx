@@ -163,7 +163,7 @@ export function PushNotificationProvider() {
     ? 'El permiso ya fue concedido, pero esta instalación no alcanzó a registrar una suscripción push activa. Usa el botón para repararla.'
     : permission === 'denied'
       ? 'El permiso está bloqueado. Debes habilitarlo en los ajustes del navegador o de la app para recibir avisos con la app cerrada.'
-      : 'Con esto Ordex podrá mostrarte avisos del sistema aunque la app esté cerrada o en segundo plano.'
+      : 'Con esto Joinclap podrá mostrarte avisos del sistema aunque la app esté cerrada o en segundo plano.'
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) handleDismiss() }}>

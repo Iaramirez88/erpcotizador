@@ -57,13 +57,17 @@ const devServiceWorkerCleanupScript = `
 const facebookDomainVerification = process.env.NEXT_PUBLIC_FACEBOOK_DOMAIN_VERIFICATION?.trim();
 
 export const metadata: Metadata = {
-  title: "Ordex",
+  title: "Joinclap",
   description: "Sistema de cotización y órdenes de trabajo",
   manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/brand/favicon-joinclap.png",
+    apple: "/brand/favicon-joinclap.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Ordex",
+    title: "Joinclap",
   },
   formatDetection: {
     telephone: false,

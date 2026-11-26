@@ -30,7 +30,7 @@ export function validateWebsiteCustomHostname(value: unknown) {
 
   const baseDomain = normalizeWebsiteBuilderHost(process.env.NEXT_PUBLIC_WEBSITE_BASE_DOMAIN)
   if (baseDomain && (hostname === baseDomain || hostname.endsWith(`.${baseDomain}`))) {
-    return { ok: false as const, error: 'Los dominios internos de Ordex no se conectan como dominios personalizados.' }
+    return { ok: false as const, error: 'Los dominios internos de Joinclap no se conectan como dominios personalizados.' }
   }
 
   return { ok: true as const, hostname, registrableDomain: parsed.domain }
