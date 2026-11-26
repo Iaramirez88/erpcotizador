@@ -410,7 +410,7 @@ export const websiteBuilderPuckConfig: Config = {
             '--website-padding-mobile': `${Math.max(0, Number(mobilePadding) || 0)}px`,
           } as React.CSSProperties}
         >
-          {Content ? <Content className="min-h-28 border border-dashed border-slate-300/70" /> : null}
+          {Content ? <Content className="min-h-24" /> : null}
         </section>
       ),
     },
@@ -587,7 +587,6 @@ export const websiteBuilderPuckConfig: Config = {
         content: {
           type: 'slot',
           label: 'Contenido',
-          allow: ['TextBlock', 'ImageBlock', 'CtaBlock'],
         },
         ...advancedStyleFields(),
         ...typographyStyleFields(),
@@ -606,7 +605,7 @@ export const websiteBuilderPuckConfig: Config = {
                 </div>
               ) : null}
               <div className="space-y-5">
-                {Content ? <Content className="min-h-[120px] rounded-[24px] border border-dashed border-slate-300/70 p-3" /> : null}
+                {Content ? <Content className="min-h-[80px]" /> : null}
               </div>
             </div>
           </section>
@@ -726,12 +725,10 @@ export const websiteBuilderPuckConfig: Config = {
         leftColumn: {
           type: 'slot',
           label: 'Columna izquierda',
-          allow: ['TextBlock', 'ImageBlock', 'CtaBlock', 'SectionBlock'],
         },
         rightColumn: {
           type: 'slot',
           label: 'Columna derecha',
-          allow: ['TextBlock', 'ImageBlock', 'CtaBlock', 'SectionBlock'],
         },
       },
       render: ({
@@ -758,10 +755,10 @@ export const websiteBuilderPuckConfig: Config = {
             <div className={title || description || eyebrow ? 'mt-8' : ''}>
               <div className="flex flex-col lg:flex-row" style={{ gap: `${Math.min(Math.max(Number(gap) || 24, 12), 64)}px` }}>
                 <div className="min-w-0 rounded-[26px] border border-slate-200/80 bg-slate-50/70 p-4" style={{ flexBasis: 0, flexGrow: Number(leftFlex) || 6 }}>
-                  {LeftColumn ? <LeftColumn className="min-h-[200px] rounded-[20px] border border-dashed border-slate-300/80 p-3" /> : null}
+                  {LeftColumn ? <LeftColumn className="min-h-[80px]" /> : null}
                 </div>
                 <div className="min-w-0 rounded-[26px] border border-slate-200/80 bg-slate-50/70 p-4" style={{ flexBasis: 0, flexGrow: Number(rightFlex) || 6 }}>
-                  {RightColumn ? <RightColumn className="min-h-[200px] rounded-[20px] border border-dashed border-slate-300/80 p-3" /> : null}
+                  {RightColumn ? <RightColumn className="min-h-[80px]" /> : null}
                 </div>
               </div>
             </div>
@@ -1145,7 +1142,7 @@ export const websiteBuilderPuckConfig: Config = {
             <div className={`grid grid-cols-1 ${gridClass}`} style={{ gap: gapValue }}>
               {cells.map((Cell, index) => (
                 <div key={index} className="min-w-0">
-                  {Cell ? <Cell className="min-h-[120px] rounded-[16px] border border-dashed border-slate-300/80 p-3" /> : <div className="flex min-h-[120px] items-center justify-center rounded-[16px] border border-dashed border-slate-300/70 text-sm text-slate-400">Columna {index + 1}</div>}
+                  {Cell ? <Cell className="min-h-[80px]" /> : null}
                 </div>
               ))}
             </div>

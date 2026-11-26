@@ -9,7 +9,7 @@ export async function POST(_request: Request, context: { params: Promise<{ proje
     const guard = await requireWebsiteBuilderAccess()
     if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
     const { projectId } = await context.params
-    const result = await syncWebsiteProjectSearchConsole({ empresaId: guard.access.empresaId!, projectId })
+    const result = await syncWebsiteProjectSearchConsole({ access: guard.access, projectId })
     return NextResponse.json({ success: true, data: result })
   } catch (error) {
     console.error('Error sincronizando SEO del sitio:', error)

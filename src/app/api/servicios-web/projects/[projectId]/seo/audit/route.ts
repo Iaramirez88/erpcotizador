@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { parseJsonObject } from '@/lib/crm-omnichannel'
 import { prisma } from '@/lib/prisma'
 import { auditWebsitePage } from '@/lib/website-seo-audit'
-import { requireWebsiteBuilderAccess } from '@/lib/website-builder-server'
+import { accessibleWebsiteProjectWhere, requireWebsiteBuilderAccess } from '@/lib/website-builder-server'
 
 export const runtime = 'nodejs'
 
@@ -13,7 +13,7 @@ export async function POST(request: Request, context: { params: Promise<{ projec
     if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
     const { projectId } = await context.params
     const project = await prisma.websiteProject.findFirst({
-      where: { id: projectId, empresaId: guard.access.empresaId! },
+      where: { id: projectId, ...accessibleWebsiteProjectWhere(guard.access) },
       select: { id: true, seoJson: true },
     })
     if (!project) return NextResponse.json({ error: 'Sitio no encontrado.' }, { status: 404 })

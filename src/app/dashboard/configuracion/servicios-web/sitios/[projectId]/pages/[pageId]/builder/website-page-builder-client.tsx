@@ -10,7 +10,9 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/hooks/use-toast'
+import Link from 'next/link'
 import { websiteBuilderPuckConfig, WEBSITE_BUILDER_BLOCK_ICONS } from '@/components/website-builder/puck-config'
+import type { WebsiteSiteSettings } from '@/lib/website-site-settings'
 import { buildWebsitePublicUrl } from '@/lib/website-builder'
 import { cloneWebsiteFunnelTemplateData, WEBSITE_FUNNEL_TEMPLATES, type WebsiteFunnelTemplate } from '@/lib/website-builder-funnel-templates'
 import { useUiStore } from '@/lib/ui-store'
@@ -33,6 +35,7 @@ type Props = {
   pageSlug: string
   isHome: boolean
   initialData: Record<string, unknown>
+  siteSettings: WebsiteSiteSettings
   versions: BuilderVersion[]
 }
 
@@ -69,6 +72,7 @@ export default function WebsitePageBuilderClient({
   pageSlug,
   isHome,
   initialData,
+  siteSettings,
   versions,
 }: Props) {
   const { toast } = useToast()
@@ -159,8 +163,9 @@ export default function WebsitePageBuilderClient({
       ? { type: 'ResponsiveBlock', props: { id: makeBlockId('contenedor'), backgroundColor: 'transparent', desktopPadding: 24, tabletPadding: 20, mobilePadding: 16, hideOnTablet: 'no', hideOnMobile: 'no' } }
       : { type: 'GridBlock', props: { id: makeBlockId('grid'), columns: kind, gap: 24, backgroundColor: 'transparent' } }
 
+    const current = Array.isArray(data.content) ? data.content : []
     dataRevisionRef.current += 1
-    setData({ ...data, content: [block] } as Data)
+    setData({ ...data, content: [...current, block] } as Data)
     setIsDirty(true)
   }
 
@@ -325,6 +330,24 @@ export default function WebsitePageBuilderClient({
               <span className={`h-1.5 w-1.5 rounded-full ${isDirty ? 'bg-amber-500' : 'bg-emerald-500'}`} />
               {isSavingDraft ? 'Guardando...' : isDirty ? 'Cambios pendientes' : 'Borrador al día'}
             </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" size="sm" variant="outline">
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden xl:inline">Agregar estructura</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64 p-2">
+                <DropdownMenuLabel className="px-2 py-2">Agregar estructura</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <div className="space-y-1">
+                  <button type="button" className="flex w-full items-center rounded-md px-2 py-2 text-left text-sm hover:bg-accent" onClick={() => insertStructure('full')}>Contenedor completo</button>
+                  <button type="button" className="flex w-full items-center rounded-md px-2 py-2 text-left text-sm hover:bg-accent" onClick={() => insertStructure(2)}>2 columnas</button>
+                  <button type="button" className="flex w-full items-center rounded-md px-2 py-2 text-left text-sm hover:bg-accent" onClick={() => insertStructure(3)}>3 columnas</button>
+                  <button type="button" className="flex w-full items-center rounded-md px-2 py-2 text-left text-sm hover:bg-accent" onClick={() => insertStructure(4)}>4 columnas</button>
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {builderActions.filter((action) => pinnedActions.includes(action.key)).map((action) => {
               const ActionIcon = action.icon
               return (
@@ -389,6 +412,26 @@ export default function WebsitePageBuilderClient({
 
       <div className="space-y-4">
         <div className={cn('overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm', expandedView && 'rounded-[20px]')}>
+          <div className="border-b border-dashed border-slate-300 bg-slate-50/60">
+            <div className="flex items-center justify-between px-4 py-2">
+              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Header global</span>
+              <Link href={`/dashboard/configuracion/servicios-web/sitios/${projectId}/ajustes`} className="text-xs font-medium text-blue-600 hover:underline">Editar</Link>
+            </div>
+            {siteSettings.header.enabled ? (
+              <div className="flex items-center justify-between gap-4 px-4 py-3">
+                <span className="truncate font-semibold text-slate-900">{siteSettings.header.brand || 'Mi marca'}</span>
+                <nav className="hidden items-center gap-4 md:flex">
+                  {siteSettings.header.links.map((link, index) => (
+                    <span key={index} className="text-xs text-slate-500">{link.label}</span>
+                  ))}
+                </nav>
+                {siteSettings.header.buttonLabel ? <span className="shrink-0 rounded-md bg-slate-900 px-3 py-1 text-xs font-medium text-white">{siteSettings.header.buttonLabel}</span> : null}
+              </div>
+            ) : (
+              <div className="px-4 py-3 text-sm text-slate-400">Header global desactivado</div>
+            )}
+          </div>
+
           {isEmptyCanvas ? (
             <div className="flex min-h-[520px] flex-col items-center justify-center gap-6 p-10 text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
@@ -417,6 +460,29 @@ export default function WebsitePageBuilderClient({
               overrides={puckOverrides}
             />
           )}
+
+          <div className="border-t border-dashed border-slate-300 bg-slate-50/60">
+            <div className="flex items-center justify-between px-4 py-2">
+              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Footer global</span>
+              <Link href={`/dashboard/configuracion/servicios-web/sitios/${projectId}/ajustes`} className="text-xs font-medium text-blue-600 hover:underline">Editar</Link>
+            </div>
+            {siteSettings.footer.enabled ? (
+              <div className="flex items-center justify-between gap-4 px-4 py-3">
+                <div className="min-w-0">
+                  <span className="truncate font-semibold text-slate-900">{siteSettings.footer.brand || 'Mi marca'}</span>
+                  {siteSettings.footer.description ? <p className="truncate text-xs text-slate-500">{siteSettings.footer.description}</p> : null}
+                </div>
+                <nav className="hidden items-center gap-3 md:flex">
+                  {siteSettings.footer.links.slice(0, 4).map((link, index) => (
+                    <span key={index} className="text-xs text-slate-500">{link.label}</span>
+                  ))}
+                </nav>
+                {siteSettings.footer.copyright ? <span className="shrink-0 text-xs text-slate-400">{siteSettings.footer.copyright}</span> : null}
+              </div>
+            ) : (
+              <div className="px-4 py-3 text-sm text-slate-400">Footer global desactivado</div>
+            )}
+          </div>
         </div>
       </div>
 

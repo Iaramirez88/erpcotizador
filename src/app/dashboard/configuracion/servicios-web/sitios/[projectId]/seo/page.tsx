@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { parseJsonObject } from '@/lib/crm-omnichannel'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 import { getWebsiteServicesAccessForUser, hasWebsiteBuilderPagesForEmpresa } from '@/lib/website-services'
+import { accessibleWebsiteProjectWhere } from '@/lib/website-builder-server'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import WebsiteServicesModuleTabs from '../../../website-services-module-tabs'
 import WebsiteProjectSeoClient from './website-project-seo-client'
@@ -20,7 +21,7 @@ export default async function WebsiteProjectSeoPage({ params }: { params: Promis
 
   const { projectId } = await params
   const project = await prisma.websiteProject.findFirst({
-    where: { id: projectId, empresaId: access.empresaId },
+    where: { id: projectId, ...accessibleWebsiteProjectWhere(access) },
     select: { id: true, nombre: true, slug: true, subdomain: true, primaryDomain: true, trackingOnly: true, seoJson: true },
   })
   if (!project) notFound()

@@ -7,6 +7,7 @@ import WebsiteServicesModuleTabs from '../../../website-services-module-tabs'
 import WebsiteSiteSettingsClient from './website-site-settings-client'
 import { getWebsiteServicesAccessForUser, hasWebsiteBuilderPagesForEmpresa } from '@/lib/website-services'
 import { normalizeWebsiteSiteSettings } from '@/lib/website-site-settings'
+import { accessibleWebsiteProjectWhere } from '@/lib/website-builder-server'
 
 export const runtime = 'nodejs'
 
@@ -23,7 +24,7 @@ export default async function WebsiteProjectSettingsRoute(props: { params: Promi
 
   const { projectId } = await props.params
   const project = await prisma.websiteProject.findFirst({
-    where: { id: projectId, empresaId: access.empresaId },
+    where: { id: projectId, ...accessibleWebsiteProjectWhere(access) },
     select: { id: true, nombre: true, themeJson: true },
   })
 

@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   const failures: Array<{ projectId: string; error: string }> = []
   for (const project of projects) {
     try {
-      await syncWebsiteProjectSearchConsole({ empresaId: project.empresaId, projectId: project.id })
+      await syncWebsiteProjectSearchConsole({ access: { empresaId: project.empresaId, isSuperAdmin: false }, projectId: project.id })
       completed += 1
     } catch (error) {
       failures.push({ projectId: project.id, error: error instanceof Error ? error.message.slice(0, 300) : 'Error desconocido' })

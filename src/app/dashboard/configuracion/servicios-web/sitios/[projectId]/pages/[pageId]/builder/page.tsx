@@ -8,6 +8,7 @@ import WebsitePageBuilderClient from './website-page-builder-client'
 import { getWebsiteServicesAccessForUser, hasWebsiteBuilderPagesForEmpresa } from '@/lib/website-services'
 import { accessibleWebsiteProjectWhere } from '@/lib/website-builder-server'
 import { normalizeWebsiteBuilderData, serializeWebsiteProjectVersion } from '@/lib/website-builder'
+import { normalizeWebsiteSiteSettings } from '@/lib/website-site-settings'
 
 export const runtime = 'nodejs'
 
@@ -45,6 +46,7 @@ export default async function WebsiteProjectPageBuilderRoute(
           nombre: true,
           slug: true,
           subdomain: true,
+          themeJson: true,
         },
       },
       versions: {
@@ -92,6 +94,7 @@ export default async function WebsiteProjectPageBuilderRoute(
         pageSlug={page.slug}
         isHome={page.slug === 'inicio'}
         initialData={normalizeWebsiteBuilderData(page.draftData)}
+        siteSettings={normalizeWebsiteSiteSettings(page.websiteProject.themeJson)}
         versions={page.versions.map(serializeWebsiteProjectVersion)}
       />
     </div>

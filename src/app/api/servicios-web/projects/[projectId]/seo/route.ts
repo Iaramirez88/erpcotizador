@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { normalizeString } from '@/lib/crm'
 import { parseJsonObject } from '@/lib/crm-omnichannel'
 import { prisma } from '@/lib/prisma'
-import { requireWebsiteBuilderAccess } from '@/lib/website-builder-server'
+import { accessibleWebsiteProjectWhere, requireWebsiteBuilderAccess } from '@/lib/website-builder-server'
 import { getSerpProvider } from '@/lib/seo-serp-provider'
 import { getSerpBudgetUsage } from '@/lib/seo-rank-tracker'
 import { buildSeoIntelligence } from '@/lib/seo-intelligence'
@@ -19,7 +19,7 @@ export async function GET(_request: Request, context: Context) {
   const { projectId } = await context.params
   const [project, connection, pendingSerpTasks, serpBudget] = await Promise.all([
     prisma.websiteProject.findFirst({
-      where: { id: projectId, empresaId: guard.access.empresaId! },
+      where: { id: projectId, ...accessibleWebsiteProjectWhere(guard.access) },
       select: {
         id: true,
         nombre: true,
@@ -66,7 +66,7 @@ export async function PATCH(request: Request, context: Context) {
 
   const { projectId } = await context.params
   const project = await prisma.websiteProject.findFirst({
-    where: { id: projectId, empresaId: guard.access.empresaId! },
+    where: { id: projectId, ...accessibleWebsiteProjectWhere(guard.access) },
     select: { id: true, seoJson: true },
   })
   if (!project) return NextResponse.json({ error: 'Sitio no encontrado.' }, { status: 404 })
