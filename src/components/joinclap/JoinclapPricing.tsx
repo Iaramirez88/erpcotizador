@@ -1,12 +1,39 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import JoinclapHeader from "./JoinclapHeader"
 import JoinclapFooter from "./JoinclapFooter"
 import { useJoinclapEffects } from "./useJoinclapEffects"
 
+type BillingPeriod = "mensual" | "anual"
+
+// Descuento aplicado al pago anual.
+const ANNUAL_DISCOUNT = 0.1
+
+type Plan = {
+  name: string
+  tag: string
+  monthly: number
+  desc: string
+  features: string[]
+  featured?: boolean
+}
+
+const PLANS: Plan[] = [
+  { name: "Básico", tag: "Para empezar a ordenar", monthly: 295000, desc: "Ideal para comenzar a centralizar clientes, ventas y operación en un solo lugar.", features: ["2 usuarios", "1 sede", "500 clientes · 200 productos", "300 cotizaciones/mes", "100 reportes · 100 remisiones", "100 órdenes de trabajo", "Litografía, escaneos y terminados sin límite"] },
+  { name: "Medio", tag: "Escala comercial", monthly: 650000, desc: "Escala la operación comercial y logística con más usuarios, sedes y volumen mensual.", features: ["Más usuarios y sedes", "Mayor volumen mensual", "Todos los módulos operativos", "Sin CRM omnicanal"] },
+  { name: "Intermedio", tag: "Operación casi ilimitada", monthly: 1180000, desc: "Todo ilimitado salvo unos pocos límites de capacidad, pensado para equipos en crecimiento.", features: ["6 sedes", "10 usuarios", "8.000 clientes", "5.000 cotizaciones/mes", "CRM disponible solo en Full"], featured: true },
+  { name: "Full", tag: "Sin límites", monthly: 1850000, desc: "Todas las funcionalidades y módulos habilitados, con CRM omnicanal incluido.", features: ["Sin límites de capacidad", "Todos los módulos habilitados", "CRM omnicanal incluido", "Máxima capacidad de usuarios y sedes"] },
+]
+
+function formatCOP(value: number) {
+  return `$${value.toLocaleString("es-CO")}`
+}
+
 export default function JoinclapPricing() {
   useJoinclapEffects()
+  const [period, setPeriod] = useState<BillingPeriod>("mensual")
 
   return (
     <div className="jc">
@@ -23,74 +50,44 @@ export default function JoinclapPricing() {
               </div>
             </div>
 
-            <div className="pricing-grid">
-              <article className="pricing-card reveal">
-                <div className="pricing-name">Básico</div>
-                <div className="mono pricing-tag">Para empezar a ordenar</div>
-                <div className="pricing-price">$295.000 <small>COP</small></div>
-                <div className="pricing-cycle">por mes · 10% dto. anual</div>
-                <p className="pricing-desc">Ideal para comenzar a centralizar clientes, ventas y operación en un solo lugar.</p>
-                <ul className="pricing-features">
-                  <li>2 usuarios</li>
-                  <li>1 sede</li>
-                  <li>500 clientes · 200 productos</li>
-                  <li>300 cotizaciones/mes</li>
-                  <li>100 reportes · 100 remisiones</li>
-                  <li>100 órdenes de trabajo</li>
-                  <li>Litografía, escaneos y terminados sin límite</li>
-                </ul>
-                <a className="btn magnetic" href="https://wa.me/?text=Hola%2C%20quiero%20conocer%20el%20plan%20B%C3%A1sico%20de%20Joinclap." target="_blank" rel="noopener">Solicitar demo <span>↗</span></a>
-              </article>
-
-              <article className="pricing-card reveal">
-                <div className="pricing-name">Medio</div>
-                <div className="mono pricing-tag">Escala comercial</div>
-                <div className="pricing-price">$650.000 <small>COP</small></div>
-                <div className="pricing-cycle">por mes · 10% dto. anual</div>
-                <p className="pricing-desc">Escala la operación comercial y logística con más usuarios, sedes y volumen mensual.</p>
-                <ul className="pricing-features">
-                  <li>Más usuarios y sedes</li>
-                  <li>Mayor volumen mensual</li>
-                  <li>Todos los módulos operativos</li>
-                  <li>Sin CRM omnicanal</li>
-                </ul>
-                <a className="btn magnetic" href="https://wa.me/?text=Hola%2C%20quiero%20conocer%20el%20plan%20Medio%20de%20Joinclap." target="_blank" rel="noopener">Solicitar demo <span>↗</span></a>
-              </article>
-
-                            <article className="pricing-card reveal featured">
-                <span className="pricing-badge">Más elegido</span>
-                <div className="pricing-name">Intermedio</div>
-                <div className="mono pricing-tag">Operación casi ilimitada</div>
-                <div className="pricing-price">$1.180.000 <small>COP</small></div>
-                <div className="pricing-cycle">por mes · 10% dto. anual</div>
-                <p className="pricing-desc">Todo ilimitado salvo unos pocos límites de capacidad, pensado para equipos en crecimiento.</p>
-                <ul className="pricing-features">
-                  <li>6 sedes</li>
-                  <li>10 usuarios</li>
-                  <li>8.000 clientes</li>
-                  <li>5.000 cotizaciones/mes</li>
-                  <li>CRM disponible solo en Full</li>
-                </ul>
-                <a className="btn magnetic" href="https://wa.me/?text=Hola%2C%20quiero%20conocer%20el%20plan%20Intermedio%20de%20Joinclap." target="_blank" rel="noopener">Solicitar demo <span>↗</span></a>
-              </article>
-
-              <article className="pricing-card reveal">
-                <div className="pricing-name">Full</div>
-                <div className="mono pricing-tag">Sin límites</div>
-                <div className="pricing-price">$1.850.000 <small>COP</small></div>
-                <div className="pricing-cycle">por mes · 10% dto. anual</div>
-                <p className="pricing-desc">Todas las funcionalidades y módulos habilitados, con CRM omnicanal incluido.</p>
-                <ul className="pricing-features">
-                  <li>Sin límites de capacidad</li>
-                  <li>Todos los módulos habilitados</li>
-                  <li>CRM omnicanal incluido</li>
-                  <li>Máxima capacidad de usuarios y sedes</li>
-                </ul>
-                <a className="btn magnetic" href="https://wa.me/?text=Hola%2C%20quiero%20conocer%20el%20plan%20Full%20de%20Joinclap." target="_blank" rel="noopener">Solicitar demo <span>↗</span></a>
-              </article>
+            <div className="pricing-toggle-wrap">
+              <div className="pricing-toggle" role="group" aria-label="Periodo de facturación">
+                <button type="button" className={period === "mensual" ? "active" : ""} onClick={() => setPeriod("mensual")}>Mensual</button>
+                <button type="button" className={period === "anual" ? "active" : ""} onClick={() => setPeriod("anual")}>Anual <span className="pricing-toggle-badge">-10%</span></button>
+              </div>
             </div>
 
-            <p className="pricing-note">Precios mensuales en pesos colombianos (COP). El pago anual incluye un 10% de descuento. ¿Tienes una operación con necesidades particulares? <Link href="/#contacto" style={{ color: "#638b1b", fontWeight: 700 }}>Conversemos</Link> y armamos un plan a tu medida.</p>
+            <div className="pricing-grid">
+              {PLANS.map((plan) => {
+                const monthly = plan.monthly
+                const annualMonthly = Math.round(monthly * (1 - ANNUAL_DISCOUNT))
+                const annualTotal = annualMonthly * 12
+                const annualSavings = monthly * 12 - annualTotal
+                const price = period === "anual" ? annualMonthly : monthly
+                const whatsappText = `Hola, quiero conocer el plan ${plan.name} de Joinclap.`
+
+                return (
+                  <article key={plan.name} className={`pricing-card reveal${plan.featured ? " featured" : ""}`}>
+                    {plan.featured ? <span className="pricing-badge">Más elegido</span> : null}
+                    <div className="pricing-name">{plan.name}</div>
+                    <div className="mono pricing-tag">{plan.tag}</div>
+                    <div className="pricing-price">{formatCOP(price)} <small>COP{period === "anual" ? " /mes" : ""}</small></div>
+                    <div className="pricing-cycle">{period === "anual" ? `Facturado ${formatCOP(annualTotal)} al año` : "por mes"}</div>
+                    {period === "anual" ? <div className="pricing-save">Ahorras {formatCOP(annualSavings)} al año</div> : null}
+                    <p className="pricing-desc">{plan.desc}</p>
+                    <ul className="pricing-features">
+                      {plan.features.map((feature) => <li key={feature}>{feature}</li>)}
+                    </ul>
+                    <a className="btn magnetic" href={`https://wa.me/?text=${encodeURIComponent(whatsappText)}`} target="_blank" rel="noopener">Solicitar demo <span>↗</span></a>
+                  </article>
+                )
+              })}
+            </div>
+
+            <p className="pricing-note">
+              Precios en pesos colombianos (COP). El pago anual incluye un 10% de descuento. ¿Tienes una operación con necesidades particulares?{" "}
+              <Link href="/#contacto" style={{ color: "#638b1b", fontWeight: 700 }}>Conversemos</Link> y armamos un plan a tu medida.
+            </p>
           </div>
         </section>
 

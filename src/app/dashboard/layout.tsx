@@ -23,6 +23,7 @@ import { getWebsiteServicesAccessForUser } from "@/lib/website-services"
 import DashboardDeferredWidgets from "@/components/dashboard/dashboard-deferred-widgets"
 import RetentionNoticeBanner, { type RetentionNoticeBannerProps } from '@/components/dashboard/retention-notice-banner'
 import { RETENTION_DISMISS_COOKIE, resolveAccountRetention, retentionDismissValue } from '@/lib/retention-policy'
+import { getFreeTrialDays } from '@/lib/free-trial-setting'
 import DashboardPermissionBoundary from '@/components/dashboard/dashboard-permission-boundary'
 import { DashboardAccessProvider } from '@/components/dashboard/dashboard-access-context'
 import { buildAllowedDashboardHrefsForUser, buildAllowedDashboardPermissionKeysForUser, getAllowedModulesFromDashboardHrefs } from '@/lib/dashboard-access'
@@ -160,6 +161,7 @@ export default async function DashboardLayout({
           licenseExpiredAt: retention.licenseExpiredAt ? retention.licenseExpiredAt.toISOString() : null,
           trialExpiredAt: retention.trialExpiredAt ? retention.trialExpiredAt.toISOString() : null,
           canManageBilling,
+          trialDays: await getFreeTrialDays(),
         }
       }
     }

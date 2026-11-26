@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { requireApiAccess } from '@/lib/api-rbac'
 import {
   getDefaultLitografiaAiKnowledge,
+  getEmptyLitografiaAiKnowledge,
   litografiaAiKnowledgeDocumentSchema,
   readLitografiaAiKnowledge,
   summarizeLitografiaAiKnowledge,
@@ -43,6 +44,7 @@ export async function GET() {
       store,
       summary: summarizeLitografiaAiKnowledge(store.document),
       defaultDocument: getDefaultLitografiaAiKnowledge(),
+      emptyDocument: getEmptyLitografiaAiKnowledge(),
     })
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'No se pudo cargar la base de conocimiento IA.' }, { status: 400 })

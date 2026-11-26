@@ -1,8 +1,69 @@
 import type { Config, CustomField } from '@puckeditor/core'
 import { WebsiteLeadForm } from '@/components/website-builder/website-lead-form'
-import { WebsiteCarousel, WebsiteTabs } from '@/components/website-builder/website-interactive-blocks'
+import { WebsiteAccordion, WebsiteCarousel, WebsiteCountdown, WebsitePricing, WebsiteTabs } from '@/components/website-builder/website-interactive-blocks'
 import { WebsiteMediaField } from '@/components/website-builder/website-media-field'
 import { resolveSafeWebsiteEmbed, sanitizeWebsiteLinkHref } from '@/lib/website-embed'
+import {
+  BadgeDollarSign,
+  BarChart3,
+  Building2,
+  ChevronsDownUp,
+  Code2,
+  CodeXml,
+  Columns2,
+  Frame,
+  GalleryHorizontalEnd,
+  Heading1,
+  HelpCircle,
+  Image,
+  Images,
+  LayoutGrid,
+  Mail,
+  MapPin,
+  Menu,
+  MousePointerClick,
+  MoveVertical,
+  PanelBottom,
+  PanelsTopLeft,
+  Quote,
+  Square,
+  Tags,
+  Timer,
+  Type,
+  Users,
+  Video,
+} from 'lucide-react'
+
+export const WEBSITE_BUILDER_BLOCK_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  HeroBlock: Heading1,
+  TextBlock: Type,
+  ImageBlock: Image,
+  VideoBlock: Video,
+  CtaBlock: MousePointerClick,
+  SpacerBlock: MoveVertical,
+  ResponsiveBlock: Frame,
+  SectionBlock: Square,
+  ColumnsBlock: Columns2,
+  TabsBlock: PanelsTopLeft,
+  AccordionBlock: ChevronsDownUp,
+  GalleryBlock: Images,
+  CarouselBlock: GalleryHorizontalEnd,
+  FeaturesBlock: LayoutGrid,
+  StatsBlock: BarChart3,
+  TeamBlock: Users,
+  LogosBlock: Building2,
+  TestimonialsBlock: Quote,
+  FaqBlock: HelpCircle,
+  CountdownBlock: Timer,
+  MapBlock: MapPin,
+  EmbedBlock: Code2,
+  PricingBlock: Tags,
+  PricingToggleBlock: BadgeDollarSign,
+  ContactFormBlock: Mail,
+  NavbarBlock: Menu,
+  FooterBlock: PanelBottom,
+  CustomHtmlBlock: CodeXml,
+}
 
 type Tone = 'dark' | 'light' | 'brand'
 type Alignment = 'left' | 'center'
@@ -18,6 +79,22 @@ function mediaField(label: string, acceptedTypes: Array<'image' | 'video'>): Cus
     type: 'custom',
     label,
     render: ({ value, onChange, readOnly }) => <WebsiteMediaField value={value} onChange={onChange} readOnly={readOnly} acceptedTypes={acceptedTypes} label={label} />,
+  }
+}
+
+function dateTimeField(label: string): CustomField<string> {
+  return {
+    type: 'custom',
+    label,
+    render: ({ value, onChange, readOnly }) => (
+      <input
+        type="datetime-local"
+        value={value || ''}
+        disabled={readOnly}
+        onChange={(event) => onChange(event.target.value)}
+        style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '14px', color: '#0f172a', background: '#fff' }}
+      />
+    ),
   }
 }
 
@@ -157,10 +234,12 @@ function renderImageFrame({
 
 export const websiteBuilderPuckConfig: Config = {
   categories: {
-    structure: { title: 'Estructura', components: ['HeroBlock', 'ResponsiveBlock', 'SectionBlock', 'ColumnsBlock', 'SpacerBlock'] },
-    content: { title: 'Contenido', components: ['TextBlock', 'ImageBlock', 'GalleryBlock', 'VideoBlock', 'CarouselBlock', 'MapBlock', 'EmbedBlock', 'TabsBlock', 'FeaturesBlock', 'StatsBlock', 'TestimonialsBlock', 'FaqBlock'] },
-    conversion: { title: 'Conversión', components: ['CtaBlock', 'PricingBlock', 'ContactFormBlock'] },
-    navigation: { title: 'Navegación', components: ['NavbarBlock', 'FooterBlock'] },
+    basico: { title: 'Básico', components: ['HeroBlock', 'TextBlock', 'ImageBlock', 'VideoBlock', 'CtaBlock', 'SpacerBlock'] },
+    disposicion: { title: 'Disposición', components: ['ResponsiveBlock', 'SectionBlock', 'ColumnsBlock'] },
+    general: { title: 'General', components: ['TabsBlock', 'AccordionBlock', 'GalleryBlock', 'CarouselBlock', 'FeaturesBlock', 'StatsBlock', 'TeamBlock', 'LogosBlock', 'TestimonialsBlock', 'FaqBlock', 'CountdownBlock', 'MapBlock', 'EmbedBlock'] },
+    conversion: { title: 'Conversión', components: ['PricingBlock', 'PricingToggleBlock', 'ContactFormBlock'] },
+    navegacion: { title: 'Navegación', components: ['NavbarBlock', 'FooterBlock'] },
+    avanzado: { title: 'Avanzado', components: ['CustomHtmlBlock'] },
   },
   root: {
     label: 'Ajustes de página',
@@ -750,6 +829,32 @@ export const websiteBuilderPuckConfig: Config = {
         <section style={sectionStyle(backgroundColor as string, textColor as string, paddingY as number)}><div className="mx-auto max-w-4xl px-5 lg:px-8">{sectionHeading(eyebrow as string, title as string, description as string)}<div className="space-y-3">{(Array.isArray(items) ? items : []).map((item, index) => <details key={`${item.question}-${index}`} className="group rounded-lg border border-current/10 bg-white px-5 py-4 text-slate-950"><summary className="cursor-pointer list-none pr-8 font-semibold">{item.question}</summary><p className="mt-3 whitespace-pre-wrap leading-7 text-slate-600">{item.answer}</p></details>)}</div></div></section>
       ),
     },
+    PricingToggleBlock: {
+      label: 'Precios (mensual/anual)',
+      fields: {
+        eyebrow: { type: 'text', label: 'Etiqueta' }, title: { type: 'text', label: 'Título' }, description: { type: 'textarea', label: 'Descripción' },
+        annualDiscount: { type: 'number', label: 'Descuento anual (%)', min: 0, max: 90, step: 5 },
+        plans: {
+          type: 'array', label: 'Planes',
+          arrayFields: {
+            name: { type: 'text', label: 'Nombre' },
+            tag: { type: 'text', label: 'Etiqueta' },
+            monthlyPrice: { type: 'number', label: 'Precio mensual (COP)' },
+            features: { type: 'textarea', label: 'Características (una por línea)' },
+            buttonLabel: { type: 'text', label: 'Botón' },
+            buttonHref: { type: 'text', label: 'Enlace' },
+            featured: { type: 'radio', label: 'Destacado', options: [{ label: 'No', value: 'no' }, { label: 'Sí', value: 'yes' }] },
+          },
+          defaultItemProps: { name: 'Plan', tag: '', monthlyPrice: 0, features: 'Característica uno\nCaracterística dos', buttonLabel: 'Solicitar demo', buttonHref: '#contacto', featured: 'no' },
+          getItemSummary: (item) => item.name || 'Plan',
+        },
+        accentColor: { type: 'text', label: 'Color de acento' }, backgroundColor: { type: 'text', label: 'Fondo' }, textColor: { type: 'text', label: 'Texto' },
+      },
+      defaultProps: { eyebrow: 'Planes', title: 'Un plan para cada momento de tu negocio', description: '', annualDiscount: 10, plans: [{ name: 'Básico', tag: '', monthlyPrice: 295000, features: '2 usuarios\n1 sede\n500 clientes · 200 productos', buttonLabel: 'Solicitar demo', buttonHref: '#contacto', featured: 'no' }], accentColor: '#c9ff4a', backgroundColor: '#ffffff', textColor: '#263719' },
+      render: ({ eyebrow, title, description, annualDiscount, plans, accentColor, backgroundColor, textColor }) => (
+        <WebsitePricing plans={Array.isArray(plans) ? plans : []} annualDiscount={annualDiscount as number} eyebrow={eyebrow as string} title={title as string} description={description as string} accentColor={accentColor as string} backgroundColor={backgroundColor as string} textColor={textColor as string} />
+      ),
+    },
     ContactFormBlock: {
       label: 'Formulario de contacto',
       fields: {
@@ -844,6 +949,63 @@ export const websiteBuilderPuckConfig: Config = {
       },
       defaultProps: { title: 'Explora en detalle', items: [{ label: 'Servicio', title: 'Qué hacemos', content: 'Explica aquí tu servicio principal.' }, { label: 'Proceso', title: 'Cómo trabajamos', content: 'Describe las etapas de trabajo.' }], accentColor: '#2563eb', backgroundColor: '#ffffff', paddingY: 64 },
       render: ({ title, items, accentColor, backgroundColor, paddingY }) => <section style={sectionStyle(backgroundColor as string, '#0f172a', paddingY as number)}><div className="mx-auto max-w-5xl px-5 lg:px-8">{title ? <h2 className="mb-8 text-3xl font-semibold">{title}</h2> : null}<WebsiteTabs items={Array.isArray(items) ? items : []} accentColor={accentColor as string} /></div></section>,
+    },
+    AccordionBlock: {
+      label: 'Acordeón',
+      fields: {
+        eyebrow: { type: 'text', label: 'Etiqueta' }, title: { type: 'text', label: 'Título' }, description: { type: 'textarea', label: 'Descripción' },
+        items: { type: 'array', label: 'Elementos', arrayFields: { title: { type: 'text', label: 'Título' }, content: { type: 'textarea', label: 'Contenido' } }, defaultItemProps: { title: 'Nuevo elemento', content: 'Escribe aquí el contenido.' }, getItemSummary: (item) => item.title || 'Elemento' },
+        accentColor: { type: 'text', label: 'Color de acento' }, backgroundColor: { type: 'text', label: 'Fondo' }, textColor: { type: 'text', label: 'Texto' }, paddingY: { type: 'number', label: 'Espaciado vertical', min: 16, max: 160, step: 8 },
+      },
+      defaultProps: { eyebrow: 'Detalles', title: 'Información adicional', description: '', items: [{ title: '¿Cómo funciona?', content: 'Explica el proceso paso a paso.' }, { title: '¿Qué incluye?', content: 'Resume el alcance de tu oferta.' }], accentColor: '#2563eb', backgroundColor: '#f8fafc', textColor: '#0f172a', paddingY: 72 },
+      render: ({ eyebrow, title, description, items, accentColor, backgroundColor, textColor, paddingY }) => (
+        <section style={sectionStyle(backgroundColor as string, textColor as string, paddingY as number)}><div className="mx-auto max-w-3xl px-5 lg:px-8">{sectionHeading(eyebrow as string, title as string, description as string)}<WebsiteAccordion items={Array.isArray(items) ? items : []} accentColor={accentColor as string} /></div></section>
+      ),
+    },
+    TeamBlock: {
+      label: 'Equipo',
+      fields: {
+        eyebrow: { type: 'text', label: 'Etiqueta' }, title: { type: 'text', label: 'Título' }, description: { type: 'textarea', label: 'Descripción' },
+        columns: { type: 'select', label: 'Columnas', options: [{ label: '2', value: 2 }, { label: '3', value: 3 }, { label: '4', value: 4 }] },
+        members: { type: 'array', label: 'Miembros', arrayFields: { name: { type: 'text', label: 'Nombre' }, role: { type: 'text', label: 'Cargo' }, photoUrl: mediaField('Foto', ['image']), bio: { type: 'textarea', label: 'Biografía' } }, defaultItemProps: { name: 'Nombre', role: 'Cargo', photoUrl: '', bio: '' }, getItemSummary: (item) => item.name || 'Miembro' },
+        backgroundColor: { type: 'text', label: 'Fondo' }, textColor: { type: 'text', label: 'Texto' }, paddingY: { type: 'number', label: 'Espaciado vertical', min: 16, max: 160, step: 8 },
+      },
+      defaultProps: { eyebrow: 'Equipo', title: 'Las personas detrás', description: '', columns: 3, members: [{ name: 'Ana Pérez', role: 'Directora', photoUrl: '', bio: '' }], backgroundColor: '#ffffff', textColor: '#0f172a', paddingY: 72 },
+      render: ({ eyebrow, title, description, columns = 3, members, backgroundColor, textColor, paddingY }) => (
+        <section style={sectionStyle(backgroundColor as string, textColor as string, paddingY as number)}><div className="mx-auto max-w-7xl px-5 lg:px-8">{sectionHeading(eyebrow as string, title as string, description as string)}<div className={`grid gap-6 ${Number(columns) === 2 ? 'sm:grid-cols-2' : Number(columns) === 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>{(Array.isArray(members) ? members : []).map((member, index) => <article key={`${member.name}-${index}`} className="rounded-xl border border-current/10 bg-white p-6 text-center text-slate-950">{member.photoUrl ? <img src={member.photoUrl} alt={member.name} className="mx-auto h-24 w-24 rounded-full object-cover" /> : <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-slate-100 font-semibold text-slate-400">{String(member.name || '?').charAt(0)}</div>}<h3 className="mt-5 text-lg font-semibold">{member.name}</h3><div className="text-sm font-medium text-blue-600">{member.role}</div>{member.bio ? <p className="mt-3 text-sm leading-6 text-slate-500">{member.bio}</p> : null}</article>)}</div></div></section>
+      ),
+    },
+    LogosBlock: {
+      label: 'Logos de clientes',
+      fields: {
+        eyebrow: { type: 'text', label: 'Etiqueta' }, title: { type: 'text', label: 'Título' },
+        logos: { type: 'array', label: 'Logos', arrayFields: { imageUrl: mediaField('Logo', ['image']), name: { type: 'text', label: 'Nombre' }, link: { type: 'text', label: 'Enlace (opcional)' } }, defaultItemProps: { imageUrl: '', name: '', link: '' }, getItemSummary: (item) => item.name || 'Logo' },
+        backgroundColor: { type: 'text', label: 'Fondo' }, textColor: { type: 'text', label: 'Texto' }, paddingY: { type: 'number', label: 'Espaciado vertical', min: 16, max: 120, step: 8 },
+      },
+      defaultProps: { eyebrow: 'Clientes', title: 'Ellos confían en nosotros', logos: [{ imageUrl: '', name: 'Logo 1', link: '' }], backgroundColor: '#ffffff', textColor: '#0f172a', paddingY: 64 },
+      render: ({ eyebrow, title, logos, backgroundColor, textColor, paddingY }) => (
+        <section style={sectionStyle(backgroundColor as string, textColor as string, paddingY as number)}><div className="mx-auto max-w-7xl px-5 lg:px-8">{sectionHeading(eyebrow as string, title as string, undefined)}<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">{(Array.isArray(logos) ? logos : []).map((logo, index) => { const content = logo.imageUrl ? <img src={logo.imageUrl} alt={logo.name || 'Logo'} className="h-10 w-auto max-w-full object-contain opacity-80" /> : <div className="text-sm font-semibold text-slate-400">{logo.name || 'Logo'}</div>; return logo.link ? <a key={`${logo.name}-${index}`} href={sanitizeWebsiteLinkHref(logo.link)} className="flex items-center justify-center rounded-lg border border-current/10 bg-white p-5 grayscale transition hover:grayscale-0">{content}</a> : <div key={`${logo.name}-${index}`} className="flex items-center justify-center rounded-lg border border-current/10 bg-white p-5 grayscale transition hover:grayscale-0">{content}</div>; })}</div></div></section>
+      ),
+    },
+    CountdownBlock: {
+      label: 'Cuenta regresiva',
+      fields: {
+        eyebrow: { type: 'text', label: 'Etiqueta' }, title: { type: 'text', label: 'Título' }, description: { type: 'textarea', label: 'Descripción' },
+        targetDate: dateTimeField('Fecha objetivo'),
+        accentColor: { type: 'text', label: 'Color de acento' }, backgroundColor: { type: 'text', label: 'Fondo' }, textColor: { type: 'text', label: 'Texto' }, paddingY: { type: 'number', label: 'Espaciado vertical', min: 16, max: 160, step: 8 },
+      },
+      defaultProps: { eyebrow: 'Próximamente', title: 'El lanzamiento está cerca', description: '', targetDate: '', accentColor: '#2563eb', backgroundColor: '#0f172a', textColor: '#ffffff', paddingY: 80 },
+      render: ({ eyebrow, title, description, targetDate, accentColor, backgroundColor, textColor, paddingY }) => (
+        <section style={sectionStyle(backgroundColor as string, textColor as string, paddingY as number)}><div className="mx-auto max-w-4xl px-5 text-center lg:px-8">{sectionHeading(eyebrow as string, title as string, description as string)}<WebsiteCountdown targetDate={targetDate as string} accentColor={accentColor as string} /></div></section>
+      ),
+    },
+    CustomHtmlBlock: {
+      label: 'HTML personalizado',
+      fields: {
+        html: { type: 'textarea', label: 'HTML (admite <style> inline)' },
+      },
+      defaultProps: { html: '<div style="padding:48px;text-align:center;border:1px dashed #cbd5e1;border-radius:12px">Pega aquí tu HTML personalizado.</div>' },
+      render: ({ html }) => <div dangerouslySetInnerHTML={{ __html: String(html || '') }} />,
     },
     SpacerBlock: {
       label: 'Espaciador',

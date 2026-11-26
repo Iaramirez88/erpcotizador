@@ -62,7 +62,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   icons: {
     icon: "/brand/favicon-joinclap.png",
-    apple: "/brand/favicon-joinclap.png",
+    apple: "/apple-touch-icon.png",
   },
   appleWebApp: {
     capable: true,

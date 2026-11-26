@@ -2292,10 +2292,19 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'onboardingGate.title': 'Gracias por registrarte',
     'onboardingGate.description': 'Tu espacio ya fue creado correctamente.',
     'onboardingGate.welcome': 'Bienvenida',
-    'onboardingGate.trialTitle': 'Tienes 15 días gratis',
+    'onboardingGate.reminderKicker': 'Periodo de prueba',
+    'onboardingGate.trialTitle': 'Tienes {days} días gratis',
     'onboardingGate.trialBody':
       'Durante este periodo podrás explorar la plataforma y empezar a trabajar con tu espacio sin pasos adicionales de configuración inicial.',
     'onboardingGate.nextStep': 'Cuando quieras, puedes continuar directamente al dashboard y comenzar a usar el sistema.',
+    'onboardingGate.reminder7.title': 'Tu prueba está por vencer',
+    'onboardingGate.reminder7.description': 'Recordatorio de tu periodo de prueba gratuito.',
+    'onboardingGate.reminder7.headline': 'Te quedan 7 días',
+    'onboardingGate.reminder7.body': 'Activa un plan antes de que termine para seguir usando la plataforma sin interrupciones.',
+    'onboardingGate.reminder1.title': 'Último día de prueba',
+    'onboardingGate.reminder1.description': 'Recordatorio de tu periodo de prueba gratuito.',
+    'onboardingGate.reminder1.headline': 'Te queda 1 día',
+    'onboardingGate.reminder1.body': 'Hoy es tu último día de prueba. Activa un plan para conservar tu información y seguir operando.',
 
     'permissionBoundary.noPermission': 'Sin permisos',
     'permissionBoundary.unknownSection': 'esta sección',
@@ -2411,7 +2420,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'retention.banner.trialEnded.title': 'Tu prueba gratuita terminó',
     'retention.banner.trialEnded.description':
-      'Terminaron tus {days} días hábiles de prueba. Sin un plan activo, tu cuenta y sus datos se eliminarán el {date} ({inactivityDays} días después de tu último acceso).',
+      'Terminaron tus {days} días de prueba. Sin un plan activo, tu cuenta y sus datos se eliminarán el {date} ({inactivityDays} días después de tu último acceso).',
     'retention.banner.licenseExpired.title': 'Tu licencia venció',
     'retention.banner.licenseExpired.description':
       'Tu licencia venció el {date}. La cuenta está suspendida y, si no renuevas ni vuelves a ingresar, la información se eliminará el {deletionDate}.',
@@ -2428,7 +2437,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'retention.policy.title': 'Retención de datos y eliminación automática',
     'retention.policy.description':
       'Estas reglas aplican a todas las cuentas y siempre avisamos por correo registrado antes de eliminar información.',
-    'retention.policy.trial': 'Trial gratuito: {days} días hábiles, una sola vez por persona.',
+    'retention.policy.trial': 'Trial gratuito: {days} días, una sola vez por persona.',
     'retention.policy.license':
       'Licencia vencida: cuando vence tu plan enviamos un correo avisando que la cuenta queda suspendida y que la información se eliminará.',
     'retention.policy.inactivity':
@@ -2606,7 +2615,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'auth.register.haveAccount': '¿Ya tienes cuenta?',
     'auth.register.signIn': 'Inicia sesión',
     'auth.register.retentionNotice':
-      'Tu prueba gratuita dura 7 días hábiles. Si no activas un plan, la cuenta y sus datos se eliminan automáticamente 60 días después de tu último acceso.',
+      'Tu prueba gratuita dura 15 días. Si no activas un plan, la cuenta y sus datos se eliminan automáticamente 60 días después de tu último acceso.',
     'auth.register.retentionLink': 'Ver política de retención',
     'auth.register.tabs.individual': 'Registro plan individual',
     'auth.register.tabs.empresa': 'Registro con código de espacio',
@@ -4985,10 +4994,19 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'onboardingGate.title': 'Thanks for signing up',
     'onboardingGate.description': 'Your workspace was created successfully.',
     'onboardingGate.welcome': 'Welcome',
-    'onboardingGate.trialTitle': 'You have 15 days free',
+    'onboardingGate.reminderKicker': 'Trial period',
+    'onboardingGate.trialTitle': 'You have {days} days free',
     'onboardingGate.trialBody':
       'During this period you can explore the platform and start working in your workspace with no extra initial setup steps.',
     'onboardingGate.nextStep': 'Whenever you want, you can go straight to the dashboard and start using the system.',
+    'onboardingGate.reminder7.title': 'Your trial is ending soon',
+    'onboardingGate.reminder7.description': 'A reminder about your free trial.',
+    'onboardingGate.reminder7.headline': '7 days left',
+    'onboardingGate.reminder7.body': 'Activate a plan before it ends to keep using the platform without interruptions.',
+    'onboardingGate.reminder1.title': 'Last day of your trial',
+    'onboardingGate.reminder1.description': 'A reminder about your free trial.',
+    'onboardingGate.reminder1.headline': '1 day left',
+    'onboardingGate.reminder1.body': 'Today is your last trial day. Activate a plan to keep your data and keep working.',
 
     'permissionBoundary.noPermission': 'No permissions',
     'permissionBoundary.unknownSection': 'this section',
@@ -5104,7 +5122,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'retention.banner.trialEnded.title': 'Your free trial ended',
     'retention.banner.trialEnded.description':
-      'Your {days} business-day trial is over. Without an active plan, your account and data will be deleted on {date} ({inactivityDays} days after your last sign-in).',
+      'Your {days}-day trial is over. Without an active plan, your account and data will be deleted on {date} ({inactivityDays} days after your last sign-in).',
     'retention.banner.licenseExpired.title': 'Your license expired',
     'retention.banner.licenseExpired.description':
       'Your license expired on {date}. The account is suspended and, if you do not renew or sign in again, the information will be deleted on {deletionDate}.',
@@ -5121,7 +5139,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'retention.policy.title': 'Data retention and automatic deletion',
     'retention.policy.description':
       'These rules apply to every account and we always email the registered address before deleting information.',
-    'retention.policy.trial': 'Free trial: {days} business days, once per person.',
+    'retention.policy.trial': 'Free trial: {days} days, once per person.',
     'retention.policy.license':
       'Expired license: when your plan expires we email you that the account is suspended and that the information will be deleted.',
     'retention.policy.inactivity':
@@ -5299,7 +5317,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'auth.register.haveAccount': 'Already have an account?',
     'auth.register.signIn': 'Sign in',
     'auth.register.retentionNotice':
-      'Your free trial lasts 7 business days. If you do not activate a plan, the account and its data are deleted automatically 60 days after your last sign-in.',
+      'Your free trial lasts 15 days. If you do not activate a plan, the account and its data are deleted automatically 60 days after your last sign-in.',
     'auth.register.retentionLink': 'View retention policy',
     'auth.register.tabs.individual': 'Individual plan sign up',
     'auth.register.tabs.empresa': 'Sign up with workspace code',

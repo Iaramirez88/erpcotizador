@@ -7,13 +7,14 @@ import {
   ACCOUNT_INACTIVITY_DELETION_DAYS,
   ACCOUNT_RETENTION_WARNING_DAYS,
   DEFAULT_RETENTION_POLICY_START_AT,
-  PERSONAL_TRIAL_BUSINESS_DAYS,
+  DEFAULT_PERSONAL_TRIAL_DAYS,
   RETENTION_POLICY_PATH,
   addDays,
   formatRetentionDate,
   resolveAccountRetention,
 } from '@/lib/retention-policy'
 import { isSuperAdminEmail } from '@/lib/super-admin'
+import { getFreeTrialDays } from '@/lib/free-trial-setting'
 
 /**
  * Avisos y borrado automático por retención de cuentas.
@@ -82,6 +83,7 @@ function bulletList(items: string[]): string {
 
 export type RetentionEmailArgs = {
   kind: AccountRetentionNoticeKind
+  trialDays?: number
   recipientName?: string | null
   empresaNombre?: string | null
   lastActivityAt?: Date | null
@@ -100,6 +102,7 @@ export type RetentionEmail = { subject: string; html: string }
  * poder verificarla en pruebas sin enviar nada.
  */
 export function buildRetentionEmail(args: RetentionEmailArgs): RetentionEmail {
+  const trialDays = args.trialDays ?? DEFAULT_PERSONAL_TRIAL_DAYS
   const name = (args.recipientName ?? '').trim()
   const greeting = name ? `Hola ${escapeHtml(name)},` : 'Hola,'
   const empresa = (args.empresaNombre ?? '').trim()
@@ -147,11 +150,11 @@ export function buildRetentionEmail(args: RetentionEmailArgs): RetentionEmail {
     const expiredAt = args.trialExpiredAt ? formatRetentionDate(args.trialExpiredAt) : null
     const html = renderEmail({
       title: 'Tu prueba gratuita terminó',
-      preheader: `Terminaron tus ${PERSONAL_TRIAL_BUSINESS_DAYS} días hábiles de prueba. Sin plan activo, la cuenta y sus datos se eliminan ${ACCOUNT_INACTIVITY_DELETION_DAYS} días después del último acceso.`,
+      preheader: `Terminaron tus ${trialDays} días de prueba. Sin plan activo, la cuenta y sus datos se eliminan ${ACCOUNT_INACTIVITY_DELETION_DAYS} días después del último acceso.`,
       intro: greeting,
       bodyHtml: [
         paragraph(
-          `Tus <b>${PERSONAL_TRIAL_BUSINESS_DAYS} días hábiles</b> de prueba en el plan Intermedio terminaron el <b>${escapeHtml(expiredAt ?? 'día de hoy')}</b>.`
+          `Tus <b>${trialDays} días</b> de prueba en el plan Intermedio terminaron el <b>${escapeHtml(expiredAt ?? 'día de hoy')}</b>.`
         ),
         paragraph('Puedes elegir un plan para seguir trabajando sin perder lo que ya registraste.'),
         bulletList([
@@ -184,7 +187,7 @@ export function buildRetentionEmail(args: RetentionEmailArgs): RetentionEmail {
           `Tu cuenta y la información asociada a ${empresaLabel} fueron eliminadas por la política de retención de datos.`
         ),
         paragraph(
-          `Si necesitas volver a operar, puedes crear una cuenta nueva; ten en cuenta que el trial gratuito de ${PERSONAL_TRIAL_BUSINESS_DAYS} días hábiles no se otorga dos veces a la misma persona.`
+          `Si necesitas volver a operar, puedes crear una cuenta nueva; ten en cuenta que el trial gratuito de ${trialDays} días no se otorga dos veces a la misma persona.`
         ),
       ].join(''),
       footerNote: retentionPolicyFooter(),
@@ -382,6 +385,7 @@ export async function runAccountRetention(options: RetentionRunOptions = {}): Pr
 
   const inactiveCutoff = addDays(now, -ACCOUNT_RETENTION_WARNING_DAYS)
   const policyStartAt = resolveRetentionPolicyStartAt()
+  const trialDays = await getFreeTrialDays()
 
   const users = await prisma.user.findMany({
     where: {
@@ -450,6 +454,7 @@ export async function runAccountRetention(options: RetentionRunOptions = {}): Pr
 
         const email = buildRetentionEmail({
           kind: notice.kind,
+          trialDays,
           recipientName: user.name,
           empresaNombre,
           lastActivityAt: state.lastActivityAt,

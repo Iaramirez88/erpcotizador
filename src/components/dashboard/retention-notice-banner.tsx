@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
   ACCOUNT_INACTIVITY_DELETION_DAYS,
-  PERSONAL_TRIAL_BUSINESS_DAYS,
+  DEFAULT_PERSONAL_TRIAL_DAYS,
   RETENTION_DISMISS_COOKIE,
   RETENTION_POLICY_PATH,
   formatRetentionDate,
@@ -23,6 +23,7 @@ export type RetentionNoticeBannerProps = {
   licenseExpiredAt: string | null
   trialExpiredAt: string | null
   canManageBilling: boolean
+  trialDays?: number
 }
 
 type BannerVariant = 'deletionDue' | 'inactivity' | 'licenseExpired' | 'trialEnded'
@@ -58,7 +59,7 @@ export default function RetentionNoticeBanner(props: RetentionNoticeBannerProps)
 
   const title = t(`retention.banner.${variant}.title`)
   const description = t(`retention.banner.${variant}.description`, {
-    days: PERSONAL_TRIAL_BUSINESS_DAYS,
+    days: props.trialDays ?? DEFAULT_PERSONAL_TRIAL_DAYS,
     inactivityDays: ACCOUNT_INACTIVITY_DELETION_DAYS,
     date: formatDate(
       variant === 'licenseExpired'

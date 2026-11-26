@@ -1,13 +1,20 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { TRIAL_MILESTONE_SEEN_KEYS, type TrialMilestone } from '@/lib/free-trial-setting'
 
 export const runtime = 'nodejs'
 
-const WELCOME_TUTORIAL_KEY = 'dashboardWelcomeTrial15d'
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function resolveMilestoneKey(milestone: unknown): string {
+  if (typeof milestone === 'string' && milestone in TRIAL_MILESTONE_SEEN_KEYS) {
+    return TRIAL_MILESTONE_SEEN_KEYS[milestone as TrialMilestone]
+  }
+  // Compatibilidad: marcar sin `milestone` equivale a la bienvenida.
+  return TRIAL_MILESTONE_SEEN_KEYS.welcome
 }
 
 async function resolveUserIdFromSession(session: { user?: { id?: string; email?: string | null } }) {
@@ -35,6 +42,7 @@ export async function POST(request: Request) {
 
   const body: unknown = await request.json().catch(() => null)
   const seen = isPlainObject(body) ? body.seen !== false : true
+  const key = resolveMilestoneKey(isPlainObject(body) ? body.milestone : undefined)
 
   const current = await prisma.uiPreference.findUnique({
     where: { userId },
@@ -47,7 +55,7 @@ export async function POST(request: Request) {
     ...currentTutorial,
     seen: {
       ...currentSeen,
-      [WELCOME_TUTORIAL_KEY]: seen,
+      [key]: seen,
     },
   }
 

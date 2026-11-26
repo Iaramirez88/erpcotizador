@@ -794,7 +794,7 @@ type EmpresaBranding = {
   nit: string
 }
 
-const ORDEX_FALLBACK_LOGO = '/icon-192.png'
+const JOINCLAP_FALLBACK_LOGO = '/icon-192.png'
 
 export default function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname() ?? ''
@@ -1126,7 +1126,7 @@ export default function Sidebar({ user }: SidebarProps) {
 
   const sidebarBrandName = isPersonal ? personalDisplayName : (empresa?.nombre ?? 'SGDigital')
   const sidebarBrandLogo = isPersonal && !(user.name ?? '').trim()
-    ? ORDEX_FALLBACK_LOGO
+    ? JOINCLAP_FALLBACK_LOGO
     : (empresa?.logo ?? null)
   const sidebarBrandAlt = sidebarBrandName || 'Joinclap'
 

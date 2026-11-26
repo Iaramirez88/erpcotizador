@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { ExternalLink, FilePenLine, Loader2, MoreVertical, Plus, Power, Search, Trash2, Wand2 } from 'lucide-react'
+import { ExternalLink, FilePenLine, Loader2, MoreVertical, Plus, Power, Search, Settings2, Trash2, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -309,6 +309,9 @@ export default function WebsiteProjectsClient() {
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
+                  <Button asChild size="sm" variant="outline" className="rounded-full px-4">
+                    <Link href={`/dashboard/configuracion/servicios-web/sitios/${project.id}/ajustes`}><Settings2 className="mr-2 h-3.5 w-3.5" />Ajustes del sitio</Link>
+                  </Button>
                   <Button asChild size="sm" variant="outline" className="rounded-full px-4">
                     <Link href={`/dashboard/configuracion/servicios-web/sitios/${project.id}/seo`}><Search className="mr-2 h-3.5 w-3.5" />SEO y posición</Link>
                   </Button>

@@ -16,6 +16,13 @@ import { buildAllowedDashboardHrefsForUser } from '@/lib/dashboard-access'
 import { getVisibleOnboardingBusinessTypes } from '@/lib/onboarding-business-type-settings'
 import { EXTERNAL_DASHBOARD_SCOPE_COOKIE, intersectDashboardHrefsWithExternalScope } from '@/lib/external-dashboard-scope'
 import { syncCompanyPresetAccess } from '@/lib/company-preset-sync'
+import {
+  TRIAL_MILESTONE_SEEN_KEYS,
+  TRIAL_REMINDER_1_DAY,
+  TRIAL_REMINDER_7_DAYS,
+  getFreeTrialDays,
+  type TrialMilestone,
+} from '@/lib/free-trial-setting'
 
 export const runtime = 'nodejs'
 
@@ -43,6 +50,9 @@ async function resolveContext() {
       businessType: true,
       onboardingData: true,
       dashboardConfig: true,
+      planValidUntil: true,
+      trialStartedAt: true,
+      trialValidUntil: true,
     },
   })
 
@@ -91,16 +101,56 @@ export async function GET() {
     const availableBusinessTypes = await getVisibleOnboardingBusinessTypes()
     const tutorial = context.tutorial
     const tutorialSeen = tutorial && typeof tutorial === 'object' && !Array.isArray(tutorial) ? tutorial.seen : null
-    const welcomeSeen = Boolean(
+    const seenMap = (
       tutorialSeen && typeof tutorialSeen === 'object' && !Array.isArray(tutorialSeen)
-        ? (tutorialSeen as Record<string, boolean>).dashboardWelcomeTrial15d
-        : false
-    )
+        ? tutorialSeen
+        : {}
+    ) as Record<string, boolean>
+    const seen = (key: string) => Boolean(seenMap[key])
+    const welcomeSeen = seen(TRIAL_MILESTONE_SEEN_KEYS.welcome)
+    const isOwnerRequired = context.isOwner && !locked && context.empresa.onboardingStatus !== 'COMPLETED'
+
+    const trialDays = await getFreeTrialDays()
+    const now = new Date()
+    const trialValidUntil = context.empresa.trialValidUntil
+    const daysLeft =
+      trialValidUntil && trialValidUntil.getTime() > now.getTime()
+        ? Math.max(0, Math.ceil((trialValidUntil.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
+        : null
+
+    let milestone: TrialMilestone | null = null
+    if (isOwnerRequired && !welcomeSeen) {
+      milestone = 'welcome'
+    } else if (
+      context.isOwner &&
+      daysLeft !== null &&
+      daysLeft <= TRIAL_REMINDER_7_DAYS &&
+      daysLeft > TRIAL_REMINDER_1_DAY &&
+      !seen(TRIAL_MILESTONE_SEEN_KEYS.sevenDaysLeft)
+    ) {
+      milestone = 'sevenDaysLeft'
+    } else if (
+      context.isOwner &&
+      daysLeft !== null &&
+      daysLeft <= TRIAL_REMINDER_1_DAY &&
+      !seen(TRIAL_MILESTONE_SEEN_KEYS.oneDayLeft)
+    ) {
+      milestone = 'oneDayLeft'
+    }
 
     return NextResponse.json({
       ok: true,
-      required: context.isOwner && !locked && context.empresa.onboardingStatus !== 'COMPLETED',
+      required: isOwnerRequired,
       welcomeSeen,
+      trial: {
+        daysTotal: trialDays,
+        daysLeft,
+        validUntil: trialValidUntil ? trialValidUntil.toISOString() : null,
+        isActive: daysLeft !== null,
+      },
+      gate: milestone
+        ? { milestone, daysTotal: trialDays, daysLeft: daysLeft ?? 0 }
+        : null,
       editable: context.isOwner && !locked,
       locked,
       status: context.empresa.onboardingStatus,

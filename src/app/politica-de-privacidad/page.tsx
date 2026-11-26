@@ -42,7 +42,7 @@ const sections = [
     title: '7. Conservación de la información y eliminación automática',
     body: 'Conservamos la información mientras la cuenta esté activa y con un plan vigente. Cuando no hay un plan activo aplicamos estas reglas, y siempre avisamos al correo registrado antes de eliminar cualquier dato:',
     bullets: [
-      'Prueba gratuita: 7 días hábiles desde la creación del espacio personal, una sola vez por persona. No se reinicia al crear un nuevo espacio de trabajo ni al reingresar.',
+      'Prueba gratuita: 15 días calendario desde la creación del espacio personal, una sola vez por persona. No se reinicia al crear un nuevo espacio de trabajo ni al reingresar.',
       'Licencia vencida: cuando vence el plan contratado enviamos un correo al correo registrado avisando que la cuenta queda suspendida y que la información será eliminada si no se renueva.',
       'Inactividad: si la cuenta no registra ingresos durante 60 días, se elimina automáticamente junto con la información asociada.',
       'Aviso previo: 7 días antes de la eliminación enviamos un último correo de advertencia al correo registrado.',

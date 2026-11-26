@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/hooks/use-toast'
-import { websiteBuilderPuckConfig } from '@/components/website-builder/puck-config'
+import { websiteBuilderPuckConfig, WEBSITE_BUILDER_BLOCK_ICONS } from '@/components/website-builder/puck-config'
 import { buildWebsitePublicUrl } from '@/lib/website-builder'
 import { cloneWebsiteFunnelTemplateData, WEBSITE_FUNNEL_TEMPLATES, type WebsiteFunnelTemplate } from '@/lib/website-builder-funnel-templates'
 import { useUiStore } from '@/lib/ui-store'
@@ -275,6 +275,15 @@ export default function WebsitePageBuilderClient({
         {children}
       </div>
     ),
+    drawerItem: ({ name, children }: { name: string; children: React.ReactNode }) => {
+      const Icon = WEBSITE_BUILDER_BLOCK_ICONS[name]
+      return (
+        <div className="flex items-center gap-2 [&>*:last-child]:flex-1">
+          {Icon ? <Icon className="h-4 w-4 shrink-0 text-slate-500" /> : null}
+          {children}
+        </div>
+      )
+    },
   }), [expandedView])
 
   return (

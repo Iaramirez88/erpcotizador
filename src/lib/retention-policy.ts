@@ -2,7 +2,7 @@
  * Política de retención de cuentas (fuente única de verdad).
  *
  * Reglas:
- *  - El trial del espacio personal dura **7 días hábiles** y se otorga una sola vez por persona.
+ *  - El trial del espacio personal dura **los días calendario configurados** (por defecto 15) y se otorga una sola vez por persona.
  *  - Sin plan activo, la cuenta y su información se eliminan **60 días después del último acceso**.
  *  - **7 días antes** de la eliminación se envía un aviso al correo registrado.
  *  - Cuando vence la licencia pagada (`planValidUntil`) se envía un correo avisando que la
@@ -12,7 +12,7 @@
  * borrado automático) como componentes cliente (banner de aviso y tarjeta de política).
  */
 
-export const PERSONAL_TRIAL_BUSINESS_DAYS = 7
+export const DEFAULT_PERSONAL_TRIAL_DAYS = 15
 export const ACCOUNT_INACTIVITY_DELETION_DAYS = 60
 export const ACCOUNT_RETENTION_WARNING_DAYS = 7
 
@@ -162,7 +162,7 @@ export function resolveAccountRetention(input: AccountRetentionInput): AccountRe
 /** Números y ruta de la política, para pintar el aviso sin duplicar textos. */
 export function getRetentionPolicyFacts() {
   return {
-    trialBusinessDays: PERSONAL_TRIAL_BUSINESS_DAYS,
+    trialDays: DEFAULT_PERSONAL_TRIAL_DAYS,
     inactivityDeletionDays: ACCOUNT_INACTIVITY_DELETION_DAYS,
     warningDays: ACCOUNT_RETENTION_WARNING_DAYS,
     policyPath: RETENTION_POLICY_PATH,

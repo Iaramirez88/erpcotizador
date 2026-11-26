@@ -45,11 +45,25 @@ const terminadoSchema = z.object({
   fuente: z.string().trim().min(1).optional(),
 })
 
+const genericItemSchema = z.object({
+  nombre: z.string().trim().min(1),
+  valor: moneySchema,
+  unidad: z.string().trim().min(1),
+  nota: z.string().trim().min(1).optional(),
+})
+
+const categoriaSchema = z.object({
+  nombre: z.string().trim().min(1),
+  descripcion: z.string().trim().min(1).optional(),
+  items: z.array(genericItemSchema).default([]),
+})
+
 export const litografiaAiKnowledgeDocumentSchema = z.object({
-  moneda: z.string().trim().min(1),
-  actualizado: z.string().trim().min(1),
-  fuente: z.string().trim().min(1),
+  moneda: z.string().trim(),
+  actualizado: z.string().trim(),
+  fuente: z.string().trim(),
   parametros: z.record(z.string(), z.union([z.number(), z.string().trim().min(1)])),
+  categorias: z.array(categoriaSchema).default([]),
   costos: z.object({
     planchas: z.array(planchaOrImpresionSchema),
     impresion: z.array(planchaOrImpresionSchema),
@@ -57,13 +71,13 @@ export const litografiaAiKnowledgeDocumentSchema = z.object({
     corte_por_pliego: z.array(cutSchema),
     plastificado: z.array(plastificadoSchema),
     terminados: z.array(terminadoSchema),
-  }),
+  }).optional(),
   notas: z.array(z.string().trim().min(1)).default([]),
 })
 
 const litografiaAiKnowledgeStoreSchema = z.object({
   version: z.literal(1),
-  source: z.enum(['default', 'custom']).default('custom'),
+  source: z.enum(['default', 'custom', 'empty']).default('custom'),
   updatedAt: z.string().trim().min(1),
   updatedByUserId: z.string().trim().min(1).nullable(),
   updatedByLabel: z.string().trim().min(1).nullable(),
@@ -74,6 +88,15 @@ export type LitografiaAiKnowledgeDocument = z.infer<typeof litografiaAiKnowledge
 export type LitografiaAiKnowledgeStore = z.infer<typeof litografiaAiKnowledgeStoreSchema>
 
 const defaultDocument = litografiaAiKnowledgeDocumentSchema.parse(defaultLitografiaAiKnowledge)
+
+const emptyDocument = litografiaAiKnowledgeDocumentSchema.parse({
+  moneda: '',
+  actualizado: '',
+  fuente: '',
+  parametros: {},
+  categorias: [],
+  notas: [],
+})
 
 function getKnowledgeStorePath(empresaId: string) {
   return path.join(process.cwd(), '.runtime-data', 'litografia-ai-knowledge', `${empresaId}.json`)
@@ -127,14 +150,14 @@ function filterByTintas<T extends { tintas?: string }>(entries: T[], tintas: num
   return filtered.length ? filtered : entries
 }
 
-function buildDefaultStore(): LitografiaAiKnowledgeStore {
+function buildEmptyStore(): LitografiaAiKnowledgeStore {
   return {
     version: 1,
-    source: 'default',
-    updatedAt: new Date('2026-05-22T00:00:00.000Z').toISOString(),
+    source: 'empty',
+    updatedAt: new Date(0).toISOString(),
     updatedByUserId: null,
     updatedByLabel: null,
-    document: defaultDocument,
+    document: emptyDocument,
   }
 }
 
@@ -142,15 +165,20 @@ export function getDefaultLitografiaAiKnowledge() {
   return defaultDocument
 }
 
+export function getEmptyLitografiaAiKnowledge() {
+  return emptyDocument
+}
+
 export function summarizeLitografiaAiKnowledge(document: LitografiaAiKnowledgeDocument) {
   return {
     reglas: Object.keys(document.parametros).length,
-    planchas: document.costos.planchas.length,
-    impresion: document.costos.impresion.length,
-    papeles: document.costos.papeles.length,
-    cortes: document.costos.corte_por_pliego.length,
-    plastificados: document.costos.plastificado.length,
-    terminados: document.costos.terminados.length,
+    categorias: document.categorias.length,
+    planchas: document.costos?.planchas.length ?? 0,
+    impresion: document.costos?.impresion.length ?? 0,
+    papeles: document.costos?.papeles.length ?? 0,
+    cortes: document.costos?.corte_por_pliego.length ?? 0,
+    plastificados: document.costos?.plastificado.length ?? 0,
+    terminados: document.costos?.terminados.length ?? 0,
     notas: document.notas.length,
   }
 }
@@ -160,10 +188,11 @@ export async function readLitografiaAiKnowledge(empresaId: string) {
   try {
     const raw = await fs.readFile(filePath, 'utf8')
     const parsed = litografiaAiKnowledgeStoreSchema.safeParse(JSON.parse(raw))
-    if (!parsed.success) return buildDefaultStore()
+    if (!parsed.success) return buildEmptyStore()
     return parsed.data
   } catch {
-    return buildDefaultStore()
+    // Sin archivo todavía: la empresa parte vacía (no se precarga la base por defecto).
+    return buildEmptyStore()
   }
 }
 
@@ -204,6 +233,7 @@ export function buildLitografiaKnowledgePromptContext(args: {
 }) {
   const { document, brief, extracted } = args
   const generalRules = Object.entries(document.parametros).map(([key, value]) => ({ key, value }))
+  const costos = document.costos
 
   return {
     metadata: {
@@ -212,22 +242,25 @@ export function buildLitografiaKnowledgePromptContext(args: {
       fuente: document.fuente,
     },
     parametros: generalRules,
-    costosRelevantes: {
-      planchas: rankEntries(
-        filterByTintas(document.costos.planchas, extracted?.tintas),
-        [brief, extracted?.producto, extracted?.material],
-        4,
-      ),
-      impresion: rankEntries(
-        filterByTintas(document.costos.impresion, extracted?.tintas),
-        [brief, extracted?.producto, extracted?.material],
-        4,
-      ),
-      papeles: rankEntries(document.costos.papeles, [brief, extracted?.material, extracted?.producto], 6),
-      plastificado: rankEntries(document.costos.plastificado, [brief, extracted?.acabado, extracted?.producto], 4),
-      terminados: rankEntries(document.costos.terminados, [brief, extracted?.acabado, extracted?.producto], 6),
-    },
-    cortePorPliego: document.costos.corte_por_pliego,
+    categorias: document.categorias,
+    costosRelevantes: costos
+      ? {
+          planchas: rankEntries(
+            filterByTintas(costos.planchas, extracted?.tintas),
+            [brief, extracted?.producto, extracted?.material],
+            4,
+          ),
+          impresion: rankEntries(
+            filterByTintas(costos.impresion, extracted?.tintas),
+            [brief, extracted?.producto, extracted?.material],
+            4,
+          ),
+          papeles: rankEntries(costos.papeles, [brief, extracted?.material, extracted?.producto], 6),
+          plastificado: rankEntries(costos.plastificado, [brief, extracted?.acabado, extracted?.producto], 4),
+          terminados: rankEntries(costos.terminados, [brief, extracted?.acabado, extracted?.producto], 6),
+        }
+      : null,
+    cortePorPliego: costos?.corte_por_pliego ?? [],
     notas: document.notas.slice(0, 4),
     guardrails: [
       'Usa esta base como apoyo comercial y operativo, no como reemplazo del tarifario exacto configurado en ERP.',

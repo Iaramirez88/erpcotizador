@@ -13,6 +13,19 @@ type CostLine = {
   amount: number
 }
 
+const EMPTY_KNOWLEDGE_COSTOS: NonNullable<LitografiaAiKnowledgeDocument['costos']> = {
+  planchas: [],
+  impresion: [],
+  papeles: [],
+  corte_por_pliego: [],
+  plastificado: [],
+  terminados: [],
+}
+
+function costosOf(document: LitografiaAiKnowledgeDocument) {
+  return document.costos ?? EMPTY_KNOWLEDGE_COSTOS
+}
+
 export type EditorialKnowledgeEstimate = {
   status: 'AVAILABLE' | 'PARTIAL' | 'NOT_AVAILABLE'
   summary: string | null
@@ -95,7 +108,7 @@ function nearlyEqual(left: number, right: number) {
 }
 
 function parsePaperOptions(document: LitografiaAiKnowledgeDocument): PaperOption[] {
-  return document.costos.papeles
+  return costosOf(document).papeles
     .map((paper) => {
       if (paper.valor == null || paper.valor <= 0) return null
       const dims = parseDimensionsFromText(paper.unidad)
@@ -215,7 +228,7 @@ export function findKnowledgeBackedPaperCandidate(args: {
 }
 
 function findFinalSizeName(document: LitografiaAiKnowledgeDocument, widthCm: number, heightCm: number) {
-  const matched = document.costos.corte_por_pliego.find((item) => {
+  const matched = costosOf(document).corte_por_pliego.find((item) => {
     const dims = parseDimensionsFromText(item.medidas_cm)
     if (!dims) return false
     return (
@@ -369,7 +382,7 @@ function extractRangeMinimum(value: string | null | undefined) {
 }
 
 function findTerminadoUnitCost(document: LitografiaAiKnowledgeDocument, nameNeedle: string, qty: number) {
-  const matches = document.costos.terminados
+  const matches = costosOf(document).terminados
     .filter((entry) => normalizeText(entry.nombre).includes(nameNeedle) && entry.valor > 0)
     .sort((left, right) => extractRangeMinimum(right.rango) - extractRangeMinimum(left.rango))
 
@@ -382,7 +395,7 @@ function findTerminadoUnitCost(document: LitografiaAiKnowledgeDocument, nameNeed
 }
 
 function findCompaginadoUnitCost(document: LitografiaAiKnowledgeDocument, qty: number) {
-  const entries = document.costos.terminados.filter((entry) => normalizeText(entry.nombre).includes('compaginado') && entry.valor > 0)
+  const entries = costosOf(document).terminados.filter((entry) => normalizeText(entry.nombre).includes('compaginado') && entry.valor > 0)
   const normalizedQty = Math.max(0, Math.trunc(qty))
 
   if (normalizedQty > 1000) {
@@ -396,13 +409,13 @@ function findCompaginadoUnitCost(document: LitografiaAiKnowledgeDocument, qty: n
 
 function findPerThousandPrice(document: LitografiaAiKnowledgeDocument, sizeName: string) {
   const normalized = normalizeText(sizeName)
-  const direct = document.costos.plastificado.find((entry) => normalizeText(entry.nombre).includes(normalized) && entry.valor > 0)
+  const direct = costosOf(document).plastificado.find((entry) => normalizeText(entry.nombre).includes(normalized) && entry.valor > 0)
   if (direct) return direct.valor
 
   const targetDims = parseDimensionsFromText(sizeName)
   if (!targetDims) return 0
 
-  const candidates = document.costos.plastificado
+  const candidates = costosOf(document).plastificado
     .map((entry) => {
       const dims = parseDimensionsFromText(entry.medidas_cm)
       if (!dims || entry.valor <= 0) return null
@@ -414,14 +427,14 @@ function findPerThousandPrice(document: LitografiaAiKnowledgeDocument, sizeName:
         area: dims.widthCm * dims.heightCm,
       }
     })
-    .filter((item): item is { entry: LitografiaAiKnowledgeDocument['costos']['plastificado'][number]; area: number } => Boolean(item))
+    .filter((item): item is { entry: NonNullable<LitografiaAiKnowledgeDocument['costos']>['plastificado'][number]; area: number } => Boolean(item))
     .sort((left, right) => left.area - right.area)
 
   return candidates[0]?.entry.valor ?? 0
 }
 
 function findTerminadoPerThousandCost(document: LitografiaAiKnowledgeDocument, nameNeedle: string) {
-  return document.costos.terminados.find((entry) => {
+  return costosOf(document).terminados.find((entry) => {
     return normalizeText(entry.nombre).includes(nameNeedle) && normalizeText(entry.unidad).includes('millar') && entry.valor > 0
   })?.valor ?? 0
 }
@@ -545,10 +558,10 @@ export function estimateEditorialKnowledgeCost(args: {
     }
   }
 
-  const innerPlanchaRate = findKnowledgeRate(document.costos.planchas, machineSize.key, innerTintas)
-  const innerImpresionRate = findKnowledgeRate(document.costos.impresion, machineSize.key, innerTintas)
-  const coverPlanchaRate = coverForms > 0 ? findKnowledgeRate(document.costos.planchas, machineSize.key, coverTintas) : null
-  const coverImpresionRate = coverForms > 0 ? findKnowledgeRate(document.costos.impresion, machineSize.key, coverTintas) : null
+  const innerPlanchaRate = findKnowledgeRate(costosOf(document).planchas, machineSize.key, innerTintas)
+  const innerImpresionRate = findKnowledgeRate(costosOf(document).impresion, machineSize.key, innerTintas)
+  const coverPlanchaRate = coverForms > 0 ? findKnowledgeRate(costosOf(document).planchas, machineSize.key, coverTintas) : null
+  const coverImpresionRate = coverForms > 0 ? findKnowledgeRate(costosOf(document).impresion, machineSize.key, coverTintas) : null
   if (!innerPlanchaRate || !innerImpresionRate || (coverForms > 0 && (!coverPlanchaRate || !coverImpresionRate))) {
     return {
       status: 'PARTIAL',
@@ -593,10 +606,10 @@ export function estimateEditorialKnowledgeCost(args: {
   const compaginadoUnitCost = findCompaginadoUnitCost(document, quantity)
   const compaginadoQty = Math.ceil(innerPages / 2) * quantity
   const compaginadoCost = compaginadoUnitCost > 0 ? compaginadoUnitCost * compaginadoQty : 0
-  const refileCartillaEntry = document.costos.terminados.find((entry) => normalizeText(entry.nombre).includes('refile cartilla') && entry.valor > 0)
+  const refileCartillaEntry = costosOf(document).terminados.find((entry) => normalizeText(entry.nombre).includes('refile cartilla') && entry.valor > 0)
   const refileCartillaCost = refileCartillaEntry ? refileCartillaEntry.valor * quantity : 0
   const cosidaEntry = hasCosida
-    ? document.costos.terminados.find((entry) => {
+    ? costosOf(document).terminados.find((entry) => {
         const name = normalizeText(entry.nombre)
         return name.includes('cosida') || name.includes('grafa media carta a cuarto')
       })
@@ -803,8 +816,8 @@ export function estimateKnowledgeOnlyCost(args: {
   }
 
   const colorSpec = inferSidesMultiplier(brief, tintas)
-  const planchaRate = findKnowledgeRate(document.costos.planchas, machineSize.key, tintas)
-  const impresionRate = findKnowledgeRate(document.costos.impresion, machineSize.key, tintas)
+  const planchaRate = findKnowledgeRate(costosOf(document).planchas, machineSize.key, tintas)
+  const impresionRate = findKnowledgeRate(costosOf(document).impresion, machineSize.key, tintas)
 
   if (!planchaRate || !impresionRate) {
     return {

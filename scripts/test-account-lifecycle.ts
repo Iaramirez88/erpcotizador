@@ -22,8 +22,7 @@ import { buildRetentionEmail, runAccountRetention } from '../src/lib/account-ret
 import {
   ACCOUNT_INACTIVITY_DELETION_DAYS,
   ACCOUNT_RETENTION_WARNING_DAYS,
-  PERSONAL_TRIAL_BUSINESS_DAYS,
-  addBusinessDays,
+  DEFAULT_PERSONAL_TRIAL_DAYS,
   addDays,
   resolveAccountRetention,
 } from '../src/lib/retention-policy'
@@ -58,17 +57,16 @@ async function register(email: string, name: string) {
 async function testTrialPolicy() {
   const freshEmail = `tmp.trial.${Date.now()}@local.test`
   const fresh = await resolvePersonalTrialFields({ userId: 'tmp-sin-historial', email: freshEmail })
-  check('Un correo nuevo recibe el trial de 7 días hábiles', Boolean(fresh.trialStartedAt && fresh.trialValidUntil))
+  check('Un correo nuevo recibe el trial gratuito', Boolean(fresh.trialStartedAt && fresh.trialValidUntil))
 
   if (fresh.trialStartedAt && fresh.trialValidUntil) {
     const calendarDays = Math.round(
       (fresh.trialValidUntil.getTime() - fresh.trialStartedAt.getTime()) / (24 * 60 * 60 * 1000)
     )
-    const weekday = fresh.trialValidUntil.getUTCDay()
     check(
-      'El trial cubre 7 días hábiles y vence en día hábil',
-      calendarDays >= PERSONAL_TRIAL_BUSINESS_DAYS && weekday !== 0 && weekday !== 6,
-      { calendarDays, weekday, validUntil: fresh.trialValidUntil.toISOString() }
+      'El trial cubre al menos un día de prueba',
+      calendarDays >= 1,
+      { calendarDays, validUntil: fresh.trialValidUntil.toISOString() }
     )
   }
 
@@ -274,10 +272,10 @@ function testRetentionPolicy() {
     { stage: legacy.stage, source: legacy.lastActivitySource, daysInactive: legacy.daysInactive }
   )
 
-  const trialEnd = addBusinessDays(now, PERSONAL_TRIAL_BUSINESS_DAYS)
+  const trialEnd = addDays(now, DEFAULT_PERSONAL_TRIAL_DAYS)
   check(
-    'El cálculo de días hábiles evita sábados y domingos',
-    trialEnd.getUTCDay() !== 0 && trialEnd.getUTCDay() !== 6,
+    'El cálculo en días calendario suma el periodo configurado',
+    Math.round((trialEnd.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)) === DEFAULT_PERSONAL_TRIAL_DAYS,
     trialEnd.toISOString()
   )
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ordex-shell-v5'
+const CACHE_NAME = 'joinclap-shell-v1'
 const APP_SHELL = ['/', '/offline', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-512-maskable.png', '/notification-badge.svg']
 
 async function applyAppBadge(count) {
@@ -159,7 +159,7 @@ self.addEventListener('push', (event) => {
     ? payload.body.trim()
     : 'Tienes una nueva notificacion pendiente.'
   const actionUrl = normalizeNavigationUrl(payload.actionUrl)
-  const tag = typeof payload.tag === 'string' && payload.tag.trim() ? payload.tag.trim() : 'ordex-notification'
+  const tag = typeof payload.tag === 'string' && payload.tag.trim() ? payload.tag.trim() : 'joinclap-notification'
   const unreadCount = typeof payload.unreadCount === 'number' && Number.isFinite(payload.unreadCount)
     ? Math.max(0, Math.floor(payload.unreadCount))
     : 1

@@ -1,29 +1,29 @@
 import type { PlanTier, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { PERSONAL_TRIAL_BUSINESS_DAYS, addBusinessDays } from '@/lib/retention-policy'
+import { addDays } from '@/lib/retention-policy'
+import { getFreeTrialDays } from '@/lib/free-trial-setting'
 
 /**
  * Reglas del trial gratuito del espacio personal.
  *
  * El trial es **por persona**, no por empresa: si alguien ya lo consumió, ningún espacio
  * personal nuevo (por ejemplo al salir de una empresa o al reingresar) puede volver a
- * otorgar los 7 días hábiles gratis. Esto evita el abuso detectado al "volver a entrar" o
+ * otorgar el periodo de prueba gratis. Esto evita el abuso detectado al "volver a entrar" o
  * al cambiar de espacio de trabajo.
  *
  * La duración y la política de retención viven en `@/lib/retention-policy` para que la UI
  * y los correos usen exactamente los mismos números.
  */
 
-export const PERSONAL_TRIAL_DAYS = PERSONAL_TRIAL_BUSINESS_DAYS
 export const PERSONAL_TRIAL_TIER: PlanTier = 'INTERMEDIO'
 
 const PERSONAL_NIT_PREFIX = 'PERS-'
 
 /**
- * Ventana del trial: 7 días **hábiles** (lun–vie) desde el inicio, conservando la hora.
+ * Ventana del trial: `days` días **calendario** desde el inicio, conservando la hora.
  */
-export function addTrialWindow(startedAt: Date, days = PERSONAL_TRIAL_DAYS): Date {
-  return addBusinessDays(startedAt, days)
+export function addTrialWindow(startedAt: Date, days: number): Date {
+  return addDays(startedAt, days)
 }
 
 export function buildPersonalNit(userId: string): string {
@@ -134,9 +134,10 @@ export async function resolvePersonalTrialFields(args: {
   }
 
   const now = args.now ?? new Date()
+  const days = await getFreeTrialDays()
   return {
     trialTier: PERSONAL_TRIAL_TIER,
     trialStartedAt: now,
-    trialValidUntil: addTrialWindow(now),
+    trialValidUntil: addTrialWindow(now, days),
   }
 }

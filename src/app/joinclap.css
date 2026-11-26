@@ -487,3 +487,16 @@
   .jc .footer-grid{grid-template-columns:1fr;gap:34px}
   .jc .footer-bottom{margin-top:34px}
 }
+
+
+/* ============================================================
+   TOGGLE MENSUAL / ANUAL (página de precios)
+   ============================================================ */
+.jc .pricing-toggle-wrap{display:flex;justify-content:center;margin:0}
+.jc .pricing-toggle{display:inline-flex;align-items:center;gap:4px;background:#f4f8eb;border:1px solid #dce8c7;border-radius:99px;padding:4px}
+.jc .pricing-toggle button{appearance:none;border:0;background:transparent;color:#536342;font:700 13px Manrope,system-ui,sans-serif;padding:9px 18px;border-radius:99px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:background .2s ease,color .2s ease,box-shadow .2s ease}
+.jc .pricing-toggle button:hover{color:#263719}
+.jc .pricing-toggle button.active{background:#c9ff4a;color:#263719;box-shadow:0 6px 16px rgba(182,232,61,.4)}
+.jc .pricing-toggle-badge{background:#263719;color:#c9ff4a;font:700 10px "DM Mono",monospace;letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:99px}
+.jc .pricing-save{margin-top:10px;display:inline-flex;align-items:center;background:#263719;color:#c9ff4a;font:700 11px "DM Mono",monospace;letter-spacing:.04em;padding:6px 10px;border-radius:7px}
+@media(max-width:560px){.jc .pricing-toggle{width:100%}.jc .pricing-toggle button{flex:1;justify-content:center}}

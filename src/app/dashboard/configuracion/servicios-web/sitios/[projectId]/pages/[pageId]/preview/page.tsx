@@ -40,6 +40,7 @@ export default async function WebsiteProjectPagePreviewRoute(
         select: {
           nombre: true,
           subdomain: true,
+          themeJson: true,
         },
       },
     },
@@ -67,7 +68,7 @@ export default async function WebsiteProjectPagePreviewRoute(
 
       <WebsiteServicesModuleTabs showBuilderTab={showBuilderTab} />
 
-      <WebsitePageRender data={page.draftData} />
+      <WebsitePageRender data={page.draftData} settings={page.websiteProject.themeJson} />
     </div>
   )
 }

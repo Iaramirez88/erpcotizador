@@ -2400,6 +2400,7 @@ model WebsiteProject {
   primaryDomain String?
   status String @default("DRAFT")
   trackingOnly Boolean @default(false)
+  isMainSite Boolean @default(false)
   templateKey String?
   themeJson Json @default("{}")
   seoJson Json @default("{}")
@@ -2665,6 +2666,17 @@ model PlanCommercialPriceSetting {
 
   @@index([code])
   @@map("plan_commercial_price_settings")
+}
+
+model FreeTrialSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+  @@map("free_trial_settings")
 }
 
 model PlanCatalogSetting {

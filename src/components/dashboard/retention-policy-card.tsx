@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import {
   ACCOUNT_INACTIVITY_DELETION_DAYS,
   ACCOUNT_RETENTION_WARNING_DAYS,
-  PERSONAL_TRIAL_BUSINESS_DAYS,
+  DEFAULT_PERSONAL_TRIAL_DAYS,
   RETENTION_POLICY_LAST_UPDATED,
   RETENTION_POLICY_PATH,
 } from '@/lib/retention-policy'
@@ -17,11 +17,11 @@ import {
  * Se muestra en la página de Plan para que el usuario conozca las reglas antes de que
  * reciba el aviso por correo.
  */
-export default function RetentionPolicyCard({ className }: { className?: string }) {
+export default function RetentionPolicyCard({ className, trialDays }: { className?: string; trialDays?: number }) {
   const { t } = useI18n()
 
   const rules = [
-    t('retention.policy.trial', { days: PERSONAL_TRIAL_BUSINESS_DAYS }),
+    t('retention.policy.trial', { days: trialDays ?? DEFAULT_PERSONAL_TRIAL_DAYS }),
     t('retention.policy.license'),
     t('retention.policy.inactivity', { days: ACCOUNT_INACTIVITY_DELETION_DAYS }),
     t('retention.policy.warning', { days: ACCOUNT_RETENTION_WARNING_DAYS }),

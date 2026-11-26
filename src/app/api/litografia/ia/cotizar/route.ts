@@ -206,7 +206,7 @@ function buildStrictPendingReply(args: {
 
 type KnowledgeSourceDescriptor = {
   enabled: boolean
-  source: 'default' | 'custom'
+  source: 'default' | 'custom' | 'empty'
   updatedAt: string | null
   updatedByLabel: string | null
   label: string
@@ -1412,14 +1412,20 @@ export async function POST(request: NextRequest) {
       extracted: rulesAnalysis.extracted,
     })
     const knowledgeSource: KnowledgeSourceDescriptor = {
-      enabled: true,
+      enabled: knowledgeStore.source !== 'empty',
       source: knowledgeStore.source,
       updatedAt: knowledgeStore.updatedAt || null,
       updatedByLabel: knowledgeStore.updatedByLabel || null,
-      label: knowledgeStore.source === 'custom' ? 'Conocimiento desde JSON personalizado' : 'Conocimiento desde JSON base por defecto',
+      label: knowledgeStore.source === 'custom'
+        ? 'Conocimiento desde JSON personalizado'
+        : knowledgeStore.source === 'default'
+          ? 'Conocimiento desde JSON base por defecto'
+          : 'Sin base de conocimiento cargada',
       description: knowledgeStore.source === 'custom'
         ? 'La interpretación también recibió apoyo de la base de conocimiento cargada o editada para esta empresa.'
-        : 'La interpretación también recibió apoyo de la base de conocimiento base del JSON litográfico.',
+        : knowledgeStore.source === 'default'
+          ? 'La interpretación también recibió apoyo de la base de conocimiento base del JSON litográfico.'
+          : 'La interpretación se basó solo en las tarifas y reglas del ERP, sin base de conocimiento adicional.',
     }
     const data = quoteMode === 'JSON_BASE'
       ? rulesAnalysis

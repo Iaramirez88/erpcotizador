@@ -60,6 +60,48 @@ export async function resolvePublishedWebsitePageByPath(args: {
           slug: true,
           subdomain: true,
           primaryDomain: true,
+          themeJson: true,
+        },
+      },
+      versions: {
+        where: { isPublished: true },
+        orderBy: { versionNumber: 'desc' },
+        take: 1,
+        select: {
+          id: true,
+          versionNumber: true,
+          editorJson: true,
+          createdAt: true,
+        },
+      },
+    },
+  })
+}
+
+export async function resolveMainSitePageBySlug(args: { slug?: string | null }) {
+  const slug = slugifyWebsiteBuilderValue(args.slug || 'inicio')
+
+  return prisma.websiteProjectPage.findFirst({
+    where: {
+      slug,
+      websiteProject: { isMainSite: true, status: 'PUBLISHED' },
+      versions: { some: { isPublished: true } },
+    },
+    select: {
+      id: true,
+      nombre: true,
+      slug: true,
+      isHome: true,
+      seoTitle: true,
+      seoDescription: true,
+      websiteProject: {
+        select: {
+          id: true,
+          nombre: true,
+          slug: true,
+          subdomain: true,
+          primaryDomain: true,
+          themeJson: true,
         },
       },
       versions: {
@@ -119,6 +161,7 @@ export async function resolvePublishedWebsitePageByHost(args: {
           slug: true,
           subdomain: true,
           primaryDomain: true,
+          themeJson: true,
           domains: {
             where: { status: 'ACTIVE' },
             orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],

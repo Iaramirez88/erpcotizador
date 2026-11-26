@@ -391,6 +391,9 @@ export default function SuperAdminPlanModulesClient() {
         actions={
           <>
             <Button asChild variant="outline">
+              <Link href="/dashboard/configuracion/super-admin/trial">Días de prueba</Link>
+            </Button>
+            <Button asChild variant="outline">
               <Link href="/dashboard/configuracion/super-admin/empresas">Empresas</Link>
             </Button>
           </>

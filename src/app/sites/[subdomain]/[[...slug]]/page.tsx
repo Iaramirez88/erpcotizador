@@ -36,5 +36,5 @@ export default async function PublicWebsitePage({ params }: PublicWebsitePagePro
     notFound()
   }
 
-  return <WebsitePageRender data={normalizeWebsiteBuilderData(page.versions[0].editorJson)} />
+  return <WebsitePageRender data={normalizeWebsiteBuilderData(page.versions[0].editorJson)} settings={page.websiteProject.themeJson} enableScripts />
 }

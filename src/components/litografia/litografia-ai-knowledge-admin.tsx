@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 
 type KnowledgeSummary = {
   reglas: number
+  categorias: number
   planchas: number
   impresion: number
   papeles: number
@@ -18,7 +19,7 @@ type KnowledgeSummary = {
 }
 
 type KnowledgeStore = {
-  source: 'default' | 'custom'
+  source: 'default' | 'custom' | 'empty'
   updatedAt: string
   updatedByLabel: string | null
   document: Record<string, unknown>
@@ -33,6 +34,7 @@ function formatDateTime(value: string) {
 export function LitografiaAiKnowledgeAdmin() {
   const [rawJson, setRawJson] = useState('')
   const [defaultRawJson, setDefaultRawJson] = useState('')
+  const [emptyRawJson, setEmptyRawJson] = useState('')
   const [summary, setSummary] = useState<KnowledgeSummary | null>(null)
   const [store, setStore] = useState<KnowledgeStore | null>(null)
   const [loading, setLoading] = useState(true)
@@ -56,8 +58,9 @@ export function LitografiaAiKnowledgeAdmin() {
         if (cancelled) return
         setStore(payload.store)
         setSummary(payload.summary)
-        setRawJson(JSON.stringify(payload.store.document, null, 2))
+        setRawJson(payload.store.source === 'empty' ? '' : JSON.stringify(payload.store.document, null, 2))
         setDefaultRawJson(JSON.stringify(payload.defaultDocument, null, 2))
+        setEmptyRawJson(JSON.stringify(payload.emptyDocument, null, 2))
       } catch (error) {
         if (cancelled) return
         setErrorMessage(error instanceof Error ? error.message : 'No se pudo cargar la base de conocimiento IA.')
@@ -136,6 +139,13 @@ export function LitografiaAiKnowledgeAdmin() {
     setErrorMessage(null)
   }
 
+  function applyEmptyTemplate() {
+    if (!emptyRawJson) return
+    setRawJson(emptyRawJson)
+    setStatusMessage('Plantilla vacía cargada en el editor. Completa los valores y guarda.')
+    setErrorMessage(null)
+  }
+
   return (
     <div className="space-y-6 pb-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -152,6 +162,9 @@ export function LitografiaAiKnowledgeAdmin() {
             Importar JSON
             <input type="file" accept="application/json" className="hidden" onChange={handleFileUpload} />
           </label>
+          <Button type="button" variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={applyEmptyTemplate} disabled={loading || saving || !emptyRawJson}>
+            Plantilla vacía
+          </Button>
           <Button type="button" variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={restoreDefault} disabled={loading || saving || !defaultRawJson}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Restaurar base
@@ -167,6 +180,7 @@ export function LitografiaAiKnowledgeAdmin() {
         {summary ? (
           [
             ['Reglas', summary.reglas],
+            ['Categorías', summary.categorias],
             ['Planchas', summary.planchas],
             ['Impresion', summary.impresion],
             ['Papeles', summary.papeles],
@@ -200,7 +214,7 @@ export function LitografiaAiKnowledgeAdmin() {
           <CardContent className="space-y-4 p-6">
             {store ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                Estado: <span className="font-semibold text-slate-900">{store.source === 'default' ? 'Base por defecto' : 'Base personalizada'}</span>
+                Estado: <span className="font-semibold text-slate-900">{store.source === 'empty' ? 'Sin configurar' : store.source === 'default' ? 'Base por defecto' : 'Base personalizada'}</span>
                 {' · '}
                 Actualizado: <span className="font-semibold text-slate-900">{formatDateTime(store.updatedAt)}</span>
                 {store.updatedByLabel ? (
@@ -209,6 +223,12 @@ export function LitografiaAiKnowledgeAdmin() {
                     Por: <span className="font-semibold text-slate-900">{store.updatedByLabel}</span>
                   </>
                 ) : null}
+              </div>
+            ) : null}
+
+            {store?.source === 'empty' ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Aún no hay conocimiento cargado para esta empresa. Usa <b>Plantilla vacía</b> para empezar desde cero o <b>Restaurar base</b> para el ejemplo por defecto.
               </div>
             ) : null}
 
@@ -225,6 +245,23 @@ export function LitografiaAiKnowledgeAdmin() {
         </Card>
 
         <div className="space-y-6">
+          <Card className="rounded-[28px] border-slate-200">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-xl text-slate-950">Estructura del JSON</CardTitle>
+              <CardDescription>Campos esperados por la base de conocimiento IA. El símbolo ? indica campo opcional.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-xs leading-5 text-slate-600">
+              <div><b>moneda</b> · texto (ej. COP)</div>
+              <div><b>actualizado</b> · texto (fecha de la base)</div>
+              <div><b>fuente</b> · texto (origen: PDF, usuario, etc.)</div>
+              <div><b>parametros</b> · objeto clave-valor: clave en texto, valor en número o texto (reglas generales: margen, impuestos, mínimos, etc.).</div>
+              <div><b>categorias</b> · lista de categorías genéricas, cada una con: nombre, descripcion? e items (nombre, valor (número o null), unidad, nota?).</div>
+              <div><b>costos</b> · sección opcional de litografía (solo si la empresa cotiza impresión): planchas, impresion, papeles, corte_por_pliego, plastificado, terminados.</div>
+              <div><b>notas</b> · lista de texto.</div>
+              <div className="rounded-xl bg-slate-50 px-3 py-2 text-slate-500">La API valida la estructura antes de guardar. El símbolo ? indica campo opcional.</div>
+            </CardContent>
+          </Card>
+
           <Card className="rounded-[28px] border-slate-200">
             <CardHeader className="pb-4">
               <CardTitle className="text-xl text-slate-950">Vista rapida</CardTitle>
